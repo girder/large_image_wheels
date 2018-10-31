@@ -2,25 +2,32 @@
 
 manylinux wheel files for girder/large_image dependencies.
 
+## Use
+
+You can install from the wheels in this repository using a command like:
+```
+    pip install libtiff openslide_python pyvips -f https://manthey.github.io/large_image_wheels
+```
+
 ## Building
 
 The wheels are all generated with the accompanying Dockerfile.
 
 Building the wheels:
 ```
-    docker build --force-rm -t manthey/large_image_wheels . 
+    docker build --force-rm -t manthey/large_image_wheels .
 ```
 
 To extract the wheel files from the docker image:
 ```
     mkdir -p wheels
-    docker run -v wheels:/opt/mount --rm --entrypoint bash manthey/large_image_wheels -c 'cp /io/wheelhouse/*many* /opt/mount/.' 
+    docker run -v wheels:/opt/mount --rm --entrypoint bash manthey/large_image_wheels -c 'cp /io/wheelhouse/*many* /opt/mount/.'
 ```
 
 ## Results
 
 This makes wheels for the main libraries:
-- libtiff 
+- libtiff
 - openslide_python
 - pyvips
 
