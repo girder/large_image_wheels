@@ -13,15 +13,15 @@ RUN yum install -y \
     vim-enhanced
 
 # Update autotools, perl, m4, pkg-config
- 
+
 RUN curl http://pkgconfig.freedesktop.org/releases/pkg-config-0.29.2.tar.gz -L -o pkg-config.tar.gz && \
     mkdir pkg-config && \
     tar -zxf pkg-config.tar.gz -C pkg-config --strip-components 1 && \
     cd pkg-config && \
     ./configure --prefix=/usr/local --with-internal-glib --disable-host-tool && \
     make -j && \
-    make -j install 
-    
+    make -j install
+
 # 1.4.17
 RUN curl ftp://ftp.gnu.org/gnu/m4/m4-latest.tar.gz -L -o m4.tar.gz && \
     mkdir m4 && \
@@ -29,14 +29,14 @@ RUN curl ftp://ftp.gnu.org/gnu/m4/m4-latest.tar.gz -L -o m4.tar.gz && \
     cd m4 && \
     ./configure --prefix=/usr/local && \
     make -j && \
-    make -j install 
- 
+    make -j install
+
 RUN curl -L http://install.perlbrew.pl | bash && \
     . ~/perl5/perlbrew/etc/bashrc && \
     echo '. /root/perl5/perlbrew/etc/bashrc' >> /etc/bashrc && \
     perlbrew install perl-5.29.0 -j -n && \
-    perlbrew switch perl-5.29.0 
- 
+    perlbrew switch perl-5.29.0
+
 RUN curl http://ftp.gnu.org/gnu/automake/automake-1.16.1.tar.gz -L -o automake.tar.gz && \
     mkdir automake && \
     tar -zxf automake.tar.gz -C automake --strip-components 1 && \
@@ -44,7 +44,7 @@ RUN curl http://ftp.gnu.org/gnu/automake/automake-1.16.1.tar.gz -L -o automake.t
     ./configure --prefix=/usr/local && \
     make -j && \
     make -j install
- 
+
 # 2.69 ?
 RUN curl http://ftp.gnu.org/gnu/autoconf/autoconf-latest.tar.gz -L -o autoconf.tar.gz && \
     mkdir autoconf && \
@@ -82,7 +82,7 @@ RUN git clone --depth=1 --single-branch https://github.com/giampaolo/psutil.git 
     done && \
     for WHL in /io/wheelhouse/psutil*.whl; do \
       auditwheel repair "${WHL}" -w /io/wheelhouse/; \
-    done && \ 
+    done && \
     ls -l /io/wheelhouse
 
 RUN git clone --depth=1 --single-branch https://github.com/esnme/ultrajson.git && \
@@ -93,7 +93,7 @@ RUN git clone --depth=1 --single-branch https://github.com/esnme/ultrajson.git &
     done && \
     for WHL in /io/wheelhouse/ujson*.whl; do \
       auditwheel repair "${WHL}" -w /io/wheelhouse/; \
-    done && \ 
+    done && \
     ls -l /io/wheelhouse
 
 # OpenJPEG
@@ -143,7 +143,7 @@ RUN curl https://download.osgeo.org/libtiff/tiff-4.0.9.tar.gz -L -o tiff.tar.gz 
     make -j install && \
     ldconfig
 
-# Rebuild openjpeg with our libtiff 
+# Rebuild openjpeg with our libtiff
 RUN cd openjpeg && \
     cmake . && \
     make -j && \
@@ -159,7 +159,7 @@ RUN git clone --depth=1 --single-branch -b wheel-support https://github.com/mant
     done && \
     for WHL in /io/wheelhouse/libtiff*.whl; do \
       auditwheel repair "${WHL}" -w /io/wheelhouse/; \
-    done && \ 
+    done && \
     ls -l /io/wheelhouse
 
 # OpenSlide
@@ -169,16 +169,16 @@ ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/lib64/pkgconfig
 RUN yum install -y \
     # needed for openslide
     cairo-devel \
-    libtool 
+    libtool
 
-# Install newer versions of glib2, gdk-pixbuf2, libxml2.  
+# Install newer versions of glib2, gdk-pixbuf2, libxml2.
 # In our setup.py, we may want to confirm glib2 >= 2.25.9
 
 RUN curl http://ftp.gnome.org/pub/gnome/sources/glib/2.25/glib-2.25.9.tar.gz -L -o glib-2.tar.gz && \
     mkdir glib-2 && \
     tar -zxf glib-2.tar.gz -C glib-2 --strip-components 1 && \
     cd glib-2 && \
-    ./configure --prefix=/usr/local && \ 
+    ./configure --prefix=/usr/local && \
     make -j && \
     make -j install && \
     ldconfig
@@ -224,7 +224,7 @@ RUN curl https://github.com/openslide/openslide/archive/v3.4.1.tar.gz -L -o open
     ldconfig
 
 RUN git clone https://github.com/openslide/openslide-python && \
-    cd openslide-python && \ 
+    cd openslide-python && \
     python -c $'# \n\
 path = "setup.py" \n\
 s = open(path).read().replace( \n\
@@ -264,7 +264,7 @@ open(path, "w").write(s)' && \
     done && \
     for WHL in /io/wheelhouse/openslide*.whl; do \
       auditwheel repair "${WHL}" -w /io/wheelhouse/ ||  exit 1; \
-    done && \ 
+    done && \
     ls -l /io/wheelhouse
 
 # ImageMagick
@@ -274,7 +274,7 @@ RUN git clone --depth=1 --single-branch https://github.com/ImageMagick/ImageMagi
     ./configure --prefix=/usr/local --with-modules --without-fontconfig && \
     make -j && \
     make -j install && \
-    ldconfig 
+    ldconfig
 
 # VIPS
 
@@ -339,7 +339,7 @@ open(path, "w").write(s)' && \
     done && \
     for WHL in /io/wheelhouse/pyvips*.whl; do \
       auditwheel repair "${WHL}" -w /io/wheelhouse/; \
-    done && \ 
+    done && \
     ls -l /io/wheelhouse
-    
+
 
