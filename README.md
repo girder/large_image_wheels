@@ -6,7 +6,7 @@ manylinux wheel files for girder/large_image dependencies.
 
 You can install from the wheels in this repository using a command like:
 ```
-pip install libtiff openslide_python pyvips -f https://manthey.github.io/large_image_wheels
+pip install libtiff openslide_python pyvips gdal mapnik -f https://manthey.github.io/large_image_wheels
 ```
 
 ## Building
@@ -27,15 +27,18 @@ docker run -v wheels:/opt/mount --rm --entrypoint bash manthey/large_image_wheel
 ## Results
 
 This makes wheels for the main libraries:
+- GDAL
 - libtiff
+- mapnik
 - openslide_python
 - pyvips
 
-This also makes some wheels which aren't published in pypi:
+This also makes some wheels which aren't published in pypii (pyproj isn't published for Python 3.7):
 - psutil
+- pyproj
 - ujson
 
-It remakes wheels that are published:
+It remakes wheels that are published (these are not included in this repo):
 - cffi
 - numpy
 - Pillow
@@ -44,16 +47,16 @@ It remakes wheels that are published:
 
 In order to find the built libraries, this modifies how libtiff, openslide_python, and pyvips load those libraries.  The modification for libtiff is taken from a form of pylibtiff.  The other libraries are patched in place.  There is probably a better way to do this.
 
-## Future Work
+For GDAL, some of the associated shared files aren't included.  This could be handled as was done with mapnik.
 
-It would be nice to extend this to build GDAL and Mapnik.
+It could be useful to bundle executables with the Python packages so that commands like gdalinfo would be available.
 
 ## Example Use
 
 This makes is more convenient to use large_image.  For instance, you can create a Jupyter Notebook with large_image.  In this example, the version of numpy has to be upgraded.
 
 ```
-docker run --rm -p 8888:8888 jupyter/minimal-notebook bash -c 'pip install git+git://github.com/girder/large_image.git#egg=large_image[openslide] -f https://manthey.github.io/large_image_wheels -U numpy && start.sh jupyter notebook --NotebookApp.token="" --ip=0.0.0.0'
+docker run --rm -p 8888:8888 jupyter/minimal-notebook bash -c 'pip install git+git://github.com/girder/large_image.git#egg=large_image[openslide,mapnik] -f https://manthey.github.io/large_image_wheels -U numpy && start.sh jupyter notebook --NotebookApp.token="" --ip=0.0.0.0'
 ```
 
 In the Jupyter interface, create a new notebook.  In the first cell run:
