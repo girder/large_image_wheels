@@ -50,10 +50,10 @@ It would be nice to extend this to build GDAL and Mapnik.
 
 ## Example Use
 
-This makes is more convenient to use large_image.  For instance, you can create a Jupyter Notebook with large_image.  In this example, the version of numpy has to be upgraded.  Editable mode is required until large_image#315 is merged.
+This makes is more convenient to use large_image.  For instance, you can create a Jupyter Notebook with large_image.  In this example, the version of numpy has to be upgraded.
 
 ```
-docker run --rm -p 8888:8888 jupyter/minimal-notebook bash -c 'pip install -e git+git://github.com/girder/large_image.git#egg=large_image[openslide] -f https://manthey.github.io/large_image_wheels -U numpy && start.sh jupyter notebook --NotebookApp.token="" --ip=0.0.0.0'
+docker run --rm -p 8888:8888 jupyter/minimal-notebook bash -c 'pip install git+git://github.com/girder/large_image.git#egg=large_image[openslide] -f https://manthey.github.io/large_image_wheels -U numpy && start.sh jupyter notebook --NotebookApp.token="" --ip=0.0.0.0'
 ```
 
 In the Jupyter interface, create a new notebook.  In the first cell run:
