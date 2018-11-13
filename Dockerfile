@@ -8,21 +8,28 @@ WORKDIR /build
 
 RUN yum install -y \
     gettext \
+    libcurl-devel \
     xz \
     # for easier development
     man \
     vim-enhanced
 
+# Patch autoreconf to better use GETTEXT
+# See https://lists.gnu.org/archive/html/autoconf-patches/2015-10/msg00001.html
+# for the patch logic
+RUN sed -i 's/\^AM_GNU_GETTEXT_VERSION/\^AM_GNU_GETTEXT_\(REQUIRE_\)\?VERSION/g' /usr/bin/autoreconf
+
 # Update autotools, perl, m4, pkg-config
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl http://pkgconfig.freedesktop.org/releases/pkg-config-0.29.2.tar.gz -L -o pkg-config.tar.gz && \
+    curl --silent http://pkgconfig.freedesktop.org/releases/pkg-config-0.29.2.tar.gz -L -o pkg-config.tar.gz && \
     mkdir pkg-config && \
     tar -zxf pkg-config.tar.gz -C pkg-config --strip-components 1 && \
+    rm -f pkg-config.tar.gz && \
     cd pkg-config && \
-    ./configure --prefix=/usr/local --with-internal-glib --disable-host-tool && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install
+    ./configure --silent --prefix=/usr/local --with-internal-glib --disable-host-tool && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install
 
 ENV PKG_CONFIG=/usr/local/bin/pkg-config
 # Some of these paths are added later
@@ -30,68 +37,82 @@ ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:/usr/lib
 
 # 1.4.17
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl ftp://ftp.gnu.org/gnu/m4/m4-latest.tar.gz -L -o m4.tar.gz && \
+    curl --silent ftp://ftp.gnu.org/gnu/m4/m4-latest.tar.gz -L -o m4.tar.gz && \
     mkdir m4 && \
     tar -zxf m4.tar.gz -C m4 --strip-components 1 && \
+    rm -f m4.tar.gz && \
     cd m4 && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install
 
 # Make our own zlib so we don't depend on system libraries
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://zlib.net/zlib-1.2.11.tar.gz -L -o zlib.tar.gz && \
+    curl --silent https://zlib.net/zlib-1.2.11.tar.gz -L -o zlib.tar.gz && \
     mkdir zlib && \
     tar -zxf zlib.tar.gz -C zlib --strip-components 1 && \
+    rm -f zlib.tar.gz && \
     cd zlib && \
     ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 # Make our own openssl so we don't depend on system libraries
-RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://www.openssl.org/source/openssl-1.0.2o.tar.gz -L -o openssl.tar.gz && \
+RUN curl --silent https://www.openssl.org/source/openssl-1.0.2o.tar.gz -L -o openssl.tar.gz && \
     mkdir openssl && \
     tar -zxf openssl.tar.gz -C openssl --strip-components 1 && \
+    rm -f openssl.tar.gz && \
     cd openssl && \
     ./config --prefix=/usr/local --openssldir=/usr/local/ssl shared zlib && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    make --silent && \
+    # using "all install_sw" rather than "install" to avoid installing docs
+    make --silent all install_sw && \
+    ldconfig
+
+RUN git clone --depth=1 --single-branch -b libssh2-1.8.2 https://github.com/libssh2/libssh2.git && \
+    cd libssh2 && \
+    ./buildconf && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent && \
+    make --silent install && \
     ldconfig
 
 # Perl - building from source seems to have less issues
 
 # RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-#     curl -L http://install.perlbrew.pl | bash && \
+#     curl --silent -L http://install.perlbrew.pl | bash && \
 #     . ~/perl5/perlbrew/etc/bashrc && \
 #     echo '. /root/perl5/perlbrew/etc/bashrc' >> /etc/bashrc && \
 #     perlbrew install perl-5.29.0 -j ${JOBS} -n && \
 #     perlbrew switch perl-5.29.0
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://www.cpan.org/src/5.0/perl-5.28.1.tar.gz -L -o perl.tar.gz && \
+    curl --silent https://www.cpan.org/src/5.0/perl-5.28.1.tar.gz -L -o perl.tar.gz && \
     mkdir perl && \
     tar -zxf perl.tar.gz -C perl --strip-components 1 && \
+    rm -f perl.tar.gz && \
     cd perl && \
     ./Configure -des -Dprefix=/usr/localperl && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install-silent
 
 # CMake - we can build from source or just use a precompiled binary
 
 # RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-#     curl https://cmake.org/files/v3.11/cmake-3.11.4.tar.gz -L -o cmake.tar.gz && \
+#     curl --silent https://cmake.org/files/v3.11/cmake-3.11.4.tar.gz -L -o cmake.tar.gz && \
 #     mkdir cmake && \
 #     tar -zxf cmake.tar.gz -C cmake --strip-components 1 && \
+#     rm -f cmake.tar.gz && \
 #     cd cmake && \
 #     ./bootstrap && \
-#     make -j ${JOBS} && \
-#     make -j ${JOBS} install
+#     make --silent -j ${JOBS} && \
+#     make --silent -j ${JOBS} install
 
-RUN curl https://github.com/Kitware/CMake/releases/download/v3.14.4/cmake-3.14.4-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+RUN curl --silent https://github.com/Kitware/CMake/releases/download/v3.14.4/cmake-3.14.4-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
     mkdir cmake && \
-    tar -zxf cmake.tar.gz -C /usr/local --strip-components 1
+    tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
+    rm -f cmake.tar.gz
 
 # Strip libraries before building any wheels
 RUN strip --strip-unneeded /usr/local/lib/*.{so,a}
@@ -129,26 +150,27 @@ RUN git clone --depth=1 --single-branch https://github.com/esnme/ultrajson.git &
 # master rather than the last released version.
 
 # RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-#     curl https://github.com/OSGeo/proj.4/releases/download/6.1.0/proj-6.1.0.tar.gz -L -o proj.tar.gz && \
+#     curl --silent https://github.com/OSGeo/proj.4/releases/download/6.1.0/proj-6.1.0.tar.gz -L -o proj.tar.gz && \
 #     mkdir proj && \
 #     tar -zxf proj.tar.gz -C proj --strip-components 1 && \
+#     rm -f proj.tar.gz && \
 #     cd proj && \
-#     ./configure --prefix=/usr/local && \
-#     make -j ${JOBS} && \
-#     make -j ${JOBS} install && \
+#     ./configure --silent --prefix=/usr/local && \
+#     make --silent -j ${JOBS} && \
+#     make --silent -j ${JOBS} install && \
 #     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     git clone --depth=1 --single-branch https://github.com/OSGeo/proj.4.git && \
     cd proj.4 && \
-    curl -OLJ http://download.osgeo.org/proj/proj-datumgrid-1.8.zip && \
+    curl --silent http://download.osgeo.org/proj/proj-datumgrid-1.8.zip -L -o proj-datumgrid.zip && \
     cd data && \
-    unzip -o ../proj-datumgrid-1.8.zip && \
+    unzip -o ../proj-datumgrid.zip && \
     cd .. && \
     ./autogen.sh && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 # Strip libraries before building any wheels
@@ -160,7 +182,7 @@ RUN git clone --depth=1 --single-branch https://github.com/jswhit/pyproj && \
     cd pyproj && \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
-      "${PYBIN}/pip" install cython && \
+      "${PYBIN}/pip" install --no-cache-dir cython && \
       "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
     done && \
     for WHL in /io/wheelhouse/pyproj*.whl; do \
@@ -172,17 +194,31 @@ RUN git clone --depth=1 --single-branch https://github.com/jswhit/pyproj && \
 
 RUN yum install -y \
     # needed for openjpeg
-    lcms2-devel \
-    libpng-devel
+    lcms2-devel
+
+# 1.2.59 works
+# 1.6.37 doesn't work with gdk-pixbuf2
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl --silent https://downloads.sourceforge.net/libpng/libpng-1.2.59.tar.xz -L -o libpng.tar.xz && \
+    unxz libpng.tar.xz && \
+    mkdir libpng && \
+    tar -xf libpng.tar -C libpng --strip-components 1 && \
+    rm -f libpng.tar && \
+    cd libpng && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://github.com/uclouvain/openjpeg/archive/v2.3.0.tar.gz -L -o openjpeg.tar.gz && \
+    curl --silent https://github.com/uclouvain/openjpeg/archive/v2.3.0.tar.gz -L -o openjpeg.tar.gz && \
     mkdir openjpeg && \
     tar -zxf openjpeg.tar.gz -C openjpeg --strip-components 1 && \
+    rm -f openjpeg.tar.gz && \
     cd openjpeg && \
     cmake . && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 # libtiff
@@ -202,54 +238,58 @@ RUN yum install -y \
     xz-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://www.cl.cam.ac.uk/~mgk25/jbigkit/download/jbigkit-2.1.tar.gz -L -o jbigkit.tar.gz && \
+    curl --silent https://www.cl.cam.ac.uk/~mgk25/jbigkit/download/jbigkit-2.1.tar.gz -L -o jbigkit.tar.gz && \
     mkdir jbigkit && \
     tar -zxf jbigkit.tar.gz -C jbigkit --strip-components 1 && \
+    rm -f jbigkit.tar.gz && \
     cd jbigkit && \
     python -c $'# \n\
 path = "Makefile" \n\
 s = open(path).read().replace("-O2 ", "-O2 -fPIC ") \n\
 open(path, "w").write(s)' && \
-    make -j ${JOBS} && \
+    make --silent -j ${JOBS} && \
     cp {libjbig,pbmtools}/*.{o,so,a} /usr/local/lib/. || true && \
     cp libjbig/*.h /usr/local/include/. && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl http://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.0.0.tar.gz -L -o libwebp.tar.gz && \
+    curl --silent http://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.0.0.tar.gz -L -o libwebp.tar.gz && \
     mkdir libwebp && \
     tar -zxf libwebp.tar.gz -C libwebp --strip-components 1 && \
+    rm -f libwebp.tar.gz && \
     cd libwebp && \
-    ./configure --prefix=/usr/local --enable-libwebpmux --enable-libwebpdecoder --enable-libwebpextras && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local --enable-libwebpmux --enable-libwebpdecoder --enable-libwebpextras && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 # For 12-bit jpeg
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.1.tar.gz -L -o libjpeg-turbo.tar.gz && \
+    curl --silent https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.1.tar.gz -L -o libjpeg-turbo.tar.gz && \
     mkdir libjpeg-turbo && \
     tar -zxf libjpeg-turbo.tar.gz -C libjpeg-turbo --strip-components 1 && \
+    rm -f libjpeg-turbo.tar.gz && \
     cd libjpeg-turbo && \
     cmake -DWITH_12BIT=1 . && \
-    make -j ${JOBS}
+    make --silent -j ${JOBS}
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://download.osgeo.org/libtiff/tiff-4.0.10.tar.gz -L -o tiff.tar.gz && \
+    curl --silent https://download.osgeo.org/libtiff/tiff-4.0.10.tar.gz -L -o tiff.tar.gz && \
     mkdir tiff && \
     tar -zxf tiff.tar.gz -C tiff --strip-components 1 && \
+    rm -f tiff.tar.gz && \
     cd tiff && \
-    ./configure --prefix=/usr/local --enable-jpeg12 --with-jpeg12-include-dir=/build/libjpeg-turbo --with-jpeg12-lib=/build/libjpeg-turbo/libjpeg.so && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local --enable-jpeg12 --with-jpeg12-include-dir=/build/libjpeg-turbo --with-jpeg12-lib=/build/libjpeg-turbo/libjpeg.so && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 # Rebuild openjpeg with our libtiff
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     cd openjpeg && \
     cmake . && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 # Strip libraries before building any wheels
@@ -273,7 +313,7 @@ s = open(path).read() \n\
 s = re.sub(\n\
   r"install_requires=.*,", "install_requires=[\'numpy>='"${NUMPY_VERSION}"$'\'],", s) \n\
 open(path, "w").write(s)' && \
-      "${PYBIN}/pip" install "numpy==${NUMPY_VERSION}.*" && \
+      "${PYBIN}/pip" install --no-cache-dir "numpy==${NUMPY_VERSION}.*" && \
       "${PYBIN}/pip" wheel --no-deps . -w /io/wheelhouse; \
     done && \
     for WHL in /io/wheelhouse/libtiff*.whl; do \
@@ -296,13 +336,14 @@ RUN yum install -y \
     libxml2-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://ftp.pcre.org/pub/pcre/pcre-8.43.tar.gz -L -o pcre.tar.gz && \
+    curl --silent https://ftp.pcre.org/pub/pcre/pcre-8.43.tar.gz -L -o pcre.tar.gz && \
     mkdir pcre && \
     tar -zxf pcre.tar.gz -C pcre --strip-components 1 && \
+    rm -f pcre.tar.gz && \
     cd pcre && \
-    ./configure --prefix=/usr/local --enable-unicode-properties --enable-pcre16 --enable-pcre32 --enable-jit && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local --enable-unicode-properties --enable-pcre16 --enable-pcre32 --enable-jit && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 # 2.25.9 okay
@@ -314,25 +355,27 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # 2.58.3 is the last package that supports autoconf, but needs libmount
 # 2.61 requires meson and libmount
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl http://ftp.gnome.org/pub/gnome/sources/glib/2.48/glib-2.48.2.tar.xz -L -o glib-2.tar.xz && \
+    curl --silent http://ftp.gnome.org/pub/gnome/sources/glib/2.48/glib-2.48.2.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
+    rm -f glib-2.tar && \
     cd glib-2 && \
     ./autogen.sh && \
-    ./configure --prefix=/usr/local --with-python=/opt/python/cp27-cp27mu/bin/python && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local --with-python=/opt/python/cp27-cp27mu/bin/python && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://ftp.gnome.org/pub/gnome/sources/gdk-pixbuf/2.21/gdk-pixbuf-2.21.7.tar.gz -L -o gdk-pixbuf-2.tar.gz && \
+    curl --silent https://ftp.gnome.org/pub/gnome/sources/gdk-pixbuf/2.21/gdk-pixbuf-2.21.7.tar.gz -L -o gdk-pixbuf-2.tar.gz && \
     mkdir gdk-pixbuf-2 && \
     tar -zxf gdk-pixbuf-2.tar.gz -C gdk-pixbuf-2 --strip-components 1 && \
+    rm -f gdk-pixbuf-2.tar.gz && \
     cd gdk-pixbuf-2 && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 # Tell auditwheel to use our updated files.
@@ -348,14 +391,15 @@ data = open(path).read().replace( \n\
 open(path, "w").write(data)'
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://github.com/openslide/openslide/archive/v3.4.1.tar.gz -L -o openslide.tar.gz && \
+    curl --silent https://github.com/openslide/openslide/archive/v3.4.1.tar.gz -L -o openslide.tar.gz && \
     mkdir openslide && \
     tar -zxf openslide.tar.gz -C openslide --strip-components 1 && \
+    rm -f openslide.tar.gz && \
     cd openslide && \
     autoreconf -ifv && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 # This patch allows girder's file layout to work with mirax files and does no
@@ -365,8 +409,8 @@ COPY openslide-vendor-mirax.c.patch .
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     cd openslide && \
     patch src/openslide-vendor-mirax.c ../openslide-vendor-mirax.c.patch && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 # Strip libraries before building any wheels
@@ -424,33 +468,36 @@ RUN yum install -y \
 # Boost
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.15.tar.gz -L -o libiconv.tar.gz && \
+    curl --silent https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.15.tar.gz -L -o libiconv.tar.gz && \
     mkdir libiconv && \
     tar -zxf libiconv.tar.gz -C libiconv --strip-components 1 && \
+    rm -f libiconv.tar.gz && \
     cd libiconv && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl http://download.icu-project.org/files/icu4c/63.1/icu4c-63_1-src.tgz -L -o icu4c.tar.gz && \
+    curl --silent http://download.icu-project.org/files/icu4c/63.1/icu4c-63_1-src.tgz -L -o icu4c.tar.gz && \
     mkdir icu4c && \
     tar -zxf icu4c.tar.gz -C icu4c --strip-components 1 && \
+    rm -f icu4c.tar.gz && \
     cd icu4c/source && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://download.open-mpi.org/release/open-mpi/v3.1/openmpi-3.1.3.tar.gz -L -o openmpi.tar.gz && \
+    curl --silent https://download.open-mpi.org/release/open-mpi/v3.1/openmpi-3.1.3.tar.gz -L -o openmpi.tar.gz && \
     mkdir openmpi && \
     tar -zxf openmpi.tar.gz -C openmpi --strip-components 1 && \
+    rm -f openmpi.tar.gz && \
     cd openmpi && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local --disable-dependency-tracking --enable-silent-rules && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 # This works with boost 1.69.0.
@@ -458,48 +505,57 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # multiple python versions properly.
 # 1.70.0 doesn't work with current mapnik (https://github.com/mapnik/mapnik/issues/4041)
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    git clone --depth=1 --single-branch -b boost-1.69.0 https://github.com/boostorg/boost.git && cd boost && git submodule update --init -j ${JOBS} && \
+    # git clone --depth=1 --single-branch -b boost-1.69.0 https://github.com/boostorg/boost.git && cd boost && git submodule update --init -j ${JOBS} && \
+    curl --silent https://dl.bintray.com/boostorg/release/1.69.0/source/boost_1_69_0.tar.gz -L -o boost.tar.gz && \
+    mkdir boost && \
+    tar -zxf boost.tar.gz -C boost --strip-components 1 && \
+    rm -f boost.tar.gz && \
+    cd boost && \
     echo "" > tools/build/src/user-config.jam && \
     echo "using python : 2.7 : /opt/python/cp27-cp27mu/bin/python : /opt/python/cp27-cp27mu/include/python2.7 : /opt/python/cp27-cp27mu/lib ; " >> tools/build/src/user-config.jam && \
     echo "using python : 3.5 : /opt/python/cp35-cp35m/bin/python : /opt/python/cp35-cp35m/include/python3.5m : /opt/python/cp35-cp35m/lib ; " >> tools/build/src/user-config.jam && \
     echo "using python : 3.6 : /opt/python/cp36-cp36m/bin/python : /opt/python/cp36-cp36m/include/python3.6m : /opt/python/cp36-cp36m/lib ; " >> tools/build/src/user-config.jam && \
     echo "using python : 3.7 : /opt/python/cp37-cp37m/bin/python : /opt/python/cp37-cp37m/include/python3.7m : /opt/python/cp37-cp37m/lib ; " >> tools/build/src/user-config.jam && \
     ./bootstrap.sh --prefix=/usr/local --with-toolset=gcc variant=release && \
-    ./b2 -j ${JOBS} toolset=gcc variant=release python=2.7,3.5,3.6,3.7 cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable -Wno-parentheses -Wno-maybe-uninitialized" install && \
+    ./b2 -d1 -j ${JOBS} toolset=gcc variant=release python=2.7,3.5,3.6,3.7 cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable -Wno-parentheses -Wno-maybe-uninitialized" install && \
     ldconfig
 
-RUN curl -L https://www.fossil-scm.org/index.html/uv/fossil-linux-x64-2.7.tar.gz -o fossil.tar.gz && \
+RUN curl --silent -L https://www.fossil-scm.org/index.html/uv/fossil-linux-x64-2.7.tar.gz -o fossil.tar.gz && \
     tar -zxf fossil.tar.gz && \
+    rm -f fossil.tar.gz && \
     mv fossil /usr/local/bin
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://prdownloads.sourceforge.net/tcl/tcl8.6.9-src.tar.gz -L -o tcl.tar.gz && \
+    curl --silent https://prdownloads.sourceforge.net/tcl/tcl8.6.9-src.tar.gz -L -o tcl.tar.gz && \
     mkdir tcl && \
     tar -zxf tcl.tar.gz -C tcl --strip-components 1 && \
+    rm -f tcl.tar.gz && \
     cd tcl/unix && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://prdownloads.sourceforge.net/tcl/tk8.6.9.1-src.tar.gz -L -o tk.tar.gz && \
+    curl --silent https://prdownloads.sourceforge.net/tcl/tk8.6.9.1-src.tar.gz -L -o tk.tar.gz && \
     mkdir tk && \
     tar -zxf tk.tar.gz -C tk --strip-components 1 && \
+    rm -f tk.tar.gz && \
     cd tk/unix && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://sqlite.org/2019/sqlite-autoconf-3280000.tar.gz -L -o sqlite.tar.gz && \
+    curl --silent https://sqlite.org/2019/sqlite-autoconf-3280000.tar.gz -L -o sqlite.tar.gz && \
     mkdir sqlite && \
     tar -zxf sqlite.tar.gz -C sqlite --strip-components 1 && \
+    rm -f sqlite.tar.gz && \
     cd sqlite && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
@@ -507,7 +563,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     mkdir freexl && \
     cd freexl && \
     fossil open ../freexl.fossil && \
-    LIBS=-liconv ./configure --prefix=/usr/local && \
+    LIBS=-liconv ./configure --silent --prefix=/usr/local && \
     LIBS=-liconv make -j ${JOBS} && \
     LIBS=-liconv make -j ${JOBS} install && \
     ldconfig
@@ -517,9 +573,9 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     cd geos && \
     mkdir build && \
     cd build && \
-    cmake .. && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    cmake -DGEOS_BUILD_DEVELOPER=NO .. && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
@@ -527,60 +583,51 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     mkdir spatialite && \
     cd spatialite && \
     fossil open ../libspatialite.fossil && \
-    CFLAGS='-DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true' ./configure --prefix=/usr/local --disable-geos370 && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    CFLAGS='-DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true' ./configure --silent --prefix=/usr/local --disable-geos370 && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     git clone --depth=1 --single-branch https://github.com/pierriko/libgeotiff && \
     cd libgeotiff && \
     AUTOHEADER=true autoreconf -ifv && \
-    CFLAGS='-DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true' ./configure --prefix=/usr/local --with-zlib=yes --with-jpeg=yes --enable-incode-epsg && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    CFLAGS='-DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true' ./configure --silent --prefix=/usr/local --with-zlib=yes --with-jpeg=yes --enable-incode-epsg && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://www.cairographics.org/releases/pixman-0.34.0.tar.gz -L -o pixman.tar.gz && \
+    curl --silent https://www.cairographics.org/releases/pixman-0.34.0.tar.gz -L -o pixman.tar.gz && \
     mkdir pixman && \
     tar -zxf pixman.tar.gz -C pixman --strip-components 1 && \
+    rm -f pixman.tar.gz && \
     cd pixman && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
-    ldconfig
-
-# 1.6.35 works for rasterlite but not for gdal
-RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://downloads.sourceforge.net/libpng/libpng-1.2.59.tar.xz -L -o libpng.tar.xz && \
-    unxz libpng.tar.xz && \
-    mkdir libpng && \
-    tar -xf libpng.tar -C libpng --strip-components 1 && \
-    cd libpng && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://download.savannah.gnu.org/releases/freetype/freetype-2.9.tar.gz -L -o freetype.tar.gz && \
+    curl --silent https://download.savannah.gnu.org/releases/freetype/freetype-2.9.tar.gz -L -o freetype.tar.gz && \
     mkdir freetype && \
     tar -zxf freetype.tar.gz -C freetype --strip-components 1 && \
+    rm -f freetype.tar.gz && \
     cd freetype && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
-RUN curl https://www.cairographics.org/releases/cairo-1.16.0.tar.xz -L -o cairo.tar.xz && \
+RUN curl --silent https://www.cairographics.org/releases/cairo-1.16.0.tar.xz -L -o cairo.tar.xz && \
     unxz cairo.tar.xz && \
     mkdir cairo && \
     tar -xf cairo.tar -C cairo --strip-components 1 && \
+    rm -f cairo.tar && \
     cd cairo && \
-    CXXFLAGS='-Wno-implicit-fallthrough -Wno-cast-function-type' CFLAGS="$CFLAGS -Wl,--allow-multiple-definition" ./configure --prefix=/usr/local --disable-dependency-tracking && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    CXXFLAGS='-Wno-implicit-fallthrough -Wno-cast-function-type' CFLAGS="$CFLAGS -Wl,--allow-multiple-definition" ./configure --silent --prefix=/usr/local --disable-dependency-tracking && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
@@ -589,16 +636,16 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     mkdir build && \
     cd build && \
     cmake -DBUILD_SHARED_LIBS=ON .. && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     cp ../src/interface.h /usr/local/include/CharLS/. && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     git clone --depth=1 --single-branch -b v1.9.1 https://github.com/lz4/lz4.git && \
     cd lz4 && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
@@ -606,9 +653,9 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     mkdir rasterlite2 && \
     cd rasterlite2 && \
     fossil open ../librasterlite2.fossil && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 # fyba won't compile with GCC 8.2.x, so apply fix in issue #21
@@ -627,20 +674,21 @@ data = data.replace( \n\
     "#include \\"stdafx.h\\"") \n\
 open(path, "w").write(data)' && \
     autoreconf -ifv && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://ftp.gnu.org/gnu/bison/bison-3.1.tar.xz -L -o bison.tar.xz && \
+    curl --silent https://ftp.gnu.org/gnu/bison/bison-3.1.tar.xz -L -o bison.tar.xz && \
     unxz bison.tar.xz && \
     mkdir bison && \
     tar -xf bison.tar -C bison --strip-components 1 && \
+    rm -f bison.tar && \
     cd bison && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 # We need flex to build flex, but we have to build flex to get a newer version
@@ -650,22 +698,23 @@ RUN yum install -y \
     texinfo
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://ftp.gnu.org/pub/gnu/gettext/gettext-0.19.8.tar.gz -L -o gettext.tar.gz && \
+    curl --silent https://ftp.gnu.org/pub/gnu/gettext/gettext-0.19.8.tar.gz -L -o gettext.tar.gz && \
     mkdir gettext && \
     tar -zxf gettext.tar.gz -C gettext --strip-components 1 && \
+    rm -f gettext.tar.gz && \
     cd gettext && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     git clone --depth=1 --single-branch -b v2.6.4 https://github.com/westes/flex && \
     cd flex && \
     autoreconf -ifv && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN yum install -y \
@@ -673,64 +722,69 @@ RUN yum install -y \
     libuuid-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://www.opendap.org/pub/source/libdap-3.20.0.tar.gz -L -o libdap.tar.gz && \
+    curl --silent https://www.opendap.org/pub/source/libdap-3.20.0.tar.gz -L -o libdap.tar.gz && \
     mkdir libdap && \
     tar -zxf libdap.tar.gz -C libdap --strip-components 1 && \
+    rm -f libdap.tar.gz && \
     cd libdap && \
-    ./configure --prefix=/usr/local --enable-threads=posix && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local --enable-threads=posix && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN yum install -y \
     docbook2X
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://github.com/libexpat/libexpat/archive/R_2_2_6.tar.gz -L -o libexpat.tar.gz && \
+    curl --silent https://github.com/libexpat/libexpat/archive/R_2_2_6.tar.gz -L -o libexpat.tar.gz && \
     mkdir libexpat && \
     tar -zxf libexpat.tar.gz -C libexpat --strip-components 1 && \
+    rm -f libexpat.tar.gz && \
     cd libexpat/expat && \
     autoreconf -ifv && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN yum install -y \
     gperf
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.13.1.tar.gz -L -o fontconfig.tar.gz && \
+    curl --silent https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.13.1.tar.gz -L -o fontconfig.tar.gz && \
     mkdir fontconfig && \
     tar -zxf fontconfig.tar.gz -C fontconfig --strip-components 1 && \
+    rm -f fontconfig.tar.gz && \
     cd fontconfig && \
     autoreconf -ifv && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 # Build items necessary for netcdf support
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.4/src/hdf5-1.10.4.tar.gz -L -o hdf5.tar.gz && \
+    curl --silent https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.4/src/hdf5-1.10.4.tar.gz -L -o hdf5.tar.gz && \
     mkdir hdf5 && \
     tar -zxf hdf5.tar.gz -C hdf5 --strip-components 1 && \
+    rm -f hdf5.tar.gz && \
     cd hdf5 && \
     autoreconf -ifv && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://www.unidata.ucar.edu/downloads/netcdf/ftp/netcdf-c-4.6.2.tar.gz -L -o netcdf.tar.gz && \
+    curl --silent https://www.unidata.ucar.edu/downloads/netcdf/ftp/netcdf-c-4.6.2.tar.gz -L -o netcdf.tar.gz && \
     mkdir netcdf && \
     tar -zxf netcdf.tar.gz -C netcdf --strip-components 1 && \
+    rm -f netcdf.tar.gz && \
     cd netcdf && \
     autoreconf -ifv && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 # These add more support to GDAL
@@ -743,25 +797,27 @@ RUN yum install -y \
     ncurses-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://dev.mysql.com/get/Downloads/MySQL-5.7/mysql-boost-5.7.25.tar.gz -L -o mysql.tar.gz && \
+    curl --silent https://dev.mysql.com/get/Downloads/MySQL-5.7/mysql-boost-5.7.25.tar.gz -L -o mysql.tar.gz && \
     mkdir mysql && \
     tar -zxf mysql.tar.gz -C mysql --strip-components 1 && \
+    rm -f mysql.tar.gz && \
     mkdir mysql/build && \
     cd mysql/build && \
-    cmake -DBUILD_SHARED_LIBS=ON -DWITH_BOOST=../boost/boost_1_59_0 -DWITH_SSL=/usr/local -DWITH_ZLIB=system -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DWITH_RAPID=OFF .. && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    CXXFLAGS="-Wno-deprecated-declarations" cmake -DBUILD_CONFIG=mysql_release -DIGNORE_AIO_CHECK=ON -DBUILD_SHARED_LIBS=ON -DWITH_BOOST=../boost/boost_1_59_0 -DWITH_SSL=/usr/local -DWITH_ZLIB=system -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DWITH_RAPID=OFF -DCMAKE_BUILD_TYPE=Release -DWITH_EMBEDDED_SERVER=OFF .. && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 # ogdi doesn't build with parallelism
-RUN curl https://downloads.sourceforge.net/project/ogdi/ogdi/4.1.0/ogdi-4.1.0.tar.gz -L -o ogdi.tar.gz && \
+RUN curl --silent https://downloads.sourceforge.net/project/ogdi/ogdi/4.1.0/ogdi-4.1.0.tar.gz -L -o ogdi.tar.gz && \
     mkdir ogdi && \
     tar -zxf ogdi.tar.gz -C ogdi --strip-components 1 && \
+    rm -f ogdi.tar.gzz && \
     cd ogdi && \
     export TOPDIR=`pwd` && \
-    ./configure --prefix=/usr/local --with-zlib --with-expat && \
-    make && \
-    make install && \
+    ./configure --silent --prefix=/usr/local --with-zlib --with-expat && \
+    make --silent && \
+    make --silent install && \
     cp bin/Linux/*.so /usr/local/lib/. && \
     ldconfig
 
@@ -769,14 +825,15 @@ RUN yum install -y \
     readline-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://ftp.postgresql.org/pub/source/v9.6.13/postgresql-9.6.13.tar.gz -L -o postgresql.tar.gz && \
+    curl --silent https://ftp.postgresql.org/pub/source/v9.6.13/postgresql-9.6.13.tar.gz -L -o postgresql.tar.gz && \
     mkdir postgresql && \
     tar -zxf postgresql.tar.gz -C postgresql --strip-components 1 && \
+    rm -f postgresql.tar.gz && \
     cd postgresql && \
     autoreconf -ifv && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 # --with-dods-root is where libdap is installed
@@ -787,19 +844,6 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     cd gdal/gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
     ./configure --prefix=/usr/local --with-cpp14 --without-libtool --with-jpeg12 --without-poppler --with-podofo --with-spatialite --with-liblzma --with-webp --with-epsilon --with-podofo --with-hdf5 --with-dods-root=/usr/local --with-sosi --with-mysql --with-rasterlite2 --with-pg && \
-    make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings" && \
-    cd apps && \
-    make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings" test_ogrsf && \
-    cd .. && \
-    make -j ${JOBS} install && \
-    ldconfig
-
-# This patch makes gdal more robust on certain bad NITF files.
-COPY gdal-frmts-nitf-nitfimage.c.patch .
-
-RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    cd gdal/gdal && \
-    patch frmts/nitf/nitfimage.c ../../gdal-frmts-nitf-nitfimage.c.patch && \
     make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings" && \
     cd apps && \
     make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings" test_ogrsf && \
@@ -877,13 +921,14 @@ RUN cd gdal/gdal/swig/python && \
 # Mapnik
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://www.freedesktop.org/software/harfbuzz/release/harfbuzz-2.1.1.tar.bz2 -L -o harfbuzz.tar.bz2 && \
+    curl --silent https://www.freedesktop.org/software/harfbuzz/release/harfbuzz-2.1.1.tar.bz2 -L -o harfbuzz.tar.bz2 && \
     mkdir harfbuzz && \
     tar -jxf harfbuzz.tar.bz2 -C harfbuzz --strip-components 1 && \
+    rm -f harfbuzz.tar.bz2 && \
     cd harfbuzz && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 # scons needs to have a modern python in the path, but scons in the included
@@ -900,8 +945,8 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     WARNING_CXXFLAGS="-Wno-unused-variable -Wno-unused-but-set-variable -Wno-attributes -Wno-unknown-pragmas -Wno-maybe-uninitialized" \
     QUIET=true \
     && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN python -c $'# \n\
@@ -974,9 +1019,9 @@ RUN yum install -y \
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     git clone --depth=1 --single-branch https://github.com/ImageMagick/ImageMagick.git ImageMagick && \
     cd ImageMagick && \
-    ./configure --prefix=/usr/local --with-modules LIBS=-lrt && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local --with-modules LIBS=-lrt && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN yum install -y \
@@ -985,57 +1030,62 @@ RUN yum install -y \
     OpenEXR-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://github.com/GStreamer/orc/archive/orc-0.4.28.tar.gz -L -o orc.tar.gz && \
+    curl --silent https://github.com/GStreamer/orc/archive/orc-0.4.28.tar.gz -L -o orc.tar.gz && \
     mkdir orc && \
     tar -zxf orc.tar.gz -C orc --strip-components 1 && \
+    rm -f orc.tar.gz && \
     cd orc && \
     autoreconf -ifv && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://downloads.sourceforge.net/project/niftilib/nifticlib/nifticlib_2_0_0/nifticlib-2.0.0.tar.gz -L -o nifti.tar.gz && \
+    curl --silent https://downloads.sourceforge.net/project/niftilib/nifticlib/nifticlib_2_0_0/nifticlib-2.0.0.tar.gz -L -o nifti.tar.gz && \
     mkdir nifti && \
     tar -zxf nifti.tar.gz -C nifti --strip-components 1 && \
+    rm -f nifti.tar.gz && \
     cd nifti && \
     cmake -DBUILD_SHARED_LIBS=ON . && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl http://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/cfitsio3450.tar.gz -L -o cfitsio.tar.gz && \
+    curl --silent http://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/cfitsio3450.tar.gz -L -o cfitsio.tar.gz && \
     mkdir cfitsio && \
     tar -zxf cfitsio.tar.gz -C cfitsio --strip-components 1 && \
+    rm -f cfitsio.tar.gz && \
     cd cfitsio && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://github.com/ImageOptim/libimagequant/archive/2.12.2.tar.gz -L -o imagequant.tar.gz && \
+    curl --silent https://github.com/ImageOptim/libimagequant/archive/2.12.2.tar.gz -L -o imagequant.tar.gz && \
     mkdir imagequant && \
     tar -zxf imagequant.tar.gz -C imagequant --strip-components 1 && \
+    rm -f imagequant.tar.gz && \
     cd imagequant && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 # vips does't currently have PDFium, poppler, librsvg, pango, libgsf.  Many of
 # those would need to be compiled with newer subdependencies
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://github.com/libvips/libvips/releases/download/v8.8.0/vips-8.8.0.tar.gz -L -o vips.tar.gz && \
+    curl --silent https://github.com/libvips/libvips/releases/download/v8.8.0/vips-8.8.0.tar.gz -L -o vips.tar.gz && \
     mkdir vips && \
     tar -zxf vips.tar.gz -C vips --strip-components 1 && \
+    rm -f vips.tar.gz && \
     cd vips && \
-    ./configure --prefix=/usr/local CFLAGS="`pkg-config --cflags glib-2.0`" LIBS="`pkg-config --libs glib-2.0`" && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local CFLAGS="`pkg-config --cflags glib-2.0`" LIBS="`pkg-config --libs glib-2.0`" && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 # Strip libraries before building any wheels
@@ -1099,13 +1149,14 @@ open(path, "w").write(s)' && \
 
 # Install a utility to recompress wheel (zip) files to make them smaller
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://github.com/amadvance/advancecomp/releases/download/v2.1/advancecomp-2.1.tar.gz -L -o advancecomp.tar.gz && \
+    curl --silent https://github.com/amadvance/advancecomp/releases/download/v2.1/advancecomp-2.1.tar.gz -L -o advancecomp.tar.gz && \
     mkdir advancecomp && \
     tar -zxf advancecomp.tar.gz -C advancecomp --strip-components 1 && \
+    rm -f advancecomp.tar.gz && \
     cd advancecomp && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN advzip /io/wheelhouse/*many*.whl -k -z
