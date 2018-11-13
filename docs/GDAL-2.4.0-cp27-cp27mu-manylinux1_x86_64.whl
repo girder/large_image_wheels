@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Redirecting...</title>
+  <link rel="canonical" href="https://data.kitware.com/api/v1/file/5beace188d777f2179a520c3/download"/>
+  <meta http-equiv="refresh" content="0;url=https://data.kitware.com/api/v1/file/5beace188d777f2179a520c3/download" />
+</head>
+<body>
+  <h1>Redirecting...</h1>
+  <a href="https://data.kitware.com/api/v1/file/5beace188d777f2179a520c3/download">Click here if you are not redirected.<a>
+  <script>location='https://data.kitware.com/api/v1/file/5beace188d777f2179a520c3/download'</script>
+</body>
+</html>
