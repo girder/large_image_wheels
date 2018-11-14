@@ -79,6 +79,9 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make -j ${JOBS} && \
     make -j ${JOBS} install
 
+# Strip libraries before building any wheels
+RUN strip --strip-unneeded /usr/local/lib/*.{so,a}
+
 # Packages used by large_image that don't have published wheels for all the
 # versions of Python we are using.
 
@@ -175,6 +178,9 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make -j ${JOBS} install && \
     ldconfig
 
+# Strip libraries before building any wheels
+RUN strip --strip-unneeded /usr/local/lib/*.{so,a}
+
 RUN git clone --depth=1 --single-branch -b wheel-support https://github.com/manthey/pylibtiff.git && \
     cd pylibtiff && \
     for PYBIN in /opt/python/*/bin/; do \
@@ -251,6 +257,9 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig
+
+# Strip libraries before building any wheels
+RUN strip --strip-unneeded /usr/local/lib/*.{so,a}
 
 RUN git clone https://github.com/openslide/openslide-python && \
     cd openslide-python && \
@@ -331,6 +340,9 @@ data = open(path).read().replace( \n\
     "libSM.so.6", "XlibSM.so.6").replace( \n\
     "libICE.so.6", "XlibICE.so.6") \n\
 open(path, "w").write(data)'
+
+# Strip libraries before building any wheels
+RUN strip --strip-unneeded /usr/local/lib/*.{so,a}
 
 RUN git clone --depth=1 --single-branch https://github.com/libvips/pyvips && \
     cd pyvips && \
@@ -437,6 +449,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 # Can also try 4.9.4, 5.5.0, 6.5.0, 7.3.0, 8.2.0
 # gdal needs at least 5.x
+# This took 48 minutes on machine P
 ENV GCC_VERSION=8.2
 ENV GCC_FULL_VERSION=8.2.0
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
@@ -445,14 +458,13 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     tar -zxf gcc.tar.gz -C gcc --strip-components 1 && \
     mkdir gcc_build && \
     cd gcc_build && \
-    ../gcc/configure --prefix=/usr/local --disable-multilib && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    ../gcc/configure --prefix=/usr/local --disable-multilib --enable-checking=release && \
+    make --quiet -j ${JOBS} && \
+    make --quiet -j ${JOBS} install && \
     ldconfig
 ENV CC=/usr/local/bin/gcc
 ENV CPP=/usr/local/bin/cpp
 ENV CXX=/usr/local/bin/g++
-
 
 # Boost
 
@@ -496,9 +508,9 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     echo "using gcc : ${GCC_VERSION} : /usr/local/bin/g++ ; " > tools/build/src/user-config.jam && \
     echo "using python : 3.6 : /opt/python/cp36-cp36m/bin/python : /opt/python/cp36-cp36m/include/python3.6m : /opt/python/cp36-cp36m/lib ; " >> tools/build/src/user-config.jam && \
     ./bootstrap.sh --prefix=/usr/local --with-toolset=gcc && \
-    ./b2 -j ${JOBS} toolset=gcc cxxflags="-std=c++14" headers && \
-    ./b2 -j ${JOBS} toolset=gcc cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable" && \
-    ./b2 -j ${JOBS} toolset=gcc cxxflags="-std=c++14" install && \
+    ./b2 -j ${JOBS} toolset=gcc variant=release cxxflags="-std=c++14" headers && \
+    ./b2 -j ${JOBS} toolset=gcc variant=release cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable" && \
+    ./b2 -j ${JOBS} toolset=gcc variant=release cxxflags="-std=c++14" install && \
     ldconfig
 # Boost won't compile against python 2 and 3 properly at the same time, so
 # after compiling with python 3, go back and do python 2.
@@ -506,9 +518,9 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     cd boost && \
     echo "using gcc : ${GCC_VERSION} : /usr/local/bin/g++ ; " > tools/build/src/user-config.jam && \
     echo "using python : 2.7 : /opt/python/cp27-cp27mu/bin/python : /opt/python/cp27-cp27mu/include/python2.7 : /opt/python/cp27-cp27mu/lib ; " >> tools/build/src/user-config.jam && \
-    ./bootstrap.sh --prefix=/usr/local --with-toolset=gcc --with-python=/opt/python/cp27-cp27mu/bin/python && \
-    ./b2 -j ${JOBS} toolset=gcc cxxflags="-std=c++14" clean && \
-    ./b2 -j ${JOBS} toolset=gcc cxxflags="-std=c++14" install && \
+    ./bootstrap.sh --prefix=/usr/local --with-toolset=gcc variant=release --with-python=/opt/python/cp27-cp27mu/bin/python && \
+    ./b2 -j ${JOBS} toolset=gcc variant=release cxxflags="-std=c++14" clean && \
+    ./b2 -j ${JOBS} toolset=gcc variant=release cxxflags="-std=c++14" install && \
     ldconfig
 
 RUN curl -L https://www.fossil-scm.org/index.html/uv/fossil-linux-x64-2.7.tar.gz -o fossil.tar.gz && \
@@ -752,7 +764,11 @@ data = open(path).read().replace( \n\
     "libstdc++.so.6", "Xlibstdc++.so.6") \n\
 open(path, "w").write(data)'
 
+# Strip libraries before building any wheels
+RUN strip --strip-unneeded /usr/local/lib/*.{so,a}
+
 RUN cd gdal/gdal/swig/python && \
+    cp -r /usr/local/share/{proj,gdal,epsg_csv} osgeo/. && \
     python -c $'# \n\
 import os \n\
 path = "setup.py" \n\
@@ -766,7 +782,25 @@ data = data.replace( \n\
 data = data.replace( \n\
     "gdal_version = \'2.3.0\'", \n\
     "gdal_version = \'" + os.popen("gdal-config --version").read().strip() + "\'") \n\
-open(path, "w").write(data)'
+data = data.replace( \n\
+    "    scripts=glob(\'scripts/*.py\'),", \n\
+    "    scripts=glob(\'scripts/*.py\'),\\n" + \n\
+    "    package_data={\'osgeo\': [\'proj/*\', \'gdal/*\', \'epsg_csv\']},") \n\
+open(path, "w").write(data)' && \
+    python -c $'# \n\
+path = "osgeo/__init__.py" \n\
+s = open(path).read().replace( \n\
+    "osgeo package.", \n\
+"""osgeo package. \n\
+\n\
+import os \n\
+\n\
+localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
+os.environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj")) \n\
+os.environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal")) \n\
+os.environ.setdefault("GEOTIFF_CSV", os.path.join(localpath, "epsg_csv")) \n\
+""") \n\
+open(path, "w").write(s)'
 
 RUN cd gdal/gdal/swig/python && \
     for PYBIN in /opt/python/*/bin/; do \
@@ -781,7 +815,7 @@ RUN cd gdal/gdal/swig/python && \
 # Mapnik
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl  https://www.freedesktop.org/software/harfbuzz/release/harfbuzz-2.1.1.tar.bz2 -L -o harfbuzz.tar.bz2 && \
+    curl https://www.freedesktop.org/software/harfbuzz/release/harfbuzz-2.1.1.tar.bz2 -L -o harfbuzz.tar.bz2 && \
     mkdir harfbuzz && \
     tar -jxf harfbuzz.tar.bz2 -C harfbuzz --strip-components 1 && \
     cd harfbuzz && \
@@ -811,6 +845,9 @@ path = os.popen("find /opt/_internal -name policy.json").read().strip() \n\
 data = open(path).read().replace( \n\
     "GLIBCXX", "XGLIBCXX") \n\
 open(path, "w").write(data)'
+
+# Strip libraries before building any wheels
+RUN strip --strip-unneeded /usr/local/lib/*.{so,a}
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     git clone https://github.com/mapnik/python-mapnik.git && \
@@ -859,3 +896,16 @@ RUN cd python-mapnik && \
       auditwheel repair "${WHL}" -w /io/wheelhouse/ || exit 1; \
     done && \
     ls -l /io/wheelhouse
+
+# Install a utility to recompress wheel (zip) files to make them smaller
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl https://github.com/amadvance/advancecomp/releases/download/v2.1/advancecomp-2.1.tar.gz -L -o advancecomp.tar.gz && \
+    mkdir advancecomp && \
+    tar -zxf advancecomp.tar.gz -C advancecomp --strip-components 1 && \
+    cd advancecomp && \
+    ./configure --prefix=/usr/local && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
+RUN advzip /io/wheelhouse/*many*.whl -k -z
