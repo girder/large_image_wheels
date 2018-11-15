@@ -154,10 +154,14 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     curl https://www.cl.cam.ac.uk/~mgk25/jbigkit/download/jbigkit-2.1.tar.gz -L -o jbigkit.tar.gz && \
     mkdir jbigkit && \
     tar -zxf jbigkit.tar.gz -C jbigkit --strip-components 1 && \
-    cd jbigkit/libjbig && \
+    cd jbigkit && \
+    python -c $'# \n\
+path = "Makefile" \n\
+s = open(path).read().replace("-O2 ", "-O2 -fPIC ") \n\
+open(path, "w").write(s)' && \
     make -j ${JOBS} && \
-    cp *.o /usr/local/lib/. && \
-    cp *.h /usr/local/include/. && \
+    cp {libjbig,pbmtools}/*.{o,so,a} /usr/local/lib/. || true && \
+    cp libjbig/*.h /usr/local/include/. && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
@@ -181,12 +185,26 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # Strip libraries before building any wheels
 RUN strip --strip-unneeded /usr/local/lib/*.{so,a}
 
+# Use an older version of numpy -- we can work with newer versions, but have to
+# have at least this version to use our wheel.
 RUN git clone --depth=1 --single-branch -b wheel-support https://github.com/manthey/pylibtiff.git && \
     cd pylibtiff && \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
-      "${PYBIN}/pip" install numpy && \
-      "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
+      if [[ "${PYBIN}" =~ "37" ]]; then \
+        export NUMPY_VERSION="1.14"; \
+      else \
+        export NUMPY_VERSION="1.11"; \
+      fi && \
+      python -c $'# \n\
+import re \n\
+path = "setup.py" \n\
+s = open(path).read() \n\
+s = re.sub(\n\
+  r"install_requires=.*,", "install_requires=[\'numpy>='"${NUMPY_VERSION}"$'\'],", s) \n\
+open(path, "w").write(s)' && \
+      "${PYBIN}/pip" install "numpy==${NUMPY_VERSION}.*" && \
+      "${PYBIN}/pip" wheel --no-deps . -w /io/wheelhouse; \
     done && \
     for WHL in /io/wheelhouse/libtiff*.whl; do \
       auditwheel repair "${WHL}" -w /io/wheelhouse/; \
@@ -306,6 +324,9 @@ open(path, "w").write(s)' && \
     ls -l /io/wheelhouse
 
 # ImageMagick
+RUN yum install -y \
+    bzip2-devel \
+    fftw3-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     git clone --depth=1 --single-branch https://github.com/ImageMagick/ImageMagick.git ImageMagick && \
@@ -318,7 +339,6 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # VIPS
 
 RUN yum install -y \
-    fftw3-devel \
     giflib-devel \
     matio-devel
 
@@ -391,7 +411,6 @@ open(path, "w").write(s)' && \
 # properly (at least as done below).
 #
 #     python -c $'# \n\
-# import os \n\
 # path = "setup.py" \n\
 # data = open(path).read() \n\
 # data = data.replace( \n\
@@ -469,7 +488,6 @@ ENV CXX=/usr/local/bin/g++
 # Boost
 
 RUN yum install -y \
-    bzip2-devel \
     openssl-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
@@ -579,7 +597,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     mkdir libwebp && \
     tar -zxf libwebp.tar.gz -C libwebp --strip-components 1 && \
     cd libwebp && \
-    ./configure && \
+    ./configure --prefix=/usr/local --enable-libwebpmux --enable-libwebpdecoder --enable-libwebpextras && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig
