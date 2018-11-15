@@ -33,14 +33,13 @@ This makes wheels for the main libraries:
 - openslide_python
 - pyvips
 
-This also makes some wheels which aren't published in pypii (pyproj isn't published for Python 3.7):
+This also makes some wheels which aren't published in pypi (pyproj isn't published for Python 3.7):
 - psutil
 - pyproj
 - ujson
 
 It remakes wheels that are published (these are not included in this repo):
 - cffi
-- numpy
 - Pillow
 
 ## Issues
@@ -51,10 +50,10 @@ It could be useful to bundle executables with the Python packages so that comman
 
 ## Example Use
 
-This makes is more convenient to use large_image.  For instance, you can create a Jupyter Notebook with large_image.  In this example, the version of numpy has to be upgraded.
+This makes is more convenient to use large_image.  For instance, you can create a Jupyter Notebook with large_image.
 
 ```
-docker run --rm -p 8888:8888 jupyter/minimal-notebook bash -c 'pip install git+git://github.com/girder/large_image.git#egg=large_image[openslide,mapnik] -f https://manthey.github.io/large_image_wheels -U numpy && start.sh jupyter notebook --NotebookApp.token="" --ip=0.0.0.0'
+docker run --rm -p 8888:8888 jupyter/minimal-notebook bash -c 'pip install git+git://github.com/girder/large_image.git#egg=large_image[openslide,mapnik] -f https://manthey.github.io/large_image_wheels matplotlib && start.sh jupyter notebook --NotebookApp.token="" --ip=0.0.0.0'
 ```
 
 In the Jupyter interface, create a new notebook.  In the first cell run:
