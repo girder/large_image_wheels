@@ -276,6 +276,15 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make -j ${JOBS} install && \
     ldconfig
 
+COPY openslide-vendor-mirax.c.patch .
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    cd openslide && \
+    patch src/openslide-vendor-mirax.c ../openslide-vendor-mirax.c.patch && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
 # Strip libraries before building any wheels
 RUN strip --strip-unneeded /usr/local/lib/*.{so,a}
 
@@ -291,8 +300,6 @@ path = "openslide/lowlevel.py" \n\
 s = open(path).read().replace( \n\
 """    _lib = cdll.LoadLibrary(\'libopenslide.so.0\')""", \n\
 """    try: \n\
-        _lib = cdll.LoadLibrary(\'libopenslide.so.0\') \n\
-    except Exception: \n\
         import os \n\
         libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.realpath( \n\
             __file__)), \'.libs\')) \n\
@@ -312,7 +319,9 @@ s = open(path).read().replace( \n\
             if numLoaded - loadCount <= 0: \n\
                 break \n\
             loadCount = numLoaded \n\
-        _lib = cdll.LoadLibrary(lib)""") \n\
+        _lib = cdll.LoadLibrary(lib) \n\
+    except Exception: \n\
+        _lib = cdll.LoadLibrary(\'libopenslide.so.0\')""") \n\
 open(path, "w").write(s)' && \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
