@@ -10,6 +10,7 @@ pip install --upgrade pip && \\
 pip install pyvips \\
   git+git://github.com/girder/large_image.git@master#egg=large_image[openslide,mapnik] \\
   -f /wheels && \\
+python -c 'import libtiff, openslide, pyvips, gdal, mapnik' && \\
 curl -L -o sample.svs \\
   https://data.kitware.com/api/v1/file/5be43d9c8d777f217991e1c2/download && \\
 python -c 'import large_image,pprint;ts = large_image.getTileSource( \\
