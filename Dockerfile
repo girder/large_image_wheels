@@ -140,14 +140,16 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 
 # libtiff
 
-# Note: This doesn't support GL or jpeg 8/12
+# Note: This doesn't support GL
 
 RUN yum install -y \
     # needed for libtiff
+    giflib-devel \
     freeglut-devel \
     libjpeg-devel \
     mesa-libGL-devel \
     mesa-libGLU-devel \
+    SDL-devel \
     xz-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
@@ -165,11 +167,39 @@ open(path, "w").write(s)' && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://download.osgeo.org/libtiff/tiff-4.0.9.tar.gz -L -o tiff.tar.gz && \
+    curl http://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.0.0.tar.gz -L -o libwebp.tar.gz && \
+    mkdir libwebp && \
+    tar -zxf libwebp.tar.gz -C libwebp --strip-components 1 && \
+    cd libwebp && \
+    ./configure --prefix=/usr/local --enable-libwebpmux --enable-libwebpdecoder --enable-libwebpextras && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl https://github.com/facebook/zstd/releases/download/v1.3.7/zstd-1.3.7.tar.gz -L -o zstd.tar.gz && \
+    mkdir zstd && \
+    tar -zxf zstd.tar.gz -C zstd --strip-components 1 && \
+    cd zstd && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
+# For 12-bit jpeg
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.1.tar.gz -L -o libjpeg-turbo.tar.gz && \
+    mkdir libjpeg-turbo && \
+    tar -zxf libjpeg-turbo.tar.gz -C libjpeg-turbo --strip-components 1 && \
+    cd libjpeg-turbo && \
+    cmake -DWITH_12BIT=1 . && \
+    make -j ${JOBS}
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl https://download.osgeo.org/libtiff/tiff-4.0.10.tar.gz -L -o tiff.tar.gz && \
     mkdir tiff && \
     tar -zxf tiff.tar.gz -C tiff --strip-components 1 && \
     cd tiff && \
-    ./configure --prefix=/usr/local && \
+    ./configure --prefix=/usr/local --enable-jpeg12 --with-jpeg12-include-dir=/build/libjpeg-turbo --with-jpeg12-lib=/build/libjpeg-turbo/libjpeg.so && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig
@@ -348,8 +378,8 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # VIPS
 
 RUN yum install -y \
-    giflib-devel \
-    matio-devel
+    matio-devel \
+    OpenEXR-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     curl https://github.com/libvips/libvips/releases/download/v8.7.0/vips-8.7.0.tar.gz -L -o vips.tar.gz && \
@@ -510,7 +540,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl http://download.icu-project.org/files/icu4c/62.1/icu4c-62_1-src.tgz -L -o icu4c.tar.gz && \
+    curl http://download.icu-project.org/files/icu4c/63.1/icu4c-63_1-src.tgz -L -o icu4c.tar.gz && \
     mkdir icu4c && \
     tar -zxf icu4c.tar.gz -C icu4c --strip-components 1 && \
     cd icu4c/source && \
@@ -597,16 +627,6 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     cd libgeotiff && \
     AUTOHEADER=true autoreconf -ifv && \
     ./configure --prefix=/usr/local --with-zlib=yes --with-jpeg=yes --enable-incode-epsg && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
-    ldconfig
-
-RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl http://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.0.0.tar.gz -L -o libwebp.tar.gz && \
-    mkdir libwebp && \
-    tar -zxf libwebp.tar.gz -C libwebp --strip-components 1 && \
-    cd libwebp && \
-    ./configure --prefix=/usr/local --enable-libwebpmux --enable-libwebpdecoder --enable-libwebpextras && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig
@@ -772,8 +792,9 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 # --with-dods-root is where libdap is installed
+# The master branch of GDAL doesn't always work, so use an explicit version
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    git clone --depth=1 --single-branch -b master https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch -b v2.3.2 https://github.com/OSGeo/gdal.git && \
     cd gdal/gdal && \
     ./configure --prefix=/usr/local --without-libtool --with-jpeg12 --without-poppler --with-podofo --with-spatialite --with-mysql --with-liblzma --with-webp --with-epsilon --with-static-proj4 --with-podofo --with-hdf5 --with-dods-root=/usr/local --with-sosi --with-mysql --with-rasterlite2 && \
     make -j ${JOBS} USER_DEFS=-Werror && \
