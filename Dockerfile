@@ -753,16 +753,6 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make -j ${JOBS} install && \
     ldconfig
 
-# ogdi doesn't compile.  It complains of zlib, but updating zlib didn't help.
-# RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-#     git clone --depth=1 --single-branch https://github.com/libogdi/ogdi && \
-#     cd ogdi && \
-#     export TOPDIR=`pwd` && \
-#     ./configure --prefix=/usr/local && \
-#     make -j ${JOBS} && \
-#     make -j ${JOBS} install && \
-#     ldconfig
-
 RUN yum install -y \
     docbook2X
 
@@ -791,12 +781,45 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make -j ${JOBS} install && \
     ldconfig
 
+# Build items necessary for netcdf support
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.4/src/hdf5-1.10.4.tar.gz -L -o hdf5.tar.gz && \
+    mkdir hdf5 && \
+    tar -zxf hdf5.tar.gz -C hdf5 --strip-components 1 && \
+    cd hdf5 && \
+    autoreconf -ifv && \
+    ./configure --prefix=/usr/local && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl https://www.unidata.ucar.edu/downloads/netcdf/ftp/netcdf-c-4.6.2.tar.gz -L -o netcdf.tar.gz && \
+    mkdir netcdf && \
+    tar -zxf netcdf.tar.gz -C netcdf --strip-components 1 && \
+    cd netcdf && \
+    autoreconf -ifv && \
+    ./configure --prefix=/usr/local && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
+# These add more support to GDAL
+RUN yum install -y \
+    cfitsio-devel \
+    hdf-devel \
+    jasper-devel \
+    libpqxx-devel \
+    mysql-devel \
+    ogdi-devel \
+    pcre-devel
+
 # --with-dods-root is where libdap is installed
 # The master branch of GDAL doesn't always work, so use an explicit version
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     git clone --depth=1 --single-branch -b v2.3.2 https://github.com/OSGeo/gdal.git && \
     cd gdal/gdal && \
-    ./configure --prefix=/usr/local --without-libtool --with-jpeg12 --without-poppler --with-podofo --with-spatialite --with-mysql --with-liblzma --with-webp --with-epsilon --with-static-proj4 --with-podofo --with-hdf5 --with-dods-root=/usr/local --with-sosi --with-mysql --with-rasterlite2 && \
+    ./configure --prefix=/usr/local --with-cpp14 --without-libtool --with-jpeg12 --without-poppler --with-podofo --with-spatialite --with-mysql --with-liblzma --with-webp --with-epsilon --with-proj --with-podofo --with-hdf5 --with-dods-root=/usr/local --with-sosi --with-mysql --with-rasterlite2 && \
     make -j ${JOBS} USER_DEFS=-Werror && \
     cd apps && \
     make -j ${JOBS} USER_DEFS=-Werror test_ogrsf && \
@@ -871,9 +894,6 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig
-
-RUN yum install -y \
-    libpqxx-devel
 
 # scons needs to have a modern python in the path, but scons in the included
 # python 3.7 doesn't support parallel builds, so use python 3.6.
