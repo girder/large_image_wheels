@@ -522,6 +522,8 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 ENV CC=/usr/local/bin/gcc
 ENV CPP=/usr/local/bin/cpp
+# We could use the following for the preprocessor
+# ENV CPP="/usr/local/bin/gcc -E"
 ENV CXX=/usr/local/bin/g++
 
 # Boost
@@ -804,6 +806,17 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make -j ${JOBS} install && \
     ldconfig
 
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl https://github.com/json-c/json-c/archive/json-c-0.12.1-20160607.tar.gz -L -o json-c.tar.gz && \
+    mkdir json-c && \
+    tar -zxf json-c.tar.gz -C json-c --strip-components 1 && \
+    cd json-c && \
+    autoreconf -ifv && \
+    CFLAGS='-Wno-implicit-fallthrough' ./configure --prefix=/usr/local && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
 # These add more support to GDAL
 RUN yum install -y \
     cfitsio-devel \
@@ -815,11 +828,11 @@ RUN yum install -y \
     pcre-devel
 
 # --with-dods-root is where libdap is installed
-# The master branch of GDAL doesn't always work, so use an explicit version
+# This works with both master and v2.3.2
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     git clone --depth=1 --single-branch -b v2.3.2 https://github.com/OSGeo/gdal.git && \
     cd gdal/gdal && \
-    ./configure --prefix=/usr/local --with-cpp14 --without-libtool --with-jpeg12 --without-poppler --with-podofo --with-spatialite --with-mysql --with-liblzma --with-webp --with-epsilon --with-proj --with-podofo --with-hdf5 --with-dods-root=/usr/local --with-sosi --with-mysql --with-rasterlite2 && \
+    ./configure --prefix=/usr/local --with-cpp14 --without-libtool --with-jpeg12 --without-poppler --with-podofo --with-spatialite --with-mysql --with-liblzma --with-webp --with-epsilon --with-proj --with-podofo --with-hdf5 --with-dods-root=/usr/local --with-sosi --with-mysql --with-rasterlite2 --with-libjson-c=/usr/local && \
     make -j ${JOBS} USER_DEFS=-Werror && \
     cd apps && \
     make -j ${JOBS} USER_DEFS=-Werror test_ogrsf && \
@@ -872,6 +885,11 @@ os.environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal")) \n\
 os.environ.setdefault("GEOTIFF_CSV", os.path.join(localpath, "epsg_csv")) \n\
 """) \n\
 open(path, "w").write(s)'
+
+# Copy python ports of c utilities to scripts so they get bundled.
+RUN cp gdal/gdal/swig/python/samples/gdalinfo.py gdal/gdal/swig/python/scripts/gdalinfo.py && \
+    cp gdal/gdal/swig/python/samples/ogrinfo.py gdal/gdal/swig/python/scripts/ogrinfo.py && \
+    cp gdal/gdal/swig/python/samples/ogr2ogr.py gdal/gdal/swig/python/scripts/ogr2ogr.py
 
 RUN cd gdal/gdal/swig/python && \
     for PYBIN in /opt/python/*/bin/; do \
