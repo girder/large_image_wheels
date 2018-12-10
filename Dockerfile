@@ -147,6 +147,7 @@ RUN yum install -y \
     giflib-devel \
     freeglut-devel \
     libjpeg-devel \
+    libXi-devel \
     mesa-libGL-devel \
     mesa-libGLU-devel \
     SDL-devel \
@@ -378,11 +379,56 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # VIPS
 
 RUN yum install -y \
+    libexif-devel \
     matio-devel \
     OpenEXR-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://github.com/libvips/libvips/releases/download/v8.7.0/vips-8.7.0.tar.gz -L -o vips.tar.gz && \
+    curl https://github.com/GStreamer/orc/archive/orc-0.4.28.tar.gz -L -o orc.tar.gz && \
+    mkdir orc && \
+    tar -zxf orc.tar.gz -C orc --strip-components 1 && \
+    cd orc && \
+    autoreconf -ifv && \
+    ./configure --prefix=/usr/local && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl https://downloads.sourceforge.net/project/niftilib/nifticlib/nifticlib_2_0_0/nifticlib-2.0.0.tar.gz -L -o nifti.tar.gz && \
+    mkdir nifti && \
+    tar -zxf nifti.tar.gz -C nifti --strip-components 1 && \
+    cd nifti && \
+    cmake -DBUILD_SHARED_LIBS=ON . && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl http://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/cfitsio3450.tar.gz -L -o cfitsio.tar.gz && \
+    mkdir cfitsio && \
+    tar -zxf cfitsio.tar.gz -C cfitsio --strip-components 1 && \
+    cd cfitsio && \
+    ./configure --prefix=/usr/local && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl https://github.com/ImageOptim/libimagequant/archive/2.12.2.tar.gz -L -o imagequant.tar.gz && \
+    mkdir imagequant && \
+    tar -zxf imagequant.tar.gz -C imagequant --strip-components 1 && \
+    cd imagequant && \
+    ./configure --prefix=/usr/local && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
+# vips does't currently have PDFium, poppler, librsvg, pango, libgsf.  Many of
+# thsoe require a newer gcc
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl https://github.com/libvips/libvips/releases/download/v8.7.2/vips-8.7.2.tar.gz -L -o vips.tar.gz && \
     mkdir vips && \
     tar -zxf vips.tar.gz -C vips --strip-components 1 && \
     cd vips && \
