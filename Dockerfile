@@ -33,12 +33,21 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make -j ${JOBS} && \
     make -j ${JOBS} install
 
+# RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+#     curl -L http://install.perlbrew.pl | bash && \
+#     . ~/perl5/perlbrew/etc/bashrc && \
+#     echo '. /root/perl5/perlbrew/etc/bashrc' >> /etc/bashrc && \
+#     perlbrew install perl-5.29.0 -j ${JOBS} -n && \
+#     perlbrew switch perl-5.29.0
+
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl -L http://install.perlbrew.pl | bash && \
-    . ~/perl5/perlbrew/etc/bashrc && \
-    echo '. /root/perl5/perlbrew/etc/bashrc' >> /etc/bashrc && \
-    perlbrew install perl-5.29.0 -j ${JOBS} -n && \
-    perlbrew switch perl-5.29.0
+    curl https://www.cpan.org/src/5.0/perl-5.28.1.tar.gz -L -o perl.tar.gz && \
+    mkdir perl && \
+    tar -zxf perl.tar.gz -C perl --strip-components 1 && \
+    cd perl && \
+    ./Configure -des -Dprefix=/usr/localperl && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
    curl http://ftp.gnu.org/gnu/automake/automake-1.16.1.tar.gz -L -o automake.tar.gz && \
@@ -85,7 +94,7 @@ RUN strip --strip-unneeded /usr/local/lib/*.{so,a}
 # Packages used by large_image that don't have published wheels for all the
 # versions of Python we are using.
 
-RUN git clone --depth=1 --single-branch https://github.com/giampaolo/psutil.git && \
+RUN git clone --depth=1 --single-branch -b release-5.4.8 https://github.com/giampaolo/psutil.git && \
     cd psutil && \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
@@ -244,7 +253,7 @@ open(path, "w").write(s)' && \
 
 # OpenSlide
 
-ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/lib64/pkgconfig
+ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:/usr/lib64/pkgconfig
 
 RUN yum install -y \
     # needed for openslide
