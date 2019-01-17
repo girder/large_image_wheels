@@ -372,151 +372,6 @@ open(path, "w").write(s)' && \
     done && \
     ls -l /io/wheelhouse
 
-# ImageMagick
-RUN yum install -y \
-    bzip2-devel \
-    fftw3-devel
-
-RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    git clone --depth=1 --single-branch https://github.com/ImageMagick/ImageMagick.git ImageMagick && \
-    cd ImageMagick && \
-    ./configure --prefix=/usr/local --with-modules --without-fontconfig && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
-    ldconfig
-
-# VIPS
-
-RUN yum install -y \
-    libexif-devel \
-    matio-devel \
-    OpenEXR-devel
-
-RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://github.com/GStreamer/orc/archive/orc-0.4.28.tar.gz -L -o orc.tar.gz && \
-    mkdir orc && \
-    tar -zxf orc.tar.gz -C orc --strip-components 1 && \
-    cd orc && \
-    autoreconf -ifv && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
-    ldconfig
-
-RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://downloads.sourceforge.net/project/niftilib/nifticlib/nifticlib_2_0_0/nifticlib-2.0.0.tar.gz -L -o nifti.tar.gz && \
-    mkdir nifti && \
-    tar -zxf nifti.tar.gz -C nifti --strip-components 1 && \
-    cd nifti && \
-    cmake -DBUILD_SHARED_LIBS=ON . && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
-    ldconfig
-
-RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl http://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/cfitsio3450.tar.gz -L -o cfitsio.tar.gz && \
-    mkdir cfitsio && \
-    tar -zxf cfitsio.tar.gz -C cfitsio --strip-components 1 && \
-    cd cfitsio && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
-    ldconfig
-
-RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://github.com/ImageOptim/libimagequant/archive/2.12.2.tar.gz -L -o imagequant.tar.gz && \
-    mkdir imagequant && \
-    tar -zxf imagequant.tar.gz -C imagequant --strip-components 1 && \
-    cd imagequant && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
-    ldconfig
-
-# vips does't currently have PDFium, poppler, librsvg, pango, libgsf.  Many of
-# thsoe require a newer gcc
-
-RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://github.com/libvips/libvips/releases/download/v8.7.3/vips-8.7.3.tar.gz -L -o vips.tar.gz && \
-    mkdir vips && \
-    tar -zxf vips.tar.gz -C vips --strip-components 1 && \
-    cd vips && \
-    CXXFLAGS=-D_GLIBCXX_USE_CXX11_ABI=0 ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
-    ldconfig
-
-RUN python -c $'# \n\
-import os \n\
-path = os.popen("find /opt/_internal -name policy.json").read().strip() \n\
-data = open(path).read().replace( \n\
-    "libXext.so.6", "XlibXext.so.6").replace( \n\
-    "libSM.so.6", "XlibSM.so.6").replace( \n\
-    "libICE.so.6", "XlibICE.so.6") \n\
-open(path, "w").write(data)'
-
-# Strip libraries before building any wheels
-RUN strip --strip-unneeded /usr/local/lib/*.{so,a}
-
-RUN git clone --depth=1 --single-branch https://github.com/libvips/pyvips && \
-    cd pyvips && \
-    python -c $'# \n\
-path = "pyvips/__init__.py" \n\
-s = open(path).read().replace( \n\
-"""        _gobject_libname = \'libgobject-2.0.so.0\'""",  \n\
-"""        _gobject_libname = \'libgobject-2.0.so.0\' \n\
-        try: \n\
-            import os \n\
-            libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.realpath( \n\
-                __file__)), \'..\', \'.libs_libvips\')) \n\
-            libs = os.listdir(libpath) \n\
-            loadCount = 0 \n\
-            while True: \n\
-                numLoaded = 0 \n\
-                for name in libs: \n\
-                    try: \n\
-                        somelib = os.path.join(libpath, name) \n\
-                        if name.startswith(\'libvips\'): \n\
-                            _vips_libname = somelib \n\
-                        if name.startswith(\'libgobject-\'): \n\
-                            _gobject_libname = somelib \n\
-                        ffi.dlopen(somelib) \n\
-                        numLoaded += 1 \n\
-                    except Exception as exc: \n\
-                        pass \n\
-                if numLoaded - loadCount <= 0: \n\
-                    break \n\
-                loadCount = numLoaded \n\
-        except Exception: \n\
-            pass\n""") \n\
-open(path, "w").write(s)' && \
-    for PYBIN in /opt/python/*/bin/; do \
-      echo "${PYBIN}" && \
-      "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
-    done && \
-    for WHL in /io/wheelhouse/pyvips*.whl; do \
-      auditwheel repair "${WHL}" -w /io/wheelhouse/; \
-    done && \
-    ls -l /io/wheelhouse
-
-# It might be nice to package executables for different packages with the
-# wheel.  For vips, the executables are build in /build/vips/tools/.libs .
-# Including these in the setup.py scripts key prevents bundling the libraries
-# properly (at least as done below).
-#
-#     python -c $'# \n\
-# path = "setup.py" \n\
-# data = open(path).read() \n\
-# data = data.replace( \n\
-#     "from os import path", \n\
-#     "from os import path\\n" + \n\
-#     "import glob") \n\
-# data = data.replace( \n\
-#     "zip_safe=False,", \n\
-#     "zip_safe=False,\\n" + \n\
-#     "        scripts=glob.glob(\'../vips/tools/.libs/*\'),") \n\
-# open(path, "w").write(data)'
-
 # GDAL
 
 # Install newer GCC
@@ -899,6 +754,9 @@ RUN python -c $'# \n\
 import os \n\
 path = os.popen("find /opt/_internal -name policy.json").read().strip() \n\
 data = open(path).read().replace( \n\
+    "libXext.so.6", "XlibXext.so.6").replace( \n\
+    "libSM.so.6", "XlibSM.so.6").replace( \n\
+    "libICE.so.6", "XlibICE.so.6").replace( \n\
     "CXXABI", "XCXXABI").replace( \n\
     "libstdc++.so.6", "Xlibstdc++.so.6") \n\
 open(path, "w").write(data)'
@@ -1037,6 +895,130 @@ RUN cd python-mapnik && \
       auditwheel repair "${WHL}" -w /io/wheelhouse/ || exit 1; \
     done && \
     ls -l /io/wheelhouse
+
+# ImageMagick
+RUN yum install -y \
+    bzip2-devel \
+    fftw3-devel
+
+# ImageMagick references the wrong libgomp (probably because there is no
+# pkgconfig file for it).
+RUN rm -f /usr/lib64/libgomp.*
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    git clone --depth=1 --single-branch https://github.com/ImageMagick/ImageMagick.git ImageMagick && \
+    cd ImageMagick && \
+    ./configure --prefix=/usr/local --with-modules --without-fontconfig && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
+# VIPS
+
+RUN yum install -y \
+    libexif-devel \
+    matio-devel \
+    OpenEXR-devel
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl https://github.com/GStreamer/orc/archive/orc-0.4.28.tar.gz -L -o orc.tar.gz && \
+    mkdir orc && \
+    tar -zxf orc.tar.gz -C orc --strip-components 1 && \
+    cd orc && \
+    autoreconf -ifv && \
+    ./configure --prefix=/usr/local && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl https://downloads.sourceforge.net/project/niftilib/nifticlib/nifticlib_2_0_0/nifticlib-2.0.0.tar.gz -L -o nifti.tar.gz && \
+    mkdir nifti && \
+    tar -zxf nifti.tar.gz -C nifti --strip-components 1 && \
+    cd nifti && \
+    cmake -DBUILD_SHARED_LIBS=ON . && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl http://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/cfitsio3450.tar.gz -L -o cfitsio.tar.gz && \
+    mkdir cfitsio && \
+    tar -zxf cfitsio.tar.gz -C cfitsio --strip-components 1 && \
+    cd cfitsio && \
+    ./configure --prefix=/usr/local && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl https://github.com/ImageOptim/libimagequant/archive/2.12.2.tar.gz -L -o imagequant.tar.gz && \
+    mkdir imagequant && \
+    tar -zxf imagequant.tar.gz -C imagequant --strip-components 1 && \
+    cd imagequant && \
+    ./configure --prefix=/usr/local && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
+# vips does't currently have PDFium, poppler, librsvg, pango, libgsf.  Many of
+# thsoe require a newer gcc
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl https://github.com/libvips/libvips/releases/download/v8.7.3/vips-8.7.3.tar.gz -L -o vips.tar.gz && \
+    mkdir vips && \
+    tar -zxf vips.tar.gz -C vips --strip-components 1 && \
+    cd vips && \
+    ./configure --prefix=/usr/local && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
+# Strip libraries before building any wheels
+RUN strip --strip-unneeded /usr/local/lib/*.{so,a}
+
+RUN git clone --depth=1 --single-branch https://github.com/libvips/pyvips && \
+    cd pyvips && \
+    python -c $'# \n\
+path = "pyvips/__init__.py" \n\
+s = open(path).read().replace( \n\
+"""    import _libvips""",  \n\
+"""    import ctypes \n\
+    import os \n\
+    libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.realpath( \n\
+        __file__)), \'..\', \'.libs_libvips\')) \n\
+    if os.path.exists(libpath): \n\
+        libs = os.listdir(libpath) \n\
+        libvipspath = [lib for lib in libs if lib.startswith(\'libvips\')][0] \n\
+        ctypes.cdll.LoadLibrary(os.path.join(libpath, libvipspath)) \n\
+    import _libvips""") \n\
+open(path, "w").write(s)' && \
+    for PYBIN in /opt/python/*/bin/; do \
+      echo "${PYBIN}" && \
+      "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
+    done && \
+    for WHL in /io/wheelhouse/pyvips*.whl; do \
+      auditwheel repair "${WHL}" -w /io/wheelhouse/; \
+    done && \
+    ls -l /io/wheelhouse
+
+# It might be nice to package executables for different packages with the
+# wheel.  For vips, the executables are build in /build/vips/tools/.libs .
+# Including these in the setup.py scripts key prevents bundling the libraries
+# properly (at least as done below).
+#
+#     python -c $'# \n\
+# path = "setup.py" \n\
+# data = open(path).read() \n\
+# data = data.replace( \n\
+#     "from os import path", \n\
+#     "from os import path\\n" + \n\
+#     "import glob") \n\
+# data = data.replace( \n\
+#     "zip_safe=False,", \n\
+#     "zip_safe=False,\\n" + \n\
+#     "        scripts=glob.glob(\'../vips/tools/.libs/*\'),") \n\
+# open(path, "w").write(data)'
 
 # Install a utility to recompress wheel (zip) files to make them smaller
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
