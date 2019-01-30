@@ -597,6 +597,13 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    git clone --depth=1 --single-branch -b v1.8.3 https://github.com/lz4/lz4.git && \
+    cd lz4 && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     fossil --user=root clone https://www.gaia-gis.it/fossil/librasterlite2 librasterlite2.fossil && \
     mkdir rasterlite2 && \
     cd rasterlite2 && \
@@ -796,6 +803,9 @@ localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
 os.environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj")) \n\
 os.environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal")) \n\
 os.environ.setdefault("GEOTIFF_CSV", os.path.join(localpath, "epsg_csv")) \n\
+caPath = "/etc/ssl/certs/ca-certificates.crt" \n\
+if os.path.exists(caPath): \n\
+    os.environ.setdefault("CURL_CA_BUNDLE", caPath) \n\
 """) \n\
 open(path, "w").write(s)'
 
