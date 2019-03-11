@@ -94,7 +94,7 @@ RUN strip --strip-unneeded /usr/local/lib/*.{so,a}
 # Packages used by large_image that don't have published wheels for all the
 # versions of Python we are using.
 
-RUN git clone --depth=1 --single-branch -b release-5.4.8 https://github.com/giampaolo/psutil.git && \
+RUN git clone --depth=1 --single-branch -b release-5.6.0 https://github.com/giampaolo/psutil.git && \
     cd psutil && \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
@@ -116,18 +116,33 @@ RUN git clone --depth=1 --single-branch https://github.com/esnme/ultrajson.git &
     done && \
     ls -l /io/wheelhouse
 
-# pyproj isn't currently published for Python 3.7.
-RUN git clone --depth=1 --single-branch https://github.com/jswhit/pyproj && \
-    cd pyproj && \
-    for PYBIN in /opt/python/*/bin/; do \
-      echo "${PYBIN}" && \
-      "${PYBIN}/pip" install cython && \
-      "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
-    done && \
-    for WHL in /io/wheelhouse/pyproj*.whl; do \
-      auditwheel repair "${WHL}" -w /io/wheelhouse/; \
-    done && \
-    ls -l /io/wheelhouse
+RUN yum install -y \
+    zlib-devel
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl https://github.com/OSGeo/proj.4/releases/download/6.0.0/proj-6.0.0.tar.gz -L -o proj.tar.gz && \
+    mkdir proj && \
+    tar -zxf proj.tar.gz -C proj --strip-components 1 && \
+    cd proj && \
+    ./configure --prefix=/usr/local && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
+# As of 3/8/2019, pyproj 2.0.0 is published as wheels for all versions of
+# python we care about.
+# # pyproj isn't currently published for Python 3.7.
+# RUN git clone --depth=1 --single-branch https://github.com/jswhit/pyproj && \
+#     cd pyproj && \
+#     for PYBIN in /opt/python/*/bin/; do \
+#       echo "${PYBIN}" && \
+#       "${PYBIN}/pip" install cython && \
+#       "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
+#     done && \
+#     for WHL in /io/wheelhouse/pyproj*.whl; do \
+#       auditwheel repair "${WHL}" -w /io/wheelhouse/; \
+#     done && \
+#     ls -l /io/wheelhouse
 
 # OpenJPEG
 
