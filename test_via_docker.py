@@ -17,7 +17,7 @@ pip install --upgrade pip && \\
 # pip install libtiff openslide_python pyvips GDAL mapnik -f /wheels && \\
 echo 'Test installing pyvips and other dependencies from wheels via large_image' && \\
 pip install pyvips \\
-  git+git://github.com/girder/large_image.git@master#egg=large_image[openslide,mapnik] \\
+  git+git://github.com/girder/large_image.git@girder-3#egg=large_image[sources] \\
   -f /wheels && \\
 echo 'Test basic import of libtiff' && \\
 python -c 'import libtiff' && \\
@@ -119,12 +119,12 @@ true"""
 
 containers = [
     "python:2.7",
-    "python:3.4",
+    # "python:3.4",
     "python:3.5",
     "python:3.6",
     "python:3.7",
     "centos/python-27-centos7",
-    "centos/python-34-centos7",
+    # "centos/python-34-centos7",
     "centos/python-35-centos7",
     "centos/python-36-centos7",
 ]

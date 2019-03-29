@@ -94,6 +94,9 @@ RUN strip --strip-unneeded /usr/local/lib/*.{so,a}
 # Packages used by large_image that don't have published wheels for all the
 # versions of Python we are using.
 
+# Don't build python 3.4 wheels.
+RUN rm -r /opt/python/cp34*
+
 RUN git clone --depth=1 --single-branch -b release-5.6.0 https://github.com/giampaolo/psutil.git && \
     cd psutil && \
     for PYBIN in /opt/python/*/bin/; do \
@@ -762,7 +765,7 @@ RUN yum install -y \
 # --with-dods-root is where libdap is installed
 # This works with master, v2.3.2, v2.4.0
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    git clone --depth=1 --single-branch -b v2.4.0 https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch -b v2.4.1 https://github.com/OSGeo/gdal.git && \
     cd gdal/gdal && \
     ./configure --prefix=/usr/local --with-cpp14 --without-libtool --with-jpeg12 --without-poppler --with-podofo --with-spatialite --with-mysql --with-liblzma --with-webp --with-epsilon --with-proj --with-podofo --with-hdf5 --with-dods-root=/usr/local --with-sosi --with-mysql --with-rasterlite2 --with-libjson-c=/usr/local && \
     make -j ${JOBS} USER_DEFS=-Werror && \
@@ -990,7 +993,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # thsoe require a newer gcc
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl https://github.com/libvips/libvips/releases/download/v8.7.3/vips-8.7.3.tar.gz -L -o vips.tar.gz && \
+    curl https://github.com/libvips/libvips/releases/download/v8.7.4/vips-8.7.4.tar.gz -L -o vips.tar.gz && \
     mkdir vips && \
     tar -zxf vips.tar.gz -C vips --strip-components 1 && \
     cd vips && \
