@@ -281,12 +281,35 @@ RUN yum install -y \
 # Install newer versions of glib2, gdk-pixbuf2, libxml2.
 # In our setup.py, we may want to confirm glib2 >= 2.25.9
 
+RUN yum install -y \
+    libffi-devel
+
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl http://ftp.gnome.org/pub/gnome/sources/glib/2.25/glib-2.25.9.tar.gz -L -o glib-2.tar.gz && \
+    curl https://ftp.pcre.org/pub/pcre/pcre-8.43.tar.gz -L -o pcre.tar.gz && \
+    mkdir pcre && \
+    tar -zxf pcre.tar.gz -C pcre --strip-components 1 && \
+    cd pcre && \
+    ./configure --prefix=/usr/local --enable-unicode-properties && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
+# 2.25.9 okay
+# 2.46.2 will install with libffi-devel
+# 2.47.92 needs libffi-devel and a newer version of pcre-devel
+# 2.48.2 needs libffi-devel and a newer version of pcre-devel
+# 2.49.7 fails on mkostemp
+# 2.50.3 needs libmount
+# 2.58.3 is the last package that supports autoconf, but needs libmount
+# 2.61 requires meson and libmount
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl http://ftp.gnome.org/pub/gnome/sources/glib/2.48/glib-2.48.2.tar.xz -L -o glib-2.tar.xz && \
+    unxz glib-2.tar.xz && \
     mkdir glib-2 && \
-    tar -zxf glib-2.tar.gz -C glib-2 --strip-components 1 && \
+    tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
     cd glib-2 && \
-    ./configure --prefix=/usr/local && \
+    ./autogen.sh && \
+    ./configure --prefix=/usr/local --with-python=/opt/python/cp27-cp27mu/bin/python && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig
@@ -513,6 +536,36 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 RUN curl -L https://www.fossil-scm.org/index.html/uv/fossil-linux-x64-2.7.tar.gz -o fossil.tar.gz && \
     tar -zxf fossil.tar.gz && \
     mv fossil /usr/local/bin
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl https://prdownloads.sourceforge.net/tcl/tcl8.6.9-src.tar.gz -L -o tcl.tar.gz && \
+    mkdir tcl && \
+    tar -zxf tcl.tar.gz -C tcl --strip-components 1 && \
+    cd tcl/unix && \
+    ./configure --prefix=/usr/local && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl https://prdownloads.sourceforge.net/tcl/tk8.6.9.1-src.tar.gz -L -o tk.tar.gz && \
+    mkdir tk && \
+    tar -zxf tk.tar.gz -C tk --strip-components 1 && \
+    cd tk/unix && \
+    ./configure --prefix=/usr/local && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl https://sqlite.org/2019/sqlite-autoconf-3280000.tar.gz -L -o sqlite.tar.gz && \
+    mkdir sqlite && \
+    tar -zxf sqlite.tar.gz -C sqlite --strip-components 1 && \
+    cd sqlite && \
+    ./configure --prefix=/usr/local && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     git clone --depth=1 --single-branch https://github.com/svn2github/libproj && \
@@ -758,9 +811,20 @@ RUN yum install -y \
     hdf-devel \
     jasper-devel \
     libpqxx-devel \
-    mysql-devel \
-    ogdi-devel \
-    pcre-devel
+    mysql-devel
+#    ogdi-devel
+#    pcre-devel
+
+# Note -- this doesn't build with parallelism
+RUN curl https://downloads.sourceforge.net/project/ogdi/ogdi/4.1.0/ogdi-4.1.0.tar.gz -L -o ogdi.tar.gz && \
+    mkdir ogdi && \
+    tar -zxf ogdi.tar.gz -C ogdi --strip-components 1 && \
+    cd ogdi && \
+    export TOPDIR=`pwd` && \
+    ./configure --prefix=/usr/local --with-zlib --with-expat --with-proj && \
+    make && \
+    make install && \
+    ldconfig
 
 # --with-dods-root is where libdap is installed
 # This works with master, v2.3.2, v2.4.0
@@ -768,9 +832,9 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     git clone --depth=1 --single-branch -b v2.4.1 https://github.com/OSGeo/gdal.git && \
     cd gdal/gdal && \
     ./configure --prefix=/usr/local --with-cpp14 --without-libtool --with-jpeg12 --without-poppler --with-podofo --with-spatialite --with-mysql --with-liblzma --with-webp --with-epsilon --with-proj --with-podofo --with-hdf5 --with-dods-root=/usr/local --with-sosi --with-mysql --with-rasterlite2 --with-libjson-c=/usr/local && \
-    make -j ${JOBS} USER_DEFS=-Werror && \
+    make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers" && \
     cd apps && \
-    make -j ${JOBS} USER_DEFS=-Werror test_ogrsf && \
+    make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers" test_ogrsf && \
     cd .. && \
     make -j ${JOBS} install && \
     ldconfig

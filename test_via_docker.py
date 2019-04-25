@@ -110,11 +110,11 @@ python -c 'import pyvips,mapnik;pyvips.Image.new_from_file( \\
   "sample_jp2.tif").write_to_file("sample_jp2_out.tif",compression="jpeg", \\
   Q=90,tile=True,tile_width=256,tile_height=256,pyramid=True, \\
   bigtiff=True);' && \\
-# echo 'Test that pyvips and mapnik can both be imported, mapnik first' && \\
-# python -c 'import mapnik,pyvips;pyvips.Image.new_from_file( \\
-#  "sample_jp2.tif").write_to_file("sample_jp2_out.tif",compression="jpeg", \\
-#  Q=90,tile=True,tile_width=256,tile_height=256,pyramid=True, \\
-#  bigtiff=True);' && \\
+echo 'Test that pyvips and mapnik can both be imported, mapnik first' && \\
+python -c 'import mapnik,pyvips;pyvips.Image.new_from_file( \\
+ "sample_jp2.tif").write_to_file("sample_jp2_out.tif",compression="jpeg", \\
+ Q=90,tile=True,tile_width=256,tile_height=256,pyramid=True, \\
+ bigtiff=True);' && \\
 true"""
 
 containers = [
