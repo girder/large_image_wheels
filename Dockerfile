@@ -587,21 +587,12 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make -j ${JOBS} install && \
     ldconfig
 
-# Get an older verson of proj so we can compile libspatialite and libgeotiff
-RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    git clone --depth=1 --single-branch https://github.com/svn2github/libproj && \
-    cd libproj && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
-    ldconfig
-
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     fossil --user=root clone https://www.gaia-gis.it/fossil/libspatialite libspatialite.fossil && \
     mkdir spatialite && \
     cd spatialite && \
     fossil open ../libspatialite.fossil && \
-    ./configure --prefix=/usr/local --disable-geos370 && \
+    CFLAGS='-DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true' ./configure --prefix=/usr/local --disable-geos370 && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig
@@ -610,14 +601,9 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     git clone --depth=1 --single-branch https://github.com/pierriko/libgeotiff && \
     cd libgeotiff && \
     AUTOHEADER=true autoreconf -ifv && \
-    ./configure --prefix=/usr/local --with-zlib=yes --with-jpeg=yes --enable-incode-epsg && \
+    CFLAGS='-DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true' ./configure --prefix=/usr/local --with-zlib=yes --with-jpeg=yes --enable-incode-epsg && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
-    ldconfig
-
-# Reinstall the newer version of proj
-RUN cd proj && \
-    make install && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
@@ -931,7 +917,10 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     cd mapnik && \
     git submodule update --init -j ${JOBS} && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    python scons/scons.py configure JOBS=${JOBS} CXX=${CXX} CC=${CC} BOOST_INCLUDES=/usr/local/include BOOST_LIBS=/usr/local/lib && \
+    python scons/scons.py configure JOBS=${JOBS} CXX=${CXX} CC=${CC} \
+    BOOST_INCLUDES=/usr/local/include BOOST_LIBS=/usr/local/lib \
+    -Q ACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true \
+    && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig
