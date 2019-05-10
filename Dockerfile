@@ -97,7 +97,7 @@ RUN strip --strip-unneeded /usr/local/lib/*.{so,a}
 # Don't build python 3.4 wheels.
 RUN rm -r /opt/python/cp34*
 
-RUN git clone --depth=1 --single-branch -b release-5.6.0 https://github.com/giampaolo/psutil.git && \
+RUN git clone --depth=1 --single-branch -b release-5.6.2 https://github.com/giampaolo/psutil.git && \
     cd psutil && \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
@@ -568,14 +568,6 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    git clone --depth=1 --single-branch https://github.com/svn2github/libproj && \
-    cd libproj && \
-    ./configure --prefix=/usr/local && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
-    ldconfig
-
-RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     fossil --user=root clone https://www.gaia-gis.it/fossil/freexl freexl.fossil && \
     mkdir freexl && \
     cd freexl && \
@@ -591,6 +583,15 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     mkdir build && \
     cd build && \
     cmake .. && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
+# Get an older verson of proj so we can compile libspatialite and libgeotiff
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    git clone --depth=1 --single-branch https://github.com/svn2github/libproj && \
+    cd libproj && \
+    ./configure --prefix=/usr/local && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig
@@ -612,6 +613,11 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ./configure --prefix=/usr/local --with-zlib=yes --with-jpeg=yes --enable-incode-epsg && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
+    ldconfig
+
+# Reinstall the newer version of proj
+RUN cd proj && \
+    make install && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
@@ -829,12 +835,12 @@ RUN curl https://downloads.sourceforge.net/project/ogdi/ogdi/4.1.0/ogdi-4.1.0.ta
 # --with-dods-root is where libdap is installed
 # This works with master, v2.3.2, v2.4.0
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    git clone --depth=1 --single-branch -b v2.4.1 https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch -b v3.0.0 https://github.com/OSGeo/gdal.git && \
     cd gdal/gdal && \
     ./configure --prefix=/usr/local --with-cpp14 --without-libtool --with-jpeg12 --without-poppler --with-podofo --with-spatialite --with-mysql --with-liblzma --with-webp --with-epsilon --with-proj --with-podofo --with-hdf5 --with-dods-root=/usr/local --with-sosi --with-mysql --with-rasterlite2 --with-libjson-c=/usr/local && \
-    make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers" && \
+    make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings" && \
     cd apps && \
-    make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers" test_ogrsf && \
+    make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings" test_ogrsf && \
     cd .. && \
     make -j ${JOBS} install && \
     ldconfig
