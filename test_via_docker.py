@@ -16,9 +16,7 @@ pip install --upgrade pip && \\
 # echo 'Test installing all libraries from wheels' && \\
 # pip install libtiff openslide_python pyvips GDAL mapnik -f /wheels && \\
 echo 'Test installing pyvips and other dependencies from wheels via large_image' && \\
-pip install pyvips \\
-  git+git://github.com/girder/large_image.git@girder-3#egg=large_image[sources] \\
-  -f /wheels && \\
+pip install pyvips large_image[sources] -f /wheels && \\
 echo 'Test basic import of libtiff' && \\
 python -c 'import libtiff' && \\
 echo 'Test basic import of openslide' && \\
@@ -31,6 +29,9 @@ echo 'Test basic import of mapnik' && \\
 python -c 'import mapnik' && \\
 echo 'Test basic imports of all wheels' && \\
 python -c 'import libtiff, openslide, pyvips, gdal, mapnik' && \\
+echo 'Test import of pyproj after mapnik' && \\
+python -c 'import mapnik;import pyproj;print(pyproj.Proj( \\
+  "+init=epsg:4326 +type=crs"))' && \\
 echo 'Download an openslide file' && \\
 curl -L -o sample.svs \\
   https://data.kitware.com/api/v1/file/5be43d9c8d777f217991e1c2/download && \\
