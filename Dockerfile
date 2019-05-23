@@ -794,6 +794,19 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make -j ${JOBS} install && \
     ldconfig
 
+# This patch makes gdal more robust on certain bad NITF files.
+COPY gdal-frmts-nitf-nitfimage.c.patch .
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    cd gdal/gdal && \
+    patch frmts/nitf/nitfimage.c ../../gdal-frmts-nitf-nitfimage.c.patch && \
+    make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings" && \
+    cd apps && \
+    make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings" test_ogrsf && \
+    cd .. && \
+    make -j ${JOBS} install && \
+    ldconfig
+
 RUN python -c $'# \n\
 import os \n\
 path = os.popen("find /opt/_internal -name policy.json").read().strip() \n\

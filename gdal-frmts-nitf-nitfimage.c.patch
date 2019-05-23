@@ -1,0 +1,26 @@
+diff --git a/gdal/frmts/nitf/nitfimage.c b/gdal/frmts/nitf/nitfimage.c
+index b6ae5a2..9ef8992 100644
+--- a/gdal/frmts/nitf/nitfimage.c
++++ b/gdal/frmts/nitf/nitfimage.c
+@@ -657,6 +657,21 @@ NITFImage *NITFImageAccess( NITFFile *psFile, int iSegment )
+                     psImage->nTREBytes );
+ 
+             nOffset += nUserTREBytes;
++
++            if (nUserTREBytes < 11)
++            {
++                psImage->nTREBytes = 0;
++            }
++            else
++            {
++                int nUsedLength = 0;
++                sscanf(psImage->pachTRE + 6, "%*5d%n", &nUsedLength);
++                if (nUsedLength != 5)
++                {
++                    psImage->nTREBytes = 0;
++                }
++            }
++
+         }
+         else
+         {
