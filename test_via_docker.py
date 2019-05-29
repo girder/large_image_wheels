@@ -116,6 +116,17 @@ python -c 'import mapnik,pyvips;pyvips.Image.new_from_file( \\
  "sample_jp2.tif").write_to_file("sample_jp2_out.tif",compression="jpeg", \\
  Q=90,tile=True,tile_width=256,tile_height=256,pyramid=True, \\
  bigtiff=True);' && \\
+echo 'Download a somewhat bad nitf file' && \\
+curl -L -o sample.ntf \\
+  https://data.kitware.com/api/v1/file/5cee913e8d777f072bf1c47a/download && \\
+echo 'Use gdal to open a nitf file' && \\
+python -c 'import gdal,pprint;d = gdal.Open("sample.ntf");pprint.pprint({ \\
+  "RasterXSize": d.RasterXSize, \\
+  "RasterYSize": d.RasterYSize, \\
+  "GetProjection": d.GetProjection(), \\
+  "GetGeoTransform": d.GetGeoTransform(), \\
+  "RasterCount": d.RasterCount, \\
+  });pprint.pprint(d.GetMetadata()["NITF_BLOCKA_FRFC_LOC_01"])' && \\
 true"""
 
 containers = [
