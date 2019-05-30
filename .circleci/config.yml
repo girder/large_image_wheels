@@ -4,7 +4,7 @@ jobs:
     working_directory: ~/project
     docker:
       - image: circleci/python:3.7
-      - image: docker:17.05.0-ce-git
+      - image: docker:18.06.0-ce-git
     steps:
       - checkout
       - run:

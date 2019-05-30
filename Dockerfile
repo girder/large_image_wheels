@@ -506,7 +506,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # 1.70.0 doesn't work with current mapnik (https://github.com/mapnik/mapnik/issues/4041)
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     # git clone --depth=1 --single-branch -b boost-1.69.0 https://github.com/boostorg/boost.git && cd boost && git submodule update --init -j ${JOBS} && \
-    curl --silent https://dl.bintray.com/boostorg/release/1.69.0/source/boost_1_69_0.tar.gz -L -o boost.tar.gz && \
+    curl --silent https://downloads.sourceforge.net/project/boost/boost/1.69.0/boost_1_69_0.tar.gz -L -o boost.tar.gz && \
     mkdir boost && \
     tar -zxf boost.tar.gz -C boost --strip-components 1 && \
     rm -f boost.tar.gz && \
