@@ -563,6 +563,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     mkdir freexl && \
     cd freexl && \
     fossil open ../freexl.fossil && \
+    rm -f ../freexl.fossil && \
     LIBS=-liconv ./configure --silent --prefix=/usr/local && \
     LIBS=-liconv make -j ${JOBS} && \
     LIBS=-liconv make -j ${JOBS} install && \
@@ -580,10 +581,11 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     fossil --user=root clone https://www.gaia-gis.it/fossil/libspatialite libspatialite.fossil && \
-    mkdir spatialite && \
-    cd spatialite && \
+    mkdir libspatialite && \
+    cd libspatialite && \
     fossil open ../libspatialite.fossil && \
-    CFLAGS='-DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true' ./configure --silent --prefix=/usr/local --disable-geos370 && \
+    rm -f ../libspatialite.fossil && \
+    CFLAGS='-DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true' ./configure --silent --prefix=/usr/local --disable-examples && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
@@ -650,9 +652,10 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     fossil --user=root clone https://www.gaia-gis.it/fossil/librasterlite2 librasterlite2.fossil && \
-    mkdir rasterlite2 && \
-    cd rasterlite2 && \
+    mkdir librasterlite2 && \
+    cd librasterlite2 && \
     fossil open ../librasterlite2.fossil && \
+    rm -f ../librasterlite2.fossil && \
     ./configure --silent --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -764,13 +767,15 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 
 # Build items necessary for netcdf support
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.4/src/hdf5-1.10.4.tar.gz -L -o hdf5.tar.gz && \
+    curl --silent https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.5/src/hdf5-1.10.5.tar.gz -L -o hdf5.tar.gz && \
     mkdir hdf5 && \
     tar -zxf hdf5.tar.gz -C hdf5 --strip-components 1 && \
     rm -f hdf5.tar.gz && \
     cd hdf5 && \
     autoreconf -ifv && \
-    ./configure --silent --prefix=/usr/local && \
+    # This libraries produces a lot of warnings; since we don't do anything
+    # about them, suppress them.
+    CFLAGS='-w' ./configure --silent --prefix=/usr/local --disable-dependency-tracking && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
@@ -803,7 +808,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     rm -f mysql.tar.gz && \
     mkdir mysql/build && \
     cd mysql/build && \
-    CXXFLAGS="-Wno-deprecated-declarations" cmake -DBUILD_CONFIG=mysql_release -DIGNORE_AIO_CHECK=ON -DBUILD_SHARED_LIBS=ON -DWITH_BOOST=../boost/boost_1_59_0 -DWITH_SSL=/usr/local -DWITH_ZLIB=system -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DWITH_RAPID=OFF -DCMAKE_BUILD_TYPE=Release -DWITH_EMBEDDED_SERVER=OFF .. && \
+    CXXFLAGS="-Wno-deprecated-declarations" cmake -DBUILD_CONFIG=mysql_release -DIGNORE_AIO_CHECK=ON -DBUILD_SHARED_LIBS=ON -DWITH_BOOST=../boost/boost_1_59_0 -DWITH_SSL=/usr/local -DWITH_ZLIB=system -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DWITH_RAPID=OFF -DCMAKE_BUILD_TYPE=Release -DWITH_EMBEDDED_SERVER=OFF -DINSTALL_MYSQLTESTDIR="" .. && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
@@ -941,9 +946,20 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     # python scons/scons.py configure JOBS=${JOBS} CXX=${CXX} CC=${CC} \
     python scons/scons.py configure JOBS=${JOBS} \
     BOOST_INCLUDES=/usr/local/include BOOST_LIBS=/usr/local/lib \
+    ICU_INCLUDES=/usr/local/include ICU_LIBS=/usr/local/lib \
+    HB_INCLUDES=/usr/local/include HB_LIBS=/usr/local/lib \
+    PNG_INCLUDES=/usr/local/include PNG_LIBS=/usr/local/lib \
+    JPEG_INCLUDES=/usr/local/include JPEG_LIBS=/usr/local/lib \
+    TIFF_INCLUDES=/usr/local/include TIFF_LIBS=/usr/local/lib \
+    WEBP_INCLUDES=/usr/local/include WEBP_LIBS=/usr/local/lib \
+    PROJ_INCLUDES=/usr/local/include PROJ_LIBS=/usr/local/lib \
+    SQLITE_INCLUDES=/usr/local/include SQLITE_LIBS=/usr/local/lib \
+    RASTERLITE_INCLUDES=/usr/local/include RASTERLITE_LIBS=/usr/local/lib \
     CUSTOM_DEFINES="-DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=1" \
     WARNING_CXXFLAGS="-Wno-unused-variable -Wno-unused-but-set-variable -Wno-attributes -Wno-unknown-pragmas -Wno-maybe-uninitialized" \
     QUIET=true \
+    CPP_TESTS=false \
+    # RUNTIME_LINK=static \
     && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -1069,7 +1085,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     tar -zxf imagequant.tar.gz -C imagequant --strip-components 1 && \
     rm -f imagequant.tar.gz && \
     cd imagequant && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig

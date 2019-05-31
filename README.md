@@ -73,3 +73,15 @@ And in the second cell run:
 ```
 plt.imshow(tile_info['tile'])
 ```
+
+## Rationale
+
+It is an inconvenience to have to add `--find-links https://manthey.github.io/large_image_wheels` to pip install commands to use these wheels, but the is no ideal solution.  There are two alternatives: (a) convince upstream repositories to publish wheels, or (b) publish these under unique names (e.g., large_image_dependency_gdal).  None of these are perfect solutions.  
+
+Using `--find-links` requires modify pip install commands.  Further, if a newer non-wheel version of a package is published on pypi, it will be used in favor of the wheel unless the explicit version is used.  Since this repository won't maintain old versions, this means that the wheels must be rebuilt as soon as new versions are released.
+
+It isn't practical to produce wheels for some upstream packages.  For instance, GDAL can be compiled with optional components that require licensing.  A publicly published wheel can't contain such components, and, therefore, it makes sense for the package on pypi to expect that the library has been installed separately from the python module.
+
+If these wheels were published under alternate names, they could be published to pypi.  However, this would require a wheel for every supported OS or have conditionals in downstream packages' setup.py install_requires.  Further, it would preclude using custom-built libraries (such as GDAL with licensed additions).
+
+Using `--find-links` seems like the best choice of these options.  Downstream packages can list the expected modules in `install_requires`.  Installation doesn't become any harder for platforms without wheels, and custom-built libraries are supported.
