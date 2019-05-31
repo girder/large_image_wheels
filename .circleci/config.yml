@@ -2,15 +2,18 @@ version: 2
 jobs:
   build_docker:
     working_directory: ~/project
-    docker:
-      - image: circleci/python:3.7
-      - image: docker:17.05.0-ce-git
+    # In order to use mount commands with docker, we need to use the machine
+    # executor rather than use setup_remote_docker
+    machine: true
+    # docker:
+    #   - image: circleci/python:3.7
+    #   - image: docker:18.06.0-ce-git
     steps:
       - checkout
       - run:
           name: Remove existing wheels
           command: git rm docs/*
-      - setup_remote_docker
+      # - setup_remote_docker
       - run:
           name: Build the Docker
           command: ./build.sh
