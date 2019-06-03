@@ -355,7 +355,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # 2.58.3 is the last package that supports autoconf, but needs libmount
 # 2.61 requires meson and libmount
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent http://ftp.gnome.org/pub/gnome/sources/glib/2.48/glib-2.48.2.tar.xz -L -o glib-2.tar.xz && \
+    curl --silent https://download.gnome.org/sources/glib/2.48/glib-2.48.2.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
@@ -959,7 +959,6 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     WARNING_CXXFLAGS="-Wno-unused-variable -Wno-unused-but-set-variable -Wno-attributes -Wno-unknown-pragmas -Wno-maybe-uninitialized" \
     QUIET=true \
     CPP_TESTS=false \
-    # RUNTIME_LINK=static \
     && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
