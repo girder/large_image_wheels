@@ -22,7 +22,7 @@ RUN sed -i 's/\^AM_GNU_GETTEXT_VERSION/\^AM_GNU_GETTEXT_\(REQUIRE_\)\?VERSION/g'
 # Update autotools, perl, m4, pkg-config
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent http://pkgconfig.freedesktop.org/releases/pkg-config-0.29.2.tar.gz -L -o pkg-config.tar.gz && \
+    curl --retry 5 --silent http://pkgconfig.freedesktop.org/releases/pkg-config-0.29.2.tar.gz -L -o pkg-config.tar.gz && \
     mkdir pkg-config && \
     tar -zxf pkg-config.tar.gz -C pkg-config --strip-components 1 && \
     rm -f pkg-config.tar.gz && \
@@ -37,7 +37,7 @@ ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:/usr/lib
 
 # 1.4.17
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent ftp://ftp.gnu.org/gnu/m4/m4-latest.tar.gz -L -o m4.tar.gz && \
+    curl --retry 5 --silent ftp://ftp.gnu.org/gnu/m4/m4-latest.tar.gz -L -o m4.tar.gz && \
     mkdir m4 && \
     tar -zxf m4.tar.gz -C m4 --strip-components 1 && \
     rm -f m4.tar.gz && \
@@ -48,7 +48,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 
 # Make our own zlib so we don't depend on system libraries
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://zlib.net/zlib-1.2.11.tar.gz -L -o zlib.tar.gz && \
+    curl --retry 5 --silent https://zlib.net/zlib-1.2.11.tar.gz -L -o zlib.tar.gz && \
     mkdir zlib && \
     tar -zxf zlib.tar.gz -C zlib --strip-components 1 && \
     rm -f zlib.tar.gz && \
@@ -59,7 +59,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 # Make our own openssl so we don't depend on system libraries
-RUN curl --silent https://www.openssl.org/source/openssl-1.0.2o.tar.gz -L -o openssl.tar.gz && \
+RUN curl --retry 5 --silent https://www.openssl.org/source/openssl-1.0.2o.tar.gz -L -o openssl.tar.gz && \
     mkdir openssl && \
     tar -zxf openssl.tar.gz -C openssl --strip-components 1 && \
     rm -f openssl.tar.gz && \
@@ -81,14 +81,14 @@ RUN git clone --depth=1 --single-branch -b libssh2-1.8.2 https://github.com/libs
 # Perl - building from source seems to have less issues
 
 # RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-#     curl --silent -L http://install.perlbrew.pl | bash && \
+#     curl --retry 5 --silent -L http://install.perlbrew.pl | bash && \
 #     . ~/perl5/perlbrew/etc/bashrc && \
 #     echo '. /root/perl5/perlbrew/etc/bashrc' >> /etc/bashrc && \
 #     perlbrew install perl-5.29.0 -j ${JOBS} -n && \
 #     perlbrew switch perl-5.29.0
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://www.cpan.org/src/5.0/perl-5.28.1.tar.gz -L -o perl.tar.gz && \
+    curl --retry 5 --silent https://www.cpan.org/src/5.0/perl-5.28.1.tar.gz -L -o perl.tar.gz && \
     mkdir perl && \
     tar -zxf perl.tar.gz -C perl --strip-components 1 && \
     rm -f perl.tar.gz && \
@@ -100,7 +100,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # CMake - we can build from source or just use a precompiled binary
 
 # RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-#     curl --silent https://cmake.org/files/v3.11/cmake-3.11.4.tar.gz -L -o cmake.tar.gz && \
+#     curl --retry 5 --silent https://cmake.org/files/v3.11/cmake-3.11.4.tar.gz -L -o cmake.tar.gz && \
 #     mkdir cmake && \
 #     tar -zxf cmake.tar.gz -C cmake --strip-components 1 && \
 #     rm -f cmake.tar.gz && \
@@ -109,7 +109,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 #     make --silent -j ${JOBS} && \
 #     make --silent -j ${JOBS} install
 
-RUN curl --silent https://github.com/Kitware/CMake/releases/download/v3.14.4/cmake-3.14.4-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+RUN curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.14.4/cmake-3.14.4-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
     mkdir cmake && \
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz
@@ -150,7 +150,7 @@ RUN git clone --depth=1 --single-branch https://github.com/esnme/ultrajson.git &
 # master rather than the last released version.
 
 # RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-#     curl --silent https://github.com/OSGeo/proj.4/releases/download/6.1.0/proj-6.1.0.tar.gz -L -o proj.tar.gz && \
+#     curl --retry 5 --silent https://github.com/OSGeo/proj.4/releases/download/6.1.0/proj-6.1.0.tar.gz -L -o proj.tar.gz && \
 #     mkdir proj && \
 #     tar -zxf proj.tar.gz -C proj --strip-components 1 && \
 #     rm -f proj.tar.gz && \
@@ -163,7 +163,7 @@ RUN git clone --depth=1 --single-branch https://github.com/esnme/ultrajson.git &
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     git clone --depth=1 --single-branch https://github.com/OSGeo/proj.4.git && \
     cd proj.4 && \
-    curl --silent http://download.osgeo.org/proj/proj-datumgrid-1.8.zip -L -o proj-datumgrid.zip && \
+    curl --retry 5 --silent http://download.osgeo.org/proj/proj-datumgrid-1.8.zip -L -o proj-datumgrid.zip && \
     cd data && \
     unzip -o ../proj-datumgrid.zip && \
     cd .. && \
@@ -180,6 +180,13 @@ RUN strip --strip-unneeded /usr/local/lib/*.{so,a}
 # python we care about, but we want the latest version of proj.4.
 RUN git clone --depth=1 --single-branch https://github.com/jswhit/pyproj && \
     cd pyproj && \
+    python -c $'# \n\
+import re \n\
+path = "pyproj/__init__.py" \n\
+s = open(path).read() \n\
+s = s.replace(\n\
+  "__version__ = \\"2.2.0\\"", "__version__ = \\"2.2.1\\"") \n\
+open(path, "w").write(s)' && \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
       "${PYBIN}/pip" install --no-cache-dir cython && \
@@ -199,7 +206,7 @@ RUN yum install -y \
 # 1.2.59 works
 # 1.6.37 doesn't work with gdk-pixbuf2
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://downloads.sourceforge.net/libpng/libpng-1.2.59.tar.xz -L -o libpng.tar.xz && \
+    curl --retry 5 --silent https://downloads.sourceforge.net/libpng/libpng-1.2.59.tar.xz -L -o libpng.tar.xz && \
     unxz libpng.tar.xz && \
     mkdir libpng && \
     tar -xf libpng.tar -C libpng --strip-components 1 && \
@@ -211,7 +218,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://github.com/uclouvain/openjpeg/archive/v2.3.0.tar.gz -L -o openjpeg.tar.gz && \
+    curl --retry 5 --silent https://github.com/uclouvain/openjpeg/archive/v2.3.0.tar.gz -L -o openjpeg.tar.gz && \
     mkdir openjpeg && \
     tar -zxf openjpeg.tar.gz -C openjpeg --strip-components 1 && \
     rm -f openjpeg.tar.gz && \
@@ -238,7 +245,7 @@ RUN yum install -y \
     xz-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://www.cl.cam.ac.uk/~mgk25/jbigkit/download/jbigkit-2.1.tar.gz -L -o jbigkit.tar.gz && \
+    curl --retry 5 --silent https://www.cl.cam.ac.uk/~mgk25/jbigkit/download/jbigkit-2.1.tar.gz -L -o jbigkit.tar.gz && \
     mkdir jbigkit && \
     tar -zxf jbigkit.tar.gz -C jbigkit --strip-components 1 && \
     rm -f jbigkit.tar.gz && \
@@ -253,7 +260,7 @@ open(path, "w").write(s)' && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent http://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.0.0.tar.gz -L -o libwebp.tar.gz && \
+    curl --retry 5 --silent http://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.0.0.tar.gz -L -o libwebp.tar.gz && \
     mkdir libwebp && \
     tar -zxf libwebp.tar.gz -C libwebp --strip-components 1 && \
     rm -f libwebp.tar.gz && \
@@ -265,7 +272,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 
 # For 12-bit jpeg
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.1.tar.gz -L -o libjpeg-turbo.tar.gz && \
+    curl --retry 5 --silent https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.1.tar.gz -L -o libjpeg-turbo.tar.gz && \
     mkdir libjpeg-turbo && \
     tar -zxf libjpeg-turbo.tar.gz -C libjpeg-turbo --strip-components 1 && \
     rm -f libjpeg-turbo.tar.gz && \
@@ -274,7 +281,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS}
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://download.osgeo.org/libtiff/tiff-4.0.10.tar.gz -L -o tiff.tar.gz && \
+    curl --retry 5 --silent https://download.osgeo.org/libtiff/tiff-4.0.10.tar.gz -L -o tiff.tar.gz && \
     mkdir tiff && \
     tar -zxf tiff.tar.gz -C tiff --strip-components 1 && \
     rm -f tiff.tar.gz && \
@@ -336,7 +343,7 @@ RUN yum install -y \
     libxml2-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://ftp.pcre.org/pub/pcre/pcre-8.43.tar.gz -L -o pcre.tar.gz && \
+    curl --retry 5 --silent https://ftp.pcre.org/pub/pcre/pcre-8.43.tar.gz -L -o pcre.tar.gz && \
     mkdir pcre && \
     tar -zxf pcre.tar.gz -C pcre --strip-components 1 && \
     rm -f pcre.tar.gz && \
@@ -355,7 +362,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # 2.58.3 is the last package that supports autoconf, but needs libmount
 # 2.61 requires meson and libmount
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://download.gnome.org/sources/glib/2.48/glib-2.48.2.tar.xz -L -o glib-2.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.48/glib-2.48.2.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
@@ -368,7 +375,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://ftp.gnome.org/pub/gnome/sources/gdk-pixbuf/2.21/gdk-pixbuf-2.21.7.tar.gz -L -o gdk-pixbuf-2.tar.gz && \
+    curl --retry 5 --silent https://ftp.gnome.org/pub/gnome/sources/gdk-pixbuf/2.21/gdk-pixbuf-2.21.7.tar.gz -L -o gdk-pixbuf-2.tar.gz && \
     mkdir gdk-pixbuf-2 && \
     tar -zxf gdk-pixbuf-2.tar.gz -C gdk-pixbuf-2 --strip-components 1 && \
     rm -f gdk-pixbuf-2.tar.gz && \
@@ -391,7 +398,7 @@ data = open(path).read().replace( \n\
 open(path, "w").write(data)'
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://github.com/openslide/openslide/archive/v3.4.1.tar.gz -L -o openslide.tar.gz && \
+    curl --retry 5 --silent https://github.com/openslide/openslide/archive/v3.4.1.tar.gz -L -o openslide.tar.gz && \
     mkdir openslide && \
     tar -zxf openslide.tar.gz -C openslide --strip-components 1 && \
     rm -f openslide.tar.gz && \
@@ -468,7 +475,7 @@ RUN yum install -y \
 # Boost
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.15.tar.gz -L -o libiconv.tar.gz && \
+    curl --retry 5 --silent https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.15.tar.gz -L -o libiconv.tar.gz && \
     mkdir libiconv && \
     tar -zxf libiconv.tar.gz -C libiconv --strip-components 1 && \
     rm -f libiconv.tar.gz && \
@@ -479,7 +486,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent http://download.icu-project.org/files/icu4c/63.1/icu4c-63_1-src.tgz -L -o icu4c.tar.gz && \
+    curl --retry 5 --silent http://download.icu-project.org/files/icu4c/63.1/icu4c-63_1-src.tgz -L -o icu4c.tar.gz && \
     mkdir icu4c && \
     tar -zxf icu4c.tar.gz -C icu4c --strip-components 1 && \
     rm -f icu4c.tar.gz && \
@@ -490,7 +497,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://download.open-mpi.org/release/open-mpi/v3.1/openmpi-3.1.3.tar.gz -L -o openmpi.tar.gz && \
+    curl --retry 5 --silent https://download.open-mpi.org/release/open-mpi/v3.1/openmpi-3.1.3.tar.gz -L -o openmpi.tar.gz && \
     mkdir openmpi && \
     tar -zxf openmpi.tar.gz -C openmpi --strip-components 1 && \
     rm -f openmpi.tar.gz && \
@@ -506,7 +513,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # 1.70.0 doesn't work with current mapnik (https://github.com/mapnik/mapnik/issues/4041)
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     # git clone --depth=1 --single-branch -b boost-1.69.0 https://github.com/boostorg/boost.git && cd boost && git submodule update --init -j ${JOBS} && \
-    curl --silent https://downloads.sourceforge.net/project/boost/boost/1.69.0/boost_1_69_0.tar.gz -L -o boost.tar.gz && \
+    curl --retry 5 --silent https://downloads.sourceforge.net/project/boost/boost/1.69.0/boost_1_69_0.tar.gz -L -o boost.tar.gz && \
     mkdir boost && \
     tar -zxf boost.tar.gz -C boost --strip-components 1 && \
     rm -f boost.tar.gz && \
@@ -520,13 +527,13 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ./b2 -d1 -j ${JOBS} toolset=gcc variant=release python=2.7,3.5,3.6,3.7 cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable -Wno-parentheses -Wno-maybe-uninitialized" install && \
     ldconfig
 
-RUN curl --silent -L https://www.fossil-scm.org/index.html/uv/fossil-linux-x64-2.7.tar.gz -o fossil.tar.gz && \
+RUN curl --retry 5 --silent -L https://www.fossil-scm.org/index.html/uv/fossil-linux-x64-2.7.tar.gz -o fossil.tar.gz && \
     tar -zxf fossil.tar.gz && \
     rm -f fossil.tar.gz && \
     mv fossil /usr/local/bin
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://prdownloads.sourceforge.net/tcl/tcl8.6.9-src.tar.gz -L -o tcl.tar.gz && \
+    curl --retry 5 --silent https://prdownloads.sourceforge.net/tcl/tcl8.6.9-src.tar.gz -L -o tcl.tar.gz && \
     mkdir tcl && \
     tar -zxf tcl.tar.gz -C tcl --strip-components 1 && \
     rm -f tcl.tar.gz && \
@@ -537,7 +544,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://prdownloads.sourceforge.net/tcl/tk8.6.9.1-src.tar.gz -L -o tk.tar.gz && \
+    curl --retry 5 --silent https://prdownloads.sourceforge.net/tcl/tk8.6.9.1-src.tar.gz -L -o tk.tar.gz && \
     mkdir tk && \
     tar -zxf tk.tar.gz -C tk --strip-components 1 && \
     rm -f tk.tar.gz && \
@@ -548,7 +555,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://sqlite.org/2019/sqlite-autoconf-3280000.tar.gz -L -o sqlite.tar.gz && \
+    curl --retry 5 --silent https://sqlite.org/2019/sqlite-autoconf-3280000.tar.gz -L -o sqlite.tar.gz && \
     mkdir sqlite && \
     tar -zxf sqlite.tar.gz -C sqlite --strip-components 1 && \
     rm -f sqlite.tar.gz && \
@@ -600,7 +607,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://www.cairographics.org/releases/pixman-0.34.0.tar.gz -L -o pixman.tar.gz && \
+    curl --retry 5 --silent https://www.cairographics.org/releases/pixman-0.34.0.tar.gz -L -o pixman.tar.gz && \
     mkdir pixman && \
     tar -zxf pixman.tar.gz -C pixman --strip-components 1 && \
     rm -f pixman.tar.gz && \
@@ -611,7 +618,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://download.savannah.gnu.org/releases/freetype/freetype-2.9.tar.gz -L -o freetype.tar.gz && \
+    curl --retry 5 --silent https://download.savannah.gnu.org/releases/freetype/freetype-2.9.tar.gz -L -o freetype.tar.gz && \
     mkdir freetype && \
     tar -zxf freetype.tar.gz -C freetype --strip-components 1 && \
     rm -f freetype.tar.gz && \
@@ -621,7 +628,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} install && \
     ldconfig
 
-RUN curl --silent https://www.cairographics.org/releases/cairo-1.16.0.tar.xz -L -o cairo.tar.xz && \
+RUN curl --retry 5 --silent https://www.cairographics.org/releases/cairo-1.16.0.tar.xz -L -o cairo.tar.xz && \
     unxz cairo.tar.xz && \
     mkdir cairo && \
     tar -xf cairo.tar -C cairo --strip-components 1 && \
@@ -683,7 +690,7 @@ open(path, "w").write(data)' && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://ftp.gnu.org/gnu/bison/bison-3.1.tar.xz -L -o bison.tar.xz && \
+    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.1.tar.xz -L -o bison.tar.xz && \
     unxz bison.tar.xz && \
     mkdir bison && \
     tar -xf bison.tar -C bison --strip-components 1 && \
@@ -701,7 +708,7 @@ RUN yum install -y \
     texinfo
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://ftp.gnu.org/pub/gnu/gettext/gettext-0.19.8.tar.gz -L -o gettext.tar.gz && \
+    curl --retry 5 --silent https://ftp.gnu.org/pub/gnu/gettext/gettext-0.19.8.tar.gz -L -o gettext.tar.gz && \
     mkdir gettext && \
     tar -zxf gettext.tar.gz -C gettext --strip-components 1 && \
     rm -f gettext.tar.gz && \
@@ -725,7 +732,7 @@ RUN yum install -y \
     libuuid-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://www.opendap.org/pub/source/libdap-3.20.0.tar.gz -L -o libdap.tar.gz && \
+    curl --retry 5 --silent https://www.opendap.org/pub/source/libdap-3.20.0.tar.gz -L -o libdap.tar.gz && \
     mkdir libdap && \
     tar -zxf libdap.tar.gz -C libdap --strip-components 1 && \
     rm -f libdap.tar.gz && \
@@ -739,7 +746,7 @@ RUN yum install -y \
     docbook2X
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://github.com/libexpat/libexpat/archive/R_2_2_6.tar.gz -L -o libexpat.tar.gz && \
+    curl --retry 5 --silent https://github.com/libexpat/libexpat/archive/R_2_2_6.tar.gz -L -o libexpat.tar.gz && \
     mkdir libexpat && \
     tar -zxf libexpat.tar.gz -C libexpat --strip-components 1 && \
     rm -f libexpat.tar.gz && \
@@ -754,7 +761,7 @@ RUN yum install -y \
     gperf
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.13.1.tar.gz -L -o fontconfig.tar.gz && \
+    curl --retry 5 --silent https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.13.1.tar.gz -L -o fontconfig.tar.gz && \
     mkdir fontconfig && \
     tar -zxf fontconfig.tar.gz -C fontconfig --strip-components 1 && \
     rm -f fontconfig.tar.gz && \
@@ -767,7 +774,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 
 # Build items necessary for netcdf support
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.5/src/hdf5-1.10.5.tar.gz -L -o hdf5.tar.gz && \
+    curl --retry 5 --silent https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.5/src/hdf5-1.10.5.tar.gz -L -o hdf5.tar.gz && \
     mkdir hdf5 && \
     tar -zxf hdf5.tar.gz -C hdf5 --strip-components 1 && \
     rm -f hdf5.tar.gz && \
@@ -781,7 +788,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://www.unidata.ucar.edu/downloads/netcdf/ftp/netcdf-c-4.6.2.tar.gz -L -o netcdf.tar.gz && \
+    curl --retry 5 --silent https://www.unidata.ucar.edu/downloads/netcdf/ftp/netcdf-c-4.6.2.tar.gz -L -o netcdf.tar.gz && \
     mkdir netcdf && \
     tar -zxf netcdf.tar.gz -C netcdf --strip-components 1 && \
     rm -f netcdf.tar.gz && \
@@ -802,7 +809,7 @@ RUN yum install -y \
     ncurses-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://dev.mysql.com/get/Downloads/MySQL-5.7/mysql-boost-5.7.25.tar.gz -L -o mysql.tar.gz && \
+    curl --retry 5 --silent https://dev.mysql.com/get/Downloads/MySQL-5.7/mysql-boost-5.7.25.tar.gz -L -o mysql.tar.gz && \
     mkdir mysql && \
     tar -zxf mysql.tar.gz -C mysql --strip-components 1 && \
     rm -f mysql.tar.gz && \
@@ -814,7 +821,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 # ogdi doesn't build with parallelism
-RUN curl --silent https://downloads.sourceforge.net/project/ogdi/ogdi/4.1.0/ogdi-4.1.0.tar.gz -L -o ogdi.tar.gz && \
+RUN curl --retry 5 --silent https://downloads.sourceforge.net/project/ogdi/ogdi/4.1.0/ogdi-4.1.0.tar.gz -L -o ogdi.tar.gz && \
     mkdir ogdi && \
     tar -zxf ogdi.tar.gz -C ogdi --strip-components 1 && \
     rm -f ogdi.tar.gzz && \
@@ -830,7 +837,7 @@ RUN yum install -y \
     readline-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://ftp.postgresql.org/pub/source/v9.6.13/postgresql-9.6.13.tar.gz -L -o postgresql.tar.gz && \
+    curl --retry 5 --silent https://ftp.postgresql.org/pub/source/v9.6.13/postgresql-9.6.13.tar.gz -L -o postgresql.tar.gz && \
     mkdir postgresql && \
     tar -zxf postgresql.tar.gz -C postgresql --strip-components 1 && \
     rm -f postgresql.tar.gz && \
@@ -926,7 +933,7 @@ RUN cd gdal/gdal/swig/python && \
 # Mapnik
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://www.freedesktop.org/software/harfbuzz/release/harfbuzz-2.1.1.tar.bz2 -L -o harfbuzz.tar.bz2 && \
+    curl --retry 5 --silent https://www.freedesktop.org/software/harfbuzz/release/harfbuzz-2.1.1.tar.bz2 -L -o harfbuzz.tar.bz2 && \
     mkdir harfbuzz && \
     tar -jxf harfbuzz.tar.bz2 -C harfbuzz --strip-components 1 && \
     rm -f harfbuzz.tar.bz2 && \
@@ -1045,7 +1052,7 @@ RUN yum install -y \
     OpenEXR-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://github.com/GStreamer/orc/archive/orc-0.4.28.tar.gz -L -o orc.tar.gz && \
+    curl --retry 5 --silent https://github.com/GStreamer/orc/archive/orc-0.4.28.tar.gz -L -o orc.tar.gz && \
     mkdir orc && \
     tar -zxf orc.tar.gz -C orc --strip-components 1 && \
     rm -f orc.tar.gz && \
@@ -1057,7 +1064,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://downloads.sourceforge.net/project/niftilib/nifticlib/nifticlib_2_0_0/nifticlib-2.0.0.tar.gz -L -o nifti.tar.gz && \
+    curl --retry 5 --silent https://downloads.sourceforge.net/project/niftilib/nifticlib/nifticlib_2_0_0/nifticlib-2.0.0.tar.gz -L -o nifti.tar.gz && \
     mkdir nifti && \
     tar -zxf nifti.tar.gz -C nifti --strip-components 1 && \
     rm -f nifti.tar.gz && \
@@ -1068,7 +1075,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent http://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/cfitsio3450.tar.gz -L -o cfitsio.tar.gz && \
+    curl --retry 5 --silent http://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/cfitsio3450.tar.gz -L -o cfitsio.tar.gz && \
     mkdir cfitsio && \
     tar -zxf cfitsio.tar.gz -C cfitsio --strip-components 1 && \
     rm -f cfitsio.tar.gz && \
@@ -1079,7 +1086,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://github.com/ImageOptim/libimagequant/archive/2.12.2.tar.gz -L -o imagequant.tar.gz && \
+    curl --retry 5 --silent https://github.com/ImageOptim/libimagequant/archive/2.12.2.tar.gz -L -o imagequant.tar.gz && \
     mkdir imagequant && \
     tar -zxf imagequant.tar.gz -C imagequant --strip-components 1 && \
     rm -f imagequant.tar.gz && \
@@ -1093,7 +1100,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # those would need to be compiled with newer subdependencies
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://github.com/libvips/libvips/releases/download/v8.8.0/vips-8.8.0.tar.gz -L -o vips.tar.gz && \
+    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.8.0/vips-8.8.0.tar.gz -L -o vips.tar.gz && \
     mkdir vips && \
     tar -zxf vips.tar.gz -C vips --strip-components 1 && \
     rm -f vips.tar.gz && \
@@ -1164,7 +1171,7 @@ open(path, "w").write(s)' && \
 
 # Install a utility to recompress wheel (zip) files to make them smaller
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --silent https://github.com/amadvance/advancecomp/releases/download/v2.1/advancecomp-2.1.tar.gz -L -o advancecomp.tar.gz && \
+    curl --retry 5 --silent https://github.com/amadvance/advancecomp/releases/download/v2.1/advancecomp-2.1.tar.gz -L -o advancecomp.tar.gz && \
     mkdir advancecomp && \
     tar -zxf advancecomp.tar.gz -C advancecomp --strip-components 1 && \
     rm -f advancecomp.tar.gz && \
