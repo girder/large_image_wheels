@@ -1157,17 +1157,17 @@ open(path, "w").write(s)' && \
 # open(path, "w").write(data)'
 
 # Remake pyproj -- something is changing libproj
-# RUN cd pyproj && \
-#     rm -f /io/wheelhouse/pyproj* && \
-#     for PYBIN in /opt/python/*/bin/; do \
-#       echo "${PYBIN}" && \
-#       "${PYBIN}/pip" install cython && \
-#       "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
-#     done && \
-#     for WHL in /io/wheelhouse/pyproj*.whl; do \
-#       auditwheel repair "${WHL}" -w /io/wheelhouse/; \
-#     done && \
-#     ls -l /io/wheelhouse
+RUN cd pyproj && \
+    rm -f /io/wheelhouse/pyproj* && \
+    for PYBIN in /opt/python/*/bin/; do \
+      echo "${PYBIN}" && \
+      "${PYBIN}/pip" install cython && \
+      "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
+    done && \
+    for WHL in /io/wheelhouse/pyproj*.whl; do \
+      auditwheel repair "${WHL}" -w /io/wheelhouse/; \
+    done && \
+    ls -l /io/wheelhouse
 
 # Install a utility to recompress wheel (zip) files to make them smaller
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \

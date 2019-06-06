@@ -127,6 +127,20 @@ python -c 'import gdal,pprint;d = gdal.Open("sample.ntf");pprint.pprint({ \\
   "GetGeoTransform": d.GetGeoTransform(), \\
   "RasterCount": d.RasterCount, \\
   });pprint.pprint(d.GetMetadata()["NITF_BLOCKA_FRFC_LOC_01"])' && \\
+echo 'Test import order with shapely' && \
+pip install shapely && \
+python -c 'import shapely;import mapnik;import pyproj;print(pyproj.Proj( \\
+  "+init=epsg:4326 +type=crs"))' && \\
+python -c 'import pyproj;import shapely;import mapnik;print(pyproj.Proj( \\
+  "+init=epsg:4326 +type=crs"))' && \\
+python -c 'import mapnik;import pyproj;import shapely;print(pyproj.Proj( \\
+  "+init=epsg:4326 +type=crs"))' && \\
+python -c 'import shapely;import pyproj;import mapnik;print(pyproj.Proj( \\
+  "+init=epsg:4326 +type=crs"))' && \\
+python -c 'import mapnik;import shapely;import pyproj;print(pyproj.Proj( \\
+  "+init=epsg:4326 +type=crs"))' && \\
+python -c 'import pyproj;import mapnik;import shapely;print(pyproj.Proj( \\
+  "+init=epsg:4326 +type=crs"))' && \\
 true"""
 
 containers = [
