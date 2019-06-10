@@ -1,7 +1,4 @@
 FROM quay.io/pypa/manylinux2010_x86_64
-# When I try to use dockcross/manylinux-x64, some of the references to certain
-# libraries, like sqlite3, seem to be broken
-# FROM dockcross/manylinux-x64
 
 RUN mkdir /build
 WORKDIR /build
@@ -115,7 +112,7 @@ RUN curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v
     rm -f cmake.tar.gz
 
 # Strip libraries before building any wheels
-RUN strip --strip-unneeded /usr/local/lib/*.{so,a}
+RUN strip --strip-unneeded /usr/local/lib{,64}/*.{so,a}
 
 # Packages used by large_image that don't have published wheels for all the
 # versions of Python we are using.
@@ -172,30 +169,6 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
-
-# Strip libraries before building any wheels
-RUN strip --strip-unneeded /usr/local/lib/*.{so,a}
-
-# As of 3/8/2019, pyproj 2.0.0 is published as wheels for all versions of
-# python we care about, but we want the latest version of proj.4.
-RUN git clone --depth=1 --single-branch https://github.com/jswhit/pyproj && \
-    cd pyproj && \
-    python -c $'# \n\
-import re \n\
-path = "pyproj/__init__.py" \n\
-s = open(path).read() \n\
-s = s.replace(\n\
-  "__version__ = \\"2.2.0\\"", "__version__ = \\"2.2.1\\"") \n\
-open(path, "w").write(s)' && \
-    for PYBIN in /opt/python/*/bin/; do \
-      echo "${PYBIN}" && \
-      "${PYBIN}/pip" install --no-cache-dir cython && \
-      "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
-    done && \
-    for WHL in /io/wheelhouse/pyproj*.whl; do \
-      auditwheel repair "${WHL}" -w /io/wheelhouse/; \
-    done && \
-    ls -l /io/wheelhouse
 
 # OpenJPEG
 
@@ -300,7 +273,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 # Strip libraries before building any wheels
-RUN strip --strip-unneeded /usr/local/lib/*.{so,a}
+RUN strip --strip-unneeded /usr/local/lib{,64}/*.{so,a}
 
 # Use an older version of numpy -- we can work with newer versions, but have to
 # have at least this version to use our wheel.
@@ -421,7 +394,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 # Strip libraries before building any wheels
-RUN strip --strip-unneeded /usr/local/lib/*.{so,a}
+RUN strip --strip-unneeded /usr/local/lib{,64}/*.{so,a}
 
 RUN git clone https://github.com/openslide/openslide-python && \
     cd openslide-python && \
@@ -870,12 +843,11 @@ data = open(path).read().replace( \n\
     "libXext.so.6", "XlibXext.so.6").replace( \n\
     "libSM.so.6", "XlibSM.so.6").replace( \n\
     "libICE.so.6", "XlibICE.so.6").replace( \n\
-    "CXXABI", "XCXXABI").replace( \n\
     "libstdc++.so.6", "Xlibstdc++.so.6") \n\
 open(path, "w").write(data)'
 
 # Strip libraries before building any wheels
-RUN strip --strip-unneeded /usr/local/lib/*.{so,a}
+RUN strip --strip-unneeded /usr/local/lib{,64}/*.{so,a}
 
 RUN cd gdal/gdal/swig/python && \
     cp -r /usr/local/share/{proj,gdal,epsg_csv} osgeo/. && \
@@ -971,15 +943,8 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} install && \
     ldconfig
 
-RUN python -c $'# \n\
-import os \n\
-path = os.popen("find /opt/_internal -name policy.json").read().strip() \n\
-data = open(path).read().replace( \n\
-    "GLIBCXX", "XGLIBCXX") \n\
-open(path, "w").write(data)'
-
 # Strip libraries before building any wheels
-RUN strip --strip-unneeded /usr/local/lib/*.{so,a}
+RUN strip --strip-unneeded /usr/local/lib{,64}/*.{so,a}
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     git clone https://github.com/mapnik/python-mapnik.git && \
@@ -1111,7 +1076,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 # Strip libraries before building any wheels
-RUN strip --strip-unneeded /usr/local/lib/*.{so,a}
+RUN strip --strip-unneeded /usr/local/lib{,64}/*.{so,a}
 
 RUN git clone --depth=1 --single-branch https://github.com/libvips/pyvips && \
     cd pyvips && \
@@ -1156,12 +1121,22 @@ open(path, "w").write(s)' && \
 #     "        scripts=glob.glob(\'../vips/tools/.libs/*\'),") \n\
 # open(path, "w").write(data)'
 
-# Remake pyproj -- something is changing libproj
-RUN cd pyproj && \
-    rm -f /io/wheelhouse/pyproj* && \
+# Strip libraries before building any wheels
+RUN strip --strip-unneeded /usr/local/lib{,64}/*.{so,a}
+
+# As of 3/8/2019, pyproj 2.0.0 is published as wheels for all versions of
+# python we care about, but we want the latest version of proj.4.
+RUN git clone --depth=1 --single-branch https://github.com/jswhit/pyproj && \
+    cd pyproj && \
+    python -c $'# \n\
+path = "pyproj/__init__.py" \n\
+s = open(path).read() \n\
+s = s.replace(\n\
+  "__version__ = \\"2.2.0\\"", "__version__ = \\"2.2.1\\"") \n\
+open(path, "w").write(s)' && \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
-      "${PYBIN}/pip" install cython && \
+      "${PYBIN}/pip" install --no-cache-dir cython && \
       "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
     done && \
     for WHL in /io/wheelhouse/pyproj*.whl; do \

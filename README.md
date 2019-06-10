@@ -76,9 +76,9 @@ plt.imshow(tile_info['tile'])
 
 ## Rationale
 
-It is an inconvenience to have to add `--find-links https://manthey.github.io/large_image_wheels` to pip install commands to use these wheels, but the is no ideal solution.  There are two alternatives: (a) convince upstream repositories to publish wheels, or (b) publish these under unique names (e.g., large_image_dependency_gdal).  None of these are perfect solutions.  
+It is an inconvenience to have to add `--find-links https://manthey.github.io/large_image_wheels` to pip install commands to use these wheels, but the is no ideal solution.  There are alternatives: (a) convince upstream repositories to publish wheels, or (b) publish these under unique names (e.g., large_image_dependency_gdal).  None of these are perfect solutions.  
 
-Using `--find-links` requires modify pip install commands.  Further, if a newer non-wheel version of a package is published on pypi, it will be used in favor of the wheel unless the explicit version is used.  Since this repository won't maintain old versions, this means that the wheels must be rebuilt as soon as new versions are released.
+Using `--find-links` requires modifying pip install commands.  Further, if a newer non-wheel version of a package is published on pypi, it will be used in favor of the wheel unless the explicit version is used.  Since this repository won't maintain old versions, this means that the wheels must be rebuilt as soon as new versions are released.
 
 It isn't practical to produce wheels for some upstream packages.  For instance, GDAL can be compiled with optional components that require licensing.  A publicly published wheel can't contain such components, and, therefore, it makes sense for the package on pypi to expect that the library has been installed separately from the python module.
 
