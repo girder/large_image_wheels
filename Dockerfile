@@ -341,6 +341,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
     rm -f glib-2.tar && \
     cd glib-2 && \
+    egrep -lrZ -- '-version-info \$\(LT_CURRENT\):\$\(LT_REVISION\):\$\(LT_AGE\)' * | xargs -0 -l sed -i -e 's/-version-info \$(LT_CURRENT):\$(LT_REVISION):\$(LT_AGE)/-release liw/g' && \
     ./autogen.sh && \
     ./configure --silent --prefix=/usr/local --with-python=/opt/python/cp27-cp27mu/bin/python && \
     make --silent -j ${JOBS} && \
@@ -363,11 +364,8 @@ RUN python -c $'# \n\
 import os \n\
 path = os.popen("find /opt/_internal -name policy.json").read().strip() \n\
 data = open(path).read().replace( \n\
-    "libglib-2.0.so.0", "Xlibglib-2.0.so.0").replace( \n\
     "libXrender.so.1", "XlibXrender.so.1").replace( \n\
-    "libX11.so.6", "XlibX11.so.6").replace( \n\
-    "libgobject-2.0.so.0", "Xlibgobject-2.0.so.0").replace( \n\
-    "libgthread-2.0.so.0", "Xlibgthread-2.0.so.0") \n\
+    "libX11.so.6", "XlibX11.so.6") \n\
 open(path, "w").write(data)'
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
@@ -842,8 +840,7 @@ path = os.popen("find /opt/_internal -name policy.json").read().strip() \n\
 data = open(path).read().replace( \n\
     "libXext.so.6", "XlibXext.so.6").replace( \n\
     "libSM.so.6", "XlibSM.so.6").replace( \n\
-    "libICE.so.6", "XlibICE.so.6").replace( \n\
-    "libstdc++.so.6", "Xlibstdc++.so.6") \n\
+    "libICE.so.6", "XlibICE.so.6") \n\
 open(path, "w").write(data)'
 
 # Strip libraries before building any wheels
