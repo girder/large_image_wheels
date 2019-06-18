@@ -177,9 +177,9 @@ RUN yum install -y \
     lcms2-devel
 
 # 1.2.59 works
-# 1.6.37 doesn't work with gdk-pixbuf2
+# 1.6.37 doesn't work with older gdk-pixbuf2
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --retry 5 --silent https://downloads.sourceforge.net/libpng/libpng-1.2.59.tar.xz -L -o libpng.tar.xz && \
+    curl --retry 5 --silent https://downloads.sourceforge.net/libpng/libpng-1.6.37.tar.xz -L -o libpng.tar.xz && \
     unxz libpng.tar.xz && \
     mkdir libpng && \
     tar -xf libpng.tar -C libpng --strip-components 1 && \
@@ -331,11 +331,11 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # 2.47.92 needs libffi-devel and a newer version of pcre-devel
 # 2.48.2 needs libffi-devel and a newer version of pcre-devel
 # 2.49.7 fails on mkostemp
-# 2.50.3 needs libmount
-# 2.58.3 is the last package that supports autoconf, but needs libmount
+# 2.50.3 wants libmount
+# 2.58.3 is the last package that supports autoconf, but wants libmount
 # 2.61 requires meson and libmount
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.48/glib-2.48.2.tar.xz -L -o glib-2.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.58/glib-2.58.3.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
@@ -343,16 +343,20 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     cd glib-2 && \
     egrep -lrZ -- '-version-info \$\(LT_CURRENT\):\$\(LT_REVISION\):\$\(LT_AGE\)' * | xargs -0 -l sed -i -e 's/-version-info \$(LT_CURRENT):\$(LT_REVISION):\$(LT_AGE)/-release liw/g' && \
     ./autogen.sh && \
-    ./configure --silent --prefix=/usr/local --with-python=/opt/python/cp27-cp27mu/bin/python && \
+    # Run configure twice -- the first time fails complaining about libmount
+    ./configure --prefix=/usr/local --with-python=/opt/python/cp27-cp27mu/bin/python --disable-libmount || \
+    ./configure --prefix=/usr/local --with-python=/opt/python/cp27-cp27mu/bin/python --disable-libmount && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --retry 5 --silent https://ftp.gnome.org/pub/gnome/sources/gdk-pixbuf/2.21/gdk-pixbuf-2.21.7.tar.gz -L -o gdk-pixbuf-2.tar.gz && \
+    # curl --retry 5 --silent https://ftp.gnome.org/pub/gnome/sources/gdk-pixbuf/2.21/gdk-pixbuf-2.21.7.tar.gz -L -o gdk-pixbuf-2.tar.gz && \
+    curl --retry 5 --silent https://ftp.acc.umu.se/pub/gnome/sources/gdk-pixbuf/2.36/gdk-pixbuf-2.36.12.tar.xz -L -o gdk-pixbuf-2.tar.xz && \
+    unxz gdk-pixbuf-2.tar.xz && \
     mkdir gdk-pixbuf-2 && \
-    tar -zxf gdk-pixbuf-2.tar.gz -C gdk-pixbuf-2 --strip-components 1 && \
-    rm -f gdk-pixbuf-2.tar.gz && \
+    tar -xf gdk-pixbuf-2.tar -C gdk-pixbuf-2 --strip-components 1 && \
+    rm -f gdk-pixbuf-2.tar && \
     cd gdk-pixbuf-2 && \
     ./configure --silent --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
@@ -569,10 +573,10 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    git clone --depth=1 --single-branch https://github.com/pierriko/libgeotiff && \
-    cd libgeotiff && \
-    AUTOHEADER=true autoreconf -ifv && \
-    CFLAGS='-DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true' ./configure --silent --prefix=/usr/local --with-zlib=yes --with-jpeg=yes --enable-incode-epsg && \
+    git clone --depth=1 --single-branch https://github.com/OSGeo/libgeotiff.git && \
+    cd libgeotiff/libgeotiff && \
+    autoreconf -ifv && \
+    CFLAGS='-DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true' ./configure --silent --prefix=/usr/local --with-zlib=yes --with-jpeg=yes && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
@@ -847,7 +851,7 @@ open(path, "w").write(data)'
 RUN strip --strip-unneeded /usr/local/lib{,64}/*.{so,a}
 
 RUN cd gdal/gdal/swig/python && \
-    cp -r /usr/local/share/{proj,gdal,epsg_csv} osgeo/. && \
+    cp -r /usr/local/share/{proj,gdal} osgeo/. && \
     python -c $'# \n\
 import os \n\
 path = "setup.py" \n\
@@ -864,7 +868,7 @@ data = data.replace( \n\
 data = data.replace( \n\
     "    scripts=glob(\'scripts/*.py\'),", \n\
     "    scripts=glob(\'scripts/*.py\'),\\n" + \n\
-    "    package_data={\'osgeo\': [\'proj/*\', \'gdal/*\', \'epsg_csv\']},") \n\
+    "    package_data={\'osgeo\': [\'proj/*\', \'gdal/*\']},") \n\
 open(path, "w").write(data)' && \
     python -c $'# \n\
 path = "osgeo/__init__.py" \n\
@@ -877,7 +881,6 @@ import os \n\
 localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
 os.environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj")) \n\
 os.environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal")) \n\
-os.environ.setdefault("GEOTIFF_CSV", os.path.join(localpath, "epsg_csv")) \n\
 caPath = "/etc/ssl/certs/ca-certificates.crt" \n\
 if os.path.exists(caPath): \n\
     os.environ.setdefault("CURL_CA_BUNDLE", caPath) \n\
@@ -954,13 +957,12 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # Merge with above
 RUN cd python-mapnik && \
     cp -r /usr/local/lib/mapnik/* mapnik/. && \
-    cp -r /usr/local/share/{proj,gdal,epsg_csv} mapnik/. && \
+    cp -r /usr/local/share/{proj,gdal} mapnik/. && \
     python -c $'# \n\
 path = "setup.py" \n\
 s = open(path).read().replace( \n\
     "\'share/*/*\'", \n\
-    """\'share/*/*\', \'input/*\', \'fonts/*\', \'proj/*\', \'gdal/*\', \n\
-    \'epsg_csv\'""").replace( \n\
+    """\'share/*/*\', \'input/*\', \'fonts/*\', \'proj/*\', \'gdal/*\'""").replace( \n\
     "path=font_path))", """path=font_path)) \n\
     f_paths.write("localpath = os.path.dirname(os.path.abspath( __file__ ))\\\\n") \n\
     f_paths.write("mapniklibpath = os.path.join(localpath, \'.libs\')\\\\n") \n\
@@ -977,7 +979,6 @@ s = open(path).read().replace( \n\
 localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
 os.environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj")) \n\
 os.environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal")) \n\
-os.environ.setdefault("GEOTIFF_CSV", os.path.join(localpath, "epsg_csv")) \n\
 \n\
 def bootstrap_env():""") \n\
 open(path, "w").write(s)'
