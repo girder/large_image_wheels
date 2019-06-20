@@ -279,6 +279,16 @@ RUN strip --strip-unneeded /usr/local/lib{,64}/*.{so,a}
 # have at least this version to use our wheel.
 RUN git clone --depth=1 --single-branch -b wheel-support https://github.com/manthey/pylibtiff.git && \
     cd pylibtiff && \
+    mkdir libtiff/bin && \
+    find /build/tiff/tools/.libs/ -executable -type f -exec cp {} libtiff/bin/. \; && \
+    python -c $'# \n\
+path = "setup.py" \n\
+s = open(path).read().replace( \n\
+"""        configuration=configuration,""", \n\
+"""        configuration=configuration, \n\
+        include_package_data=True, \n\
+        package_data={\'libtiff\': [\'bin/*\']},""") \n\
+open(path, "w").write(s)' && \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
       if [[ "${PYBIN}" =~ "37" ]]; then \
@@ -432,6 +442,16 @@ s = open(path).read().replace( \n\
         _lib = cdll.LoadLibrary(lib) \n\
     except Exception: \n\
         _lib = cdll.LoadLibrary(\'libopenslide.so.0\')""") \n\
+open(path, "w").write(s)' && \
+    mkdir openslide/bin && \
+    find /build/openslide/tools/.libs/ -executable -type f -exec cp {} openslide/bin/. \; && \
+    python -c $'# \n\
+path = "setup.py" \n\
+s = open(path).read().replace( \n\
+"""    zip_safe=True,""", \n\
+"""    zip_safe=True, \n\
+    include_package_data=True, \n\
+    package_data={\'openslide\': [\'bin/*\']},""") \n\
 open(path, "w").write(s)' && \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
@@ -852,6 +872,9 @@ RUN strip --strip-unneeded /usr/local/lib{,64}/*.{so,a}
 
 RUN cd gdal/gdal/swig/python && \
     cp -r /usr/local/share/{proj,gdal} osgeo/. && \
+    mkdir osgeo/bin && \
+    find /build/gdal/gdal/apps/ -executable -type f ! -name '*.cpp' -exec cp {} osgeo/bin/. \; && \
+    find /build/libgeotiff/libgeotiff/bin/.libs -executable -type f -exec cp {} osgeo/bin/. \; && \
     python -c $'# \n\
 import os \n\
 path = "setup.py" \n\
@@ -868,7 +891,7 @@ data = data.replace( \n\
 data = data.replace( \n\
     "    scripts=glob(\'scripts/*.py\'),", \n\
     "    scripts=glob(\'scripts/*.py\'),\\n" + \n\
-    "    package_data={\'osgeo\': [\'proj/*\', \'gdal/*\']},") \n\
+    "    package_data={\'osgeo\': [\'proj/*\', \'gdal/*\', \'bin/*\']},") \n\
 open(path, "w").write(data)' && \
     python -c $'# \n\
 path = "osgeo/__init__.py" \n\
@@ -939,6 +962,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     WARNING_CXXFLAGS="-Wno-unused-variable -Wno-unused-but-set-variable -Wno-attributes -Wno-unknown-pragmas -Wno-maybe-uninitialized" \
     QUIET=true \
     CPP_TESTS=false \
+    DEBUG=false \
     && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -958,11 +982,15 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 RUN cd python-mapnik && \
     cp -r /usr/local/lib/mapnik/* mapnik/. && \
     cp -r /usr/local/share/{proj,gdal} mapnik/. && \
+    mkdir mapnik/bin && \
+    cp /build/mapnik/utils/mapnik-render/mapnik-render mapnik/bin/. && \
+    cp /build/mapnik/utils/mapnik-index/mapnik-index mapnik/bin/. && \
+    cp /build/mapnik/utils/shapeindex/shapeindex mapnik/bin/. && \
     python -c $'# \n\
 path = "setup.py" \n\
 s = open(path).read().replace( \n\
     "\'share/*/*\'", \n\
-    """\'share/*/*\', \'input/*\', \'fonts/*\', \'proj/*\', \'gdal/*\'""").replace( \n\
+    """\'share/*/*\', \'input/*\', \'fonts/*\', \'proj/*\', \'gdal/*\', \'bin/*\'""").replace( \n\
     "path=font_path))", """path=font_path)) \n\
     f_paths.write("localpath = os.path.dirname(os.path.abspath( __file__ ))\\\\n") \n\
     f_paths.write("mapniklibpath = os.path.join(localpath, \'.libs\')\\\\n") \n\
@@ -1082,16 +1110,32 @@ RUN git clone --depth=1 --single-branch https://github.com/libvips/pyvips && \
     python -c $'# \n\
 path = "pyvips/__init__.py" \n\
 s = open(path).read().replace( \n\
-"""    import _libvips""",  \n\
+"""    import _libvips""", \n\
 """    import ctypes \n\
     import os \n\
     libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.realpath( \n\
-        __file__)), \'..\', \'.libs_libvips\')) \n\
+        __file__)), \'.libs_libvips\')) \n\
     if os.path.exists(libpath): \n\
         libs = os.listdir(libpath) \n\
         libvipspath = [lib for lib in libs if lib.startswith(\'libvips\')][0] \n\
         ctypes.cdll.LoadLibrary(os.path.join(libpath, libvipspath)) \n\
-    import _libvips""") \n\
+    from . import _libvips""") \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
+path = "pyvips/pyvips_build.py" \n\
+s = open(path).read().replace( \n\
+"""ffibuilder.set_source("_libvips",""", \n\
+"""ffibuilder.set_source("pyvips._libvips",""") \n\
+open(path, "w").write(s)' && \
+    mkdir pyvips/bin && \
+    find /build/vips/tools/.libs/ -executable -type f -exec cp {} pyvips/bin/. \; && \
+    python -c $'# \n\
+path = "setup.py" \n\
+s = open(path).read().replace( \n\
+"""        packages=pyvips_packages,""", \n\
+"""        packages=pyvips_packages, \n\
+        include_package_data=True, \n\
+        package_data={\'pyvips\': [\'bin/*\']},""") \n\
 open(path, "w").write(s)' && \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
@@ -1102,44 +1146,44 @@ open(path, "w").write(s)' && \
     done && \
     ls -l /io/wheelhouse
 
-# It might be nice to package executables for different packages with the
-# wheel.  For vips, the executables are build in /build/vips/tools/.libs .
-# Including these in the setup.py scripts key prevents bundling the libraries
-# properly (at least as done below).
-#
-#     python -c $'# \n\
-# path = "setup.py" \n\
-# data = open(path).read() \n\
-# data = data.replace( \n\
-#     "from os import path", \n\
-#     "from os import path\\n" + \n\
-#     "import glob") \n\
-# data = data.replace( \n\
-#     "zip_safe=False,", \n\
-#     "zip_safe=False,\\n" + \n\
-#     "        scripts=glob.glob(\'../vips/tools/.libs/*\'),") \n\
-# open(path, "w").write(data)'
-
 # Strip libraries before building any wheels
 RUN strip --strip-unneeded /usr/local/lib{,64}/*.{so,a}
 
 # As of 3/8/2019, pyproj 2.0.0 is published as wheels for all versions of
 # python we care about, but we want the latest version of proj.4.
-RUN git clone --depth=1 --single-branch https://github.com/jswhit/pyproj && \
+RUN git clone --depth=1 --single-branch https://github.com/pyproj4/pyproj && \
     cd pyproj && \
     python -c $'# \n\
 path = "pyproj/__init__.py" \n\
 s = open(path).read() \n\
 s = s.replace(\n\
+    "import sys", \n\
+"""import sys \n\
+import os \n\
+localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
+os.environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj"))""").replace( \n\
   "__version__ = \\"2.2.0\\"", "__version__ = \\"2.2.1\\"") \n\
 open(path, "w").write(s)' && \
+    mkdir pyproj/bin && \
+    find /build/proj.4/src/.libs/ -executable -type f ! -name '*.so.*' -exec cp {} pyproj/bin/. \; && \
+    mkdir pyproj/bin/share && \
+    cp -r /usr/local/share/proj pyproj/. && \
+    python -c $'# \n\
+import os \n\
+path = "setup.py" \n\
+data = open(path).read() \n\
+data = data.replace( \n\
+    "    return package_data", \n\
+"""    package_data["pyproj"].extend(["bin/*", "proj/*"]) \n\
+    return package_data""") \n\
+open(path, "w").write(data)' && \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
       "${PYBIN}/pip" install --no-cache-dir cython && \
       "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
     done && \
     for WHL in /io/wheelhouse/pyproj*.whl; do \
-      auditwheel repair "${WHL}" -w /io/wheelhouse/; \
+      auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/; \
     done && \
     ls -l /io/wheelhouse
 

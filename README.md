@@ -40,11 +40,13 @@ This also makes some wheels which aren't published in pypi:
 - psutil
 - ujson
 
+## Extras
+
+Various related executables are bundled with the Python packages.  These are added as package data in a `bin` directory within the main package.  They are not added to the system path.  For instance, `gdalinfo` from the `GDAL` package, is located in the Python site-packages `osgeo/bin` directory.  The appropriate directory can be gleaned from Python as part of a bash command, e.g., `` `python -c 'import os,sys,osgeo;sys.stdout.write(os.path.dirname(osgeo.__file__))'`/bin/gdalinfo --version``.
+
 ## Issues
 
 In order to find the built libraries, this modifies how libtiff, openslide_python, and pyvips load those libraries.  The modification for libtiff is taken from a form of pylibtiff.  The other libraries are patched in place.  There is probably a better way to do this.
-
-It could be useful to bundle executables with the Python packages so that commands like gdalinfo would be available.
 
 ## Example Use
 
