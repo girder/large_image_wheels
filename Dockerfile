@@ -176,8 +176,6 @@ RUN yum install -y \
     # needed for openjpeg
     lcms2-devel
 
-# 1.2.59 works
-# 1.6.37 doesn't work with older gdk-pixbuf2
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     curl --retry 5 --silent https://downloads.sourceforge.net/libpng/libpng-1.6.37.tar.xz -L -o libpng.tar.xz && \
     unxz libpng.tar.xz && \
@@ -196,14 +194,14 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     tar -zxf openjpeg.tar.gz -C openjpeg --strip-components 1 && \
     rm -f openjpeg.tar.gz && \
     cd openjpeg && \
-    cmake . && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
 
 # libtiff
-
-# Note: This doesn't support GL
 
 RUN yum install -y \
     # needed for libtiff
@@ -259,15 +257,15 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     tar -zxf tiff.tar.gz -C tiff --strip-components 1 && \
     rm -f tiff.tar.gz && \
     cd tiff && \
-    ./configure --silent --prefix=/usr/local --enable-jpeg12 --with-jpeg12-include-dir=/build/libjpeg-turbo --with-jpeg12-lib=/build/libjpeg-turbo/libjpeg.so && \
+    ./configure --prefix=/usr/local --enable-jpeg12 --with-jpeg12-include-dir=/build/libjpeg-turbo --with-jpeg12-lib=/build/libjpeg-turbo/libjpeg.so && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
 
 # Rebuild openjpeg with our libtiff
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    cd openjpeg && \
-    cmake . && \
+    cd openjpeg/_build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
@@ -360,7 +358,60 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} install && \
     ldconfig
 
+RUN curl https://github.com/ninja-build/ninja/releases/download/v1.8.2/ninja-linux.zip -L -o ninja.zip && \
+    unzip ninja.zip && \
+    mv ninja /usr/local/bin/.
+
+# We need flex to build flex, but we have to build flex to get a newer version
+RUN yum install -y \
+    flex \
+    help2man \
+    texinfo
+
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl --retry 5 --silent https://ftp.gnu.org/pub/gnu/gettext/gettext-0.20.1.tar.gz -L -o gettext.tar.gz && \
+    mkdir gettext && \
+    tar -zxf gettext.tar.gz -C gettext --strip-components 1 && \
+    rm -f gettext.tar.gz && \
+    cd gettext && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    git clone --depth=1 --single-branch -b v2.6.4 https://github.com/westes/flex && \
+    cd flex && \
+    autoreconf -ifv && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
+    pip3 install meson && \
+    curl --retry 5 --silent https://download.gnome.org/sources/gobject-introspection/1.60/gobject-introspection-1.60.2.tar.xz -L -o gobject-introspection.tar.xz && \
+    unxz gobject-introspection.tar.xz && \
+    mkdir gobject-introspection && \
+    tar -xf gobject-introspection.tar -C gobject-introspection --strip-components 1 && \
+    rm -f gobject-introspection.tar && \
+    cd gobject-introspection && \
+    python -c $'# \n\
+path = "giscanner/shlibs.py" \n\
+s = open(path).read().replace( \n\
+"""    lib%s""", \n\
+"""    lib%s(-liw|)""") \n\
+open(path, "w").write(s)' && \
+    mkdir _build && \
+    cd _build && \
+    meson --prefix=/usr/local .. && \
+    ninja -j ${JOBS} && \
+    ninja -j ${JOBS} install && \
+    ldconfig
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
     # curl --retry 5 --silent https://ftp.gnome.org/pub/gnome/sources/gdk-pixbuf/2.21/gdk-pixbuf-2.21.7.tar.gz -L -o gdk-pixbuf-2.tar.gz && \
     curl --retry 5 --silent https://ftp.acc.umu.se/pub/gnome/sources/gdk-pixbuf/2.36/gdk-pixbuf-2.36.12.tar.xz -L -o gdk-pixbuf-2.tar.xz && \
     unxz gdk-pixbuf-2.tar.xz && \
@@ -389,7 +440,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     rm -f openslide.tar.gz && \
     cd openslide && \
     autoreconf -ifv && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
@@ -696,32 +747,6 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} install && \
     ldconfig
 
-# We need flex to build flex, but we have to build flex to get a newer version
-RUN yum install -y \
-    flex \
-    help2man \
-    texinfo
-
-RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --retry 5 --silent https://ftp.gnu.org/pub/gnu/gettext/gettext-0.20.1.tar.gz -L -o gettext.tar.gz && \
-    mkdir gettext && \
-    tar -zxf gettext.tar.gz -C gettext --strip-components 1 && \
-    rm -f gettext.tar.gz && \
-    cd gettext && \
-    ./configure --silent --prefix=/usr/local && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig
-
-RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    git clone --depth=1 --single-branch -b v2.6.4 https://github.com/westes/flex && \
-    cd flex && \
-    autoreconf -ifv && \
-    ./configure --silent --prefix=/usr/local && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig
-
 RUN yum install -y \
     curl-devel \
     libuuid-devel
@@ -796,7 +821,6 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 
 # These add more support to GDAL
 RUN yum install -y \
-    cfitsio-devel \
     hdf-devel \
     jasper-devel \
     json-c12-devel \
@@ -843,6 +867,55 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} install && \
     ldconfig
 
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
+    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-0.78.0.tar.xz -L -o poppler.tar.xz && \
+    unxz poppler.tar.xz && \
+    mkdir poppler && \
+    tar -xf poppler.tar -C poppler --strip-components 1 && \
+    rm -f poppler.tar && \
+    cd poppler && \
+    mkdir build && \
+    cd build && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=release -DENABLE_UNSTABLE_API_ABI_HEADERS=on && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl --retry 5 --silent http://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/cfitsio3450.tar.gz -L -o cfitsio.tar.gz && \
+    mkdir cfitsio && \
+    tar -zxf cfitsio.tar.gz -C cfitsio --strip-components 1 && \
+    rm -f cfitsio.tar.gz && \
+    cd cfitsio && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig
+
+RUN yum install -y \
+    popt-devel
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl --retry 5 --silent https://sourceforge.net/projects/epsilon-project/files/epsilon/0.9.1/epsilon-0.9.1.tar.gz/download -L -o epsilon.tar.gz && \
+    mkdir epsilon && \
+    tar -zxf epsilon.tar.gz -C epsilon --strip-components 1 && \
+    rm -f epsilon.tar.gz && \
+    cd epsilon && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig
+
+# This build doesn't support everything.  Unsupported due to licensing:
+#  Kakadu MrSID MrSID/MG4
+# Unsupported without more work (some of these may also be unavailable due to
+# licensing):
+#  cryptopp GRASS DDS GTA Kea ECW JP2Lura MSG Ingres Xerces-C Google ODBC FGDB
+#  MDB OCI GEORASTER SDE Rasdaman Teigha INFORMIX SFCGAL OpenCL Armadillo
+#  MongoDB MongoCXX HDFS TileDB userfaultfd
+# Unused because there is a working alternative:
+#  podofo PDFium
 # --with-dods-root is where libdap is installed
 # This works with master, v2.3.2, v2.4.0
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
@@ -850,7 +923,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
     cd gdal/gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
-    ./configure --prefix=/usr/local --with-cpp14 --without-libtool --with-jpeg12 --without-poppler --with-podofo --with-spatialite --with-liblzma --with-webp --with-epsilon --with-podofo --with-hdf5 --with-dods-root=/usr/local --with-sosi --with-mysql --with-rasterlite2 --with-pg && \
+    ./configure --prefix=/usr/local --with-cpp14 --without-libtool --with-jpeg12 --with-spatialite --with-liblzma --with-webp --with-epsilon --with-poppler --with-hdf5 --with-dods-root=/usr/local --with-sosi --with-mysql --with-rasterlite2 --with-pg --with-cfitsio=/usr/local && \
     make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings" && \
     cd apps && \
     make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings" test_ogrsf && \
@@ -1030,14 +1103,6 @@ RUN yum install -y \
     bzip2-devel \
     fftw3-devel
 
-RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    git clone --depth=1 --single-branch https://github.com/ImageMagick/ImageMagick.git ImageMagick && \
-    cd ImageMagick && \
-    ./configure --silent --prefix=/usr/local --with-modules LIBS=-lrt && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig
-
 RUN yum install -y \
     libexif-devel \
     matio-devel \
@@ -1067,17 +1132,6 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --retry 5 --silent http://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/cfitsio3450.tar.gz -L -o cfitsio.tar.gz && \
-    mkdir cfitsio && \
-    tar -zxf cfitsio.tar.gz -C cfitsio --strip-components 1 && \
-    rm -f cfitsio.tar.gz && \
-    cd cfitsio && \
-    ./configure --silent --prefix=/usr/local && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig
-
-RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     curl --retry 5 --silent https://github.com/ImageOptim/libimagequant/archive/2.12.3.tar.gz -L -o imagequant.tar.gz && \
     mkdir imagequant && \
     tar -zxf imagequant.tar.gz -C imagequant --strip-components 1 && \
@@ -1088,11 +1142,70 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} install && \
     ldconfig
 
-# vips does't currently have PDFium, poppler, librsvg, pango, libgsf.  Many of
-# those would need to be compiled with newer subdependencies
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
+    pip3 install meson && \
+    curl http://ftp.gnome.org/pub/GNOME/sources/pango/1.43/pango-1.43.0.tar.xz -L -o pango.tar.xz && \
+    unxz pango.tar.xz && \
+    mkdir pango && \
+    tar -xf pango.tar -C pango --strip-components 1 && \
+    cd pango && \
+    mkdir _build && \
+    cd _build && \
+    meson --prefix=/usr/local .. && \
+    ninja -j ${JOBS} && \
+    ninja -j ${JOBS} install && \
+    ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.8.0/vips-8.8.0.tar.gz -L -o vips.tar.gz && \
+    rm -rf libxml2* && \
+    curl http://xmlsoft.org/sources/libxml2-2.9.8.tar.gz -L -o libxml2.tar.gz && \
+    mkdir libxml2 && \
+    tar -zxf libxml2.tar.gz -C libxml2 --strip-components 1 && \
+    cd libxml2 && \
+    ./configure --prefix=/usr/local --with-python=/opt/python/cp36-cp36m && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
+RUN curl https://ftp.gnome.org/pub/GNOME/sources/libcroco/0.6/libcroco-0.6.12.tar.xz -L -o libcroco.tar.xz && \
+    unxz libcroco.tar.xz && \
+    mkdir libcroco && \
+    tar -xf libcroco.tar -C libcroco --strip-components 1 && \
+    cd libcroco && \
+    ./configure --prefix=/usr/local && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    export PATH="$HOME/.cargo/bin:$PATH" && \
+    export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
+    curl https://download.gnome.org/sources/librsvg/2.45/librsvg-2.45.1.tar.xz -L -o librsvg.tar.xz && \
+    unxz librsvg.tar.xz && \
+    mkdir librsvg && \
+    tar -xf librsvg.tar -C librsvg --strip-components 1 && \
+    cd librsvg && \
+    ./configure --silent --prefix=/usr/local && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    git clone --depth=1 --single-branch https://github.com/ImageMagick/ImageMagick.git ImageMagick && \
+    cd ImageMagick && \
+    ./configure --silent --prefix=/usr/local --with-modules --with-rsvg LIBS=-lrt && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig
+
+# vips does't currently have PDFium, libgsf.
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
+    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.8.1/vips-8.8.1.tar.gz -L -o vips.tar.gz && \
     mkdir vips && \
     tar -zxf vips.tar.gz -C vips --strip-components 1 && \
     rm -f vips.tar.gz && \
@@ -1114,7 +1227,7 @@ s = open(path).read().replace( \n\
 """    import ctypes \n\
     import os \n\
     libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.realpath( \n\
-        __file__)), \'.libs_libvips\')) \n\
+        __file__)), \'.libs\')) \n\
     if os.path.exists(libpath): \n\
         libs = os.listdir(libpath) \n\
         libvipspath = [lib for lib in libs if lib.startswith(\'libvips\')][0] \n\
