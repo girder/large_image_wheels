@@ -360,6 +360,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 
 RUN curl https://github.com/ninja-build/ninja/releases/download/v1.8.2/ninja-linux.zip -L -o ninja.zip && \
     unzip ninja.zip && \
+    rm -f ninja.zip && \
     mv ninja /usr/local/bin/.
 
 # We need flex to build flex, but we have to build flex to get a newer version
@@ -411,7 +412,6 @@ open(path, "w").write(s)' && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
     # curl --retry 5 --silent https://ftp.gnome.org/pub/gnome/sources/gdk-pixbuf/2.21/gdk-pixbuf-2.21.7.tar.gz -L -o gdk-pixbuf-2.tar.gz && \
     curl --retry 5 --silent https://ftp.acc.umu.se/pub/gnome/sources/gdk-pixbuf/2.36/gdk-pixbuf-2.36.12.tar.xz -L -o gdk-pixbuf-2.tar.xz && \
     unxz gdk-pixbuf-2.tar.xz && \
@@ -419,7 +419,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     tar -xf gdk-pixbuf-2.tar -C gdk-pixbuf-2 --strip-components 1 && \
     rm -f gdk-pixbuf-2.tar && \
     cd gdk-pixbuf-2 && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --silent --prefix=/usr/local --disable-introspection && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
@@ -843,7 +843,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 RUN curl --retry 5 --silent https://downloads.sourceforge.net/project/ogdi/ogdi/4.1.0/ogdi-4.1.0.tar.gz -L -o ogdi.tar.gz && \
     mkdir ogdi && \
     tar -zxf ogdi.tar.gz -C ogdi --strip-components 1 && \
-    rm -f ogdi.tar.gzz && \
+    rm -f ogdi.tar.gz && \
     cd ogdi && \
     export TOPDIR=`pwd` && \
     ./configure --silent --prefix=/usr/local --with-zlib --with-expat && \
@@ -1149,6 +1149,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     unxz pango.tar.xz && \
     mkdir pango && \
     tar -xf pango.tar -C pango --strip-components 1 && \
+    rm -f pango.tar && \
     cd pango && \
     mkdir _build && \
     cd _build && \
@@ -1162,6 +1163,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     curl http://xmlsoft.org/sources/libxml2-2.9.8.tar.gz -L -o libxml2.tar.gz && \
     mkdir libxml2 && \
     tar -zxf libxml2.tar.gz -C libxml2 --strip-components 1 && \
+    rm -f libxml2.tar.gz && \
     cd libxml2 && \
     ./configure --prefix=/usr/local --with-python=/opt/python/cp36-cp36m && \
     make -j ${JOBS} && \
@@ -1172,6 +1174,7 @@ RUN curl https://ftp.gnome.org/pub/GNOME/sources/libcroco/0.6/libcroco-0.6.12.ta
     unxz libcroco.tar.xz && \
     mkdir libcroco && \
     tar -xf libcroco.tar -C libcroco --strip-components 1 && \
+    rm -f libcroco.tar && \
     cd libcroco && \
     ./configure --prefix=/usr/local && \
     make -j ${JOBS} && \
@@ -1182,13 +1185,12 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     export PATH="$HOME/.cargo/bin:$PATH" && \
-    export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
     curl https://download.gnome.org/sources/librsvg/2.45/librsvg-2.45.1.tar.xz -L -o librsvg.tar.xz && \
     unxz librsvg.tar.xz && \
     mkdir librsvg && \
     tar -xf librsvg.tar -C librsvg --strip-components 1 && \
     cd librsvg && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --silent --prefix=/usr/local --disable-rpath --disable-introspection && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig
