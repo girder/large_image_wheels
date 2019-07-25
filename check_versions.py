@@ -85,6 +85,11 @@ Packages = {
         'gitsha': 'https://github.com/libgeos/geos.git',
     },
     # glib-2 is stuck on 2.58.3, since after that doesn't use autoconf
+    'glib': {
+        'json': 'https://download.gnome.org/sources/glib/cache.json',
+        'keys': lambda data: list(data[1]['glib']),
+        're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$'
+    },
     'gobject-introspection': {
         'json': 'https://download.gnome.org/sources/gobject-introspection/cache.json',
         'keys': lambda data: list(data[1]['gobject-introspection']),
@@ -100,7 +105,6 @@ Packages = {
         'filelist': 'https://www.freedesktop.org/software/harfbuzz/release/',
         're': r'harfbuzz-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
-    # icu4c 64.2 doesn't build as it stands
     'icu4c': {
         'filelist': 'http://download.icu-project.org/files/icu4c/',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))\/$'
@@ -268,10 +272,9 @@ Packages = {
         'filelist': 'https://poppler.freedesktop.org/',
         're': r'poppler-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
-    # On version 9.x - version 11 exists
     'postgresql': {
         'filelist': 'https://ftp.postgresql.org/pub/source/',
-        're': r'v(9\.[0-9]+(|\.[0-9]+))\/$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))\/$'
     },
     'proj.4': {
         'gitsha': 'https://github.com/OSGeo/proj.4.git',

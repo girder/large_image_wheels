@@ -516,9 +516,9 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} install && \
     ldconfig
 
-# Version 64.2 builds differently
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --retry 5 --silent http://download.icu-project.org/files/icu4c/63.1/icu4c-63_1-src.tgz -L -o icu4c.tar.gz && \
+    export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
+    curl --retry 5 --silent http://download.icu-project.org/files/icu4c/64.2/icu4c-64_2-src.tgz -L -o icu4c.tar.gz && \
     mkdir icu4c && \
     tar -zxf icu4c.tar.gz -C icu4c --strip-components 1 && \
     rm -f icu4c.tar.gz && \
@@ -842,7 +842,7 @@ RUN yum install -y \
     readline-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --retry 5 --silent https://ftp.postgresql.org/pub/source/v9.6.14/postgresql-9.6.14.tar.gz -L -o postgresql.tar.gz && \
+    curl --retry 5 --silent https://ftp.postgresql.org/pub/source/v11.4/postgresql-11.4.tar.gz -L -o postgresql.tar.gz && \
     mkdir postgresql && \
     tar -zxf postgresql.tar.gz -C postgresql --strip-components 1 && \
     rm -f postgresql.tar.gz && \

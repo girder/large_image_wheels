@@ -17,6 +17,7 @@ gdal-pypi 3.0.1
 gdk-pixbuf 2.38.1
 geos f7f65981988a795a0a5c1a512ede2856d0118f63
 gettext 0.20.1
+glib 2.61.1
 gobject-introspection 1.60.2
 harfbuzz 2.5.3
 hdf5 1.10.5
@@ -61,7 +62,7 @@ perl 5.30.0
 pixman 0.38.4
 pkgconfig 0.29.2
 poppler 0.79.0
-postgresql 9.6.14
+postgresql 11.4
 proj.4 0fc4242ee5ae808fb998482e82da07c2b3b0b33e
 psutil 5.6.3
 pylibtiff ad644a2f632c90b50486a2d4148446d3562f5ce6
