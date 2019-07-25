@@ -22,7 +22,7 @@ gobject-introspection 1.60.2
 harfbuzz 2.5.3
 hdf5 1.10.5
 icu4c 64.2
-imagemagick 470269fdac84f82c5943f8963ad65b6f8c37ef86
+imagemagick d308873c0f329f9066f72b8282347c695c98728c
 jbigkit 2.1
 libcroco 0.6.13
 libdap 3.20.4
@@ -67,7 +67,7 @@ proj.4 0fc4242ee5ae808fb998482e82da07c2b3b0b33e
 psutil 5.6.3
 pylibtiff ad644a2f632c90b50486a2d4148446d3562f5ce6
 pylibtiff-pypi 0.4.2
-pyproj4 9e8c3bc7d8bc66c095bc577894599895c1466119
+pyproj4 1125950b4bafd53064171fb00da2d84317b342ea
 pyproj4-pypi 2.2.1
 python-mapnik bd5137acc9c3358f24c3aee1d90347c8349a4eb3
 python-mapnik-pypi 0.1
