@@ -15,7 +15,7 @@ jobs:
           command: pip install packaging requests
       - run:
           name: Check versions
-          command: python check_versions.py > docs/versions.txt && git diff --exit-code docs/versions.txt
+          command: python check_versions.py > docs/versions.txt && git diff docs/versions.txt
       - run:
           name: Remove existing wheels
           command: git rm docs/*

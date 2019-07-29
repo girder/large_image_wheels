@@ -54,8 +54,9 @@ Packages = {
         're': r'freetype-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
     'freexl': {
-        'filelist': 'https://www.gaia-gis.it/fossil/freexl/',
-        're': r'freexl-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+        'fossil': 'https://www.gaia-gis.it/fossil/freexl/timeline?n=10&r=trunk',
+        # 'filelist': 'https://www.gaia-gis.it/fossil/freexl/',
+        # 're': r'freexl-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
     'fossil': {
         'json': 'https://www.fossil-scm.org/index.html/juvlist',
@@ -75,16 +76,15 @@ Packages = {
         'filelist': 'https://ftp.gnu.org/pub/gnu/gettext/',
         're': r'gettext-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
-    # gdk-pixbuf is stuck on 2.36.12, since the build changes after that
     'gdk-pixbuf': {
         'json': 'https://download.gnome.org/sources/gdk-pixbuf/cache.json',
         'keys': lambda data: list(data[1]['gdk-pixbuf']),
         're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$'
     },
     'geos': {
-        'gitsha': 'https://github.com/libgeos/geos.git',
+        'git': 'https://github.com/libgeos/geos.git',
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
-    # glib-2 is stuck on 2.58.3, since after that doesn't use autoconf
     'glib': {
         'json': 'https://download.gnome.org/sources/glib/cache.json',
         'keys': lambda data: list(data[1]['glib']),
@@ -130,7 +130,8 @@ Packages = {
         're': r'R_([0-9]+_[0-9]+(|_[0-9]+))$'
     },
     'libgeotiff': {
-        'gitsha': 'https://github.com/OSGeo/libgeotiff.git',
+        'git': 'https://github.com/OSGeo/libgeotiff.git',
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'libiconv': {
         'filelist': 'https://ftp.gnu.org/pub/gnu/libiconv/',
@@ -154,12 +155,14 @@ Packages = {
         're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$'
     },
     'libspatialite': {
-        'filelist': 'https://www.gaia-gis.it/fossil/libspatialite/',
-        're': r'libspatialite-([0-9]+\.[0-9]+(|\.[0-9]+)(|[a-z])).tar.(gz|xz)$'
+        'fossil': 'https://www.gaia-gis.it/fossil/libspatialite/timeline?n=10&r=trunk',
+        # 'filelist': 'https://www.gaia-gis.it/fossil/libspatialite/',
+        # 're': r'libspatialite-([0-9]+\.[0-9]+(|\.[0-9]+)(|[a-z])).tar.(gz|xz)$'
     },
     'librasterlite2': {
-        'filelist': 'https://www.gaia-gis.it/fossil/librasterlite2/',
-        're': r'librasterlite2-([0-9]+\.[0-9]+(|\.[0-9]+)(|-beta[0-9]+)).tar.(gz|xz)$'
+        'fossil': 'https://www.gaia-gis.it/fossil/librasterlite2/timeline?n=10&r=trunk',
+        # 'filelist': 'https://www.gaia-gis.it/fossil/librasterlite2/',
+        # 're': r'librasterlite2-([0-9]+\.[0-9]+(|\.[0-9]+)(|-beta[0-9]+)).tar.(gz|xz)$'
     },
     'libtiff': {
         'filelist': 'https://download.osgeo.org/libtiff/',
@@ -182,6 +185,7 @@ Packages = {
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'manylinux2010': {
+        # See also https://github.com/pypa/manylinux
         'json': 'https://quay.io/api/v1/repository/pypa/manylinux2010_x86_64?includeTags=true',
         'keys': lambda data: [data['tags']['latest']['manifest_digest']],
         're': r':([0-9a-fA-F]+)$'
@@ -367,6 +371,10 @@ for pkg in sorted(Packages):
     elif 'text' in pkginfo:
         data = requests.get(pkginfo['text']).content.decode('utf8')
         entries = pkginfo['keys'](data)
+    elif 'fossil' in pkginfo:
+        data = requests.get(pkginfo['fossil']).text
+        entries = [entry.split(']<')[0]
+                   for entry in data.split('<span class="timelineHistDsp">[')[1:]]
     if 're' in pkginfo:
         entries = [entry for entry in entries if re.search(pkginfo['re'], entry)]
         versions = [re.search(pkginfo['re'], entry).group(1) for entry in entries]

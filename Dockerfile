@@ -55,6 +55,9 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} install && \
     ldconfig
 
+# Remove the include zlib, since it causes issues later
+RUN rm -f /lib64/libz*
+
 # Make our own openssl so we don't depend on system libraries
 # There are newer versions of this, but verison 1.1.1 doesn't work with some
 # other libraries
@@ -91,7 +94,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} install-silent
 
 # CMake - use a precompiled binary
-RUN curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.15.0/cmake-3.15.0-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+RUN curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.15.1/cmake-3.15.1-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
     mkdir cmake && \
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz
@@ -302,7 +305,6 @@ RUN yum install -y \
     libtool
 
 # Install newer versions of glib2, gdk-pixbuf2, libxml2.
-# In our setup.py, we may want to confirm glib2 >= 2.25.9
 
 RUN yum install -y \
     libffi-devel \
@@ -319,15 +321,49 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} install && \
     ldconfig
 
-# 2.25.9 okay
-# 2.46.2 will install with libffi-devel
-# 2.47.92 needs libffi-devel and a newer version of pcre-devel
-# 2.48.2 needs libffi-devel and a newer version of pcre-devel
-# 2.49.7 fails on mkostemp
-# 2.50.3 wants libmount
-# 2.58.3 is the last package that supports autoconf, but wants libmount
-# 2.61 requires meson and libmount
-RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+RUN export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
+    pip3 install meson
+
+RUN curl https://github.com/ninja-build/ninja/releases/download/v1.8.2/ninja-linux.zip -L -o ninja.zip && \
+    unzip ninja.zip && \
+    rm -f ninja.zip && \
+    mv ninja /usr/local/bin/.
+
+# RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+#     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
+#     curl --retry 5 --silent https://download.gnome.org/sources/glib/2.61/glib-2.61.2.tar.xz -L -o glib-2.tar.xz && \
+#     unxz glib-2.tar.xz && \
+#     mkdir glib-2 && \
+#     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
+#     rm -f glib-2.tar && \
+#     cd glib-2 && \
+#     python -c $'# \n\
+# path = "gio/meson.build" \n\
+# s = open(path).read().replace("library(\'gio-2.0\',", "library(\'gio-2.0-liw\',") \n\
+# open(path, "w").write(s)' && \
+#     python -c $'# \n\
+# path = "glib/meson.build" \n\
+# s = open(path).read().replace("library(\'glib-2.0\',", "library(\'glib-2.0-liw\',") \n\
+# open(path, "w").write(s)' && \
+#     python -c $'# \n\
+# path = "gmodule/meson.build" \n\
+# s = open(path).read().replace("library(\'gmodule-2.0\',", "library(\'gmodule-2.0-liw\',") \n\
+# open(path, "w").write(s)' && \
+#     python -c $'# \n\
+# path = "gobject/meson.build" \n\
+# s = open(path).read().replace("library(\'gobject-2.0\',", "library(\'gobject-2.0-liw\',") \n\
+# open(path, "w").write(s)' && \
+#     python -c $'# \n\
+# path = "gthread/meson.build" \n\
+# s = open(path).read().replace("library(\'gthread-2.0\',", "library(\'gthread-2.0-liw\',") \n\
+# open(path, "w").write(s)' && \
+#     meson --prefix=/usr/local -D libmount=False _build && \
+#     cd _build && \
+#     ninja -j ${JOBS} && \
+#     ninja -j ${JOBS} install && \
+#     ldconfig
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing;print(multiprocessing.cpu_count())"` && \
     curl --retry 5 --silent https://download.gnome.org/sources/glib/2.58/glib-2.58.3.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
@@ -341,12 +377,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ./configure --prefix=/usr/local --with-python=/opt/python/cp27-cp27mu/bin/python --disable-libmount && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
-    ldconfig
-
-RUN curl https://github.com/ninja-build/ninja/releases/download/v1.8.2/ninja-linux.zip -L -o ninja.zip && \
-    unzip ninja.zip && \
-    rm -f ninja.zip && \
-    mv ninja /usr/local/bin/.
+     ldconfig
 
 # We need flex to build flex, but we have to build flex to get a newer version
 RUN yum install -y \
@@ -376,7 +407,6 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    pip3 install meson && \
     curl --retry 5 --silent https://download.gnome.org/sources/gobject-introspection/1.60/gobject-introspection-1.60.2.tar.xz -L -o gobject-introspection.tar.xz && \
     unxz gobject-introspection.tar.xz && \
     mkdir gobject-introspection && \
@@ -389,22 +419,29 @@ s = open(path).read().replace( \n\
 """    lib%s""", \n\
 """    lib%s(-liw|)""") \n\
 open(path, "w").write(s)' && \
-    mkdir _build && \
+    meson --prefix=/usr/local _build && \
     cd _build && \
-    meson --prefix=/usr/local .. && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
     ldconfig
 
-# Versions after 2.36 are built differently
+# When compiled with meson and ninja, this segfaults in centos, including
+# version 2.36, which works with configure and make.
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
     curl --retry 5 --silent https://download.gnome.org/sources/gdk-pixbuf/2.36/gdk-pixbuf-2.36.12.tar.xz -L -o gdk-pixbuf.tar.xz && \
+    # curl --retry 5 --silent https://download.gnome.org/sources/gdk-pixbuf/2.38/gdk-pixbuf-2.38.1.tar.xz -L -o gdk-pixbuf.tar.xz && \
     unxz gdk-pixbuf.tar.xz && \
     mkdir gdk-pixbuf && \
     tar -xf gdk-pixbuf.tar -C gdk-pixbuf --strip-components 1 && \
     rm -f gdk-pixbuf.tar && \
     cd gdk-pixbuf && \
+    # meson --prefix=/usr/local -D gir=False -D x11=False -D builtin_loaders=all -D man=False _build && \
+    # cd _build && \
+    # ninja -j ${JOBS} && \
+    # ninja -j ${JOBS} install && \
     ./configure --silent --prefix=/usr/local --disable-introspection && \
+    # ./configure --silent --prefix=/usr/local --disable-introspection --with-included-loaders=ani,bmp,gif,icns,ico,jpeg,png,pnm,qtif,tga,tiff,xbm && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
@@ -534,7 +571,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     tar -zxf openmpi.tar.gz -C openmpi --strip-components 1 && \
     rm -f openmpi.tar.gz && \
     cd openmpi && \
-    ./configure --silent --prefix=/usr/local --disable-dependency-tracking --enable-silent-rules && \
+    ./configure --silent --prefix=/usr/local --disable-dependency-tracking --enable-silent-rules --disable-dlopen && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
@@ -609,7 +646,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    git clone --depth=1 --single-branch https://github.com/libgeos/geos.git && \
+    git clone --depth=1 --single-branch -b 3.7.2 https://github.com/libgeos/geos.git && \
     cd geos && \
     mkdir build && \
     cd build && \
@@ -618,11 +655,13 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} install && \
     ldconfig
 
+# master branch 90180e065d doesn't compile
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     fossil --user=root clone https://www.gaia-gis.it/fossil/libspatialite libspatialite.fossil && \
     mkdir libspatialite && \
     cd libspatialite && \
     fossil open ../libspatialite.fossil && \
+    fossil checkout 7dcf78e2d0 && \
     rm -f ../libspatialite.fossil && \
     CFLAGS='-DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true' ./configure --silent --prefix=/usr/local --disable-examples && \
     make --silent -j ${JOBS} && \
@@ -630,7 +669,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    git clone --depth=1 --single-branch https://github.com/OSGeo/libgeotiff.git && \
+    git clone --depth=1 --single-branch -b 1.5.1 https://github.com/OSGeo/libgeotiff.git && \
     cd libgeotiff/libgeotiff && \
     autoreconf -ifv && \
     CFLAGS='-DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true' ./configure --silent --prefix=/usr/local --with-zlib=yes --with-jpeg=yes && \
@@ -930,6 +969,14 @@ open(path, "w").write(data)'
 # Strip libraries before building any wheels
 RUN strip --strip-unneeded /usr/local/lib{,64}/*.{so,a}
 
+# Put libcrypt back in the auditwheel whitelist (removed in Auditwheel 2.1.0)
+RUN python -c $'# \n\
+import os \n\
+path = os.popen("find /opt/_internal -name policy.json").read().strip() \n\
+data = open(path).read().replace( \n\
+    \'"libstdc++.so.6"\', \'"libstdc++.so.6", "libcrypt.so.1"\') \n\
+open(path, "w").write(data)'
+
 RUN cd gdal/gdal/swig/python && \
     cp -r /usr/local/share/{proj,gdal} osgeo/. && \
     mkdir osgeo/bin && \
@@ -1119,7 +1166,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --retry 5 --silent https://github.com/ImageOptim/libimagequant/archive/2.12.3.tar.gz -L -o imagequant.tar.gz && \
+    curl --retry 5 --silent https://github.com/ImageOptim/libimagequant/archive/2.12.5.tar.gz -L -o imagequant.tar.gz && \
     mkdir imagequant && \
     tar -zxf imagequant.tar.gz -C imagequant --strip-components 1 && \
     rm -f imagequant.tar.gz && \
@@ -1129,18 +1176,18 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} install && \
     ldconfig
 
+# 1.44.1 requires mount
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    pip3 install meson && \
+    # curl http://ftp.gnome.org/pub/GNOME/sources/pango/1.44/pango-1.44.1.tar.xz -L -o pango.tar.xz && \
     curl http://ftp.gnome.org/pub/GNOME/sources/pango/1.43/pango-1.43.0.tar.xz -L -o pango.tar.xz && \
     unxz pango.tar.xz && \
     mkdir pango && \
     tar -xf pango.tar -C pango --strip-components 1 && \
     rm -f pango.tar && \
     cd pango && \
-    mkdir _build && \
+    meson --prefix=/usr/local _build && \
     cd _build && \
-    meson --prefix=/usr/local .. && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
     ldconfig
