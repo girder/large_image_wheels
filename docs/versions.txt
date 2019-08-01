@@ -12,7 +12,7 @@ fossil 2.9
 freetype 2.10.1
 freexl cfeba2be03
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
-gdal bf9abe769ebe0460f6d083377c898ccc424f4ce1
+gdal 570e48592295af4b888504f2426d2fe13fa6a0ad
 gdal-pypi 3.0.1
 gdk-pixbuf 2.38.1
 geos 3.7.2
@@ -22,11 +22,12 @@ gobject-introspection 1.60.2
 harfbuzz 2.5.3
 hdf5 1.10.5
 icu4c 64.2
-imagemagick d40010ee3c4eb3909adbb88c1e4f82588df76d5a
+imagemagick 7a29400b9c6342c70086f057efd54e5f0b0ef729
 jbigkit 2.1
 libcroco 0.6.13
 libdap 3.20.4
 libexpat 2_2_7
+libffi 3.2.1
 libgeotiff 1.5.1
 libiconv 1.16
 libimagequant 2.12.5
@@ -34,10 +35,11 @@ libjpeg-turbo 2.0.2
 libpng 1.6.37
 librasterlite2 91dd3f465a
 librsvg 2.45.8
-libspatialite 90180e065d
+libspatialite 55f7c3ed61
 libtiff 4.0.10
 libvips 8.8.1
 libwebp 1.0.3
+libxcrypt 4.4.6
 libxml2 2.9.9
 lz4 1.9.1
 m4 1.4.18
@@ -64,10 +66,11 @@ pkgconfig 0.29.2
 poppler 0.79.0
 postgresql 11.4
 proj.4 f567ee4b8739505716cbb000093d78678a97b170
+proj.4-release 6.1.1
 psutil 5.6.3
 pylibtiff ad644a2f632c90b50486a2d4148446d3562f5ce6
 pylibtiff-pypi 0.4.2
-pyproj4 5dc911f433fa7901559d52000ad0da836db015e1
+pyproj4 12e2a1860f391953dc50f0a1caea555746ebc228
 pyproj4-pypi 2.2.1
 python-mapnik bd5137acc9c3358f24c3aee1d90347c8349a4eb3
 python-mapnik-pypi 0.1
@@ -77,4 +80,5 @@ sqlite 3290000
 tcl 8.6.9
 tk 8.6.9.1
 ultrajson 7d0f4fb7e911120fd09075049233b587936b0a65
+util-linux 2.34
 zlib 1.2.11

@@ -129,6 +129,10 @@ Packages = {
         'git': 'https://github.com/libexpat/libexpat.git',
         're': r'R_([0-9]+_[0-9]+(|_[0-9]+))$'
     },
+    'libffi': {
+        'git': 'https://github.com/libffi/libffi.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
     'libgeotiff': {
         'git': 'https://github.com/OSGeo/libgeotiff.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
@@ -174,6 +178,10 @@ Packages = {
     },
     'libwebp': {
         'git': 'https://github.com/webmproject/libwebp.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
+    'libxcrypt': {
+        'git': 'https://github.com/besser82/libxcrypt.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'libxml2': {
@@ -283,6 +291,10 @@ Packages = {
     'proj.4': {
         'gitsha': 'https://github.com/OSGeo/proj.4.git',
     },
+    'proj.4-release': {
+        'git': 'https://github.com/OSGeo/proj.4.git',
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
     'psutil': {
         'git': 'https://github.com/giampaolo/psutil.git',
         're': r'release-([0-9]+\.[0-9]+(|\.[0-9]+))$'
@@ -329,6 +341,10 @@ Packages = {
     },
     'ultrajson': {
         'gitsha': 'https://github.com/esnme/ultrajson.git',
+    },
+    'util-linux': {
+        'git': 'https://github.com/karelzak/util-linux.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'zlib': {
         'filelist': 'https://zlib.net/',

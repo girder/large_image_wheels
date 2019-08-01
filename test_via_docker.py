@@ -22,6 +22,7 @@ for container in containers:
         '-v', '%s/docs:/wheels' % os.path.dirname(os.path.realpath(__file__)),
         '-v', '%s/test:/test' % os.path.dirname(os.path.realpath(__file__)),
         '--rm', container, 'bash', '-e', '/test/test_script.sh'])
+print('Passed')
 
 # To test manually, run a container such as
 #  docker run -v `pwd`/docs:/wheels --rm -it python:2.7 bash
