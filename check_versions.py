@@ -234,6 +234,9 @@ Packages = {
         're': r'openmpi-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
     'openslide': {
+        'gitsha': 'https://github.com/openslide/openslide.git',
+    },
+    'openslide-release': {
         'git': 'https://github.com/openslide/openslide.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
