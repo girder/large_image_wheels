@@ -15,14 +15,14 @@ jobs:
           command: pip install packaging requests
       - run:
           name: Check versions
-          command: python check_versions.py > docs/versions.txt && git diff docs/versions.txt
+          command: export TERM=xterm && python check_versions.py > docs/versions.txt && git diff docs/versions.txt | cat && git checkout docs/versions.txt
       - run:
           name: Remove existing wheels
           command: git rm docs/*
       # - setup_remote_docker
       - run:
           name: Build the Docker
-          command: ./build.sh
+          command: export TERM=xterm && ./build.sh
       - store_artifacts:
           path: ~/project/docs
       - run:

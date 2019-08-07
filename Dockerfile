@@ -330,11 +330,135 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} install && \
     ldconfig
 
+RUN python -c $'# \n\
+import os \n\
+path = os.popen("find /opt/_internal -name policy.json").read().strip() \n\
+data = open(path).read().replace( \n\
+    "libXext.so.6", "XlibXext.so.6").replace( \n\
+    "libSM.so.6", "XlibSM.so.6").replace( \n\
+    "libICE.so.6", "XlibICE.so.6") \n\
+open(path, "w").write(data)'
+
+# Build openslide with older glib2, gdk-pixbuf2, cairo
+
+RUN yum install -y \
+    cairo-devel
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.58/glib-2.58.3.tar.xz -L -o glib-2.tar.xz && \
+    unxz glib-2.tar.xz && \
+    mkdir glib-2 && \
+    tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
+    rm -f glib-2.tar && \
+    cd glib-2 && \
+    egrep -lrZ -- '-version-info \$\(LT_CURRENT\):\$\(LT_REVISION\):\$\(LT_AGE\)' * | xargs -0 -l sed -i -e 's/-version-info \$(LT_CURRENT):\$(LT_REVISION):\$(LT_AGE)/-release liw-older/g' && \
+    ./autogen.sh && \
+    ./configure --prefix=/usr/local --libdir=/usr/local/lib64 --with-python=/opt/python/cp27-cp27mu/bin/python && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl --retry 5 --silent https://ftp.acc.umu.se/pub/gnome/sources/gdk-pixbuf/2.36/gdk-pixbuf-2.36.12.tar.xz -L -o gdk-pixbuf-2.tar.xz && \
+    unxz gdk-pixbuf-2.tar.xz && \
+    mkdir gdk-pixbuf-2 && \
+    tar -xf gdk-pixbuf-2.tar -C gdk-pixbuf-2 --strip-components 1 && \
+    rm -f gdk-pixbuf-2.tar && \
+    cd gdk-pixbuf-2 && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig
+
+# This patch allows girder's file layout to work with mirax files and does no
+# harm otherwise.
+COPY openslide-vendor-mirax.c.patch .
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl --retry 5 --silent https://github.com/openslide/openslide/archive/v3.4.1.tar.gz -L -o openslide.tar.gz && \
+    mkdir openslide && \
+    tar -zxf openslide.tar.gz -C openslide --strip-components 1 && \
+    rm -f openslide.tar.gz && \
+    cd openslide && \
+    patch src/openslide-vendor-mirax.c ../openslide-vendor-mirax.c.patch && \
+    autoreconf -ifv && \
+    ./configure --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig
+
+# Strip libraries before building any wheels
+RUN strip --strip-unneeded /usr/local/lib{,64}/*.{so,a}
+
+# Tell auditwheel to use our updated files.
+RUN python -c $'# \n\
+import os \n\
+path = os.popen("find /opt/_internal -name policy.json").read().strip() \n\
+data = open(path).read().replace( \n\
+    "libXrender.so.1", "XlibXrender.so.1").replace( \n\
+    "libX11.so.6", "XlibX11.so.6") \n\
+open(path, "w").write(data)'
+
+RUN git clone https://github.com/openslide/openslide-python && \
+    cd openslide-python && \
+    python -c $'# \n\
+path = "setup.py" \n\
+s = open(path).read().replace( \n\
+    "_convert.c\'", "_convert.c\'], libraries=[\'openslide\'") \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
+path = "openslide/lowlevel.py" \n\
+s = open(path).read().replace( \n\
+"""    _lib = cdll.LoadLibrary(\'libopenslide.so.0\')""", \n\
+"""    try: \n\
+        import os \n\
+        libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.realpath( \n\
+            __file__)), \'.libs\')) \n\
+        libs = os.listdir(libpath) \n\
+        loadCount = 0 \n\
+        while True: \n\
+            numLoaded = 0 \n\
+            for name in libs: \n\
+                try: \n\
+                    somelib = os.path.join(libpath, name) \n\
+                    if name.startswith(\'libopenslide\'): \n\
+                        lib = somelib \n\
+                    cdll.LoadLibrary(somelib) \n\
+                    numLoaded += 1 \n\
+                except Exception: \n\
+                    pass \n\
+            if numLoaded - loadCount <= 0: \n\
+                break \n\
+            loadCount = numLoaded \n\
+        _lib = cdll.LoadLibrary(lib) \n\
+    except Exception: \n\
+        _lib = cdll.LoadLibrary(\'libopenslide.so.0\')""") \n\
+open(path, "w").write(s)' && \
+    mkdir openslide/bin && \
+    find /build/openslide/tools/.libs/ -executable -type f -exec cp {} openslide/bin/. \; && \
+    python -c $'# \n\
+path = "setup.py" \n\
+s = open(path).read().replace( \n\
+"""    zip_safe=True,""", \n\
+"""    zip_safe=True, \n\
+    include_package_data=True, \n\
+    package_data={\'openslide\': [\'bin/*\']},""") \n\
+open(path, "w").write(s)' && \
+    for PYBIN in /opt/python/*/bin/; do \
+      echo "${PYBIN}" && \
+      "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
+    done && \
+    for WHL in /io/wheelhouse/openslide*.whl; do \
+      auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/ || exit 1; \
+    done && \
+    ls -l /io/wheelhouse
+
+RUN rm -rf glib-2 gdk-pixbuf2
+
 # 2.59.x and above doesn't work with openslide on centos
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    # curl --retry 5 --silent https://download.gnome.org/sources/glib/2.61/glib-2.61.2.tar.xz -L -o glib-2.tar.xz && \
-    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.58/glib-2.58.3.tar.xz -L -o glib-2.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.61/glib-2.61.2.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
@@ -626,91 +750,6 @@ RUN curl --retry 5 --silent https://www.cairographics.org/releases/cairo-1.16.0.
     make --silent -j ${JOBS} install && \
     ldconfig
 
-# Build openslide here, since it needs cairo
-
-# This patch allows girder's file layout to work with mirax files and does no
-# harm otherwise.
-COPY openslide-vendor-mirax.c.patch .
-
-RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --retry 5 --silent https://github.com/openslide/openslide/archive/v3.4.1.tar.gz -L -o openslide.tar.gz && \
-    mkdir openslide && \
-    tar -zxf openslide.tar.gz -C openslide --strip-components 1 && \
-    rm -f openslide.tar.gz && \
-    cd openslide && \
-    patch src/openslide-vendor-mirax.c ../openslide-vendor-mirax.c.patch && \
-    autoreconf -ifv && \
-    ./configure --prefix=/usr/local && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig
-
-# Strip libraries before building any wheels
-RUN strip --strip-unneeded /usr/local/lib{,64}/*.{so,a}
-
-# Tell auditwheel to use our updated files.
-RUN python -c $'# \n\
-import os \n\
-path = os.popen("find /opt/_internal -name policy.json").read().strip() \n\
-data = open(path).read().replace( \n\
-    "libXrender.so.1", "XlibXrender.so.1").replace( \n\
-    "libX11.so.6", "XlibX11.so.6") \n\
-open(path, "w").write(data)'
-
-RUN git clone https://github.com/openslide/openslide-python && \
-    cd openslide-python && \
-    python -c $'# \n\
-path = "setup.py" \n\
-s = open(path).read().replace( \n\
-    "_convert.c\'", "_convert.c\'], libraries=[\'openslide\'") \n\
-open(path, "w").write(s)' && \
-    python -c $'# \n\
-path = "openslide/lowlevel.py" \n\
-s = open(path).read().replace( \n\
-"""    _lib = cdll.LoadLibrary(\'libopenslide.so.0\')""", \n\
-"""    try: \n\
-        import os \n\
-        libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.realpath( \n\
-            __file__)), \'.libs\')) \n\
-        libs = os.listdir(libpath) \n\
-        loadCount = 0 \n\
-        while True: \n\
-            numLoaded = 0 \n\
-            for name in libs: \n\
-                try: \n\
-                    somelib = os.path.join(libpath, name) \n\
-                    if name.startswith(\'libopenslide\'): \n\
-                        lib = somelib \n\
-                    cdll.LoadLibrary(somelib) \n\
-                    numLoaded += 1 \n\
-                except Exception: \n\
-                    pass \n\
-            if numLoaded - loadCount <= 0: \n\
-                break \n\
-            loadCount = numLoaded \n\
-        _lib = cdll.LoadLibrary(lib) \n\
-    except Exception: \n\
-        _lib = cdll.LoadLibrary(\'libopenslide.so.0\')""") \n\
-open(path, "w").write(s)' && \
-    mkdir openslide/bin && \
-    find /build/openslide/tools/.libs/ -executable -type f -exec cp {} openslide/bin/. \; && \
-    python -c $'# \n\
-path = "setup.py" \n\
-s = open(path).read().replace( \n\
-"""    zip_safe=True,""", \n\
-"""    zip_safe=True, \n\
-    include_package_data=True, \n\
-    package_data={\'openslide\': [\'bin/*\']},""") \n\
-open(path, "w").write(s)' && \
-    for PYBIN in /opt/python/*/bin/; do \
-      echo "${PYBIN}" && \
-      "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
-    done && \
-    for WHL in /io/wheelhouse/openslide*.whl; do \
-      auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/ || exit 1; \
-    done && \
-    ls -l /io/wheelhouse
-
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     git clone --depth=1 --single-branch -b 1.x-master https://github.com/team-charls/charls && \
     cd charls && \
@@ -796,8 +835,8 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     rm -f hdf5.tar.gz && \
     cd hdf5 && \
     autoreconf -ifv && \
-    # This libraries produces a lot of warnings; since we don't do anything
-    # about them, suppress them.
+    # This libraries produces a lot of warnings; since we don't do anything \
+    # about them, suppress them. \
     CFLAGS='-w' ./configure --silent --prefix=/usr/local --disable-dependency-tracking && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -819,7 +858,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 RUN yum install -y \
     hdf-devel \
     json-c12-devel \
-    # ncurses is needed for mysql
+    # ncurses is needed for mysql \
     ncurses-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
@@ -950,15 +989,6 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make -j ${JOBS} install && \
     ldconfig
 
-RUN python -c $'# \n\
-import os \n\
-path = os.popen("find /opt/_internal -name policy.json").read().strip() \n\
-data = open(path).read().replace( \n\
-    "libXext.so.6", "XlibXext.so.6").replace( \n\
-    "libSM.so.6", "XlibSM.so.6").replace( \n\
-    "libICE.so.6", "XlibICE.so.6") \n\
-open(path, "w").write(data)'
-
 # Strip libraries before building any wheels
 RUN strip --strip-unneeded /usr/local/lib{,64}/*.{so,a}
 
@@ -1038,7 +1068,6 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     cd mapnik && \
     git submodule update --init -j ${JOBS} && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    # python scons/scons.py configure JOBS=${JOBS} CXX=${CXX} CC=${CC} \
     python scons/scons.py configure JOBS=${JOBS} \
     BOOST_INCLUDES=/usr/local/include BOOST_LIBS=/usr/local/lib \
     ICU_INCLUDES=/usr/local/include ICU_LIBS=/usr/local/lib \
@@ -1161,11 +1190,9 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} install && \
     ldconfig
 
-# 1.44.1 requires >= glib-2.59.2
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    # curl http://ftp.gnome.org/pub/GNOME/sources/pango/1.44/pango-1.44.1.tar.xz -L -o pango.tar.xz && \
-    curl http://ftp.gnome.org/pub/GNOME/sources/pango/1.43/pango-1.43.0.tar.xz -L -o pango.tar.xz && \
+    curl http://ftp.gnome.org/pub/GNOME/sources/pango/1.44/pango-1.44.3.tar.xz -L -o pango.tar.xz && \
     unxz pango.tar.xz && \
     mkdir pango && \
     tar -xf pango.tar -C pango --strip-components 1 && \
@@ -1204,7 +1231,7 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl https://download.gnome.org/sources/librsvg/2.45/librsvg-2.45.8.tar.xz -L -o librsvg.tar.xz && \
+    curl https://download.gnome.org/sources/librsvg/2.45/librsvg-2.45.90.tar.xz -L -o librsvg.tar.xz && \
     unxz librsvg.tar.xz && \
     mkdir librsvg && \
     tar -xf librsvg.tar -C librsvg --strip-components 1 && \
@@ -1312,7 +1339,7 @@ data = data.replace( \n\
 """    package_data["pyproj"].extend(["bin/*", "proj/*"]) \n\
     return package_data""") \n\
 open(path, "w").write(data)' && \
-    # First build with the last 2.7 version
+    # First build with the last 2.7 version \
     git stash && \
     git checkout 3db99248c8155a0170d7b2696b397dab7e37fb9d && \
     git stash pop && \
@@ -1324,7 +1351,7 @@ open(path, "w").write(data)' && \
     git stash && \
     git checkout master && \
     git stash pop && \
-    # now rebuild anything that can work with master
+    # now rebuild anything that can work with master \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
       "${PYBIN}/pip" install --no-cache-dir cython && \
