@@ -58,7 +58,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 # Make our own openssl so we don't depend on system libraries
-# There are newer versions of this, but verison 1.1.1 doesn't work with some
+# There are newer versions of this, but version 1.1.1 doesn't work with some
 # other libraries
 RUN curl --retry 5 --silent https://www.openssl.org/source/openssl-1.0.2s.tar.gz -L -o openssl.tar.gz && \
     mkdir openssl && \
@@ -92,10 +92,13 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} install-silent
 
 # CMake - use a precompiled binary
-RUN curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.15.1/cmake-3.15.1-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+RUN curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.15.2/cmake-3.15.2-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
     mkdir cmake && \
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz
+
+RUN yum install -y \
+    libmemcached-devel
 
 # Strip libraries before building any wheels
 RUN strip --strip-unneeded /usr/local/lib{,64}/*.{so,a}
@@ -116,6 +119,17 @@ RUN git clone --depth=1 --single-branch -b release-5.6.3 https://github.com/giam
 
 RUN git clone --depth=1 --single-branch https://github.com/esnme/ultrajson.git && \
     cd ultrajson && \
+    for PYBIN in /opt/python/*/bin/; do \
+      echo "${PYBIN}" && \
+      "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
+    done && \
+    for WHL in /io/wheelhouse/ujson*.whl; do \
+      auditwheel repair --plat manylinux1_x86_64 "${WHL}" -w /io/wheelhouse/; \
+    done && \
+    ls -l /io/wheelhouse
+
+RUN git clone --depth=1 --single-branch -b 1.6.1 https://github.com/lericson/pylibmc.git && \
+    cd pylibmc && \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
       "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
@@ -518,7 +532,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/gobject-introspection/1.60/gobject-introspection-1.60.2.tar.xz -L -o gobject-introspection.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/gobject-introspection/1.61/gobject-introspection-1.61.1.tar.xz -L -o gobject-introspection.tar.xz && \
     unxz gobject-introspection.tar.xz && \
     mkdir gobject-introspection && \
     tar -xf gobject-introspection.tar -C gobject-introspection --strip-components 1 && \
@@ -538,7 +552,7 @@ open(path, "w").write(s)' && \
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/gdk-pixbuf/2.38/gdk-pixbuf-2.38.1.tar.xz -L -o gdk-pixbuf.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/gdk-pixbuf/2.39/gdk-pixbuf-2.39.2.tar.xz -L -o gdk-pixbuf.tar.xz && \
     unxz gdk-pixbuf.tar.xz && \
     mkdir gdk-pixbuf && \
     tar -xf gdk-pixbuf.tar -C gdk-pixbuf --strip-components 1 && \
@@ -728,7 +742,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --retry 5 --silent https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.13.91.tar.gz -L -o fontconfig.tar.gz && \
+    curl --retry 5 --silent https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.13.92.tar.gz -L -o fontconfig.tar.gz && \
     mkdir fontconfig && \
     tar -zxf fontconfig.tar.gz -C fontconfig --strip-components 1 && \
     rm -f fontconfig.tar.gz && \
@@ -890,7 +904,7 @@ RUN yum install -y \
     readline-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --retry 5 --silent https://ftp.postgresql.org/pub/source/v11.4/postgresql-11.4.tar.gz -L -o postgresql.tar.gz && \
+    curl --retry 5 --silent https://ftp.postgresql.org/pub/source/v11.5/postgresql-11.5.tar.gz -L -o postgresql.tar.gz && \
     mkdir postgresql && \
     tar -zxf postgresql.tar.gz -C postgresql --strip-components 1 && \
     rm -f postgresql.tar.gz && \
@@ -928,6 +942,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN yum install -y \
+    bzip2-devel \
     popt-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
@@ -956,7 +971,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # We want the "obsolete-api" to be available for some packages (GDAL), but the
 # base docker image has the newer api version installed.  When we install the
 # older one, the install command complains about the extant version, but still
-# works, so eat its erros.
+# works, so eat its errors.
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     git clone --depth=1 --single-branch -b v4.4.6 https://github.com/besser82/libxcrypt.git && \
     cd libxcrypt && \
@@ -966,15 +981,27 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     (make --silent -j ${JOBS} install || true) && \
     ldconfig
 
-# This build doesn't support everything.  Unsupported due to licensing:
-#  INFORMIX-DataBlade JP2Lura Kakadu MrSID MrSID/MG4-Lidar
-# Unsupported without more work or inverstigation:
-#  GRASS DDS GTA Kea ECW MSG Ingres Xerces-C Google-libkml ODBC FGDB MDB OCI
-#  GEORASTER SDE Rasdaman Teigha SFCGAL OpenCL Armadillo MongoDB MongoCXX HDFS
-#  TileDB userfaultfd
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    git clone --depth=1 --single-branch -b libgta-1.0.9 https://github.com/marlam/gta-mirror.git && \
+    cd gta-mirror/libgta && \
+    autoreconf -ifv && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig
+
+# This build doesn't support everything.
+# Unsupported without more work or investigation:
+#  GRASS Kea ECW MSG Ingres Xerces-C Google-libkml ODBC FGDB MDB OCI GEORASTER
+#  SDE Rasdaman Teigha SFCGAL OpenCL Armadillo MongoDB MongoCXX HDFS TileDB
+#  userfaultfd
 # Unused because there is a working alternative:
 #  cryptopp (crypto/openssl)
 #  podofo PDFium (poppler)
+# Unsupported due to licensing:
+#  INFORMIX-DataBlade JP2Lura Kakadu MrSID MrSID/MG4-Lidar
+# Unused for other reasons:
+#  DDS - uses crunch library which is for Windows
 # --with-dods-root is where libdap is installed
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     # git clone --depth=1 --single-branch -b v3.0.0 https://github.com/OSGeo/gdal.git && \
@@ -1050,7 +1077,7 @@ RUN cd gdal/gdal/swig/python && \
 # Mapnik
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --retry 5 --silent https://www.freedesktop.org/software/harfbuzz/release/harfbuzz-2.5.3.tar.xz -L -o harfbuzz.tar.xz && \
+    curl --retry 5 --silent https://www.freedesktop.org/software/harfbuzz/release/harfbuzz-2.6.0.tar.xz -L -o harfbuzz.tar.xz && \
     unxz harfbuzz.tar.xz && \
     mkdir harfbuzz && \
     tar -xf harfbuzz.tar -C harfbuzz --strip-components 1 && \
@@ -1148,10 +1175,7 @@ RUN cd python-mapnik && \
 
 # ImageMagick
 RUN yum install -y \
-    bzip2-devel \
-    fftw3-devel
-
-RUN yum install -y \
+    fftw3-devel \
     libexif-devel \
     matio-devel \
     OpenEXR-devel
@@ -1192,7 +1216,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl http://ftp.gnome.org/pub/GNOME/sources/pango/1.44/pango-1.44.3.tar.xz -L -o pango.tar.xz && \
+    curl http://ftp.gnome.org/pub/GNOME/sources/pango/1.44/pango-1.44.5.tar.xz -L -o pango.tar.xz && \
     unxz pango.tar.xz && \
     mkdir pango && \
     tar -xf pango.tar -C pango --strip-components 1 && \
@@ -1241,6 +1265,18 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make -j ${JOBS} install && \
     ldconfig
 
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    export PATH="$HOME/.cargo/bin:$PATH" && \
+    curl https://download.gnome.org/sources/libgsf/1.14/libgsf-1.14.46.tar.xz -L -o libgsf.tar.xz && \
+    unxz libgsf.tar.xz && \
+    mkdir libgsf && \
+    tar -xf libgsf.tar -C libgsf --strip-components 1 && \
+    cd libgsf && \
+    ./configure --silent --prefix=/usr/local --disable-introspection && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig
+
 # We could install more packages for better ImageMagick support:
 #  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz HEIC LQR RAQM RAW WMF
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
@@ -1251,7 +1287,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} install && \
     ldconfig
 
-# vips does't currently have PDFium, libgsf
+# vips does't currently have PDFium, libheif
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
     curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.8.1/vips-8.8.1.tar.gz -L -o vips.tar.gz && \

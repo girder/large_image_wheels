@@ -137,6 +137,15 @@ Packages = {
         'git': 'https://github.com/OSGeo/libgeotiff.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
+    'libgsf': {
+        'json': 'https://download.gnome.org/sources/libgsf/cache.json',
+        'keys': lambda data: list(data[1]['libgsf']),
+        're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$'
+    },
+    'libgta': {
+        'git': 'https://github.com/marlam/gta-mirror.git',
+        're': r'libgta-([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
     'libiconv': {
         'filelist': 'https://ftp.gnu.org/pub/gnu/libiconv/',
         're': r'libiconv-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
@@ -301,6 +310,10 @@ Packages = {
     'psutil': {
         'git': 'https://github.com/giampaolo/psutil.git',
         're': r'release-([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
+    'pylibmc': {
+        'git': 'https://github.com/lericson/pylibmc.git',
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'pylibtiff': {
         'gitsha': 'https://github.com/pearu/pylibtiff.git',
