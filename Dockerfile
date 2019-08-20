@@ -7,16 +7,64 @@ WORKDIR /build
 RUN rm -r /opt/python/cp34*
 
 RUN yum install -y \
-    libcurl-devel \
     xz \
-    # for easier development
+    zip \
+    # for curl \
+    openldap-devel \
+    libidn2-devel \
+    # for pylibmc \
+    libmemcached-devel \
+    # for openjpeg \
+    lcms2-devel \
+    # needed for libtiff \
+    giflib-devel \
+    freeglut-devel \
+    libjpeg-devel \
+    libXi-devel \
+    libzstd-devel \
+    mesa-libGL-devel \
+    mesa-libGLU-devel \
+    SDL-devel \
+    xz-devel \
+    # For glib2 \
+    libtool \
+    libxml2-devel \
+    # For older glib2 \
+    cairo-devel \
+    # For util-linux \
+    gettext \
+    # We need flex to build a newer version of flex \
+    flex \
+    help2man \
+    texinfo \
+    # For expat \
+    docbook2X \
+    gperf \
+    # for libdap \
+    libuuid-devel \
+    # more support for GDAL \
+    hdf-devel \
+    json-c12-devel \
+    # for mysql \
+    ncurses-devel \
+    # for postrges \
+    readline-devel \
+    # for epsilon \
+    bzip2-devel \
+    popt-devel \
+    # For ImageMagick \
+    fftw3-devel \
+    libexif-devel \
+    matio-devel \
+    OpenEXR-devel \
+    # for easier development \
     man \
     vim-enhanced
 
 # Patch autoreconf to better use GETTEXT
 # See https://lists.gnu.org/archive/html/autoconf-patches/2015-10/msg00001.html
 # for the patch logic
-RUN sed -i 's/\^AM_GNU_GETTEXT_VERSION/\^AM_GNU_GETTEXT_\(REQUIRE_\)\?VERSION/g' /usr/bin/autoreconf
+RUN sed -i 's/\^AM_GNU_GETTEXT_VERSION/\^AM_GNU_GETTEXT_\(REQUIRE_\)\?VERSION/g' /usr/local/bin/autoreconf
 
 # Update autotools, perl, m4, pkg-config
 
@@ -30,9 +78,9 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install
 
-ENV PKG_CONFIG=/usr/local/bin/pkg-config
 # Some of these paths are added later
-ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:/usr/lib64/pkgconfig:/usr/share/pkgconfig
+ENV PKG_CONFIG=/usr/local/bin/pkg-config \
+    PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:/usr/lib64/pkgconfig:/usr/share/pkgconfig
 
 # 1.4.17
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
@@ -79,6 +127,17 @@ RUN git clone --depth=1 --single-branch -b libssh2-1.9.0 https://github.com/libs
     make --silent install && \
     ldconfig
 
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_65_3/curl-7.65.3.tar.gz -L -o curl.tar.gz && \
+    mkdir curl && \
+    tar -zxf curl.tar.gz -C curl --strip-components 1 && \
+    rm -f curl.tar.gz && \
+    cd curl && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig
+
 # Perl - building from source seems to have less issues
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     curl --retry 5 --silent https://www.cpan.org/src/5.0/perl-5.30.0.tar.xz -L -o perl.tar.xz && \
@@ -97,17 +156,13 @@ RUN curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz
 
-RUN yum install -y \
-    libmemcached-devel
-
-# Strip libraries before building any wheels
-RUN strip --strip-unneeded /usr/local/lib{,64}/*.{so,a}
-
 # Packages used by large_image that don't have published wheels for all the
 # versions of Python we are using.
 
 RUN git clone --depth=1 --single-branch -b release-5.6.3 https://github.com/giampaolo/psutil.git && \
     cd psutil && \
+    # Strip libraries before building any wheels \
+    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
       "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
@@ -119,6 +174,8 @@ RUN git clone --depth=1 --single-branch -b release-5.6.3 https://github.com/giam
 
 RUN git clone --depth=1 --single-branch https://github.com/esnme/ultrajson.git && \
     cd ultrajson && \
+    # Strip libraries before building any wheels \
+    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
       "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
@@ -130,6 +187,8 @@ RUN git clone --depth=1 --single-branch https://github.com/esnme/ultrajson.git &
 
 RUN git clone --depth=1 --single-branch -b 1.6.1 https://github.com/lericson/pylibmc.git && \
     cd pylibmc && \
+    # Strip libraries before building any wheels \
+    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
       "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
@@ -156,10 +215,6 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 
 # OpenJPEG
 
-RUN yum install -y \
-    # needed for openjpeg
-    lcms2-devel
-
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     curl --retry 5 --silent https://downloads.sourceforge.net/libpng/libpng-1.6.37.tar.xz -L -o libpng.tar.xz && \
     unxz libpng.tar.xz && \
@@ -168,7 +223,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     rm -f libpng.tar && \
     cd libpng && \
     autoreconf -ifv && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --silent --prefix=/usr/local LIBS="`pkg-config --libs zlib`" && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
@@ -187,18 +242,6 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 # libtiff
-
-RUN yum install -y \
-    # needed for libtiff
-    giflib-devel \
-    freeglut-devel \
-    libjpeg-devel \
-    libXi-devel \
-    libzstd-devel \
-    mesa-libGL-devel \
-    mesa-libGLU-devel \
-    SDL-devel \
-    xz-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     curl --retry 5 --silent https://www.cl.cam.ac.uk/~mgk25/jbigkit/download/jbigkit-2.1.tar.gz -L -o jbigkit.tar.gz && \
@@ -233,7 +276,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     tar -zxf libjpeg-turbo.tar.gz -C libjpeg-turbo --strip-components 1 && \
     rm -f libjpeg-turbo.tar.gz && \
     cd libjpeg-turbo && \
-    cmake -DWITH_12BIT=1 . && \
+    cmake -DWITH_12BIT=1 -DCMAKE_BUILD_TYPE=Release . && \
     make --silent -j ${JOBS}
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
@@ -255,9 +298,6 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} install && \
     ldconfig
 
-# Strip libraries before building any wheels
-RUN strip --strip-unneeded /usr/local/lib{,64}/*.{so,a}
-
 # Use an older version of numpy -- we can work with newer versions, but have to
 # have at least this version to use our wheel.
 RUN git clone --depth=1 --single-branch -b wheel-support https://github.com/manthey/pylibtiff.git && \
@@ -272,6 +312,8 @@ s = open(path).read().replace( \n\
         include_package_data=True, \n\
         package_data={\'libtiff\': [\'bin/*\']},""") \n\
 open(path, "w").write(s)' && \
+    # Strip libraries before building any wheels \
+    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
       if [[ "${PYBIN}" =~ "37" ]]; then \
@@ -296,10 +338,6 @@ open(path, "w").write(s)' && \
 
 # Install newer versions of glib2, gdk-pixbuf2
 
-RUN yum install -y \
-    libtool \
-    libxml2-devel
-
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     curl --retry 5 --silent https://ftp.pcre.org/pub/pcre/pcre-8.43.tar.gz -L -o pcre.tar.gz && \
     mkdir pcre && \
@@ -314,7 +352,8 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 RUN export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
     pip3 install meson
 
-RUN curl https://github.com/ninja-build/ninja/releases/download/v1.8.2/ninja-linux.zip -L -o ninja.zip && \
+# Ninja 1.9.0 doesn't work with some of the builds.
+RUN curl --retry 5 --silent https://github.com/ninja-build/ninja/releases/download/v1.8.2/ninja-linux.zip -L -o ninja.zip && \
     unzip ninja.zip && \
     rm -f ninja.zip && \
     mv ninja /usr/local/bin/.
@@ -331,9 +370,6 @@ open(path, "w").write(s)' && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
-
-RUN yum install -y \
-    gettext
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     git clone --depth=1 --single-branch -b v2.34 https://github.com/karelzak/util-linux.git && \
@@ -354,9 +390,6 @@ data = open(path).read().replace( \n\
 open(path, "w").write(data)'
 
 # Build openslide with older glib2, gdk-pixbuf2, cairo
-
-RUN yum install -y \
-    cairo-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     curl --retry 5 --silent https://download.gnome.org/sources/glib/2.58/glib-2.58.3.tar.xz -L -o glib-2.tar.xz && \
@@ -400,9 +433,6 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
-
-# Strip libraries before building any wheels
-RUN strip --strip-unneeded /usr/local/lib{,64}/*.{so,a}
 
 # Tell auditwheel to use our updated files.
 RUN python -c $'# \n\
@@ -458,6 +488,8 @@ s = open(path).read().replace( \n\
     include_package_data=True, \n\
     package_data={\'openslide\': [\'bin/*\']},""") \n\
 open(path, "w").write(s)' && \
+    # Strip libraries before building any wheels \
+    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
       "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
@@ -504,12 +536,6 @@ open(path, "w").write(s)' && \
     ninja -j ${JOBS} install && \
     ldconfig
 
-# We need flex to build flex, but we have to build flex to get a newer version
-RUN yum install -y \
-    flex \
-    help2man \
-    texinfo
-
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     curl --retry 5 --silent https://ftp.gnu.org/pub/gnu/gettext/gettext-0.20.1.tar.gz -L -o gettext.tar.gz && \
     mkdir gettext && \
@@ -532,7 +558,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/gobject-introspection/1.61/gobject-introspection-1.61.1.tar.xz -L -o gobject-introspection.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/gobject-introspection/1.61/gobject-introspection-1.61.2.tar.xz -L -o gobject-introspection.tar.xz && \
     unxz gobject-introspection.tar.xz && \
     mkdir gobject-introspection && \
     tar -xf gobject-introspection.tar -C gobject-introspection --strip-components 1 && \
@@ -563,9 +589,6 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
     ldconfig
-
-RUN yum install -y \
-    zip
 
 # Boost
 
@@ -725,10 +748,6 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} install && \
     ldconfig
 
-RUN yum install -y \
-    docbook2X \
-    gperf
-
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     curl --retry 5 --silent https://github.com/libexpat/libexpat/archive/R_2_2_7.tar.gz -L -o libexpat.tar.gz && \
     mkdir libexpat && \
@@ -769,7 +788,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     cd charls && \
     mkdir build && \
     cd build && \
-    cmake -DBUILD_SHARED_LIBS=ON .. && \
+    cmake -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release .. && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     cp ../src/interface.h /usr/local/include/CharLS/. && \
@@ -793,10 +812,6 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
-
-RUN yum install -y \
-    curl-devel \
-    libuuid-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     curl --retry 5 --silent https://www.opendap.org/pub/source/libdap-3.20.4.tar.gz -L -o libdap.tar.gz && \
@@ -849,9 +864,9 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     rm -f hdf5.tar.gz && \
     cd hdf5 && \
     autoreconf -ifv && \
-    # This libraries produces a lot of warnings; since we don't do anything \
+    # This library produces a lot of warnings; since we don't do anything \
     # about them, suppress them. \
-    CFLAGS='-w' ./configure --silent --prefix=/usr/local --disable-dependency-tracking && \
+    CFLAGS='-w' ./configure --silent --prefix=/usr/local --enable-cxx --enable-optimization=high --enable-fortran && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
@@ -867,13 +882,6 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
-
-# These add more support to GDAL
-RUN yum install -y \
-    hdf-devel \
-    json-c12-devel \
-    # ncurses is needed for mysql \
-    ncurses-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     curl --retry 5 --silent https://dev.mysql.com/get/Downloads/MySQL-5.7/mysql-boost-5.7.27.tar.gz -L -o mysql.tar.gz && \
@@ -900,9 +908,6 @@ RUN curl --retry 5 --silent https://downloads.sourceforge.net/project/ogdi/ogdi/
     cp bin/Linux/*.so /usr/local/lib/. && \
     ldconfig
 
-RUN yum install -y \
-    readline-devel
-
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     curl --retry 5 --silent https://ftp.postgresql.org/pub/source/v11.5/postgresql-11.5.tar.gz -L -o postgresql.tar.gz && \
     mkdir postgresql && \
@@ -925,7 +930,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     cd poppler && \
     mkdir build && \
     cd build && \
-    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=release -DENABLE_UNSTABLE_API_ABI_HEADERS=on && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DENABLE_UNSTABLE_API_ABI_HEADERS=on && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
@@ -940,10 +945,6 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
-
-RUN yum install -y \
-    bzip2-devel \
-    popt-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     curl --retry 5 --silent https://sourceforge.net/projects/epsilon-project/files/epsilon/0.9.2/epsilon-0.9.2.tar.gz/download -L -o epsilon.tar.gz && \
@@ -990,16 +991,40 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} install && \
     ldconfig
 
+# This is an old version of libecw.  I am uncertain that the licensing allows
+# for this to be used, and therefore is disabled for now.
+# RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+#     curl --retry 5 --silent https://sourceforge.net/projects/libecw-legacy/files/libecwj2-3.3-2006-09-06.zip -L -o libecwj.zip && \
+#     unzip libecwj.zip && \
+#     rm -f libecwj.zip && \
+#     cd libecwj2-3.3 && \
+#     CXXFLAGS='-w' ./configure --silent --prefix=/usr/local && \
+#     make --silent -j ${JOBS} && \
+#     make --silent -j ${JOBS} install && \
+#     ldconfig
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl --retry 5 --silent https://www-us.apache.org/dist/xerces/c/3/sources/xerces-c-3.2.2.tar.gz -L -o xerces-c.tar.gz && \
+    mkdir xerces-c && \
+    tar -zxf xerces-c.tar.gz -C xerces-c --strip-components 1 && \
+    rm -f xerces-c.tar.gz && \
+    cd xerces-c && \
+    cmake -DCMAKE_BUILD_TYPE=Release . && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig
+
 # This build doesn't support everything.
 # Unsupported without more work or investigation:
-#  GRASS Kea ECW MSG Ingres Xerces-C Google-libkml ODBC FGDB MDB OCI GEORASTER
-#  SDE Rasdaman Teigha SFCGAL OpenCL Armadillo MongoDB MongoCXX HDFS TileDB
-#  userfaultfd
+#  GRASS Kea Ingres Google-libkml ODBC FGDB MDB OCI GEORASTER SDE Rasdaman
+#  SFCGAL OpenCL Armadillo MongoDB MongoCXX HDFS TileDB userfaultfd
 # Unused because there is a working alternative:
 #  cryptopp (crypto/openssl)
 #  podofo PDFium (poppler)
-# Unsupported due to licensing:
-#  INFORMIX-DataBlade JP2Lura Kakadu MrSID MrSID/MG4-Lidar
+# Unsupported due to licensing that requires agreements/fees:
+#  INFORMIX-DataBlade JP2Lura Kakadu MrSID MrSID/MG4-Lidar MSG Teigha
+# Unsupported due to licensing that might be allowed:
+#  ECW
 # Unused for other reasons:
 #  DDS - uses crunch library which is for Windows
 # --with-dods-root is where libdap is installed
@@ -1015,9 +1040,6 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     cd .. && \
     make -j ${JOBS} install && \
     ldconfig
-
-# Strip libraries before building any wheels
-RUN strip --strip-unneeded /usr/local/lib{,64}/*.{so,a}
 
 RUN cd gdal/gdal/swig/python && \
     cp -r /usr/local/share/{proj,gdal} osgeo/. && \
@@ -1057,14 +1079,13 @@ caPath = "/etc/ssl/certs/ca-certificates.crt" \n\
 if os.path.exists(caPath): \n\
     os.environ.setdefault("CURL_CA_BUNDLE", caPath) \n\
 """) \n\
-open(path, "w").write(s)'
-
-# Copy python ports of c utilities to scripts so they get bundled.
-RUN cp gdal/gdal/swig/python/samples/gdalinfo.py gdal/gdal/swig/python/scripts/gdalinfo.py && \
-    cp gdal/gdal/swig/python/samples/ogrinfo.py gdal/gdal/swig/python/scripts/ogrinfo.py && \
-    cp gdal/gdal/swig/python/samples/ogr2ogr.py gdal/gdal/swig/python/scripts/ogr2ogr.py
-
-RUN cd gdal/gdal/swig/python && \
+open(path, "w").write(s)' && \
+    # Copy python ports of c utilities to scripts so they get bundled.
+    cp samples/gdalinfo.py scripts/gdalinfo.py && \
+    cp samples/ogrinfo.py scripts/ogrinfo.py && \
+    cp samples/ogr2ogr.py scripts/ogr2ogr.py && \
+    # Strip libraries before building any wheels \
+    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
       "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
@@ -1116,18 +1137,13 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} install && \
     ldconfig
 
-# Strip libraries before building any wheels
-RUN strip --strip-unneeded /usr/local/lib{,64}/*.{so,a}
-
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     git clone https://github.com/mapnik/python-mapnik.git && \
     cd python-mapnik && \
-    git submodule update --init -j ${JOBS}
-# Copy the mapnik input sources and fonts to the python path and add them via
-# setup.py.  Modify the paths.py file that gets created to refer to the
-# relative location of these files.
-# Merge with above
-RUN cd python-mapnik && \
+    git submodule update --init -j ${JOBS} && \
+    # Copy the mapnik input sources and fonts to the python path and add them \
+    # via setup.py.  Modify the paths.py file that gets created to refer to \
+    # the relative location of these files. \
     cp -r /usr/local/lib/mapnik/* mapnik/. && \
     cp -r /usr/local/share/{proj,gdal} mapnik/. && \
     mkdir mapnik/bin && \
@@ -1157,9 +1173,9 @@ os.environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj")) \n\
 os.environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal")) \n\
 \n\
 def bootstrap_env():""") \n\
-open(path, "w").write(s)'
-# Build the wheels
-RUN cd python-mapnik && \
+open(path, "w").write(s)' && \
+    # Strip libraries before building any wheels \
+    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
       export BOOST_PYTHON_LIB=`"${PYBIN}/python" -c "import sys;sys.stdout.write('boost_python'+str(sys.version_info.major)+str(sys.version_info.minor))"` && \
@@ -1174,11 +1190,6 @@ RUN cd python-mapnik && \
 # VIPS
 
 # ImageMagick
-RUN yum install -y \
-    fftw3-devel \
-    libexif-devel \
-    matio-devel \
-    OpenEXR-devel
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     curl --retry 5 --silent https://github.com/GStreamer/orc/archive/0.4.29.tar.gz -L -o orc.tar.gz && \
@@ -1198,7 +1209,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     tar -zxf nifti.tar.gz -C nifti --strip-components 1 && \
     rm -f nifti.tar.gz && \
     cd nifti && \
-    cmake -DBUILD_SHARED_LIBS=ON . && \
+    cmake -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release . && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
@@ -1216,7 +1227,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl http://ftp.gnome.org/pub/GNOME/sources/pango/1.44/pango-1.44.5.tar.xz -L -o pango.tar.xz && \
+    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.44/pango-1.44.5.tar.xz -L -o pango.tar.xz && \
     unxz pango.tar.xz && \
     mkdir pango && \
     tar -xf pango.tar -C pango --strip-components 1 && \
@@ -1230,7 +1241,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     rm -rf libxml2* && \
-    curl http://xmlsoft.org/sources/libxml2-2.9.9.tar.gz -L -o libxml2.tar.gz && \
+    curl --retry 5 --silent http://xmlsoft.org/sources/libxml2-2.9.9.tar.gz -L -o libxml2.tar.gz && \
     mkdir libxml2 && \
     tar -zxf libxml2.tar.gz -C libxml2 --strip-components 1 && \
     rm -f libxml2.tar.gz && \
@@ -1240,7 +1251,8 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make -j ${JOBS} install && \
     ldconfig
 
-RUN curl https://ftp.gnome.org/pub/GNOME/sources/libcroco/0.6/libcroco-0.6.13.tar.xz -L -o libcroco.tar.xz && \
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl --retry 5 --silent https://ftp.gnome.org/pub/GNOME/sources/libcroco/0.6/libcroco-0.6.13.tar.xz -L -o libcroco.tar.xz && \
     unxz libcroco.tar.xz && \
     mkdir libcroco && \
     tar -xf libcroco.tar -C libcroco --strip-components 1 && \
@@ -1251,11 +1263,11 @@ RUN curl https://ftp.gnome.org/pub/GNOME/sources/libcroco/0.6/libcroco-0.6.13.ta
     make -j ${JOBS} install && \
     ldconfig
 
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+RUN curl --retry 5 --silent https://sh.rustup.rs -sSf | sh -s -- -y
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl https://download.gnome.org/sources/librsvg/2.45/librsvg-2.45.90.tar.xz -L -o librsvg.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.45/librsvg-2.45.91.tar.xz -L -o librsvg.tar.xz && \
     unxz librsvg.tar.xz && \
     mkdir librsvg && \
     tar -xf librsvg.tar -C librsvg --strip-components 1 && \
@@ -1267,7 +1279,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl https://download.gnome.org/sources/libgsf/1.14/libgsf-1.14.46.tar.xz -L -o libgsf.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/libgsf/1.14/libgsf-1.14.46.tar.xz -L -o libgsf.tar.xz && \
     unxz libgsf.tar.xz && \
     mkdir libgsf && \
     tar -xf libgsf.tar -C libgsf --strip-components 1 && \
@@ -1299,9 +1311,6 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
-
-# Strip libraries before building any wheels
-RUN strip --strip-unneeded /usr/local/lib{,64}/*.{so,a}
 
 RUN git clone --depth=1 --single-branch https://github.com/libvips/pyvips && \
     cd pyvips && \
@@ -1335,6 +1344,8 @@ s = open(path).read().replace( \n\
         include_package_data=True, \n\
         package_data={\'pyvips\': [\'bin/*\']},""") \n\
 open(path, "w").write(s)' && \
+    # Strip libraries before building any wheels \
+    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
       "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
@@ -1343,9 +1354,6 @@ open(path, "w").write(s)' && \
       auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/; \
     done && \
     ls -l /io/wheelhouse
-
-# Strip libraries before building any wheels
-RUN strip --strip-unneeded /usr/local/lib{,64}/*.{so,a}
 
 # 3db99248c8155a0170d7b2696b397dab7e37fb9d (7/12/2019) is the last pyproj
 # commit that supports Python 2.7.  As this ages, eventually more work may be
@@ -1375,6 +1383,8 @@ data = data.replace( \n\
 """    package_data["pyproj"].extend(["bin/*", "proj/*"]) \n\
     return package_data""") \n\
 open(path, "w").write(data)' && \
+    # Strip libraries before building any wheels \
+    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
     # First build with the last 2.7 version \
     git stash && \
     git checkout 3db99248c8155a0170d7b2696b397dab7e37fb9d && \

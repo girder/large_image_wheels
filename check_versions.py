@@ -33,6 +33,10 @@ Packages = {
         'git': 'https://github.com/Kitware/CMake.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
+    'curl': {
+        'git': 'https://github.com/curl/curl.git',
+        're': r'curl-([0-9]+_[0-9]+(|_[0-9]+))$'
+    },
     'epsilon': {
         'filelist': 'https://sourceforge.net/projects/epsilon-project/files/epsilon/',
         're': r'\/([0-9]+\.[0-9]+(|\.[0-9]+))\/$'
@@ -111,6 +115,10 @@ Packages = {
     },
     'imagemagick': {
         'gitsha': 'https://github.com/ImageMagick/ImageMagick.git',
+    },
+    'imagemagick-release': {
+        'git': 'https://github.com/ImageMagick/ImageMagick.git',
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+)(|-[0-9]+))$'
     },
     'jbigkit': {
         'filelist': 'https://www.cl.cam.ac.uk/~mgk25/jbigkit/download/',
@@ -201,6 +209,10 @@ Packages = {
         'git': 'https://github.com/lz4/lz4.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
+    'm4': {
+        'filelist': 'https://ftp.gnu.org/gnu/m4/',
+        're': r'm4-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+    },
     'manylinux2010': {
         # See also https://github.com/pypa/manylinux
         'json': 'https://quay.io/api/v1/repository/pypa/manylinux2010_x86_64?includeTags=true',
@@ -210,9 +222,9 @@ Packages = {
     'mapnik': {
         'gitsha': 'https://github.com/mapnik/mapnik.git',
     },
-    'm4': {
-        'filelist': 'https://ftp.gnu.org/gnu/m4/',
-        're': r'm4-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+    'mapnik-release': {
+        'git': 'https://github.com/mapnik/mapnik.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'mysql': {
         'filelist': 'https://dev.mysql.com/downloads/mysql/5.7.html?tpl=version&os=src&version=5.7',
@@ -361,6 +373,10 @@ Packages = {
     'util-linux': {
         'git': 'https://github.com/karelzak/util-linux.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
+    'xerces-c': {
+        'filelist': 'http://xerces.apache.org/xerces-c/download.cgi',
+        're': r'xerces-c-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
     'zlib': {
         'filelist': 'https://zlib.net/',

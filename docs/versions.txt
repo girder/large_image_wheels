@@ -1,9 +1,10 @@
 advancecomp 2.1
 bison 3.4.1
-boost 1.70.0
+boost 1.71.0
 cairo 1.16.0
 charls 25160a42fb62e71e4b0ce081f5cb3f8bb73938b5
 cmake 3.15.2
+curl 7_65_3
 epsilon 0.9.2
 fitsio 3450
 flex 2.6.4
@@ -12,17 +13,18 @@ fossil 2.9
 freetype 2.10.1
 freexl cfeba2be03
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
-gdal 9c55eed43c5580eab2badb468851540505b168a2
+gdal 8c28547245cfd6264393457557a9477ca05b340a
 gdal-pypi 3.0.1
 gdk-pixbuf 2.39.2
 geos 3.7.2
 gettext 0.20.1
 glib 2.61.2
-gobject-introspection 1.61.1
+gobject-introspection 1.61.2
 harfbuzz 2.6.0
 hdf5 1.10.5
 icu4c 64.2
-imagemagick 963e99fea57eb33944bd925d637957c8d430577b
+imagemagick 703ae35b374d238599ee9483e6c5e61b95b11eba
+imagemagick-release 7.0.8-60
 jbigkit 2.1
 libcroco 0.6.13
 libdap 3.20.4
@@ -36,7 +38,7 @@ libimagequant 2.12.5
 libjpeg-turbo 2.0.2
 libpng 1.6.37
 librasterlite2 91dd3f465a
-librsvg 2.45.90
+librsvg 2.45.91
 libspatialite 55f7c3ed61
 libtiff 4.0.10
 libvips 8.8.1
@@ -47,6 +49,7 @@ lz4 1.9.1
 m4 1.4.18
 manylinux2010 afbdfef798703ac71f1b6675ae491e21c8a355b465f6c0f9030305e33ae5c8a3
 mapnik e80dd063bac45b2a0e39ec808db1f005e1b9f039
+mapnik-release 3.0.22
 mysql 5.7.27
 netcdf 4.7.0
 nifti 2_0_0
@@ -74,8 +77,8 @@ psutil 5.6.3
 pylibmc 1.6.1
 pylibtiff ad644a2f632c90b50486a2d4148446d3562f5ce6
 pylibtiff-pypi 0.4.2
-pyproj4 c8c8d31178f21a40d95b3e9e777fcaf969148dbf
-pyproj4-pypi 2.2.1
+pyproj4 11b769cc3b808a7f417103d0b033222b07737cec
+pyproj4-pypi 2.2.2
 python-mapnik bd5137acc9c3358f24c3aee1d90347c8349a4eb3
 python-mapnik-pypi 0.1
 pyvips bf00a21b8ff5f235ffe30fa2a07879ad4e8952fa
@@ -85,4 +88,5 @@ tcl 8.6.9
 tk 8.6.9.1
 ultrajson 7d0f4fb7e911120fd09075049233b587936b0a65
 util-linux 2.34
+xerces-c 3.2.2
 zlib 1.2.11
