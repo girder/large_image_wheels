@@ -2,6 +2,7 @@
 
 set -e
 
+docker pull quay.io/pypa/manylinux2010_x86_64:latest
 docker build --force-rm -t manthey/large_image_wheels .
 mkdir -p docs
 ls -al docs

@@ -12,14 +12,20 @@ Packages = {
         'git': 'https://github.com/amadvance/advancecomp.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
+    'armadillo': {
+        'filelist': 'http://arma.sourceforge.net/download.html',
+        're': r'armadillo-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
+    },
     'bison': {
         'filelist': 'https://ftp.gnu.org/pub/gnu/bison/',
         're': r'bison-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
-    # boost 1.70.0 doesn't work with mapnik
+    # boost 1.70.0 - 1.71.0 don't work with mapnik
     'boost': {
-        'filelist': 'https://sourceforge.net/projects/boost/files/boost/',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))\/$'
+        'git': 'https://github.com/boostorg/boost.git',
+        're': r'boost-([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        # 'filelist': 'https://sourceforge.net/projects/boost/files/boost/',
+        # 're': r'([0-9]+\.[0-9]+(|\.[0-9]+))\/$'
     },
     'cairo': {
         'filelist': 'https://www.cairographics.org/releases/',
@@ -238,6 +244,7 @@ Packages = {
         'filelist': 'https://sourceforge.net/projects/niftilib/files/nifticlib/',
         're': r'nifticlib_([0-9]+_[0-9]+(|_[0-9]+))\/$'
     },
+    # ninja 1.9.0 doesn't work with glib-2
     'ninja': {
         'git': 'https://github.com/ninja-build/ninja.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
@@ -245,6 +252,10 @@ Packages = {
     'ogdi': {
         'filelist': 'https://sourceforge.net/projects/ogdi/files/ogdi/',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))\/$'
+    },
+    'openblas': {
+        'git': 'https://github.com/xianyi/OpenBLAS.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'openjpeg': {
         'git': 'https://github.com/uclouvain/openjpeg.git',
@@ -354,6 +365,10 @@ Packages = {
     'sqlite': {
         'text': 'https://www.sqlite.org/download.html',
         'keys': lambda data: [re.search(r'sqlite-autoconf-([0-9]+).tar.(gz|xz)', data).group(1)]
+    },
+    'superlu': {
+        'git': 'https://github.com/xiaoyeli/superlu.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'tcl': {
         'filelist': 'https://sourceforge.net/projects/tcl/files/Tcl/',

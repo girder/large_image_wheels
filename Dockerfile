@@ -7,7 +7,6 @@ WORKDIR /build
 RUN rm -r /opt/python/cp34*
 
 RUN yum install -y \
-    xz \
     zip \
     # for curl \
     openldap-devel \
@@ -352,7 +351,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 RUN export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
     pip3 install meson
 
-# Ninja 1.9.0 doesn't work with some of the builds.
+# Ninja 1.9.0 doesn't work with glib-2.61.2
 RUN curl --retry 5 --silent https://github.com/ninja-build/ninja/releases/download/v1.8.2/ninja-linux.zip -L -o ninja.zip && \
     unzip ninja.zip && \
     rm -f ninja.zip && \
@@ -629,15 +628,18 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # This works with boost 1.69.0.
 # It probably won't work for 1.66.0 and before, as those versions didn't handle
 # multiple python versions properly.
-# 1.70.0 doesn't work with current mapnik (https://github.com/mapnik/mapnik/issues/4041)
+# 1.70.0 and 1.71.0 don't work with mapnik
+#   (https://github.com/mapnik/mapnik/issues/4041)
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    # git clone --depth=1 --single-branch -b boost-1.69.0 https://github.com/boostorg/boost.git && cd boost && git submodule update --init -j ${JOBS} && \
-    curl --retry 5 --silent https://downloads.sourceforge.net/project/boost/boost/1.69.0/boost_1_69_0.tar.gz -L -o boost.tar.gz && \
-    mkdir boost && \
-    tar -zxf boost.tar.gz -C boost --strip-components 1 && \
-    rm -f boost.tar.gz && \
+    git clone --depth=1 --single-branch -b boost-1.69.0 --quiet --recurse-submodules -j ${JOBS} https://github.com/boostorg/boost.git && \
+    # curl --retry 5 --silent https://downloads.sourceforge.net/project/boost/boost/1.69.0/boost_1_69_0.tar.gz -L -o boost.tar.gz && \
+    # mkdir boost && \
+    # tar -zxf boost.tar.gz -C boost --strip-components 1 && \
+    # rm -f boost.tar.gz && \
     cd boost && \
+    rm -rf .git && \
     echo "" > tools/build/src/user-config.jam && \
+    # echo "using mpi ;" >> tools/build/src/user-config.jam && \
     echo "using python : 2.7 : /opt/python/cp27-cp27mu/bin/python : /opt/python/cp27-cp27mu/include/python2.7 : /opt/python/cp27-cp27mu/lib ; " >> tools/build/src/user-config.jam && \
     echo "using python : 3.5 : /opt/python/cp35-cp35m/bin/python : /opt/python/cp35-cp35m/include/python3.5m : /opt/python/cp35-cp35m/lib ; " >> tools/build/src/user-config.jam && \
     echo "using python : 3.6 : /opt/python/cp36-cp36m/bin/python : /opt/python/cp36-cp36m/include/python3.6m : /opt/python/cp36-cp36m/lib ; " >> tools/build/src/user-config.jam && \
@@ -795,7 +797,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    git clone --depth=1 --single-branch -b v1.9.1 https://github.com/lz4/lz4.git && \
+    git clone --depth=1 --single-branch -b v1.9.2 https://github.com/lz4/lz4.git && \
     cd lz4 && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -1014,26 +1016,62 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} install && \
     ldconfig
 
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    git clone --depth=1 --single-branch -b v0.3.7 https://github.com/xianyi/OpenBLAS.git && \
+    cd OpenBLAS && \
+    mkdir build && \
+    cd build && \
+    cmake -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release .. && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    git clone --depth=1 --single-branch -b v5.2.1 https://github.com/xiaoyeli/superlu.git && \
+    cd superlu && \
+    mkdir build && \
+    cd build && \
+    cmake -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release -Denable_blaslib=OFF -Denable_tests=OFF -DTPL_BLAS_LIBRARIES=/usr/local/lib64/libopenblas.so .. && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig
+
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-9.600.6.tar.xz -L -o armadillo.tar.xz && \
+    unxz armadillo.tar.xz && \
+    mkdir armadillo && \
+    tar -xf armadillo.tar -C armadillo --strip-components 1 && \
+    rm -f armadillo.tar && \
+    cd armadillo && \
+    mkdir build && \
+    cd build && \
+    cmake -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib .. && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig
+
 # This build doesn't support everything.
 # Unsupported without more work or investigation:
 #  GRASS Kea Ingres Google-libkml ODBC FGDB MDB OCI GEORASTER SDE Rasdaman
-#  SFCGAL OpenCL Armadillo MongoDB MongoCXX HDFS TileDB userfaultfd
+#  SFCGAL OpenCL MongoDB MongoCXX HDFS TileDB
 # Unused because there is a working alternative:
 #  cryptopp (crypto/openssl)
 #  podofo PDFium (poppler)
 # Unsupported due to licensing that requires agreements/fees:
-#  INFORMIX-DataBlade JP2Lura Kakadu MrSID MrSID/MG4-Lidar MSG Teigha
+#  INFORMIX-DataBlade JP2Lura Kakadu MrSID MrSID/MG4-Lidar MSG RDB Teigha
 # Unsupported due to licensing that might be allowed:
 #  ECW
 # Unused for other reasons:
 #  DDS - uses crunch library which is for Windows
+#  userfaultfd - linux support for this dates from 2015, so it probably can't
+#    be added using manylinux2010.
 # --with-dods-root is where libdap is installed
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     # git clone --depth=1 --single-branch -b v3.0.0 https://github.com/OSGeo/gdal.git && \
     git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
     cd gdal/gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
-    ./configure --prefix=/usr/local --with-cpp14 --without-libtool --with-jpeg12 --with-spatialite --with-liblzma --with-webp --with-epsilon --with-poppler --with-hdf5 --with-dods-root=/usr/local --with-sosi --with-mysql --with-rasterlite2 --with-pg --with-cfitsio=/usr/local && \
+    ./configure --prefix=/usr/local --with-cpp14 --without-libtool --with-jpeg12 --with-spatialite --with-liblzma --with-webp --with-epsilon --with-poppler --with-hdf5 --with-dods-root=/usr/local --with-sosi --with-mysql --with-rasterlite2 --with-pg --with-cfitsio=/usr/local --with-armadillo && \
     make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings" && \
     cd apps && \
     make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings" test_ogrsf && \
@@ -1112,9 +1150,9 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # scons needs to have a modern python in the path, but scons in the included
 # python 3.7 doesn't support parallel builds, so use python 3.6.
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    git clone --depth=1 --single-branch https://github.com/mapnik/mapnik.git && \
+    git clone --depth=1 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
     cd mapnik && \
-    git submodule update --init -j ${JOBS} && \
+    rm -rf .git && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
     python scons/scons.py configure JOBS=${JOBS} \
     BOOST_INCLUDES=/usr/local/include BOOST_LIBS=/usr/local/lib \
@@ -1138,9 +1176,9 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    git clone https://github.com/mapnik/python-mapnik.git && \
+    git clone --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/python-mapnik.git && \
     cd python-mapnik && \
-    git submodule update --init -j ${JOBS} && \
+    rm -rf .git && \
     # Copy the mapnik input sources and fonts to the python path and add them \
     # via setup.py.  Modify the paths.py file that gets created to refer to \
     # the relative location of these files. \
@@ -1294,7 +1332,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     git clone --depth=1 --single-branch https://github.com/ImageMagick/ImageMagick.git ImageMagick && \
     cd ImageMagick && \
-    ./configure --silent --prefix=/usr/local --with-modules --with-rsvg LIBS="-lrt `pkg-config --libs zlib`" && \
+    ./configure --prefix=/usr/local --with-modules --with-rsvg LIBS="-lrt `pkg-config --libs zlib`" && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
@@ -1307,7 +1345,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     tar -zxf vips.tar.gz -C vips --strip-components 1 && \
     rm -f vips.tar.gz && \
     cd vips && \
-    ./configure --silent --prefix=/usr/local CFLAGS="`pkg-config --cflags glib-2.0`" LIBS="`pkg-config --libs glib-2.0`" && \
+    ./configure --prefix=/usr/local CFLAGS="`pkg-config --cflags glib-2.0`" LIBS="`pkg-config --libs glib-2.0`" && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
@@ -1389,7 +1427,7 @@ open(path, "w").write(data)' && \
     git stash && \
     git checkout 3db99248c8155a0170d7b2696b397dab7e37fb9d && \
     git stash pop && \
-    for PYBIN in /opt/python/*/bin/; do \
+    for PYBIN in /opt/python/cp2*/bin/; do \
       echo "${PYBIN}" && \
       "${PYBIN}/pip" install --no-cache-dir cython && \
       "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
@@ -1398,7 +1436,7 @@ open(path, "w").write(data)' && \
     git checkout master && \
     git stash pop && \
     # now rebuild anything that can work with master \
-    for PYBIN in /opt/python/*/bin/; do \
+    for PYBIN in /opt/python/cp3*/bin/; do \
       echo "${PYBIN}" && \
       "${PYBIN}/pip" install --no-cache-dir cython && \
       "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
