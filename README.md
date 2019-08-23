@@ -78,7 +78,7 @@ plt.imshow(tile_info['tile'])
 
 ## Rationale
 
-It is an inconvenience to have to add `--find-links https://manthey.github.io/large_image_wheels` to pip install commands to use these wheels, but the is no ideal solution.  There are alternatives: (a) convince upstream repositories to publish wheels, or (b) publish these under unique names (e.g., large_image_dependency_gdal).  None of these are perfect solutions.  
+It is an inconvenience to have to add `--find-links https://manthey.github.io/large_image_wheels` to pip install commands to use these wheels.  There are alternatives: (a) convince upstream repositories to publish wheels, or (b) publish these under unique names (e.g., large_image_dependency_gdal).  None of these are perfect solutions.  
 
 Using `--find-links` requires modifying pip install commands.  Further, if a newer non-wheel version of a package is published on pypi, it will be used in favor of the wheel unless the explicit version is used.  Since this repository won't maintain old versions, this means that the wheels must be rebuilt as soon as new versions are released.
 
@@ -87,3 +87,21 @@ It isn't practical to produce wheels for some upstream packages.  For instance, 
 If these wheels were published under alternate names, they could be published to pypi.  However, this would require a wheel for every supported OS or have conditionals in downstream packages' setup.py install_requires.  Further, it would preclude using custom-built libraries (such as GDAL with licensed additions).
 
 Using `--find-links` seems like the best choice of these options.  Downstream packages can list the expected modules in `install_requires`.  Installation doesn't become any harder for platforms without wheels, and custom-built libraries are supported.
+
+## Future Work
+
+- More optional libraries
+
+  Several packages (GDAL, ImageMagick, vips, and probably others) could have additional libraries added to the built wheels.  As time permits, those libraries that are appropriately licensed may be gradually added.  See the Dockerfile for comments on what else could be built.  If there is a specific need for a library that hasn't yet been included, please create an issue for it.
+
+- More executables
+
+  A variety of executables are bundled with the wheels in appropriate `bin` directories.  There are additional tools that could be added (for instance, OpenJPEG has some executables that could be added to the OpenSlide or the vips wheel).  If there is a specific need for an executable that hasn't been included, please create an issue for it.
+
+- Automate version checks
+
+  When any dependent library changes, the wheels could be rebuilt.  Some of this could be more automated.  Some versions don't work together (Boost 1.70/1.71 with mapnik, for instance), so it can't be fully automatic.
+
+- Automate releases
+
+  The wheels should be published from a successful CI run rather than from a user commit.

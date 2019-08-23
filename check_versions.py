@@ -120,9 +120,6 @@ Packages = {
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))\/$'
     },
     'imagemagick': {
-        'gitsha': 'https://github.com/ImageMagick/ImageMagick.git',
-    },
-    'imagemagick-release': {
         'git': 'https://github.com/ImageMagick/ImageMagick.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+)(|-[0-9]+))$'
     },
