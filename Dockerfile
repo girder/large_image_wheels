@@ -3,6 +3,10 @@ FROM quay.io/pypa/manylinux2010_x86_64
 RUN mkdir /build
 WORKDIR /build
 
+ARG SOURCE_DATE_EPOCH
+ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-1567045200} \
+    CFLAGS=-g0
+
 # Don't build python 3.4 wheels.
 RUN rm -r /opt/python/cp34*
 
@@ -88,6 +92,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     tar -zxf m4.tar.gz -C m4 --strip-components 1 && \
     rm -f m4.tar.gz && \
     cd m4 && \
+    export CFLAGS="$CFLAGS -O2" && \
     ./configure --silent --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install
@@ -107,6 +112,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # Make our own openssl so we don't depend on system libraries
 # There are newer versions of this, but version 1.1.1 doesn't work with some
 # other libraries
+# We can't use make parallelism here
 RUN curl --retry 5 --silent https://www.openssl.org/source/openssl-1.0.2s.tar.gz -L -o openssl.tar.gz && \
     mkdir openssl && \
     tar -zxf openssl.tar.gz -C openssl --strip-components 1 && \
@@ -118,12 +124,13 @@ RUN curl --retry 5 --silent https://www.openssl.org/source/openssl-1.0.2s.tar.gz
     make --silent all install_sw && \
     ldconfig
 
-RUN git clone --depth=1 --single-branch -b libssh2-1.9.0 https://github.com/libssh2/libssh2.git && \
+RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    git clone --depth=1 --single-branch -b libssh2-1.9.0 https://github.com/libssh2/libssh2.git && \
     cd libssh2 && \
     ./buildconf && \
     ./configure --silent --prefix=/usr/local && \
-    make --silent && \
-    make --silent install && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
@@ -149,6 +156,15 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install-silent
 
+RUN export PERL_MM_USE_DEFAULT=1 && \
+    export PERL_EXTUTILS_AUTOINSTALL="--defaultdeps" && \
+    /usr/localperl/bin/cpan -T ExtUtils::MakeMaker Archive::Cpio Archive::Zip && \
+    git clone --single-branch --depth 1 -b 0.042 https://github.com/esoule/strip-nondeterminism.git && \
+    cd strip-nondeterminism && \
+    /usr/localperl/bin/perl Makefile.PL && \
+    make && \
+    make install
+
 # CMake - use a precompiled binary
 RUN curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.15.2/cmake-3.15.2-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
     mkdir cmake && \
@@ -169,6 +185,7 @@ RUN git clone --depth=1 --single-branch -b release-5.6.3 https://github.com/giam
     for WHL in /io/wheelhouse/psutil*.whl; do \
       auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/; \
     done && \
+    /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v /io/wheelhouse/*.whl && \
     ls -l /io/wheelhouse
 
 RUN git clone --depth=1 --single-branch https://github.com/esnme/ultrajson.git && \
@@ -182,6 +199,7 @@ RUN git clone --depth=1 --single-branch https://github.com/esnme/ultrajson.git &
     for WHL in /io/wheelhouse/ujson*.whl; do \
       auditwheel repair --plat manylinux1_x86_64 "${WHL}" -w /io/wheelhouse/; \
     done && \
+    /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v /io/wheelhouse/*.whl && \
     ls -l /io/wheelhouse
 
 RUN git clone --depth=1 --single-branch -b 1.6.1 https://github.com/lericson/pylibmc.git && \
@@ -195,6 +213,7 @@ RUN git clone --depth=1 --single-branch -b 1.6.1 https://github.com/lericson/pyl
     for WHL in /io/wheelhouse/ujson*.whl; do \
       auditwheel repair --plat manylinux1_x86_64 "${WHL}" -w /io/wheelhouse/; \
     done && \
+    /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v /io/wheelhouse/*.whl && \
     ls -l /io/wheelhouse
 
 # As of 2019-05-21, there were bugs fixed in master that seem important, so use
@@ -333,6 +352,7 @@ open(path, "w").write(s)' && \
     for WHL in /io/wheelhouse/libtiff*.whl; do \
       auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/; \
     done && \
+    /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v /io/wheelhouse/*.whl && \
     ls -l /io/wheelhouse
 
 # Install newer versions of glib2, gdk-pixbuf2
@@ -358,7 +378,7 @@ RUN curl --retry 5 --silent https://github.com/ninja-build/ninja/releases/downlo
     mv ninja /usr/local/bin/.
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    git clone --depth=1 --single-branch -b v3.2.1 https://github.com/libffi/libffi && \
+    git clone --depth=1 --single-branch -b v3.2.1 https://github.com/libffi/libffi.git && \
     cd libffi && \
     python -c $'# \n\
 path = "Makefile.am" \n\
@@ -374,6 +394,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     git clone --depth=1 --single-branch -b v2.34 https://github.com/karelzak/util-linux.git && \
     cd util-linux && \
     ./autogen.sh && \
+    export CFLAGS="$CFLAGS -O2" && \
     ./configure --disable-all-programs --enable-libblkid --enable-libmount --silent --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -428,6 +449,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     cd openslide && \
     patch src/openslide-vendor-mirax.c ../openslide-vendor-mirax.c.patch && \
     autoreconf -ifv && \
+    export CFLAGS="$CFLAGS -O2" && \
     ./configure --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -442,7 +464,7 @@ data = open(path).read().replace( \n\
     "libX11.so.6", "XlibX11.so.6") \n\
 open(path, "w").write(data)'
 
-RUN git clone https://github.com/openslide/openslide-python && \
+RUN git clone --depth=1 --single-branch https://github.com/openslide/openslide-python.git && \
     cd openslide-python && \
     python -c $'# \n\
 path = "setup.py" \n\
@@ -496,6 +518,7 @@ open(path, "w").write(s)' && \
     for WHL in /io/wheelhouse/openslide*.whl; do \
       auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/ || exit 1; \
     done && \
+    /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v /io/wheelhouse/*.whl && \
     ls -l /io/wheelhouse
 
 RUN rm -rf glib-2 gdk-pixbuf2
@@ -529,7 +552,7 @@ open(path, "w").write(s)' && \
 path = "gthread/meson.build" \n\
 s = open(path).read().replace("library(\'gthread-2.0\',", "library(\'gthread-2.0-liw\',") \n\
 open(path, "w").write(s)' && \
-    meson --prefix=/usr/local _build && \
+    meson --prefix=/usr/local --buildtype=release _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -547,7 +570,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    git clone --depth=1 --single-branch -b v2.6.4 https://github.com/westes/flex && \
+    git clone --depth=1 --single-branch -b v2.6.4 https://github.com/westes/flex.git && \
     cd flex && \
     autoreconf -ifv && \
     ./configure --silent --prefix=/usr/local && \
@@ -569,7 +592,7 @@ s = open(path).read().replace( \n\
 """    lib%s""", \n\
 """    lib%s(-liw|)""") \n\
 open(path, "w").write(s)' && \
-    meson --prefix=/usr/local _build && \
+    meson --prefix=/usr/local --buildtype=release _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -583,7 +606,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     tar -xf gdk-pixbuf.tar -C gdk-pixbuf --strip-components 1 && \
     rm -f gdk-pixbuf.tar && \
     cd gdk-pixbuf && \
-    meson --prefix=/usr/local -D gir=False -D x11=False -D builtin_loaders=all -D man=False _build && \
+    meson --prefix=/usr/local --buildtype=release -D gir=False -D x11=False -D builtin_loaders=all -D man=False _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -597,6 +620,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     tar -zxf libiconv.tar.gz -C libiconv --strip-components 1 && \
     rm -f libiconv.tar.gz && \
     cd libiconv && \
+    export CFLAGS="$CFLAGS -O2" && \
     ./configure --silent --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -714,7 +738,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     fossil open ../libspatialite.fossil && \
     # fossil checkout 7dcf78e2d0 && \
     rm -f ../libspatialite.fossil && \
-    CFLAGS='-DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true' ./configure --silent --prefix=/usr/local --disable-examples && \
+    CFLAGS="$CFLAGS -O2 -DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true" ./configure --silent --prefix=/usr/local --disable-examples && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
@@ -723,7 +747,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     git clone --depth=1 --single-branch -b 1.5.1 https://github.com/OSGeo/libgeotiff.git && \
     cd libgeotiff/libgeotiff && \
     autoreconf -ifv && \
-    CFLAGS='-DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true' ./configure --silent --prefix=/usr/local --with-zlib=yes --with-jpeg=yes && \
+    CFLAGS="$CFLAGS -DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true" ./configure --silent --prefix=/usr/local --with-zlib=yes --with-jpeg=yes && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
@@ -734,6 +758,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     tar -zxf pixman.tar.gz -C pixman --strip-components 1 && \
     rm -f pixman.tar.gz && \
     cd pixman && \
+    export CFLAGS="$CFLAGS -O2" && \
     ./configure --silent --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -769,6 +794,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     rm -f fontconfig.tar.gz && \
     cd fontconfig && \
     autoreconf -ifv && \
+    export CFLAGS="$CFLAGS -O2" && \
     ./configure --silent --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -780,13 +806,13 @@ RUN curl --retry 5 --silent https://www.cairographics.org/releases/cairo-1.16.0.
     tar -xf cairo.tar -C cairo --strip-components 1 && \
     rm -f cairo.tar && \
     cd cairo && \
-    CXXFLAGS='-Wno-implicit-fallthrough -Wno-cast-function-type' CFLAGS="$CFLAGS -Wl,--allow-multiple-definition" ./configure --silent --prefix=/usr/local && \
+    CXXFLAGS='-Wno-implicit-fallthrough -Wno-cast-function-type' CFLAGS="$CFLAGS -O2 -Wl,--allow-multiple-definition" ./configure --silent --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    git clone --depth=1 --single-branch -b 1.x-master https://github.com/team-charls/charls && \
+    git clone --depth=1 --single-branch -b 1.x-master https://github.com/team-charls/charls.git && \
     cd charls && \
     mkdir build && \
     cd build && \
@@ -810,6 +836,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     tar -xf bison.tar -C bison --strip-components 1 && \
     rm -f bison.tar && \
     cd bison && \
+    export CFLAGS="$CFLAGS -O2" && \
     ./configure --silent --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -839,7 +866,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 
 # fyba won't compile with GCC 8.2.x, so apply fix in issue #21
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    git clone --depth=1 --single-branch https://github.com/kartverket/fyba && \
+    git clone --depth=1 --single-branch https://github.com/kartverket/fyba.git && \
     cd fyba && \
     python -c $'# \n\
 import os \n\
@@ -868,18 +895,19 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     autoreconf -ifv && \
     # This library produces a lot of warnings; since we don't do anything \
     # about them, suppress them. \
-    CFLAGS='-w' ./configure --silent --prefix=/usr/local --enable-cxx --enable-optimization=high --enable-fortran && \
+    CFLAGS="$CFLAGS -w" ./configure --silent --prefix=/usr/local --enable-cxx --enable-optimization=high --enable-fortran && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --retry 5 --silent https://www.unidata.ucar.edu/downloads/netcdf/ftp/netcdf-c-4.7.0.tar.gz -L -o netcdf.tar.gz && \
+    curl --retry 5 --silent https://www.unidata.ucar.edu/downloads/netcdf/ftp/netcdf-c-4.7.1.tar.gz -L -o netcdf.tar.gz && \
     mkdir netcdf && \
     tar -zxf netcdf.tar.gz -C netcdf --strip-components 1 && \
     rm -f netcdf.tar.gz && \
     cd netcdf && \
     autoreconf -ifv && \
+    export CFLAGS="$CFLAGS -O2" && \
     ./configure --silent --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -904,6 +932,7 @@ RUN curl --retry 5 --silent https://downloads.sourceforge.net/project/ogdi/ogdi/
     rm -f ogdi.tar.gz && \
     cd ogdi && \
     export TOPDIR=`pwd` && \
+    export CFLAGS="$CFLAGS -O2" && \
     ./configure --silent --prefix=/usr/local --with-zlib --with-expat && \
     make --silent && \
     make --silent install && \
@@ -965,7 +994,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     tar -zxf jasper.tar.gz -C jasper --strip-components 1 && \
     rm -f jasper.tar.gz && \
     cd jasper && \
-    export CFLAGS="-O2 -fPIC" && \
+    export CFLAGS="$CFLAGS -O2 -fPIC" && \
     ./configure --silent --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -976,10 +1005,10 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # older one, the install command complains about the extant version, but still
 # works, so eat its errors.
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    git clone --depth=1 --single-branch -b v4.4.7 https://github.com/besser82/libxcrypt.git && \
+    git clone --depth=1 --single-branch -b v4.4.8 https://github.com/besser82/libxcrypt.git && \
     cd libxcrypt && \
     autoreconf -ifv && \
-    CFLAGS='-w' ./configure --silent --prefix=/usr/local --enable-obsolete-api --enable-hashes=all && \
+    CFLAGS="$CFLAGS -O2 -w" ./configure --silent --prefix=/usr/local --enable-obsolete-api --enable-hashes=all && \
     make --silent -j ${JOBS} && \
     (make --silent -j ${JOBS} install || true) && \
     ldconfig
@@ -988,6 +1017,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     git clone --depth=1 --single-branch -b libgta-1.0.9 https://github.com/marlam/gta-mirror.git && \
     cd gta-mirror/libgta && \
     autoreconf -ifv && \
+    export CFLAGS="$CFLAGS -O2" && \
     ./configure --silent --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -1037,7 +1067,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-9.600.6.tar.xz -L -o armadillo.tar.xz && \
+    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-9.700.2.tar.xz -L -o armadillo.tar.xz && \
     unxz armadillo.tar.xz && \
     mkdir armadillo && \
     tar -xf armadillo.tar -C armadillo --strip-components 1 && \
@@ -1131,6 +1161,7 @@ open(path, "w").write(s)' && \
     for WHL in /io/wheelhouse/GDAL*.whl; do \
       auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/; \
     done && \
+    /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v /io/wheelhouse/*.whl && \
     ls -l /io/wheelhouse
 
 # Mapnik
@@ -1223,6 +1254,7 @@ open(path, "w").write(s)' && \
     for WHL in /io/wheelhouse/mapnik*.whl; do \
       auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/ || exit 1; \
     done && \
+    /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v /io/wheelhouse/*.whl && \
     ls -l /io/wheelhouse
 
 # VIPS
@@ -1234,6 +1266,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     rm -f orc.tar.gz && \
     cd orc && \
     autoreconf -ifv && \
+    export CFLAGS="$CFLAGS -O2" && \
     ./configure --silent --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -1269,7 +1302,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     tar -xf pango.tar -C pango --strip-components 1 && \
     rm -f pango.tar && \
     cd pango && \
-    meson --prefix=/usr/local -D gir=False _build && \
+    meson --prefix=/usr/local --buildtype=release -D gir=False _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -1294,6 +1327,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     tar -xf libcroco.tar -C libcroco --strip-components 1 && \
     rm -f libcroco.tar && \
     cd libcroco && \
+    export CFLAGS="$CFLAGS -O2" && \
     ./configure --prefix=/usr/local && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
@@ -1307,7 +1341,9 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     unxz librsvg.tar.xz && \
     mkdir librsvg && \
     tar -xf librsvg.tar -C librsvg --strip-components 1 && \
+    rm -f librsvg.tar && \
     cd librsvg && \
+    export CFLAGS="$CFLAGS -O2" && \
     ./configure --silent --prefix=/usr/local --disable-rpath --disable-introspection && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
@@ -1319,7 +1355,9 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     unxz libgsf.tar.xz && \
     mkdir libgsf && \
     tar -xf libgsf.tar -C libgsf --strip-components 1 && \
+    rm -f libgsf.tar && \
     cd libgsf && \
+    export CFLAGS="$CFLAGS -O2" && \
     ./configure --silent --prefix=/usr/local --disable-introspection && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
@@ -1328,7 +1366,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # We could install more packages for better ImageMagick support:
 #  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz HEIC LQR RAQM RAW WMF
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    git clone --depth=1 --single-branch -b 7.0.8-62 https://github.com/ImageMagick/ImageMagick.git ImageMagick && \
+    git clone --depth=1 --single-branch -b 7.0.8-63 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     ./configure --prefix=/usr/local --with-modules --with-rsvg LIBS="-lrt `pkg-config --libs zlib`" && \
     make --silent -j ${JOBS} && \
@@ -1338,17 +1376,17 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # vips does't currently have PDFium, libheif
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.8.1/vips-8.8.1.tar.gz -L -o vips.tar.gz && \
+    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.8.2/vips-8.8.2.tar.gz -L -o vips.tar.gz && \
     mkdir vips && \
     tar -zxf vips.tar.gz -C vips --strip-components 1 && \
     rm -f vips.tar.gz && \
     cd vips && \
-    ./configure --prefix=/usr/local CFLAGS="`pkg-config --cflags glib-2.0`" LIBS="`pkg-config --libs glib-2.0`" && \
+    ./configure --prefix=/usr/local CFLAGS="$CFLAGS `pkg-config --cflags glib-2.0`" LIBS="`pkg-config --libs glib-2.0`" && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
 
-RUN git clone --depth=1 --single-branch https://github.com/libvips/pyvips && \
+RUN git clone --depth=1 --single-branch https://github.com/libvips/pyvips.git && \
     cd pyvips && \
     python -c $'# \n\
 path = "pyvips/__init__.py" \n\
@@ -1389,12 +1427,13 @@ open(path, "w").write(s)' && \
     for WHL in /io/wheelhouse/pyvips*.whl; do \
       auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/; \
     done && \
+    /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v /io/wheelhouse/*.whl && \
     ls -l /io/wheelhouse
 
 # 3db99248c8155a0170d7b2696b397dab7e37fb9d (7/12/2019) is the last pyproj
 # commit that supports Python 2.7.  As this ages, eventually more work may be
 # needed.
-RUN git clone --single-branch https://github.com/pyproj4/pyproj && \
+RUN git clone --single-branch https://github.com/pyproj4/pyproj.git && \
     cd pyproj && \
     python -c $'# \n\
 path = "pyproj/__init__.py" \n\
@@ -1442,6 +1481,7 @@ open(path, "w").write(data)' && \
     for WHL in /io/wheelhouse/pyproj*.whl; do \
       auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/; \
     done && \
+    /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v /io/wheelhouse/*.whl && \
     ls -l /io/wheelhouse
 
 # Install a utility to recompress wheel (zip) files to make them smaller
@@ -1456,4 +1496,5 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} install && \
     ldconfig
 
-RUN advzip /io/wheelhouse/*many*.whl -k -z
+RUN advzip /io/wheelhouse/*many*.whl -k -z && \
+    md5sum /io/wheelhouse/*many*.whl
