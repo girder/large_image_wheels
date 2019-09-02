@@ -35,6 +35,10 @@ Packages = {
         'gitsha': 'https://github.com/team-charls/charls.git',
         'branch': '1.x-master'
     },
+    'charls-release': {
+        'git': 'https://github.com/team-charls/charls.git',
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
     'cmake': {
         'git': 'https://github.com/Kitware/CMake.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
@@ -76,11 +80,19 @@ Packages = {
     'fyba': {
         'gitsha': 'https://github.com/kartverket/fyba.git',
     },
+    'fyba-release': {
+        'git': 'https://github.com/kartverket/fyba.git',
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
     'gdal': {
         'gitsha': 'https://github.com/OSGeo/gdal.git',
     },
     'gdal-pypi': {
         'pypi': 'GDAL',
+    },
+    'gdal-release': {
+        'git': 'https://github.com/OSGeo/gdal.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'gettext': {
         'filelist': 'https://ftp.gnu.org/pub/gnu/gettext/',
@@ -327,6 +339,10 @@ Packages = {
         'git': 'https://github.com/OSGeo/proj.4.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
+    'proj-datumgrid': {
+        'filelist': 'http://download.osgeo.org/proj/',
+        're': r'proj-datumgrid-([0-9]+\.[0-9]+(|\.[0-9]+)).(tgz|zip)$'
+    },
     'psutil': {
         'git': 'https://github.com/giampaolo/psutil.git',
         're': r'release-([0-9]+\.[0-9]+(|\.[0-9]+))$'
@@ -381,6 +397,10 @@ Packages = {
     },
     'ultrajson': {
         'gitsha': 'https://github.com/esnme/ultrajson.git',
+    },
+    'ultrajson-release': {
+        'git': 'https://github.com/esnme/ultrajson.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'util-linux': {
         'git': 'https://github.com/karelzak/util-linux.git',

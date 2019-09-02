@@ -113,7 +113,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # There are newer versions of this, but version 1.1.1 doesn't work with some
 # other libraries
 # We can't use make parallelism here
-RUN curl --retry 5 --silent https://www.openssl.org/source/openssl-1.0.2s.tar.gz -L -o openssl.tar.gz && \
+RUN curl --retry 5 --silent https://www.openssl.org/source/openssl-1.0.2t.tar.gz -L -o openssl.tar.gz && \
     mkdir openssl && \
     tar -zxf openssl.tar.gz -C openssl --strip-components 1 && \
     rm -f openssl.tar.gz && \
@@ -134,7 +134,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_65_3/curl-7.65.3.tar.gz -L -o curl.tar.gz && \
+    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_66_0/curl-7.66.0.tar.gz -L -o curl.tar.gz && \
     mkdir curl && \
     tar -zxf curl.tar.gz -C curl --strip-components 1 && \
     rm -f curl.tar.gz && \
@@ -166,7 +166,7 @@ RUN export PERL_MM_USE_DEFAULT=1 && \
     make install
 
 # CMake - use a precompiled binary
-RUN curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.15.2/cmake-3.15.2-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+RUN curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.15.3/cmake-3.15.3-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
     mkdir cmake && \
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz
@@ -289,7 +289,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 
 # For 12-bit jpeg
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --retry 5 --silent https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.2.tar.gz -L -o libjpeg-turbo.tar.gz && \
+    curl --retry 5 --silent https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.3.tar.gz -L -o libjpeg-turbo.tar.gz && \
     mkdir libjpeg-turbo && \
     tar -zxf libjpeg-turbo.tar.gz -C libjpeg-turbo --strip-components 1 && \
     rm -f libjpeg-turbo.tar.gz && \
@@ -526,7 +526,7 @@ RUN rm -rf glib-2 gdk-pixbuf2
 # 2.59.x and above doesn't work with openslide on centos
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.61/glib-2.61.2.tar.xz -L -o glib-2.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.62/glib-2.62.0.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
@@ -580,7 +580,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/gobject-introspection/1.61/gobject-introspection-1.61.2.tar.xz -L -o gobject-introspection.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/gobject-introspection/1.62/gobject-introspection-1.62.0.tar.xz -L -o gobject-introspection.tar.xz && \
     unxz gobject-introspection.tar.xz && \
     mkdir gobject-introspection && \
     tar -xf gobject-introspection.tar -C gobject-introspection --strip-components 1 && \
@@ -776,7 +776,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --retry 5 --silent https://github.com/libexpat/libexpat/archive/R_2_2_7.tar.gz -L -o libexpat.tar.gz && \
+    curl --retry 5 --silent https://github.com/libexpat/libexpat/archive/R_2_2_8.tar.gz -L -o libexpat.tar.gz && \
     mkdir libexpat && \
     tar -zxf libexpat.tar.gz -C libexpat --strip-components 1 && \
     rm -f libexpat.tar.gz && \
@@ -830,7 +830,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.1.tar.xz -L -o bison.tar.xz && \
+    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.4.2.tar.xz -L -o bison.tar.xz && \
     unxz bison.tar.xz && \
     mkdir bison && \
     tar -xf bison.tar -C bison --strip-components 1 && \
@@ -1005,7 +1005,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # older one, the install command complains about the extant version, but still
 # works, so eat its errors.
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    git clone --depth=1 --single-branch -b v4.4.8 https://github.com/besser82/libxcrypt.git && \
+    git clone --depth=1 --single-branch -b v4.4.10 https://github.com/besser82/libxcrypt.git && \
     cd libxcrypt && \
     autoreconf -ifv && \
     CFLAGS="$CFLAGS -O2 -w" ./configure --silent --prefix=/usr/local --enable-obsolete-api --enable-hashes=all && \
@@ -1014,7 +1014,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    git clone --depth=1 --single-branch -b libgta-1.0.9 https://github.com/marlam/gta-mirror.git && \
+    git clone --depth=1 --single-branch -b libgta-1.2.1 https://github.com/marlam/gta-mirror.git && \
     cd gta-mirror/libgta && \
     autoreconf -ifv && \
     export CFLAGS="$CFLAGS -O2" && \
@@ -1260,16 +1260,16 @@ open(path, "w").write(s)' && \
 # VIPS
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
+    export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
     curl --retry 5 --silent https://github.com/GStreamer/orc/archive/0.4.29.tar.gz -L -o orc.tar.gz && \
     mkdir orc && \
     tar -zxf orc.tar.gz -C orc --strip-components 1 && \
     rm -f orc.tar.gz && \
     cd orc && \
-    autoreconf -ifv && \
-    export CFLAGS="$CFLAGS -O2" && \
-    ./configure --silent --prefix=/usr/local && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
+    meson --prefix=/usr/local --buildtype=release _build && \
+    cd _build && \
+    ninja -j ${JOBS} && \
+    ninja -j ${JOBS} install && \
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
@@ -1296,7 +1296,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.44/pango-1.44.5.tar.xz -L -o pango.tar.xz && \
+    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.44/pango-1.44.6.tar.xz -L -o pango.tar.xz && \
     unxz pango.tar.xz && \
     mkdir pango && \
     tar -xf pango.tar -C pango --strip-components 1 && \
@@ -1337,7 +1337,7 @@ RUN curl --retry 5 --silent https://sh.rustup.rs -sSf | sh -s -- -y
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.45/librsvg-2.45.91.tar.xz -L -o librsvg.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.46/librsvg-2.46.0.tar.xz -L -o librsvg.tar.xz && \
     unxz librsvg.tar.xz && \
     mkdir librsvg && \
     tar -xf librsvg.tar -C librsvg --strip-components 1 && \
@@ -1366,7 +1366,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # We could install more packages for better ImageMagick support:
 #  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz HEIC LQR RAQM RAW WMF
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    git clone --depth=1 --single-branch -b 7.0.8-63 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.0.8-64 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     ./configure --prefix=/usr/local --with-modules --with-rsvg LIBS="-lrt `pkg-config --libs zlib`" && \
     make --silent -j ${JOBS} && \
@@ -1376,7 +1376,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
 # vips does't currently have PDFium, libheif
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.8.2/vips-8.8.2.tar.gz -L -o vips.tar.gz && \
+    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.8.3/vips-8.8.3.tar.gz -L -o vips.tar.gz && \
     mkdir vips && \
     tar -zxf vips.tar.gz -C vips --strip-components 1 && \
     rm -f vips.tar.gz && \
@@ -1471,6 +1471,11 @@ open(path, "w").write(data)' && \
     done && \
     git stash && \
     git checkout master && \
+    python -c $'# \n\
+path = "pyproj/__init__.py" \n\
+s = open(path).read() \n\
+s = s.replace("2.4.rc0", "2.4") \n\
+open(path, "w").write(s)' && \
     git stash pop && \
     # now rebuild anything that can work with master \
     for PYBIN in /opt/python/cp3*/bin/; do \

@@ -26,7 +26,7 @@ import pyproj
 print(pyproj.Proj('+init=epsg:4326 +type=crs'))
 EOF
 echo 'Download an openslide file'
-curl -L -o sample.svs https://data.kitware.com/api/v1/file/5be43d9c8d777f217991e1c2/download
+curl --retry 5 -L -o sample.svs https://data.kitware.com/api/v1/file/5be43d9c8d777f217991e1c2/download
 echo 'Use large_image to read an openslide file'
 python <<EOF
 import large_image, pprint
@@ -39,7 +39,7 @@ print(ti['tile'].size)
 print(ti['tile'][:4,:4])
 EOF
 echo 'Download a tiff file'
-curl -L -o sample.tif https://data.kitware.com/api/v1/file/5be43e398d777f217991e21f/download
+curl --retry 5 -L -o sample.tif https://data.kitware.com/api/v1/file/5be43e398d777f217991e21f/download
 echo 'Use large_image to read a tiff file'
 python <<EOF
 import large_image, pprint
@@ -52,7 +52,7 @@ print(ti['tile'].size)
 print(ti['tile'][:4,:4])
 EOF
 echo 'Download a tiff file that requires a newer openjpeg'
-curl -L -o sample_jp2.tif https://data.kitware.com/api/v1/file/5be348568d777f21798fa1d1/download
+curl --retry 5 -L -o sample_jp2.tif https://data.kitware.com/api/v1/file/5be348568d777f21798fa1d1/download
 echo 'Use large_image to read a tiff file that requires a newer openjpeg'
 python <<EOF
 import pyvips
@@ -68,7 +68,7 @@ print(ti['tile'].size)
 print(ti['tile'][:4,:4])
 EOF
 echo 'Download a geotiff file'
-curl -L -o landcover.tif https://data.kitware.com/api/v1/file/5be43e848d777f217991e270/download
+curl --retry 5 -L -o landcover.tif https://data.kitware.com/api/v1/file/5be43e848d777f217991e270/download
 echo 'Use gdal to open a geotiff file'
 python <<EOF
 import gdal, pprint
@@ -142,7 +142,7 @@ pyvips.Image.new_from_file('sample_jp2.tif').write_to_file(
   tile_width=256, tile_height=256, pyramid=True, bigtiff=True)
 EOF
 echo 'Download a somewhat bad nitf file'
-curl -L -o sample.ntf https://data.kitware.com/api/v1/file/5cee913e8d777f072bf1c47a/download
+curl --retry 5 -L -o sample.ntf https://data.kitware.com/api/v1/file/5cee913e8d777f072bf1c47a/download
 echo 'Use gdal to open a nitf file'
 python <<EOF
 import gdal, pprint
