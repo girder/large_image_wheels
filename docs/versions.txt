@@ -16,7 +16,7 @@ freetype 2.10.1
 freexl cfeba2be03
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
-gdal 16b7ba8f857e9090c9b2cf600204dd1e050814fa
+gdal f410e48bf64a8231185c6d681fdb13d1c66a54cf
 gdal-pypi 3.0.1
 gdal-release 3.0.1
 gdk-pixbuf 2.39.2
@@ -27,7 +27,7 @@ gobject-introspection 1.62.0
 harfbuzz 2.6.1
 hdf5 1.10.5
 icu4c 64.2
-imagemagick 7.0.8-65
+imagemagick 7.0.8-66
 jbigkit 2.1
 libcroco 0.6.13
 libdap 3.20.4
@@ -76,7 +76,7 @@ pkgconfig 0.29.2
 poppler 0.81.0
 postgresql 11.5
 proj-datumgrid 1.8
-proj.4 a71fce63c2d77b6709005667efd577d728b900e9
+proj.4 6ed53b7a8c635fc404f193c1a99ea73418b9b343
 proj.4-release 6.2.0
 psutil 5.6.3
 pylibmc 1.6.1
@@ -86,7 +86,7 @@ pyproj4 a764f4a8aa8a9d21c05c0e04d828516bfc04ac8d
 pyproj4-pypi 2.4.0
 python-mapnik b9fd1d91550a435f0fde609cc73471edd8c6ef40
 python-mapnik-pypi 0.1
-pyvips 92bd7d535c5dd31cd56bbd1d12c7ee4072f76113
+pyvips c2a3a856c3d6f66082e7b17366f10419105a39c6
 pyvips-pypi 2.1.8
 sqlite 3290000
 superlu 5.2.1
