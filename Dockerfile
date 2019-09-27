@@ -776,7 +776,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     ldconfig
 
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --retry 5 --silent https://github.com/libexpat/libexpat/archive/R_2_2_8.tar.gz -L -o libexpat.tar.gz && \
+    curl --retry 5 --silent https://github.com/libexpat/libexpat/archive/R_2_2_9.tar.gz -L -o libexpat.tar.gz && \
     mkdir libexpat && \
     tar -zxf libexpat.tar.gz -C libexpat --strip-components 1 && \
     rm -f libexpat.tar.gz && \
@@ -988,14 +988,15 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     make --silent -j ${JOBS} install && \
     ldconfig
 
+COPY jasper-jp2_cod.c.patch .
+
 RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; print(multiprocessing.cpu_count())"` && \
-    curl --retry 5 --silent https://download.osgeo.org/gdal/jasper-1.900.1.uuid.tar.gz -L -o jasper.tar.gz && \
-    mkdir jasper && \
-    tar -zxf jasper.tar.gz -C jasper --strip-components 1 && \
-    rm -f jasper.tar.gz && \
+    git clone --depth=1 --single-branch -b version-2.0.16 https://github.com/mdadams/jasper.git && \
     cd jasper && \
-    export CFLAGS="$CFLAGS -O2 -fPIC" && \
-    ./configure --silent --prefix=/usr/local && \
+    git apply ../jasper-jp2_cod.c.patch && \
+    mkdir _build && \
+    cd _build && \
+    cmake -DCMAKE_BUILD_TYPE=Release .. && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
@@ -1410,6 +1411,9 @@ s = open(path).read().replace( \n\
 open(path, "w").write(s)' && \
     mkdir pyvips/bin && \
     find /build/vips/tools/.libs/ -executable -type f -exec cp {} pyvips/bin/. \; && \
+    find /build/jasper/_build/src/appl/ -executable -type f -exec cp {} pyvips/bin/. \; && \
+    cp /usr/local/bin/magick pyvips/bin/. && \
+    find /build/openjpeg/_build/bin/ -executable -type f -exec cp {} pyvips/bin/. \; && \
     python -c $'# \n\
 path = "setup.py" \n\
 s = open(path).read().replace( \n\

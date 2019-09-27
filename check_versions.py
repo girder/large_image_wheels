@@ -135,6 +135,10 @@ Packages = {
         'git': 'https://github.com/ImageMagick/ImageMagick.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+)(|-[0-9]+))$'
     },
+    'jasper': {
+        'git': 'https://github.com/mdadams/jasper.git',
+        're': r'version-([0-9]+\.[0-9]+(|\.[0-9]+)(|-[0-9]+))$'
+    },
     'jbigkit': {
         'filelist': 'https://www.cl.cam.ac.uk/~mgk25/jbigkit/download/',
         're': r'jbigkit-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
