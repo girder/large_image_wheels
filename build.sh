@@ -10,7 +10,7 @@ docker build --force-rm -t manthey/large_image_wheels --build-arg SOURCE_DATE_EP
 mkdir -p docs
 ls -al docs
 # echo run -v `pwd`/docs:/opt/mount --rm --entrypoint bash manthey/large_image_wheels -c 'cp /io/wheelhouse/{GDAL,libtiff,mapnik,openslide_python,pyvips,psutil,ujson,pyproj}*many* /opt/mount/. && chown '`id -u`':'`id -g`' /opt/mount/*.whl'
-docker run -v `pwd`/docs:/opt/mount --rm --entrypoint bash manthey/large_image_wheels -c 'cp /io/wheelhouse/{GDAL,libtiff,mapnik,openslide_python,pyvips,psutil,ujson,pyproj}*many* /opt/mount/. && chown '`id -u`':'`id -g`' /opt/mount/*.whl'
+docker run -v `pwd`/docs:/opt/mount --rm --entrypoint bash manthey/large_image_wheels -c 'cp /io/wheelhouse/{GDAL,libtiff,mapnik,openslide_python,pyvips,psutil,ujson,pyproj,Glymur}*many* /opt/mount/. && chown '`id -u`':'`id -g`' /opt/mount/*.whl'
 python make_index.py
 ls -al docs
 python check_versions.py > docs/versions.txt

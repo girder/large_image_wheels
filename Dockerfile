@@ -3,10 +3,6 @@ FROM quay.io/pypa/manylinux2010_x86_64
 RUN mkdir /build
 WORKDIR /build
 
-ARG SOURCE_DATE_EPOCH
-ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-1567045200} \
-    CFLAGS=-g0
-
 # Don't build python 3.4 wheels.
 RUN rm -r /opt/python/cp34*
 
@@ -68,6 +64,10 @@ RUN yum install -y \
 # See https://lists.gnu.org/archive/html/autoconf-patches/2015-10/msg00001.html
 # for the patch logic
 RUN sed -i 's/\^AM_GNU_GETTEXT_VERSION/\^AM_GNU_GETTEXT_\(REQUIRE_\)\?VERSION/g' /usr/local/bin/autoreconf
+
+ARG SOURCE_DATE_EPOCH
+ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-1567045200} \
+    CFLAGS=-g0
 
 # Update autotools, perl, m4, pkg-config
 
@@ -350,6 +350,49 @@ open(path, "w").write(s)' && \
       "${PYBIN}/pip" wheel --no-deps . -w /io/wheelhouse; \
     done && \
     for WHL in /io/wheelhouse/libtiff*.whl; do \
+      auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/; \
+    done && \
+    /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v /io/wheelhouse/*.whl && \
+    ls -l /io/wheelhouse
+
+RUN git clone --depth=1 --single-branch -b v0.8.18 https://github.com/quintusdias/glymur.git && \
+    cd glymur && \
+    mkdir glymur/bin && \
+    find /build/openjpeg/_build/bin/ -executable -type f -name 'opj*' -exec cp {} glymur/bin/. \; && \
+    python -c $'# \n\
+import re \n\
+path = "setup.py" \n\
+s = open(path).read() \n\
+s = s.replace("\'numpy>=1.7.1\', ", "") \n\
+s = s.replace("from setuptools import setup", \n\
+"""from setuptools import setup \n\
+from distutils.core import Extension""") \n\
+s = s.replace("\'test_suite\': \'glymur.test\'", \n\
+"""\'test_suite\': \'glymur.test\', \n\
+\'ext_modules\': [Extension(\'glymur.openjpeg\', [], libraries=[\'openjp2\'])]""") \n\
+s = s.replace("\'data/*.jpx\'", "\'data/*.jpx\', \'bin/*\'") \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
+import re \n\
+path = "glymur/config.py" \n\
+s = open(path).read() \n\
+s = s.replace("    handles = tuple(handles)", \n\
+"""    handles = tuple(handles) \n\
+    if all(handle is None for handle in handles): \n\
+        libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.realpath( \n\
+            __file__)), \'.libs\')) \n\
+        if os.path.exists(libpath): \n\
+            libs = os.listdir(libpath) \n\
+            libopenjp2path = [lib for lib in libs if lib.startswith(\'libopenjp2\')][0] \n\
+            handles = (ctypes.CDLL(os.path.join(libpath, libopenjp2path)), None)""") \n\
+open(path, "w").write(s)' && \
+    # Strip libraries before building any wheels \
+    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
+    for PYBIN in /opt/python/*/bin/; do \
+      echo "${PYBIN}" && \
+      "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
+    done && \
+    for WHL in /io/wheelhouse/Glymur*.whl; do \
       auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/; \
     done && \
     /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v /io/wheelhouse/*.whl && \
@@ -996,7 +1039,7 @@ RUN export JOBS=`/opt/python/cp37-cp37m/bin/python -c "import multiprocessing; p
     git apply ../jasper-jp2_cod.c.patch && \
     mkdir _build && \
     cd _build && \
-    cmake -DCMAKE_BUILD_TYPE=Release .. && \
+    cmake -DCMAKE_C_FLAGS_RELEASE=-DJAS_DEC_DEFAULT_MAX_SAMPLES=1000000000000 -DCMAKE_BUILD_TYPE=Release .. && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
@@ -1413,7 +1456,6 @@ open(path, "w").write(s)' && \
     find /build/vips/tools/.libs/ -executable -type f -exec cp {} pyvips/bin/. \; && \
     find /build/jasper/_build/src/appl/ -executable -type f -exec cp {} pyvips/bin/. \; && \
     cp /usr/local/bin/magick pyvips/bin/. && \
-    find /build/openjpeg/_build/bin/ -executable -type f -exec cp {} pyvips/bin/. \; && \
     python -c $'# \n\
 path = "setup.py" \n\
 s = open(path).read().replace( \n\

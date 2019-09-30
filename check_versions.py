@@ -112,6 +112,13 @@ Packages = {
         'keys': lambda data: list(data[1]['glib']),
         're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$'
     },
+    'glymur': {
+        'git': 'https://github.com/quintusdias/glymur.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+)(|-[0-9]+))$'
+    },
+    'glymur-pypi': {
+        'pypi': 'glymur'
+    },
     'gobject-introspection': {
         'json': 'https://download.gnome.org/sources/gobject-introspection/cache.json',
         'keys': lambda data: list(data[1]['gobject-introspection']),

@@ -6,7 +6,7 @@ pip install --upgrade pip
 # echo 'Test installing all libraries from wheels'
 # pip install libtiff openslide_python pyvips GDAL mapnik -f /wheels
 echo 'Test installing pyvips and other dependencies from wheels via large_image'
-pip install pyvips large_image[sources] -f ${1:-/wheels}
+pip install pyvips large_image[sources] glymur -f ${1:-/wheels}
 echo 'Test basic import of libtiff'
 python -c 'import libtiff'
 echo 'Test basic import of openslide'
@@ -18,7 +18,7 @@ python -c 'import gdal'
 echo 'Test basic import of mapnik'
 python -c 'import mapnik'
 echo 'Test basic imports of all wheels'
-python -c 'import libtiff, openslide, pyvips, gdal, mapnik'
+python -c 'import libtiff, openslide, pyvips, gdal, mapnik, glymur'
 echo 'Test import of pyproj after mapnik'
 python <<EOF
 import mapnik
@@ -166,6 +166,7 @@ python -c 'import mapnik;import shapely;import pyproj;print(pyproj.Proj("+init=e
 python -c 'import pyproj;import mapnik;import shapely;print(pyproj.Proj("+init=epsg:4326 +type=crs"))'
 echo 'Test running executables'
 `python -c 'import os,sys,libtiff;sys.stdout.write(os.path.dirname(libtiff.__file__))'`/bin/tiffinfo landcover.tif
+`python -c 'import os,sys,glymur;sys.stdout.write(os.path.dirname(glymur.__file__))'`/bin/opj_dump -h | grep -q 'opj_dump utility from the OpenJPEG project'
 `python -c 'import os,sys,openslide;sys.stdout.write(os.path.dirname(openslide.__file__))'`/bin/openslide-show-properties --version
 `python -c 'import os,sys,osgeo;sys.stdout.write(os.path.dirname(osgeo.__file__))'`/bin/gdalinfo --version
 `python -c 'import os,sys,mapnik;sys.stdout.write(os.path.dirname(mapnik.__file__))'`/bin/mapnik-render --version 2>&1 | grep version
