@@ -6,7 +6,7 @@ manylinux2010 wheel files for girder/large_image dependencies.
 
 You can install from the wheels in this repository using a command like:
 ```
-pip install libtiff openslide_python pyvips gdal mapnik pyproj -f https://manthey.github.io/large_image_wheels
+pip install libtiff openslide_python pyvips gdal mapnik pyproj glymur -f https://manthey.github.io/large_image_wheels
 ```
 
 ## Building
@@ -32,6 +32,7 @@ This makes wheels for the main libraries:
 - mapnik
 - openslide_python
 - pyvips
+- Glymur
 
 Some wheels are built from master and therefore possibly newer than what is on pypi:
 - pyproj
@@ -96,7 +97,7 @@ Using `--find-links` seems like the best choice of these options.  Downstream pa
 
 - More executables
 
-  A variety of executables are bundled with the wheels in appropriate `bin` directories.  There are additional tools that could be added (for instance, OpenJPEG has some executables that could be added to the OpenSlide or the vips wheel).  If there is a specific need for an executable that hasn't been included, please create an issue for it.
+  A variety of executables are bundled with the wheels in appropriate `bin` directories.  There are additional tools that could be added.  If there is a specific need for an executable that hasn't been included, please create an issue for it.
 
 - Automate version checks
 
