@@ -10,6 +10,7 @@ containers = [
     "python:3.5",
     "python:3.6",
     "python:3.7",
+    # "python:3.8-rc",  # can't test until shapely has a wheel
     "centos/python-27-centos7",
     # "centos/python-34-centos7",
     "centos/python-35-centos7",

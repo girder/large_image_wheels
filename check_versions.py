@@ -471,12 +471,17 @@ for pkg in sorted(Packages):
         versions = [re.search(pkginfo['re'], entry).group(1) for entry in entries]
         versions.sort(key=functools.cmp_to_key(compareVersions))
     if 'subre' in pkginfo:
-        data = requests.get(pkginfo['filelist'] + pkginfo['sub'](versions[-1])).text
-        data = data.replace('<A ', '<a ').replace('HREF="', 'href="')
-        entries = [entry.split('href="', 1)[-1].split('"')[0] for entry in data.split('<a ')[1:]]
-        entries = [entry for entry in entries if re.search(pkginfo['subre'], entry)]
-        versions = [re.search(pkginfo['subre'], entry).group(1) for entry in entries]
-        versions.sort(key=functools.cmp_to_key(compareVersions))
+        pversions = versions
+        for pos in range(-1, -len(pversions) - 1, -1):
+            data = requests.get(pkginfo['filelist'] + pkginfo['sub'](pversions[pos])).text
+            data = data.replace('<A ', '<a ').replace('HREF="', 'href="')
+            entries = [entry.split('href="', 1)[-1].split('"')[0]
+                       for entry in data.split('<a ')[1:]]
+            entries = [entry for entry in entries if re.search(pkginfo['subre'], entry)]
+            versions = [re.search(pkginfo['subre'], entry).group(1) for entry in entries]
+            versions.sort(key=functools.cmp_to_key(compareVersions))
+            if len(versions):
+                break
     if versions is None and entries:
         versions = entries
     print('%s %s' % (pkg, versions[-1]))
