@@ -6,7 +6,7 @@ manylinux2010 wheel files for girder/large_image dependencies.
 
 You can install from the wheels in this repository using a command like:
 ```
-pip install libtiff openslide_python pyvips gdal mapnik pyproj glymur -f https://manthey.github.io/large_image_wheels
+pip install libtiff openslide_python pyvips gdal mapnik pyproj glymur -f https://girder.github.io/large_image_wheels
 ```
 
 ## Building
@@ -15,13 +15,13 @@ The wheels are all generated with the accompanying Dockerfile.
 
 Building the wheels:
 ```
-docker build --force-rm -t manthey/large_image_wheels .
+docker build --force-rm -t girder/large_image_wheels .
 ```
 
 To extract the wheel files from the docker image:
 ```
 mkdir -p wheels
-docker run -v wheels:/opt/mount --rm --entrypoint bash manthey/large_image_wheels -c 'cp /io/wheelhouse/*many* /opt/mount/.'
+docker run -v wheels:/opt/mount --rm --entrypoint bash girder/large_image_wheels -c 'cp /io/wheelhouse/*many* /opt/mount/.'
 ```
 
 ## Results
@@ -54,7 +54,7 @@ In order to find the built libraries, this modifies how libtiff, openslide_pytho
 This makes is more convenient to use large_image.  For instance, you can create a Jupyter Notebook with large_image.
 
 ```
-docker run --rm -p 8888:8888 jupyter/minimal-notebook bash -c 'pip install git+git://github.com/girder/large_image.git#egg=large_image[openslide,mapnik] -f https://manthey.github.io/large_image_wheels matplotlib && start.sh jupyter notebook --NotebookApp.token="" --ip=0.0.0.0'
+docker run --rm -p 8888:8888 jupyter/minimal-notebook bash -c 'pip install git+git://github.com/girder/large_image.git#egg=large_image[openslide,mapnik] -f https://girder.github.io/large_image_wheels matplotlib && start.sh jupyter notebook --NotebookApp.token="" --ip=0.0.0.0'
 ```
 
 In the Jupyter interface, create a new notebook.  In the first cell run:
@@ -79,7 +79,7 @@ plt.imshow(tile_info['tile'])
 
 ## Rationale
 
-It is an inconvenience to have to add `--find-links https://manthey.github.io/large_image_wheels` to pip install commands to use these wheels.  There are alternatives: (a) convince upstream repositories to publish wheels, or (b) publish these under unique names (e.g., large_image_dependency_gdal).  None of these are perfect solutions.  
+It is an inconvenience to have to add `--find-links https://girder.github.io/large_image_wheels` to pip install commands to use these wheels.  There are alternatives: (a) convince upstream repositories to publish wheels, or (b) publish these under unique names (e.g., large_image_dependency_gdal).  None of these are perfect solutions.  
 
 Using `--find-links` requires modifying pip install commands.  Further, if a newer non-wheel version of a package is published on pypi, it will be used in favor of the wheel unless the explicit version is used.  Since this repository won't maintain old versions, this means that the wheels must be rebuilt as soon as new versions are released.
 
