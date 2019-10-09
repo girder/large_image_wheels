@@ -1,5 +1,5 @@
 advancecomp 2.1
-armadillo 9.700.3
+armadillo 9.800.1
 bison 3.4.2
 boost 1.71.0
 cairo 1.16.0
@@ -16,11 +16,11 @@ freetype 2.10.1
 freexl cfeba2be03
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
-gdal f8f9716cdf545193fd42be1e4edf3f930792427d
+gdal 09d59cd7a5a56dd170044a0d17998c3f27ee34e2
 gdal-pypi 3.0.1
 gdal-release 3.0.1
-gdk-pixbuf 2.39.2
-geos 3.7.3
+gdk-pixbuf 2.40.0
+geos 3.8.0
 gettext 0.20.1
 glib 2.63.0
 glymur 0.8.18
@@ -53,7 +53,7 @@ libxcrypt 4.4.10
 libxml2 2.9.9
 lz4 1.9.2
 m4 1.4.18
-manylinux2010 008da6d1507994d70e135f8a63cdb9356f7df133df44d6ddad4026df888ded91
+manylinux2010 aace73835131724f5ef71e84c90db6e402bd22d81c62cd37ddd1752fa444dfa1
 mapnik fdf60044c3042c1de94f6b4b854fed2830d79b37
 mapnik-release 3.0.22
 mysql 5.7.27
@@ -79,7 +79,7 @@ pkgconfig 0.29.2
 poppler 0.81.0
 postgresql 12.0
 proj-datumgrid 1.8
-proj.4 a6dccb3b8fbc86bef82e389f7d9ef41a5127ca66
+proj.4 2d25faba62c698362597a3537a3fe5c3fc7e781a
 proj.4-release 6.2.0
 psutil 5.6.3
 pylibmc 1.6.1
@@ -91,7 +91,7 @@ python-mapnik b9fd1d91550a435f0fde609cc73471edd8c6ef40
 python-mapnik-pypi 0.1
 pyvips e8b3ce122a4c03150b3b6a5c4d2b4cd83dd9a38b
 pyvips-pypi 2.1.8
-sqlite 3300000
+sqlite 3300100
 superlu 5.2.1
 tcl 8.6.9
 tk 8.6.9.1
