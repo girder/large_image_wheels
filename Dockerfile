@@ -117,7 +117,7 @@ RUN curl --retry 5 --silent https://www.openssl.org/source/openssl-1.0.2t.tar.gz
     cd openssl && \
     ./config --prefix=/usr/local --openssldir=/usr/local/ssl shared zlib && \
     make --silent && \
-    # using "all install_sw" rather than "install" to avoid installing docs
+    # using "all install_sw" rather than "install" to avoid installing docs \
     make --silent all install_sw && \
     ldconfig
 
@@ -911,7 +911,7 @@ RUN curl --retry 5 --silent https://www.unidata.ucar.edu/downloads/netcdf/ftp/ne
     make --silent -j `nproc` install && \
     ldconfig
 
-RUN curl --retry 5 --silent https://dev.mysql.com/get/Downloads/MySQL-5.7/mysql-boost-5.7.27.tar.gz -L -o mysql.tar.gz && \
+RUN curl --retry 5 --silent https://dev.mysql.com/get/Downloads/MySQL-5.7/mysql-boost-5.7.28.tar.gz -L -o mysql.tar.gz && \
     mkdir mysql && \
     tar -zxf mysql.tar.gz -C mysql --strip-components 1 && \
     rm -f mysql.tar.gz && \
@@ -1139,12 +1139,22 @@ open(path, "w").write(s)' && \
     cp samples/ogr2ogr.py scripts/ogr2ogr.py && \
     # Strip libraries before building any wheels \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
+    pids=() && \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
-      "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
+      "${PYBIN}/pip" wheel . -w /io/wheelhouse & \
+      pids+=($!) ; \
     done && \
+    for pid in "${pids[@]}"; do \
+      wait "$pid"; \
+    done && \
+    pids=() && \
     for WHL in /io/wheelhouse/GDAL*.whl; do \
-      auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/; \
+      auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/ & \
+      pids+=($!) ; \
+    done && \
+    for pid in "${pids[@]}"; do \
+      wait "$pid"; \
     done && \
     /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v /io/wheelhouse/*.whl && \
     ls -l /io/wheelhouse
@@ -1227,14 +1237,22 @@ def bootstrap_env():""") \n\
 open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
+    # make wheels in parallel \
+    pids=() && \
     for PYBIN in /opt/python/*/bin/; do \
-      echo "${PYBIN}" && \
-      export BOOST_PYTHON_LIB=`"${PYBIN}/python" -c "import sys;sys.stdout.write('boost_python'+str(sys.version_info.major)+str(sys.version_info.minor))"` && \
-      echo "${BOOST_PYTHON_LIB}" && \
-      "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
+      BOOST_PYTHON_LIB=`"${PYBIN}/python" -c "import sys;sys.stdout.write('boost_python'+str(sys.version_info.major)+str(sys.version_info.minor))"` "${PYBIN}/pip" wheel . -w /io/wheelhouse & \
+      pids+=($!) ; \
     done && \
+    for pid in "${pids[@]}"; do \
+      wait "$pid"; \
+    done && \
+    pids=() && \
     for WHL in /io/wheelhouse/mapnik*.whl; do \
-      auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/ || exit 1; \
+      auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/ || exit 1 & \
+      pids+=($!) ; \
+    done && \
+    for pid in "${pids[@]}"; do \
+      wait "$pid"; \
     done && \
     /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v /io/wheelhouse/*.whl && \
     ls -l /io/wheelhouse
@@ -1312,7 +1330,7 @@ RUN curl --retry 5 --silent https://ftp.gnome.org/pub/GNOME/sources/libcroco/0.6
 RUN curl --retry 5 --silent https://sh.rustup.rs -sSf | sh -s -- -y
 
 RUN export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.46/librsvg-2.46.1.tar.xz -L -o librsvg.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.46/librsvg-2.46.2.tar.xz -L -o librsvg.tar.xz && \
     unxz librsvg.tar.xz && \
     mkdir librsvg && \
     tar -xf librsvg.tar -C librsvg --strip-components 1 && \
@@ -1444,7 +1462,7 @@ open(path, "w").write(data)' && \
       "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
     done && \
     git stash && \
-    git checkout master && \
+    git checkout v2.4.0rel && \
     python -c $'# \n\
 path = "pyproj/__init__.py" \n\
 s = open(path).read() \n\
@@ -1480,5 +1498,5 @@ RUN curl --retry 5 --silent https://github.com/amadvance/advancecomp/releases/do
     make --silent -j `nproc` install && \
     ldconfig
 
-RUN advzip /io/wheelhouse/*many*.whl -k -z && \
+RUN find /io/wheelhouse/ -name '*many*.whl' -print0 | xargs -n 1 -0 -P `nproc` advzip -k -z && \
     md5sum /io/wheelhouse/*many*.whl
