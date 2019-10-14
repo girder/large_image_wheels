@@ -16,7 +16,7 @@ freetype 2.10.1
 freexl cfeba2be03
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
-gdal 09d59cd7a5a56dd170044a0d17998c3f27ee34e2
+gdal 0cb59e2ea9691cf186467a9ccc12220b89c90538
 gdal-pypi 3.0.1
 gdal-release 3.0.1
 gdk-pixbuf 2.40.0
@@ -44,7 +44,7 @@ libimagequant 2.12.5
 libjpeg-turbo 2.0.3
 libpng 1.6.37
 librasterlite2 91dd3f465a
-librsvg 2.46.1
+librsvg 2.46.2
 libspatialite 7855a0c6a7
 libtiff 4.0.10
 libvips 8.8.3
@@ -56,7 +56,7 @@ m4 1.4.18
 manylinux2010 aace73835131724f5ef71e84c90db6e402bd22d81c62cd37ddd1752fa444dfa1
 mapnik fdf60044c3042c1de94f6b4b854fed2830d79b37
 mapnik-release 3.0.22
-mysql 5.7.27
+mysql 5.7.28
 netcdf 4.7.1
 nifti 2_0_0
 ninja 1.9.0
@@ -79,14 +79,14 @@ pkgconfig 0.29.2
 poppler 0.81.0
 postgresql 12.0
 proj-datumgrid 1.8
-proj.4 2d25faba62c698362597a3537a3fe5c3fc7e781a
+proj.4 368b96f05de390ecf7e904a4a9b24ee4b8c8056b
 proj.4-release 6.2.0
 psutil 5.6.3
 pylibmc 1.6.1
 pylibtiff ad644a2f632c90b50486a2d4148446d3562f5ce6
 pylibtiff-pypi 0.4.2
-pyproj4 4fbbec45780e4a5b60377d9f91fc58024fc4dde8
 pyproj4-pypi 2.4.0
+pyproj4-release 2.4.0
 python-mapnik b9fd1d91550a435f0fde609cc73471edd8c6ef40
 python-mapnik-pypi 0.1
 pyvips e8b3ce122a4c03150b3b6a5c4d2b4cd83dd9a38b

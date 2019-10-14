@@ -368,8 +368,12 @@ Packages = {
     'pylibtiff-pypi': {
         'pypi': 'libtiff',
     },
-    'pyproj4': {
-        'gitsha': 'https://github.com/pyproj4/pyproj.git',
+    # 'pyproj4': {
+    #     'gitsha': 'https://github.com/pyproj4/pyproj.git',
+    # },
+    'pyproj4-release': {
+        'git': 'https://github.com/pyproj4/pyproj.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))rel$'
     },
     'pyproj4-pypi': {
         'pypi': 'pyproj',
