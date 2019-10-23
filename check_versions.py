@@ -124,15 +124,21 @@ Packages = {
         'keys': lambda data: list(data[1]['gobject-introspection']),
         're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$'
     },
+    'harfbuzz': {
+        'filelist': 'https://www.freedesktop.org/software/harfbuzz/release/',
+        're': r'harfbuzz-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+    },
+    'hdf4': {
+        'filelist': 'https://support.hdfgroup.org/ftp/HDF/releases/',
+        're': r'HDF([0-9]+\.[0-9]+(|\.[0-9]+))\/$',
+        'sub': lambda v: 'HDF' + v + '/src',
+        'subre': r'hdf-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+    },
     'hdf5': {
         'filelist': 'https://support.hdfgroup.org/ftp/HDF5/releases/',
         're': r'hdf5-([0-9]+\.[0-9]+(|\.[0-9]+))\/$',
         'sub': lambda v: 'hdf5-' + v,
         'subre': r'hdf5-([0-9]+\.[0-9]+(|\.[0-9]+))\/'
-    },
-    'harfbuzz': {
-        'filelist': 'https://www.freedesktop.org/software/harfbuzz/release/',
-        're': r'harfbuzz-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
     'icu4c': {
         'filelist': 'http://download.icu-project.org/files/icu4c/',
@@ -159,6 +165,10 @@ Packages = {
         'filelist': 'https://www.opendap.org/pub/source/',
         're': r'libdap-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
+    'libde265': {
+        'git': 'https://github.com/strukturag/libde265.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
     'libexpat': {
         'git': 'https://github.com/libexpat/libexpat.git',
         're': r'R_([0-9]+_[0-9]+(|_[0-9]+))$'
@@ -179,6 +189,10 @@ Packages = {
     'libgta': {
         'git': 'https://github.com/marlam/gta-mirror.git',
         're': r'libgta-([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
+    'libheif': {
+        'git': 'https://github.com/strukturag/libheif.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'libiconv': {
         'filelist': 'https://ftp.gnu.org/pub/gnu/libiconv/',
@@ -257,8 +271,8 @@ Packages = {
         're': r'mysql-boost-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
     'netcdf': {
-        'filelist': 'https://www.unidata.ucar.edu/downloads/netcdf/',
-        're': r'netcdf-c-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+        'git': 'https://github.com/Unidata/netcdf-c.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'nifti': {
         'filelist': 'https://sourceforge.net/projects/niftilib/files/nifticlib/',
@@ -334,6 +348,10 @@ Packages = {
     'pkgconfig': {
         'filelist': 'https://pkg-config.freedesktop.org/releases/',
         're': r'pkg-config-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+    },
+    'pnetcdf': {
+        'git': 'https://github.com/Parallel-NetCDF/PnetCDF.git',
+        're': r'checkpoint\.([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'poppler': {
         'filelist': 'https://poppler.freedesktop.org/',

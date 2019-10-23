@@ -159,14 +159,14 @@ RUN export JOBS=`nproc` && \
 RUN export PERL_MM_USE_DEFAULT=1 && \
     export PERL_EXTUTILS_AUTOINSTALL="--defaultdeps" && \
     /usr/localperl/bin/cpan -T ExtUtils::MakeMaker Archive::Cpio Archive::Zip && \
-    git clone --single-branch --depth 1 -b 0.042 https://github.com/esoule/strip-nondeterminism.git && \
+    git clone --depth 1 --single-branch -b 0.042 https://github.com/esoule/strip-nondeterminism.git && \
     cd strip-nondeterminism && \
     /usr/localperl/bin/perl Makefile.PL && \
     make && \
     make install
 
 # CMake - use a precompiled binary
-RUN curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.15.4/cmake-3.15.4-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+RUN curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.15.5/cmake-3.15.5-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
     mkdir cmake && \
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz
@@ -312,8 +312,9 @@ RUN export JOBS=`nproc` && \
     tar -zxf libjpeg-turbo.tar.gz -C libjpeg-turbo --strip-components 1 && \
     rm -f libjpeg-turbo.tar.gz && \
     cd libjpeg-turbo && \
-    cmake -DWITH_12BIT=1 -DCMAKE_BUILD_TYPE=Release . && \
+    cmake -DWITH_12BIT=1 -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local . && \
     make --silent -j ${JOBS}
+    # don't install this; we reference it explicitly
 
 RUN export JOBS=`nproc` && \
     curl --retry 5 --silent https://download.osgeo.org/libtiff/tiff-4.0.10.tar.gz -L -o tiff.tar.gz && \
@@ -725,12 +726,8 @@ RUN export JOBS=`nproc` && \
 #   (https://github.com/mapnik/mapnik/issues/4041)
 RUN export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b boost-1.69.0 --quiet --recurse-submodules -j ${JOBS} https://github.com/boostorg/boost.git && \
-    # curl --retry 5 --silent https://downloads.sourceforge.net/project/boost/boost/1.69.0/boost_1_69_0.tar.gz -L -o boost.tar.gz && \
-    # mkdir boost && \
-    # tar -zxf boost.tar.gz -C boost --strip-components 1 && \
-    # rm -f boost.tar.gz && \
     cd boost && \
-    rm -rf .git && \
+    find . -name '.git' -exec rm -rf {} \+ && \
     echo "" > tools/build/src/user-config.jam && \
     # echo "using mpi ;" >> tools/build/src/user-config.jam && \
     echo "using python : 2.7 : /opt/python/cp27-cp27mu/bin/python : /opt/python/cp27-cp27mu/include/python2.7 : /opt/python/cp27-cp27mu/lib ; " >> tools/build/src/user-config.jam && \
@@ -958,28 +955,52 @@ open(path, "w").write(data)' && \
 
 # Build items necessary for netcdf support
 RUN export JOBS=`nproc` && \
-    curl --retry 5 --silent https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.5/src/hdf5-1.10.5.tar.gz -L -o hdf5.tar.gz && \
-    mkdir hdf5 && \
-    tar -zxf hdf5.tar.gz -C hdf5 --strip-components 1 && \
-    rm -f hdf5.tar.gz && \
-    cd hdf5 && \
-    autoreconf -ifv && \
-    # This library produces a lot of warnings; since we don't do anything \
-    # about them, suppress them. \
-    CFLAGS="$CFLAGS -w" ./configure --silent --prefix=/usr/local --enable-cxx --enable-optimization=high --enable-fortran && \
+    curl --retry 5 --silent https://support.hdfgroup.org/ftp/HDF/releases/HDF4.2.14/src/hdf-4.2.14.tar.gz -L -o hdf4.tar.gz && \
+    mkdir hdf4 && \
+    tar -zxf hdf4.tar.gz -C hdf4 --strip-components 1 && \
+    rm -f hdf4.tar.gz && \
+    cd hdf4 && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DHDF4_BUILD_EXAMPLE=OFF -DHDF4_BUILD_FORTRAN=OFF -DHDF4_ENABLE_NETCDF=OFF -DHDF4_ENABLE_PARALLEL=ON -DHDF4_ENABLE_Z_LIB_SUPPORT=ON -DHDF4_DISABLE_COMPILER_WARNINGS=ON -DCMAKE_INSTALL_PREFIX=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
 
 RUN export JOBS=`nproc` && \
-    curl --retry 5 --silent https://www.unidata.ucar.edu/downloads/netcdf/ftp/netcdf-c-4.7.1.tar.gz -L -o netcdf.tar.gz && \
-    mkdir netcdf && \
-    tar -zxf netcdf.tar.gz -C netcdf --strip-components 1 && \
-    rm -f netcdf.tar.gz && \
-    cd netcdf && \
+    curl --retry 5 --silent https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.5/src/hdf5-1.10.5.tar.gz -L -o hdf5.tar.gz && \
+    mkdir hdf5 && \
+    tar -zxf hdf5.tar.gz -C hdf5 --strip-components 1 && \
+    rm -f hdf5.tar.gz && \
+    cd hdf5 && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DHDF5_BUILD_EXAMPLE=OFF -DHDF5_BUILD_FORTRAN=OFF -DHDF5_ENABLE_PARALLEL=ON -DHDF5_ENABLE_Z_LIB_SUPPORT=ON -DHDF5_BUILD_GENERATORS=ON -DHDF5_ENABLE_DIRECT_VFD=ON -DHDF5_BUILD_CPP_LIB=OFF -DHDF5_DISABLE_COMPILER_WARNINGS=ON -DCMAKE_INSTALL_PREFIX=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    # Delete binaries used for testing to keep the docker image smaller \
+    find bin -type f ! -name 'lib*' -delete
+
+RUN export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b checkpoint.1.12.0 https://github.com/Parallel-NetCDF/PnetCDF && \
+    cd PnetCDF && \
     autoreconf -ifv && \
-    export CFLAGS="$CFLAGS -O2" && \
+    export CFLAGS="$CFLAGS -O2 -fPIC" && \
     ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig
+
+RUN export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b v4.7.2 https://github.com/Unidata/netcdf-c && \
+    cd netcdf-c && \
+    # autoreconf -ifv && \
+    # export CFLAGS="$CFLAGS -O2" && \
+    # ./configure --silent --prefix=/usr/local && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DENABLE_EXAMPLES=OFF -DENABLE_PARALLEL4=ON -DUSE_PARALLEL=ON -DUSE_PARALLEL4=ON -DENABLE_HDF4=ON -DENABLE_PNETCDF=ON -DENABLE_BYTERANGE=ON -DENABLE_JNA=ON -DCMAKE_SHARED_LINKER_FLAGS=-ljpeg -DENABLE_TESTS=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
@@ -989,8 +1010,9 @@ RUN export JOBS=`nproc` && \
     mkdir mysql && \
     tar -zxf mysql.tar.gz -C mysql --strip-components 1 && \
     rm -f mysql.tar.gz && \
-    mkdir mysql/build && \
-    cd mysql/build && \
+    cd mysql && \
+    mkdir _build && \
+    cd _build && \
     CXXFLAGS="-Wno-deprecated-declarations" cmake -DBUILD_CONFIG=mysql_release -DIGNORE_AIO_CHECK=ON -DBUILD_SHARED_LIBS=ON -DWITH_BOOST=../boost/boost_1_59_0 -DWITH_SSL=/usr/local -DWITH_ZLIB=system -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DWITH_RAPID=OFF -DCMAKE_BUILD_TYPE=Release -DWITH_EMBEDDED_SERVER=OFF -DINSTALL_MYSQLTESTDIR="" .. && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -1024,7 +1046,7 @@ RUN export JOBS=`nproc` && \
 
 RUN export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-0.81.0.tar.xz -L -o poppler.tar.xz && \
+    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-0.82.0.tar.xz -L -o poppler.tar.xz && \
     unxz poppler.tar.xz && \
     mkdir poppler && \
     tar -xf poppler.tar -C poppler --strip-components 1 && \
@@ -1253,7 +1275,7 @@ open(path, "w").write(s)' && \
 # Mapnik
 
 RUN export JOBS=`nproc` && \
-    curl --retry 5 --silent https://www.freedesktop.org/software/harfbuzz/release/harfbuzz-2.6.1.tar.xz -L -o harfbuzz.tar.xz && \
+    curl --retry 5 --silent https://www.freedesktop.org/software/harfbuzz/release/harfbuzz-2.6.4.tar.xz -L -o harfbuzz.tar.xz && \
     unxz harfbuzz.tar.xz && \
     mkdir harfbuzz && \
     tar -xf harfbuzz.tar -C harfbuzz --strip-components 1 && \
@@ -1267,8 +1289,9 @@ RUN export JOBS=`nproc` && \
 # scons needs to have a modern python in the path, but scons in the included
 # python 3.7 doesn't support parallel builds, so use python 3.6.
 RUN export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
+    git clone --depth=10 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
     cd mapnik && \
+    git checkout fdf60044c3042c1de94f6b4b854fed2830d79b37 && \
     rm -rf .git && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
     python scons/scons.py configure JOBS=`nproc` \
@@ -1293,7 +1316,7 @@ RUN export JOBS=`nproc` && \
     ldconfig
 
 RUN export JOBS=`nproc` && \
-    git clone --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/python-mapnik.git && \
+    git clone --depth=1 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/python-mapnik.git && \
     cd python-mapnik && \
     rm -rf .git && \
     # Copy the mapnik input sources and fonts to the python path and add them \
@@ -1391,7 +1414,7 @@ RUN export JOBS=`nproc` && \
 
 RUN export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.44/pango-1.44.6.tar.xz -L -o pango.tar.xz && \
+    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.44/pango-1.44.7.tar.xz -L -o pango.tar.xz && \
     unxz pango.tar.xz && \
     mkdir pango && \
     tar -xf pango.tar -C pango --strip-components 1 && \
@@ -1405,7 +1428,7 @@ RUN export JOBS=`nproc` && \
 
 RUN export JOBS=`nproc` && \
     rm -rf libxml2* && \
-    curl --retry 5 --silent http://xmlsoft.org/sources/libxml2-2.9.9.tar.gz -L -o libxml2.tar.gz && \
+    curl --retry 5 --silent http://xmlsoft.org/sources/libxml2-2.9.10.tar.gz -L -o libxml2.tar.gz && \
     mkdir libxml2 && \
     tar -zxf libxml2.tar.gz -C libxml2 --strip-components 1 && \
     rm -f libxml2.tar.gz && \
@@ -1428,17 +1451,36 @@ RUN export JOBS=`nproc` && \
     make -j ${JOBS} install && \
     ldconfig
 
+RUN export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b v1.0.3 https://github.com/strukturag/libde265.git && \
+    cd libde265 && \
+    ./autogen.sh && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig
+
+RUN export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b v1.5.1 https://github.com/strukturag/libheif.git && \
+    cd libheif && \
+    ./autogen.sh && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig
+
 RUN curl --retry 5 --silent https://sh.rustup.rs -sSf | sh -s -- -y
 
 RUN export JOBS=`nproc` && \
     export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.46/librsvg-2.46.2.tar.xz -L -o librsvg.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.47/librsvg-2.47.0.tar.xz -L -o librsvg.tar.xz && \
     unxz librsvg.tar.xz && \
     mkdir librsvg && \
     tar -xf librsvg.tar -C librsvg --strip-components 1 && \
     rm -f librsvg.tar && \
     cd librsvg && \
     export CFLAGS="$CFLAGS -O2" && \
+    export RUSTFLAGS="$RUSTFLAGS -O" && \
     ./configure --silent --prefix=/usr/local --disable-rpath --disable-introspection && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
@@ -1461,16 +1503,16 @@ RUN export JOBS=`nproc` && \
     ldconfig
 
 # We could install more packages for better ImageMagick support:
-#  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz HEIC LQR RAQM RAW WMF
+#  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz JXL LQR RAQM RAW WMF
 RUN export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.0.8-68 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.0.9-1 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     ./configure --prefix=/usr/local --with-modules --with-rsvg LIBS="-lrt `pkg-config --libs zlib`" && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig
 
-# vips does't currently have PDFium, libheif
+# vips doesn't have PDFium (it uses poppler instead)
 RUN export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
     curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.8.3/vips-8.8.3.tar.gz -L -o vips.tar.gz && \
@@ -1520,12 +1562,22 @@ s = open(path).read().replace( \n\
 open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
+    pids=() && \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
-      "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
+      "${PYBIN}/pip" wheel . -w /io/wheelhouse & \
+      pids+=($!) ; \
     done && \
+    for pid in "${pids[@]}"; do \
+      wait "$pid"; \
+    done && \
+    pids=() && \
     for WHL in /io/wheelhouse/pyvips*.whl; do \
-      auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/; \
+      auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/ & \
+      pids+=($!) ; \
+    done && \
+    for pid in "${pids[@]}"; do \
+      wait "$pid"; \
     done && \
     /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v /io/wheelhouse/pyvips*many*.whl && \
     find /io/wheelhouse/ -name 'pyvips*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
@@ -1566,10 +1618,21 @@ open(path, "w").write(data)' && \
     git stash && \
     git checkout 3db99248c8155a0170d7b2696b397dab7e37fb9d && \
     git stash pop && \
+    pids=() && \
+    for PYBIN in /opt/python/*/bin/; do \
+      "${PYBIN}/pip" install --no-cache-dir cython & \
+      pids+=($!) ; \
+    done && \
+    for pid in "${pids[@]}"; do \
+      wait "$pid"; \
+    done && \
+    pids=() && \
     for PYBIN in /opt/python/cp2*/bin/; do \
-      echo "${PYBIN}" && \
-      "${PYBIN}/pip" install --no-cache-dir cython && \
-      "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
+      "${PYBIN}/pip" wheel . -w /io/wheelhouse & \
+      pids+=($!) ; \
+    done && \
+    for pid in "${pids[@]}"; do \
+      wait "$pid"; \
     done && \
     git stash && \
     git checkout v2.4.0rel && \
@@ -1586,13 +1649,21 @@ os.environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj")) \n\
 open(path, "w").write(s)' && \
     git stash pop && \
     # now rebuild anything that can work with master \
+    pids=() && \
     for PYBIN in /opt/python/cp3*/bin/; do \
-      echo "${PYBIN}" && \
-      "${PYBIN}/pip" install --no-cache-dir cython && \
-      "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
+      "${PYBIN}/pip" wheel . -w /io/wheelhouse & \
+      pids+=($!) ; \
     done && \
+    for pid in "${pids[@]}"; do \
+      wait "$pid"; \
+    done && \
+    pids=() && \
     for WHL in /io/wheelhouse/pyproj*.whl; do \
-      auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/; \
+      auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/ & \
+      pids+=($!) ; \
+    done && \
+    for pid in "${pids[@]}"; do \
+      wait "$pid"; \
     done && \
     /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v /io/wheelhouse/pyproj*many*.whl && \
     find /io/wheelhouse/ -name 'pyproj*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
