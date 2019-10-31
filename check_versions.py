@@ -266,6 +266,12 @@ Packages = {
         'git': 'https://github.com/mapnik/mapnik.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
+    # MrSID's listing of versions is behind an agreement page, which prevents
+    # easily checking the version.
+    # 'mrsid': {
+    #     'filelist': 'https://www.extensis.com/support/developers',
+    #     're': r'MrSID_DSDK-([0-9]+\.[0-9]+(|\.[0-9]+(|\.[0-9]+)))-rhel6.x86-64.gcc531.tar.gz$'
+    # },
     'mysql': {
         'filelist': 'https://dev.mysql.com/downloads/mysql/5.7.html?tpl=version&os=src&version=5.7',
         're': r'mysql-boost-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
@@ -295,6 +301,7 @@ Packages = {
         'git': 'https://github.com/uclouvain/openjpeg.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
+    # openmpi 4.0 doesn't work with Pnetcdf
     'openmpi': {
         'filelist': 'https://www.open-mpi.org/software/ompi/v3.1/',
         're': r'openmpi-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'

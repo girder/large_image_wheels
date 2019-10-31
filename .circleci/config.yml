@@ -26,6 +26,9 @@ jobs:
       - store_artifacts:
           path: ~/project/docs
       - run:
+          name: Show build times
+          command: export TERM=xterm && docker run --rm --entrypoint bash girder/large_image_wheels -c 'cat log.txt'
+      - run:
           name: Test the Docker
           command: python test_via_docker.py
       # Upload artifacts to github (or elsewhere)
