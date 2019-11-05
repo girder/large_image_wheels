@@ -6,7 +6,7 @@ cairo 1.16.0
 charls 25160a42fb62e71e4b0ce081f5cb3f8bb73938b5
 charls-release 2.0.0
 cmake 3.15.5
-curl 7_66_0
+curl 7_67_0
 epsilon 0.9.2
 fitsio 3450
 flex 2.6.4
@@ -16,7 +16,7 @@ freetype 2.10.1
 freexl cfeba2be03
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
-gdal cfc46bc33f2c0ee18b16b4fde1598e64ec162193
+gdal d82644ebd876437ba7d65989b1ae52f9af042130
 gdal-pypi 3.0.2
 gdal-release 3.0.2
 gdk-pixbuf 2.40.0
@@ -57,7 +57,7 @@ libxml2 2.9.10
 lz4 1.9.2
 m4 1.4.18
 manylinux2010 191e8bc35089ce4ceda48224289b7475322ee6853faa4bf7d4b8e0d9c3b0358e
-mapnik 0842d0af6fb766e1dc242584b0035af3a6bc3d74
+mapnik e82c6e65fb351174df895d15ba15bf7010c59cec
 mapnik-release 3.0.22
 mysql 5.7.28
 netcdf 4.7.2
@@ -85,13 +85,13 @@ postgresql 12.0
 proj-datumgrid 1.8
 proj.4 c7a1791d4680a1fd69ea3a16d46fd6f6d3a9f009
 proj.4-release 6.2.1
-psutil 5.6.4
+psutil 5.6.5
 pylibmc 1.6.1
 pylibtiff ad644a2f632c90b50486a2d4148446d3562f5ce6
 pylibtiff-pypi 0.4.2
-pyproj4-pypi 2.4.0
-pyproj4-release 2.4.0
-python-mapnik b9fd1d91550a435f0fde609cc73471edd8c6ef40
+pyproj4-pypi 2.4.1
+pyproj4-release 2.4.1
+python-mapnik 708290aff1ecbc2de080cab5588019caea1a02e1
 python-mapnik-pypi 0.1
 pyvips e8b3ce122a4c03150b3b6a5c4d2b4cd83dd9a38b
 pyvips-pypi 2.1.8

@@ -54,6 +54,8 @@ RUN echo "yum install `date`" >> /build/log.txt && \
     # for epsilon \
     bzip2-devel \
     popt-devel \
+    # for MrSID
+    tbb-devel \
     # For ImageMagick \
     fftw3-devel \
     libexif-devel \
@@ -151,7 +153,7 @@ RUN echo "libssh2 `date`" >> /build/log.txt && \
 
 RUN echo "curl `date`" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_66_0/curl-7.66.0.tar.gz -L -o curl.tar.gz && \
+    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_67_0/curl-7.67.0.tar.gz -L -o curl.tar.gz && \
     mkdir curl && \
     tar -zxf curl.tar.gz -C curl --strip-components 1 && \
     rm -f curl.tar.gz && \
@@ -180,7 +182,7 @@ RUN echo "strip-nondeterminism `date`" >> /build/log.txt && \
     export PERL_MM_USE_DEFAULT=1 && \
     export PERL_EXTUTILS_AUTOINSTALL="--defaultdeps" && \
     /usr/localperl/bin/cpan -T ExtUtils::MakeMaker Archive::Cpio Archive::Zip && \
-    git clone --depth 1 --single-branch -b 0.042 https://github.com/esoule/strip-nondeterminism.git && \
+    git clone --depth=1 --single-branch -b 0.042 https://github.com/esoule/strip-nondeterminism.git && \
     cd strip-nondeterminism && \
     /usr/localperl/bin/perl Makefile.PL && \
     make && \
@@ -214,18 +216,13 @@ RUN echo "advancecomp `date`" >> /build/log.txt && \
 
 RUN echo "psutil `date`" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b release-5.6.4 https://github.com/giampaolo/psutil.git && \
+    git clone --depth=1 --single-branch -b release-5.6.5 https://github.com/giampaolo/psutil.git && \
     cd psutil && \
     # Strip libraries before building any wheels \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
-    for PYBIN in /opt/python/*/bin/; do \
-      echo "${PYBIN}" && \
-      "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
-    done && \
-    for WHL in /io/wheelhouse/psutil*.whl; do \
-      auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/; \
-    done && \
-    /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v /io/wheelhouse/psutil*many*.whl && \
+    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" wheel . -w /io/wheelhouse' && \
+    find /io/wheelhouse/ -name 'psutil*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
     echo "psutil `date`" >> /build/log.txt
@@ -236,14 +233,9 @@ RUN echo "ultrajson `date`" >> /build/log.txt && \
     cd ultrajson && \
     # Strip libraries before building any wheels \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
-    for PYBIN in /opt/python/*/bin/; do \
-      echo "${PYBIN}" && \
-      "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
-    done && \
-    for WHL in /io/wheelhouse/ujson*.whl; do \
-      auditwheel repair --plat manylinux1_x86_64 "${WHL}" -w /io/wheelhouse/; \
-    done && \
-    /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v /io/wheelhouse/ujson*many*.whl && \
+    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" wheel . -w /io/wheelhouse' && \
+    find /io/wheelhouse/ -name 'ujson*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux1_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'ujson*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'ujson*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
     echo "ultrajson `date`" >> /build/log.txt
@@ -254,14 +246,9 @@ RUN echo "pylibmc `date`" >> /build/log.txt && \
     cd pylibmc && \
     # Strip libraries before building any wheels \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
-    for PYBIN in /opt/python/*/bin/; do \
-      echo "${PYBIN}" && \
-      "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
-    done && \
-    for WHL in /io/wheelhouse/pylibmc*.whl; do \
-      auditwheel repair --plat manylinux1_x86_64 "${WHL}" -w /io/wheelhouse/; \
-    done && \
-    /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v /io/wheelhouse/pylibmc*many*.whl && \
+    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" wheel . -w /io/wheelhouse' && \
+    find /io/wheelhouse/ -name 'pylibmc*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux1_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'pylibmc*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'pylibmc*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
     echo "pylibmc `date`" >> /build/log.txt
@@ -424,10 +411,8 @@ open(path, "w").write(s)' && \
       "${PYBIN}/python" -c 'import libtiff' || true && \
       "${PYBIN}/pip" wheel --no-deps . -w /io/wheelhouse; \
     done && \
-    for WHL in /io/wheelhouse/libtiff*.whl; do \
-      auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/; \
-    done && \
-    /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v /io/wheelhouse/libtiff*many*.whl && \
+    find /io/wheelhouse/ -name 'libtiff*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'libtiff*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'libtiff*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
     echo "pylibtiff `date`" >> /build/log.txt
@@ -467,14 +452,9 @@ s = s.replace("    handles = tuple(handles)", \n\
 open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
-    for PYBIN in /opt/python/*/bin/; do \
-      echo "${PYBIN}" && \
-      "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
-    done && \
-    for WHL in /io/wheelhouse/Glymur*.whl; do \
-      auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/; \
-    done && \
-    /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v /io/wheelhouse/Glymur*many*.whl && \
+    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" wheel . -w /io/wheelhouse' && \
+    find /io/wheelhouse/ -name 'Glymur*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'Glymur*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'Glymur*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
     echo "glymur `date`" >> /build/log.txt
@@ -648,14 +628,9 @@ s = open(path).read().replace( \n\
 open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
-    for PYBIN in /opt/python/*/bin/; do \
-      echo "${PYBIN}" && \
-      "${PYBIN}/pip" wheel . -w /io/wheelhouse; \
-    done && \
-    for WHL in /io/wheelhouse/openslide*.whl; do \
-      auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/ || exit 1; \
-    done && \
-    /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v /io/wheelhouse/openslide*many*.whl && \
+    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" wheel . -w /io/wheelhouse' && \
+    find /io/wheelhouse/ -name 'openslide*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
     echo "openslide-python `date`" >> /build/log.txt
@@ -892,8 +867,8 @@ RUN echo "libgeos `date`" >> /build/log.txt && \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b 3.7.3 https://github.com/libgeos/geos.git && \
     cd geos && \
-    mkdir build && \
-    cd build && \
+    mkdir _build && \
+    cd _build && \
     cmake -DGEOS_BUILD_DEVELOPER=NO -DCMAKE_BUILD_TYPE=Release .. && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -999,8 +974,8 @@ RUN echo "charls `date`" >> /build/log.txt && \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b 1.x-master https://github.com/team-charls/charls.git && \
     cd charls && \
-    mkdir build && \
-    cd build && \
+    mkdir _build && \
+    cd _build && \
     cmake -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release .. && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -1195,8 +1170,8 @@ RUN echo "poppler `date`" >> /build/log.txt && \
     tar -xf poppler.tar -C poppler --strip-components 1 && \
     rm -f poppler.tar && \
     cd poppler && \
-    mkdir build && \
-    cd build && \
+    mkdir _build && \
+    cd _build && \
     cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DENABLE_UNSTABLE_API_ABI_HEADERS=on && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -1302,8 +1277,8 @@ RUN echo "openblas `date`" >> /build/log.txt && \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b v0.3.7 https://github.com/xianyi/OpenBLAS.git && \
     cd OpenBLAS && \
-    mkdir build && \
-    cd build && \
+    mkdir _build && \
+    cd _build && \
     cmake -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release .. && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -1314,8 +1289,8 @@ RUN echo "superlu `date`" >> /build/log.txt && \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b v5.2.1 https://github.com/xiaoyeli/superlu.git && \
     cd superlu && \
-    mkdir build && \
-    cd build && \
+    mkdir _build && \
+    cd _build && \
     cmake -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release -Denable_blaslib=OFF -Denable_tests=OFF -DTPL_BLAS_LIBRARIES=/usr/local/lib64/libopenblas.so .. && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -1330,21 +1305,24 @@ RUN echo "armadillo `date`" >> /build/log.txt && \
     tar -xf armadillo.tar -C armadillo --strip-components 1 && \
     rm -f armadillo.tar && \
     cd armadillo && \
-    mkdir build && \
-    cd build && \
+    mkdir _build && \
+    cd _build && \
     cmake -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib .. && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
     echo "armadillo `date`" >> /build/log.txt
 
-# MrSID only works with gcc 4 or 5.
-# RUN echo "mrsid `date`" >> /build/log.txt && \
-#     curl --retry 5 --silent http://bin.extensis.com/download/developer/MrSID_DSDK-9.5.4.4709-rhel6.x86-64.gcc531.tar.gz -L -o mrsid.tar.gz && \
-#     mkdir mrsid && \
-#     tar -zxf mrsid.tar.gz -C mrsid --strip-components 1 && \
-#     rm -f mrsid.tar.gz && \
-#     echo "mrsid `date`" >> /build/log.txt
+# MrSID only works with gcc 4 or 5 unless we change it.
+RUN echo "mrsid `date`" >> /build/log.txt && \
+    curl --retry 5 --silent http://bin.extensis.com/download/developer/MrSID_DSDK-9.5.4.4709-rhel6.x86-64.gcc531.tar.gz -L -o mrsid.tar.gz && \
+    mkdir mrsid && \
+    tar -zxf mrsid.tar.gz -C mrsid --strip-components 1 && \
+    rm -f mrsid.tar.gz && \
+    sed -i 's/ && __GNUC__ <= 5//g' /build/mrsid/Raster_DSDK/include/lt_platform.h && \
+    cp -n mrsid/Raster_DSDK/lib/* /usr/local/lib/. && \
+    cp -n mrsid/Lidar_DSDK/lib/* /usr/local/lib/. && \
+    echo "mrsid `date`" >> /build/log.txt
 
 # This build doesn't support everything.
 # Unsupported without more work or investigation:
@@ -1359,21 +1337,18 @@ RUN echo "armadillo `date`" >> /build/log.txt && \
 #  ECW
 # Unused for other reasons:
 #  DDS - uses crunch library which is for Windows
-#  MrSID MrSID/MG4-Lidar - requires gcc 4 or 5, in which case add
-#    --with-mrsid=/build/mrsid/Raster_DSDK
-#    --with-mrsid_lidar=/build/mrsid/Lidar_DSDK
 #  userfaultfd - linux support for this dates from 2015, so it probably can't
 #    be added using manylinux2010.
 # --with-dods-root is where libdap is installed
 RUN echo "gdal `date`" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v3.0.2 https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
     cd gdal/gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
-    ./configure --prefix=/usr/local --disable-static --disable-rpath --with-cpp14 --without-libtool --with-jpeg12 --with-spatialite --with-liblzma --with-webp --with-epsilon --with-poppler --with-hdf5 --with-dods-root=/usr/local --with-sosi --with-mysql --with-rasterlite2 --with-pg --with-cfitsio=/usr/local --with-armadillo && \
-    make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings" && \
+    ./configure --prefix=/usr/local --disable-static --disable-rpath --with-cpp14 --without-libtool --with-jpeg12 --with-spatialite --with-liblzma --with-webp --with-epsilon --with-poppler --with-hdf5 --with-dods-root=/usr/local --with-sosi --with-mysql --with-rasterlite2 --with-pg --with-cfitsio=/usr/local --with-armadillo --with-mrsid=/build/mrsid/Raster_DSDK --with-mrsid_lidar=/build/mrsid/Lidar_DSDK && \
+    make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings -Wno-stringop-overflow" && \
     cd apps && \
-    make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings" test_ogrsf && \
+    make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings -Wno-stringop-overflow" test_ogrsf && \
     cd .. && \
     make -j ${JOBS} install && \
     ldconfig && \
@@ -1428,24 +1403,9 @@ open(path, "w").write(s)' && \
     cp samples/ogr2ogr.py scripts/ogr2ogr.py && \
     # Strip libraries before building any wheels \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
-    pids=() && \
-    for PYBIN in /opt/python/*/bin/; do \
-      echo "${PYBIN}" && \
-      "${PYBIN}/pip" wheel . -w /io/wheelhouse & \
-      pids+=($!) ; \
-    done && \
-    for pid in "${pids[@]}"; do \
-      wait "$pid"; \
-    done && \
-    pids=() && \
-    for WHL in /io/wheelhouse/GDAL*.whl; do \
-      auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/ & \
-      pids+=($!) ; \
-    done && \
-    for pid in "${pids[@]}"; do \
-      wait "$pid"; \
-    done && \
-    /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v /io/wheelhouse/GDAL*many*.whl && \
+    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" wheel . -w /io/wheelhouse' && \
+    find /io/wheelhouse/ -name 'GDAL*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'GDAL*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'GDAL*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
     echo "gdal python `date`" >> /build/log.txt
@@ -1537,24 +1497,9 @@ def bootstrap_env():""") \n\
 open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
-    # make wheels in parallel \
-    pids=() && \
-    for PYBIN in /opt/python/*/bin/; do \
-      BOOST_PYTHON_LIB=`"${PYBIN}/python" -c "import sys;sys.stdout.write('boost_python'+str(sys.version_info.major)+str(sys.version_info.minor))"` "${PYBIN}/pip" wheel . -w /io/wheelhouse & \
-      pids+=($!) ; \
-    done && \
-    for pid in "${pids[@]}"; do \
-      wait "$pid"; \
-    done && \
-    pids=() && \
-    for WHL in /io/wheelhouse/mapnik*.whl; do \
-      auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/ || exit 1 & \
-      pids+=($!) ; \
-    done && \
-    for pid in "${pids[@]}"; do \
-      wait "$pid"; \
-    done && \
-    /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v /io/wheelhouse/mapnik*many*.whl && \
+    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c 'BOOST_PYTHON_LIB=`"${0}/bin/python" -c "import sys;sys.stdout.write('\''boost_python'\''+str(sys.version_info.major)+str(sys.version_info.minor))"` "${0}/bin/pip" wheel . -w /io/wheelhouse' && \
+    find /io/wheelhouse/ -name 'mapnik*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'mapnik*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'mapnik*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
     echo "python-mapnik `date`" >> /build/log.txt
@@ -1773,24 +1718,9 @@ s = open(path).read().replace( \n\
 open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
-    pids=() && \
-    for PYBIN in /opt/python/*/bin/; do \
-      echo "${PYBIN}" && \
-      "${PYBIN}/pip" wheel . -w /io/wheelhouse & \
-      pids+=($!) ; \
-    done && \
-    for pid in "${pids[@]}"; do \
-      wait "$pid"; \
-    done && \
-    pids=() && \
-    for WHL in /io/wheelhouse/pyvips*.whl; do \
-      auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/ & \
-      pids+=($!) ; \
-    done && \
-    for pid in "${pids[@]}"; do \
-      wait "$pid"; \
-    done && \
-    /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v /io/wheelhouse/pyvips*many*.whl && \
+    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" wheel . -w /io/wheelhouse' && \
+    find /io/wheelhouse/ -name 'pyvips*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'pyvips*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'pyvips*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
     echo "pyvips `date`" >> /build/log.txt
@@ -1831,24 +1761,10 @@ open(path, "w").write(data)' && \
     git stash && \
     git checkout 3db99248c8155a0170d7b2696b397dab7e37fb9d && \
     git stash pop && \
-    pids=() && \
-    for PYBIN in /opt/python/*/bin/; do \
-      "${PYBIN}/pip" install --no-cache-dir cython & \
-      pids+=($!) ; \
-    done && \
-    for pid in "${pids[@]}"; do \
-      wait "$pid"; \
-    done && \
-    pids=() && \
-    for PYBIN in /opt/python/cp2*/bin/; do \
-      "${PYBIN}/pip" wheel . -w /io/wheelhouse & \
-      pids+=($!) ; \
-    done && \
-    for pid in "${pids[@]}"; do \
-      wait "$pid"; \
-    done && \
+    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" install --no-cache-dir cython' && \
+    find /opt/python -mindepth 1 -name '*cp2*' -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" wheel . -w /io/wheelhouse' && \
     git stash && \
-    git checkout v2.4.0rel && \
+    git checkout v2.4.1rel && \
     python -c $'# \n\
 path = "pyproj/__init__.py" \n\
 s = open(path).read() \n\
@@ -1862,23 +1778,9 @@ os.environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj")) \n\
 open(path, "w").write(s)' && \
     git stash pop && \
     # now rebuild anything that can work with master \
-    pids=() && \
-    for PYBIN in /opt/python/cp3*/bin/; do \
-      "${PYBIN}/pip" wheel . -w /io/wheelhouse & \
-      pids+=($!) ; \
-    done && \
-    for pid in "${pids[@]}"; do \
-      wait "$pid"; \
-    done && \
-    pids=() && \
-    for WHL in /io/wheelhouse/pyproj*.whl; do \
-      auditwheel repair --plat manylinux2010_x86_64 "${WHL}" -w /io/wheelhouse/ & \
-      pids+=($!) ; \
-    done && \
-    for pid in "${pids[@]}"; do \
-      wait "$pid"; \
-    done && \
-    /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v /io/wheelhouse/pyproj*many*.whl && \
+    find /opt/python -mindepth 1 -name '*cp3*' -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" wheel . -w /io/wheelhouse' && \
+    find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'pyproj*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'pyproj*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
     echo "pyproj4 `date`" >> /build/log.txt
