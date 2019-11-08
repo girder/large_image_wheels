@@ -6,7 +6,7 @@ pip install --upgrade pip
 # echo 'Test installing all libraries from wheels'
 # pip install libtiff openslide_python pyvips GDAL mapnik -f /wheels
 echo 'Test installing pyvips and other dependencies from wheels via large_image'
-pip install pyvips large_image[sources] glymur -f ${1:-/wheels}
+pip install pyvips large_image[sources,memcached] glymur -f ${1:-/wheels}
 echo 'Test basic import of libtiff'
 python -c 'import libtiff'
 echo 'Test basic import of openslide'
@@ -157,13 +157,14 @@ pprint.pprint({
 pprint.pprint(d.GetMetadata()['NITF_BLOCKA_FRFC_LOC_01'])
 EOF
 echo 'Test import order with shapely'
-pip install shapely
+if pip install shapely; then (
 python -c 'import shapely;import mapnik;import pyproj;print(pyproj.Proj("+init=epsg:4326 +type=crs"))'
 python -c 'import pyproj;import shapely;import mapnik;print(pyproj.Proj("+init=epsg:4326 +type=crs"))'
 python -c 'import mapnik;import pyproj;import shapely;print(pyproj.Proj("+init=epsg:4326 +type=crs"))'
 python -c 'import shapely;import pyproj;import mapnik;print(pyproj.Proj("+init=epsg:4326 +type=crs"))'
 python -c 'import mapnik;import shapely;import pyproj;print(pyproj.Proj("+init=epsg:4326 +type=crs"))'
 python -c 'import pyproj;import mapnik;import shapely;print(pyproj.Proj("+init=epsg:4326 +type=crs"))'
+); else echo 'no shapely available'; fi
 echo 'Test running executables'
 `python -c 'import os,sys,libtiff;sys.stdout.write(os.path.dirname(libtiff.__file__))'`/bin/tiffinfo landcover.tif
 `python -c 'import os,sys,glymur;sys.stdout.write(os.path.dirname(glymur.__file__))'`/bin/opj_dump -h | grep -q 'opj_dump utility from the OpenJPEG project'

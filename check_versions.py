@@ -206,6 +206,10 @@ Packages = {
         'git': 'https://github.com/libjpeg-turbo/libjpeg-turbo.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
+    'libmemcached': {
+        'filelist': 'https://launchpad.net/libmemcached/+download',
+        're': r'libmemcached-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+    },
     'libpng': {
         'filelist': 'https://sourceforge.net/projects/libpng/files/libpng16/',
         're': r'libpng16\/([0-9]+\.[0-9]+(|\.[0-9]+))\/$'

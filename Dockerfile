@@ -14,8 +14,6 @@ RUN echo "yum install `date`" >> /build/log.txt && \
     # for curl \
     openldap-devel \
     libidn2-devel \
-    # for pylibmc \
-    libmemcached-devel \
     # for openjpeg \
     lcms2-devel \
     # needed for libtiff \
@@ -167,7 +165,7 @@ RUN echo "curl `date`" >> /build/log.txt && \
 # Perl - building from source seems to have less issues
 RUN echo "perl `date`" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://www.cpan.org/src/5.0/perl-5.30.0.tar.xz -L -o perl.tar.xz && \
+    curl --retry 5 --silent https://www.cpan.org/src/5.0/perl-5.30.1.tar.xz -L -o perl.tar.xz && \
     unxz perl.tar.xz && \
     mkdir perl && \
     tar -xf perl.tar -C perl --strip-components 1 && \
@@ -239,19 +237,6 @@ RUN echo "ultrajson `date`" >> /build/log.txt && \
     find /io/wheelhouse/ -name 'ujson*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
     echo "ultrajson `date`" >> /build/log.txt
-
-RUN echo "pylibmc `date`" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 1.6.1 https://github.com/lericson/pylibmc.git && \
-    cd pylibmc && \
-    # Strip libraries before building any wheels \
-    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
-    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" wheel . -w /io/wheelhouse' && \
-    find /io/wheelhouse/ -name 'pylibmc*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux1_x86_64 -w /io/wheelhouse && \
-    find /io/wheelhouse/ -name 'pylibmc*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
-    find /io/wheelhouse/ -name 'pylibmc*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
-    ls -l /io/wheelhouse && \
-    echo "pylibmc `date`" >> /build/log.txt
 
 # As of 2019-05-21, there were bugs fixed in master that seem important, so use
 # master rather than the last released version.
@@ -419,7 +404,7 @@ open(path, "w").write(s)' && \
 
 RUN echo "glymur `date`" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v0.8.18 https://github.com/quintusdias/glymur.git && \
+    git clone --depth=1 --single-branch -b v0.8.19 https://github.com/quintusdias/glymur.git && \
     cd glymur && \
     mkdir glymur/bin && \
     find /build/openjpeg/_build/bin/ -executable -type f -name 'opj*' -exec cp {} glymur/bin/. \; && \
@@ -782,18 +767,22 @@ RUN echo "openmpi `date`" >> /build/log.txt && \
     ldconfig && \
     echo "openmpi `date`" >> /build/log.txt
 
-# This works with boost 1.69.0.
+# This works with boost 1.69.0 and with 1.70 and 1.71 with an update to spirit
 # It probably won't work for 1.66.0 and before, as those versions didn't handle
 # multiple python versions properly.
-# 1.70.0 and 1.71.0 don't work with mapnik
-#   (https://github.com/mapnik/mapnik/issues/4041)
 RUN echo "boost `date`" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b boost-1.69.0 --quiet --recurse-submodules -j ${JOBS} https://github.com/boostorg/boost.git && \
+
+    git clone --depth=1 --single-branch -b boost-1.71.0 --quiet --recurse-submodules -j ${JOBS} https://github.com/boostorg/boost.git && \
     cd boost && \
+    pushd libs/spirit && \
+    # switch to a version of spirit that fixes a bug in 1.70 and 1.71 \
+    git fetch --depth=1000 && \
+    git checkout 10d027f && \
+    popd && \
     find . -name '.git' -exec rm -rf {} \+ && \
     echo "" > tools/build/src/user-config.jam && \
-    # echo "using mpi ;" >> tools/build/src/user-config.jam && \
+    echo "using mpi ;" >> tools/build/src/user-config.jam && \
     echo "using python : 2.7 : /opt/python/cp27-cp27mu/bin/python : /opt/python/cp27-cp27mu/include/python2.7 : /opt/python/cp27-cp27mu/lib ; " >> tools/build/src/user-config.jam && \
     echo "using python : 3.5 : /opt/python/cp35-cp35m/bin/python : /opt/python/cp35-cp35m/include/python3.5m : /opt/python/cp35-cp35m/lib ; " >> tools/build/src/user-config.jam && \
     echo "using python : 3.6 : /opt/python/cp36-cp36m/bin/python : /opt/python/cp36-cp36m/include/python3.6m : /opt/python/cp36-cp36m/lib ; " >> tools/build/src/user-config.jam && \
@@ -869,7 +858,7 @@ RUN echo "libgeos `date`" >> /build/log.txt && \
     cd geos && \
     mkdir _build && \
     cd _build && \
-    cmake -DGEOS_BUILD_DEVELOPER=NO -DCMAKE_BUILD_TYPE=Release .. && \
+    cmake -DGEOS_BUILD_DEVELOPER=NO -DCMAKE_BUILD_TYPE=Release -DGEOS_ENABLE_TESTS=OFF .. && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1149,7 +1138,7 @@ RUN echo "ogdi `date`" >> /build/log.txt && \
 
 RUN echo "postgres `date`" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.postgresql.org/pub/source/v12.0/postgresql-12.0.tar.gz -L -o postgresql.tar.gz && \
+    curl --retry 5 --silent https://ftp.postgresql.org/pub/source/v12.1/postgresql-12.1.tar.gz -L -o postgresql.tar.gz && \
     mkdir postgresql && \
     tar -zxf postgresql.tar.gz -C postgresql --strip-components 1 && \
     rm -f postgresql.tar.gz && \
@@ -1430,9 +1419,10 @@ RUN echo "harfbuzz `date`" >> /build/log.txt && \
 # python 3.7 doesn't support parallel builds, so use python 3.6.
 RUN echo "mapnik `date`" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=10 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
+    # git clone --depth=10 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
+    git clone --depth=1 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
     cd mapnik && \
-    git checkout fdf60044c3042c1de94f6b4b854fed2830d79b37 && \
+    # git checkout fdf60044c3042c1de94f6b4b854fed2830d79b37 && \
     rm -rf .git && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
     python scons/scons.py configure JOBS=`nproc` \
@@ -1605,7 +1595,7 @@ RUN echo "libde265 `date`" >> /build/log.txt && \
 
 RUN echo "libheif `date`" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v1.5.1 https://github.com/strukturag/libheif.git && \
+    git clone --depth=1 --single-branch -b v1.6.0 https://github.com/strukturag/libheif.git && \
     cd libheif && \
     ./autogen.sh && \
     ./configure --silent --prefix=/usr/local && \
@@ -1621,7 +1611,7 @@ RUN echo "rust `date`" >> /build/log.txt && \
 RUN echo "librsvg `date`" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.47/librsvg-2.47.0.tar.xz -L -o librsvg.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.47/librsvg-2.47.1.tar.xz -L -o librsvg.tar.xz && \
     unxz librsvg.tar.xz && \
     mkdir librsvg && \
     tar -xf librsvg.tar -C librsvg --strip-components 1 && \
@@ -1784,3 +1774,29 @@ open(path, "w").write(s)' && \
     find /io/wheelhouse/ -name 'pyproj*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
     echo "pyproj4 `date`" >> /build/log.txt
+
+RUN echo "libmemcached `date`" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    curl --retry 5 --silent https://launchpad.net/libmemcached/1.0/1.0.18/+download/libmemcached-1.0.18.tar.gz -L -o libmemcached.tar.gz && \
+    mkdir libmemcached && \
+    tar -zxf libmemcached.tar.gz -C libmemcached --strip-components 1 && \
+    rm -f libmemcached.tar.gz && \
+    cd libmemcached && \
+    CXXFLAGS='-fpermissive' ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "libmemcached `date`" >> /build/log.txt
+
+RUN echo "pylibmc `date`" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b 1.6.1 https://github.com/lericson/pylibmc.git && \
+    cd pylibmc && \
+    # Strip libraries before building any wheels \
+    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
+    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" wheel . -w /io/wheelhouse' && \
+    find /io/wheelhouse/ -name 'pylibmc*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux1_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'pylibmc*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
+    find /io/wheelhouse/ -name 'pylibmc*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
+    ls -l /io/wheelhouse && \
+    echo "pylibmc `date`" >> /build/log.txt
