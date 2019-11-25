@@ -214,7 +214,7 @@ RUN echo "advancecomp `date`" >> /build/log.txt && \
 
 RUN echo "psutil `date`" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b release-5.6.5 https://github.com/giampaolo/psutil.git && \
+    git clone --depth=1 --single-branch -b release-5.6.6 https://github.com/giampaolo/psutil.git && \
     cd psutil && \
     # Strip libraries before building any wheels \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
@@ -475,7 +475,7 @@ RUN echo "ninja `date`" >> /build/log.txt && \
 
 RUN echo "libffi `date`" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v3.2.1 https://github.com/libffi/libffi.git && \
+    git clone --depth=1 --single-branch -b v3.3 https://github.com/libffi/libffi.git && \
     cd libffi && \
     python -c $'# \n\
 path = "Makefile.am" \n\
@@ -629,7 +629,7 @@ RUN echo "rm glib 2.58 `date`" >> /build/log.txt && \
 RUN echo "glib `date`" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.63/glib-2.63.1.tar.xz -L -o glib-2.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.63/glib-2.63.2.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
@@ -748,7 +748,7 @@ RUN echo "icu4c `date`" >> /build/log.txt && \
     tar -zxf icu4c.tar.gz -C icu4c --strip-components 1 && \
     rm -f icu4c.tar.gz && \
     cd icu4c/source && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --silent --prefix=/usr/local --disable-tests --disable-samples --with-data-packaging=library && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1112,9 +1112,12 @@ RUN echo "mysql `date`" >> /build/log.txt && \
     tar -zxf mysql.tar.gz -C mysql --strip-components 1 && \
     rm -f mysql.tar.gz && \
     cd mysql && \
+    # See https://bugs.mysql.com/bug.php?id=87348 \
+    mkdir -p storage/ndb && \
+    touch storage/ndb/CMakeLists.txt && \
     mkdir _build && \
     cd _build && \
-    CXXFLAGS="-Wno-deprecated-declarations" cmake -DBUILD_CONFIG=mysql_release -DIGNORE_AIO_CHECK=ON -DBUILD_SHARED_LIBS=ON -DWITH_BOOST=../boost/boost_1_59_0 -DWITH_SSL=/usr/local -DWITH_ZLIB=system -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DWITH_RAPID=OFF -DCMAKE_BUILD_TYPE=Release -DWITH_EMBEDDED_SERVER=OFF -DREPRODUCIBLE_BUILD=ON -DINSTALL_MYSQLTESTDIR="" .. && \
+    CXXFLAGS="-Wno-deprecated-declarations" cmake -DBUILD_CONFIG=mysql_release -DIGNORE_AIO_CHECK=ON -DBUILD_SHARED_LIBS=ON -DWITH_BOOST=../boost/boost_1_59_0 -DWITH_SSL=/usr/local -DWITH_ZLIB=system -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DWITH_RAPID=OFF -DCMAKE_BUILD_TYPE=Release -DWITH_EMBEDDED_SERVER=OFF -DWITHOUT_SERVER=ON -DREPRODUCIBLE_BUILD=ON -DINSTALL_MYSQLTESTDIR="" .. && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1270,7 +1273,7 @@ RUN echo "openblas `date`" >> /build/log.txt && \
     cd OpenBLAS && \
     mkdir _build && \
     cd _build && \
-    cmake -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release .. && \
+    cmake -DUSE_OPENMP=True -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release .. && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \

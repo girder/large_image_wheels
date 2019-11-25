@@ -20,7 +20,6 @@ Packages = {
         'filelist': 'https://ftp.gnu.org/pub/gnu/bison/',
         're': r'bison-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
-    # boost 1.70.0 - 1.71.0 don't work with mapnik
     'boost': {
         'git': 'https://github.com/boostorg/boost.git',
         're': r'boost-([0-9]+\.[0-9]+(|\.[0-9]+))$'
