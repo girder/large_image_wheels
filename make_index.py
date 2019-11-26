@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 
 import os
+import sys
 
-path = 'docs'
+path = 'gh-pages' if len(sys.argv) == 1 else sys.argv[1]
 indexName = 'index.html'
 template = """<html>
 <head><title>large_image_wheels</title></head>

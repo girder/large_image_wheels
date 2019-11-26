@@ -19,7 +19,7 @@ for container in containers:
     print('---- Testing in %s ----' % container)
     cmd = [
         'docker', 'run',
-        '-v', '%s/docs:/wheels' % os.path.dirname(os.path.realpath(__file__)),
+        '-v', '%s/wheels:/wheels' % os.path.dirname(os.path.realpath(__file__)),
         '-v', '%s/test:/test' % os.path.dirname(os.path.realpath(__file__)),
         '--rm', container, 'bash', '-e', '/test/test_script.sh']
     cmd += sys.argv[1:]
@@ -27,5 +27,5 @@ for container in containers:
 print('Passed')
 
 # To test manually, run a container such as
-#  docker run -v `pwd`/docs:/wheels --rm -it python:2.7 bash
+#  docker run -v `pwd`/wheels:/wheels --rm -it python:2.7 bash
 # and then enter the script commands directly

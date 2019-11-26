@@ -15,16 +15,16 @@ jobs:
           command: pip install packaging requests
       - run:
           name: Check versions
-          command: export TERM=xterm && python check_versions.py > docs/versions.txt && git diff docs/versions.txt | cat && git checkout docs/versions.txt
+          command: export TERM=xterm && python check_versions.py > versions.txt && git diff versions.txt | cat && git checkout versions.txt
       - run:
           name: Remove existing wheels
-          command: git rm docs/*
+          command: rm -f wheels/*
       # - setup_remote_docker
       - run:
           name: Build the Docker
           command: export TERM=xterm && ./build.sh
       - store_artifacts:
-          path: ~/project/docs
+          path: ~/project/wheels
       - run:
           name: Show build times
           command: export TERM=xterm && docker run --rm --entrypoint bash girder/large_image_wheels -c 'cat log.txt'
@@ -32,7 +32,8 @@ jobs:
           name: Test the Docker
           command: python test_via_docker.py
       # Upload artifacts to github (or elsewhere)
-      # Autopush and merge docs/index.html if this is merge to master
+      # Copy wheels to the gh-pages branch; update index.html; force push
+      # the gh-pages branch if this is merge to master
 
 workflows:
   version: 2
