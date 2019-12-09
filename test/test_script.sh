@@ -167,10 +167,17 @@ python -c 'import pyproj;import mapnik;import shapely;print(pyproj.Proj("+init=e
 ); else echo 'no shapely available'; fi
 echo 'Test running executables'
 `python -c 'import os,sys,libtiff;sys.stdout.write(os.path.dirname(libtiff.__file__))'`/bin/tiffinfo landcover.tif
+tiffinfo landcover.tif
 `python -c 'import os,sys,glymur;sys.stdout.write(os.path.dirname(glymur.__file__))'`/bin/opj_dump -h | grep -q 'opj_dump utility from the OpenJPEG project'
+opj_dump -h | grep -q 'opj_dump utility from the OpenJPEG project'
 `python -c 'import os,sys,openslide;sys.stdout.write(os.path.dirname(openslide.__file__))'`/bin/openslide-show-properties --version
+openslide-show-properties --version
 `python -c 'import os,sys,osgeo;sys.stdout.write(os.path.dirname(osgeo.__file__))'`/bin/gdalinfo --version
+gdalinfo --version
 `python -c 'import os,sys,mapnik;sys.stdout.write(os.path.dirname(mapnik.__file__))'`/bin/mapnik-render --version 2>&1 | grep version
+mapnik-render --version 2>&1 | grep version
 `python -c 'import os,sys,pyvips;sys.stdout.write(os.path.dirname(pyvips.__file__))'`/bin/vips --version
+vips --version
 PROJ_LIB=`python -c 'import os,sys,pyproj;sys.stdout.write(os.path.dirname(pyproj.__file__))'`/proj `python -c 'import os,sys,pyproj;sys.stdout.write(os.path.dirname(pyproj.__file__))'`/bin/projinfo EPSG:4326
+projinfo EPSG:4326
 

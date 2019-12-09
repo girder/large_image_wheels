@@ -43,7 +43,7 @@ This also makes some wheels which aren't published in pypi:
 
 ## Extras
 
-Various related executables are bundled with the Python packages.  These are added as package data in a `bin` directory within the main package.  They are not added to the system path.  For instance, `gdalinfo` from the `GDAL` package, is located in the Python site-packages `osgeo/bin` directory.  The appropriate directory can be gleaned from Python as part of a bash command, e.g., `` `python -c 'import os,sys,osgeo;sys.stdout.write(os.path.dirname(osgeo.__file__))'`/bin/gdalinfo --version``.
+Various related executables are bundled with the Python packages.  These are added as package data in a `bin` directory within the main package.  There is a python wrapper script exposing these in the Python binary path.  For instance, `gdalinfo` is available from the `GDAL` package.  It is located in the Python site-packages `osgeo/bin` directory.  To access it directly (rather than through the wrapper script), the appropriate directory can be gleaned from Python as part of a bash command, e.g., `` `python -c 'import os,sys,osgeo;sys.stdout.write(os.path.dirname(osgeo.__file__))'`/bin/gdalinfo --version``.
 
 ## Issues
 

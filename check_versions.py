@@ -304,9 +304,8 @@ Packages = {
         'git': 'https://github.com/uclouvain/openjpeg.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
-    # openmpi 4.0 doesn't work with Pnetcdf
     'openmpi': {
-        'filelist': 'https://www.open-mpi.org/software/ompi/v3.1/',
+        'filelist': 'https://www.open-mpi.org/software/ompi/v4.0/',
         're': r'openmpi-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
     'openslide': {

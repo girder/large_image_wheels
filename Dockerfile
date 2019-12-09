@@ -93,10 +93,9 @@ RUN echo "`date` pkg-config" >> /build/log.txt && \
 ENV PKG_CONFIG=/usr/local/bin/pkg-config \
     PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:/usr/lib64/pkgconfig:/usr/share/pkgconfig
 
-# 1.4.17
 RUN echo "`date` m4" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.gnu.org/gnu/m4/m4-latest.tar.gz -L -o m4.tar.gz && \
+    curl --retry 5 --silent https://ftp.gnu.org/gnu/m4/m4-1.4.18.tar.gz -L -o m4.tar.gz && \
     mkdir m4 && \
     tar -zxf m4.tar.gz -C m4 --strip-components 1 && \
     rm -f m4.tar.gz && \
@@ -126,7 +125,7 @@ RUN echo "`date` zlib" >> /build/log.txt && \
 # other libraries
 # We can't use make parallelism here
 RUN echo "`date` openssl" >> /build/log.txt && \
-    curl --retry 5 --silent https://www.openssl.org/source/openssl-1.0.2t.tar.gz -L -o openssl.tar.gz && \
+    curl --retry 5 --silent https://www.openssl.org/source/openssl-1.0.2u.tar.gz -L -o openssl.tar.gz && \
     mkdir openssl && \
     tar -zxf openssl.tar.gz -C openssl --strip-components 1 && \
     rm -f openssl.tar.gz && \
@@ -189,7 +188,7 @@ RUN echo "`date` strip-nondeterminism" >> /build/log.txt && \
 
 # CMake - use a precompiled binary
 RUN echo "`date` cmake" >> /build/log.txt && \
-    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.16.0/cmake-3.16.0-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.16.2/cmake-3.16.2-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
     mkdir cmake && \
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz && \
@@ -209,7 +208,7 @@ RUN echo "`date` advancecomp" >> /build/log.txt && \
     ldconfig && \
     # Because we will recompress all wheels, we can create them with no \
     # compression to save some time \
-    sed -i 's/ZIP_DEFLATED/ZIP_STORED/g' /opt/_internal/cpython-3.7.5/lib/python3.7/site-packages/auditwheel/tools.py && \
+    sed -i 's/ZIP_DEFLATED/ZIP_STORED/g' /opt/_internal/cpython-3.7.6/lib/python3.7/site-packages/auditwheel/tools.py && \
     echo "`date` advancecomp" >> /build/log.txt
 
 # Packages used by large_image that don't have published wheels for all the
@@ -246,6 +245,7 @@ RUN echo "`date` ultrajson" >> /build/log.txt && \
 # As of 2019-11-01, switching back to a fixed release
 RUN echo "`date` proj4" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b 6.2.1 https://github.com/OSGeo/proj.4.git && \
     cd proj.4 && \
     curl --retry 5 --silent http://download.osgeo.org/proj/proj-datumgrid-1.8.zip -L -o proj-datumgrid.zip && \
@@ -263,6 +263,7 @@ RUN echo "`date` proj4" >> /build/log.txt && \
 
 RUN echo "`date` libpng" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
     curl --retry 5 --silent https://downloads.sourceforge.net/libpng/libpng-1.6.37.tar.xz -L -o libpng.tar.xz && \
     unxz libpng.tar.xz && \
     mkdir libpng && \
@@ -369,12 +370,24 @@ RUN echo "`date` pylibtiff" >> /build/log.txt && \
     mkdir libtiff/bin && \
     find /build/tiff/tools/.libs/ -executable -type f -exec cp {} libtiff/bin/. \; && \
     python -c $'# \n\
+path = "libtiff/bin/__init__.py" \n\
+s = """import os \n\
+import subprocess \n\
+import sys \n\
+\n\
+def program(): \n\
+    name = os.path.basename(sys.argv[0]) \n\
+    raise SystemExit(subprocess.call([os.path.join(os.path.dirname(__file__), name)] + sys.argv[1:])) \n\
+""" \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
 path = "setup.py" \n\
 s = open(path).read().replace( \n\
 """        configuration=configuration,""", \n\
 """        configuration=configuration, \n\
         include_package_data=True, \n\
-        package_data={\'libtiff\': [\'bin/*\']},""") \n\
+        package_data={\'libtiff\': [\'bin/*\']}, \n\
+        entry_points={\'console_scripts\': [\'%s=libtiff.bin:program\' % name for name in os.listdir(\'libtiff/bin\') if not name.endswith(\'.py\')]},""") \n\
 open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
@@ -413,6 +426,17 @@ RUN echo "`date` glymur" >> /build/log.txt && \
     mkdir glymur/bin && \
     find /build/openjpeg/_build/bin/ -executable -type f -name 'opj*' -exec cp {} glymur/bin/. \; && \
     python -c $'# \n\
+path = "glymur/bin/__init__.py" \n\
+s = """import os \n\
+import subprocess \n\
+import sys \n\
+\n\
+def program(): \n\
+    name = os.path.basename(sys.argv[0]) \n\
+    raise SystemExit(subprocess.call([os.path.join(os.path.dirname(__file__), name)] + sys.argv[1:])) \n\
+""" \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
 import re \n\
 path = "setup.py" \n\
 s = open(path).read() \n\
@@ -424,6 +448,8 @@ s = s.replace("\'test_suite\': \'glymur.test\'", \n\
 """\'test_suite\': \'glymur.test\', \n\
 \'ext_modules\': [Extension(\'glymur.openjpeg\', [], libraries=[\'openjp2\'])]""") \n\
 s = s.replace("\'data/*.jpx\'", "\'data/*.jpx\', \'bin/*\'") \n\
+s = s.replace("\'console_scripts\': [", \n\
+"""\'console_scripts\': [\'%s=glymur.bin:program\' % name for name in os.listdir(\'glymur/bin\') if not name.endswith(\'.py\')] + [""") \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
 import re \n\
@@ -478,6 +504,7 @@ RUN echo "`date` ninja" >> /build/log.txt && \
 
 RUN echo "`date` libffi" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b v3.3 https://github.com/libffi/libffi.git && \
     cd libffi && \
     python -c $'# \n\
@@ -493,6 +520,7 @@ open(path, "w").write(s)' && \
 
 RUN echo "`date` util-linux" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b v2.34 https://github.com/karelzak/util-linux.git && \
     cd util-linux && \
     ./autogen.sh && \
@@ -516,14 +544,15 @@ data = open(path).read().replace( \n\
 open(path, "w").write(data)' && \
     # Also change auditwheel so it doesn't check for a higher priority \
     # platform; that process is slow \
-    sed -i 's/analyzed_tag = /analyzed_tag = reqd_tag  #/g' /opt/_internal/cpython-3.7.5/lib/python3.7/site-packages/auditwheel/main_repair.py && \
-    sed -i 's/if reqd_tag < get_priority_by_name(analyzed_tag):/if False:  #/g' /opt/_internal/cpython-3.7.5/lib/python3.7/site-packages/auditwheel/main_repair.py && \
+    sed -i 's/analyzed_tag = /analyzed_tag = reqd_tag  #/g' /opt/_internal/cpython-3.7.6/lib/python3.7/site-packages/auditwheel/main_repair.py && \
+    sed -i 's/if reqd_tag < get_priority_by_name(analyzed_tag):/if False:  #/g' /opt/_internal/cpython-3.7.6/lib/python3.7/site-packages/auditwheel/main_repair.py && \
     echo "`date` auditwheel policy" >> /build/log.txt
 
 # Build openslide with older glib2, gdk-pixbuf2, cairo
 
 RUN echo "`date` glib 2.58" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
     curl --retry 5 --silent https://download.gnome.org/sources/glib/2.58/glib-2.58.3.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
@@ -558,6 +587,7 @@ COPY openslide-vendor-mirax.c.patch .
 
 RUN echo "`date` openslide" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
     curl --retry 5 --silent https://github.com/openslide/openslide/archive/v3.4.1.tar.gz -L -o openslide.tar.gz && \
     mkdir openslide && \
     tar -zxf openslide.tar.gz -C openslide --strip-components 1 && \
@@ -612,12 +642,24 @@ open(path, "w").write(s)' && \
     mkdir openslide/bin && \
     find /build/openslide/tools/.libs/ -executable -type f -exec cp {} openslide/bin/. \; && \
     python -c $'# \n\
+path = "openslide/bin/__init__.py" \n\
+s = """import os \n\
+import subprocess \n\
+import sys \n\
+\n\
+def program(): \n\
+    name = os.path.basename(sys.argv[0]) \n\
+    raise SystemExit(subprocess.call([os.path.join(os.path.dirname(__file__), name)] + sys.argv[1:])) \n\
+""" \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
 path = "setup.py" \n\
 s = open(path).read().replace( \n\
 """    zip_safe=True,""", \n\
 """    zip_safe=True, \n\
     include_package_data=True, \n\
-    package_data={\'openslide\': [\'bin/*\']},""") \n\
+    package_data={\'openslide\': [\'bin/*\']}, \n\
+    entry_points={\'console_scripts\': [\'%s=openslide.bin:program\' % name for name in os.listdir(\'openslide/bin\') if not name.endswith(\'.py\')]},""") \n\
 open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
@@ -636,7 +678,7 @@ RUN echo "`date` rm glib 2.58" >> /build/log.txt && \
 RUN echo "`date` glib" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.63/glib-2.63.2.tar.xz -L -o glib-2.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.63/glib-2.63.3.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
@@ -684,6 +726,7 @@ RUN echo "`date` gettext" >> /build/log.txt && \
 
 RUN echo "`date` flex" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b v2.6.4 https://github.com/westes/flex.git && \
     cd flex && \
     autoreconf -ifv && \
@@ -761,15 +804,14 @@ RUN echo "`date` icu4c" >> /build/log.txt && \
     ldconfig && \
     echo "`date` icu4c" >> /build/log.txt
 
-# Pnetcdf doesn't work with openmpi 4.0
 RUN echo "`date` openmpi" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.open-mpi.org/release/open-mpi/v3.1/openmpi-3.1.5.tar.gz -L -o openmpi.tar.gz && \
+    curl --retry 5 --silent https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.2.tar.gz -L -o openmpi.tar.gz && \
     mkdir openmpi && \
     tar -zxf openmpi.tar.gz -C openmpi --strip-components 1 && \
     rm -f openmpi.tar.gz && \
     cd openmpi && \
-    ./configure --silent --prefix=/usr/local --disable-dependency-tracking --enable-silent-rules --disable-dlopen --disable-libompitrace --disable-java --disable-opal-btl-usnic-unit-tests --disable-static --disable-mpi-fortran --disable-mpi-java && \
+    ./configure --silent --prefix=/usr/local --disable-dependency-tracking --enable-silent-rules --disable-dlopen --disable-libompitrace --disable-opal-btl-usnic-unit-tests --disable-picky --disable-debug --disable-mem-profile --disable-mem-debug --disable-static --disable-mpi-java && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -887,6 +929,7 @@ RUN echo "`date` libspatialite" >> /build/log.txt && \
 
 RUN echo "`date` libgeotiff" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b 1.5.1 https://github.com/OSGeo/libgeotiff.git && \
     cd libgeotiff/libgeotiff && \
     autoreconf -ifv && \
@@ -925,6 +968,7 @@ RUN echo "`date` freetype" >> /build/log.txt && \
 
 RUN echo "`date` libexpat" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
     curl --retry 5 --silent https://github.com/libexpat/libexpat/archive/R_2_2_9.tar.gz -L -o libexpat.tar.gz && \
     mkdir libexpat && \
     tar -zxf libexpat.tar.gz -C libexpat --strip-components 1 && \
@@ -939,6 +983,7 @@ RUN echo "`date` libexpat" >> /build/log.txt && \
 
 RUN echo "`date` fontconfig" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
     curl --retry 5 --silent https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.13.92.tar.gz -L -o fontconfig.tar.gz && \
     mkdir fontconfig && \
     tar -zxf fontconfig.tar.gz -C fontconfig --strip-components 1 && \
@@ -990,7 +1035,7 @@ RUN echo "`date` lz4" >> /build/log.txt && \
 
 RUN echo "`date` bison" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.4.2.tar.xz -L -o bison.tar.xz && \
+    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.5.tar.xz -L -o bison.tar.xz && \
     unxz bison.tar.xz && \
     mkdir bison && \
     tar -xf bison.tar -C bison --strip-components 1 && \
@@ -1032,6 +1077,7 @@ RUN echo "`date` librasterlite2" >> /build/log.txt && \
 # fyba won't compile with GCC 8.2.x, so apply fix in issue #21
 RUN echo "`date` fyba" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
     git clone --depth=1 --single-branch https://github.com/kartverket/fyba.git && \
     cd fyba && \
     python -c $'# \n\
@@ -1070,7 +1116,8 @@ RUN echo "`date` hdf4" >> /build/log.txt && \
 
 RUN echo "`date` hdf5" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.5/src/hdf5-1.10.5.tar.gz -L -o hdf5.tar.gz && \
+    export AUTOMAKE_JOBS=`nproc` && \
+    curl --retry 5 --silent https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.6/src/hdf5-1.10.6.tar.gz -L -o hdf5.tar.gz && \
     mkdir hdf5 && \
     tar -zxf hdf5.tar.gz -C hdf5 --strip-components 1 && \
     rm -f hdf5.tar.gz && \
@@ -1087,7 +1134,8 @@ RUN echo "`date` hdf5" >> /build/log.txt && \
 
 RUN echo "`date` parallel-netcdf" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b checkpoint.1.12.0 https://github.com/Parallel-NetCDF/PnetCDF && \
+    export AUTOMAKE_JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b checkpoint.1.12.1 https://github.com/Parallel-NetCDF/PnetCDF && \
     cd PnetCDF && \
     autoreconf -ifv && \
     export CFLAGS="$CFLAGS -O2" && \
@@ -1099,6 +1147,7 @@ RUN echo "`date` parallel-netcdf" >> /build/log.txt && \
 
 RUN echo "`date` netcdf" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b v4.7.3 https://github.com/Unidata/netcdf-c && \
     cd netcdf-c && \
     # autoreconf -ifv && \
@@ -1148,6 +1197,7 @@ RUN echo "`date` ogdi" >> /build/log.txt && \
 
 RUN echo "`date` postgres" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
     curl --retry 5 --silent https://ftp.postgresql.org/pub/source/v12.1/postgresql-12.1.tar.gz -L -o postgresql.tar.gz && \
     mkdir postgresql && \
     tar -zxf postgresql.tar.gz -C postgresql --strip-components 1 && \
@@ -1163,7 +1213,7 @@ RUN echo "`date` postgres" >> /build/log.txt && \
 RUN echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-0.83.0.tar.xz -L -o poppler.tar.xz && \
+    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-0.84.0.tar.xz -L -o poppler.tar.xz && \
     unxz poppler.tar.xz && \
     mkdir poppler && \
     tar -xf poppler.tar -C poppler --strip-components 1 && \
@@ -1224,6 +1274,7 @@ RUN echo "`date` jasper" >> /build/log.txt && \
 # works, so eat its errors.
 RUN echo "`date` libxcrypt" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b v4.4.10 https://github.com/besser82/libxcrypt.git && \
     cd libxcrypt && \
     autoreconf -ifv && \
@@ -1235,6 +1286,7 @@ RUN echo "`date` libxcrypt" >> /build/log.txt && \
 
 RUN echo "`date` libgta" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b libgta-1.2.1 https://github.com/marlam/gta-mirror.git && \
     cd gta-mirror/libgta && \
     autoreconf -ifv && \
@@ -1365,6 +1417,24 @@ RUN echo "`date` gdal python" >> /build/log.txt && \
     find /build/gdal/gdal/apps/ -executable -type f ! -name '*.cpp' -exec cp {} osgeo/bin/. \; && \
     find /build/libgeotiff/libgeotiff/bin/.libs -executable -type f -exec cp {} osgeo/bin/. \; && \
     python -c $'# \n\
+path = "osgeo/bin/__init__.py" \n\
+s = """import os \n\
+import subprocess \n\
+import sys \n\
+\n\
+localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
+os.environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj")) \n\
+os.environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal")) \n\
+caPath = "/etc/ssl/certs/ca-certificates.crt" \n\
+if os.path.exists(caPath): \n\
+    os.environ.setdefault("CURL_CA_BUNDLE", caPath) \n\
+\n\
+def program(): \n\
+    name = os.path.basename(sys.argv[0]) \n\
+    raise SystemExit(subprocess.call([os.path.join(os.path.dirname(__file__), name)] + sys.argv[1:])) \n\
+""" \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
 import os \n\
 path = "setup.py" \n\
 data = open(path).read() \n\
@@ -1379,8 +1449,9 @@ data = data.replace( \n\
     "gdal_version = \'" + os.popen("gdal-config --version").read().strip() + "\'") \n\
 data = data.replace( \n\
     "    scripts=glob(\'scripts/*.py\'),", \n\
-    "    scripts=glob(\'scripts/*.py\'),\\n" + \n\
-    "    package_data={\'osgeo\': [\'proj/*\', \'gdal/*\', \'bin/*\']},") \n\
+"""    scripts=glob(\'scripts/*.py\'), \n\
+    package_data={\'osgeo\': [\'proj/*\', \'gdal/*\', \'bin/*\']}, \n\
+    entry_points={\'console_scripts\': [\'%s=osgeo.bin:program\' % name for name in os.listdir(\'osgeo/bin\') if not name.endswith(\'.py\')]},""") \n\
 open(path, "w").write(data)' && \
     python -c $'# \n\
 path = "osgeo/__init__.py" \n\
@@ -1474,6 +1545,21 @@ RUN echo "`date` python-mapnik" >> /build/log.txt && \
     cp /build/mapnik/utils/mapnik-index/mapnik-index mapnik/bin/. && \
     cp /build/mapnik/utils/shapeindex/shapeindex mapnik/bin/. && \
     python -c $'# \n\
+path = "mapnik/bin/__init__.py" \n\
+s = """import os \n\
+import subprocess \n\
+import sys \n\
+\n\
+localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
+os.environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj")) \n\
+os.environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal")) \n\
+\n\
+def program(): \n\
+    name = os.path.basename(sys.argv[0]) \n\
+    raise SystemExit(subprocess.call([os.path.join(os.path.dirname(__file__), name)] + sys.argv[1:])) \n\
+""" \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
 path = "setup.py" \n\
 s = open(path).read().replace( \n\
     "\'share/*/*\'", \n\
@@ -1485,6 +1571,9 @@ s = open(path).read().replace( \n\
     f_paths.write("inputpluginspath = os.path.join(localpath, \'input\')\\\\n") \n\
     f_paths.write("fontscollectionpath = os.path.join(localpath, \'fonts\')\\\\n") \n\
 """) \n\
+s = s.replace("test_suite=\'nose.collector\',", \n\
+"""test_suite=\'nose.collector\', \n\
+    entry_points={\'console_scripts\': [\'%s=mapnik.bin:program\' % name for name in os.listdir(\'mapnik/bin\') if not name.endswith(\'.py\')]},""") \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
 path = "mapnik/__init__.py" \n\
@@ -1598,7 +1687,8 @@ RUN echo "`date` libcroco" >> /build/log.txt && \
 
 RUN echo "`date` libde265" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v1.0.3 https://github.com/strukturag/libde265.git && \
+    export AUTOMAKE_JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b v1.0.4 https://github.com/strukturag/libde265.git && \
     cd libde265 && \
     ./autogen.sh && \
     ./configure --silent --prefix=/usr/local && \
@@ -1609,7 +1699,8 @@ RUN echo "`date` libde265" >> /build/log.txt && \
 
 RUN echo "`date` libheif" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v1.6.0 https://github.com/strukturag/libheif.git && \
+    export AUTOMAKE_JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b v1.6.1 https://github.com/strukturag/libheif.git && \
     cd libheif && \
     ./autogen.sh && \
     ./configure --silent --prefix=/usr/local && \
@@ -1661,8 +1752,9 @@ RUN echo "`date` libgsf" >> /build/log.txt && \
 #  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz JXL LQR RAQM RAW WMF
 RUN echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.0.9-7 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.0.9-12 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
+    sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
     ./configure --prefix=/usr/local --with-modules --with-rsvg LIBS="-lrt `pkg-config --libs zlib`" && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -1713,12 +1805,26 @@ open(path, "w").write(s)' && \
     find /build/jasper/_build/src/appl/ -executable -type f -exec cp {} pyvips/bin/. \; && \
     cp /usr/local/bin/magick pyvips/bin/. && \
     python -c $'# \n\
+path = "pyvips/bin/__init__.py" \n\
+s = """import os \n\
+import subprocess \n\
+import sys \n\
+\n\
+def program(): \n\
+    name = os.path.basename(sys.argv[0]) \n\
+    raise SystemExit(subprocess.call([os.path.join(os.path.dirname(__file__), name)] + sys.argv[1:])) \n\
+""" \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
 path = "setup.py" \n\
-s = open(path).read().replace( \n\
-"""        packages=pyvips_packages,""", \n\
-"""        packages=pyvips_packages, \n\
+s = open(path).read().replace("from os import path", \n\
+"""from os import path \n\
+import os""").replace( \n\
+"""packages=pyvips_packages,""", \n\
+"""packages=pyvips_packages, \n\
         include_package_data=True, \n\
-        package_data={\'pyvips\': [\'bin/*\']},""") \n\
+        package_data={\'pyvips\': [\'bin/*\']}, \n\
+        entry_points={\'console_scripts\': [\'%s=pyvips.bin:program\' % name for name in os.listdir(\'pyvips/bin\') if not name.endswith(\'.py\')]},""") \n\
 open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
@@ -1748,7 +1854,20 @@ os.environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj"))""") \n\
 open(path, "w").write(s)' && \
     mkdir pyproj/bin && \
     find /build/proj.4/src/.libs/ -executable -type f ! -name '*.so.*' -exec cp {} pyproj/bin/. \; && \
-    mkdir pyproj/bin/share && \
+    python -c $'# \n\
+path = "pyproj/bin/__init__.py" \n\
+s = """import os \n\
+import subprocess \n\
+import sys \n\
+\n\
+localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
+os.environ.setdefault("PROJ_LIB", os.path.join(localpath, "..", "proj")) \n\
+\n\
+def program(): \n\
+    name = os.path.basename(sys.argv[0]) \n\
+    raise SystemExit(subprocess.call([os.path.join(os.path.dirname(__file__), name)] + sys.argv[1:])) \n\
+""" \n\
+open(path, "w").write(s)' && \
     cp -r /usr/local/share/proj pyproj/. && \
     python -c $'# \n\
 import os \n\
@@ -1758,6 +1877,9 @@ data = data.replace( \n\
     "    return package_data", \n\
 """    package_data["pyproj"].extend(["bin/*", "proj/*"]) \n\
     return package_data""") \n\
+data = data.replace("""license="OSI Approved",""", \n\
+"""license="OSI Approved", \n\
+    entry_points={\'console_scripts\': [\'%s=pyproj.bin:program\' % name for name in os.listdir(\'pyproj/bin\') if not name.endswith(\'.py\')]},""") \n\
 open(path, "w").write(data)' && \
     # Strip libraries before building any wheels \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
@@ -1799,7 +1921,7 @@ RUN echo "`date` libmemcached" >> /build/log.txt && \
     rm -f libmemcached.tar.gz && \
     cd libmemcached && \
     CXXFLAGS='-fpermissive' ./configure --silent --prefix=/usr/local && \
-    # For some reason, this doesn't run jobs in parallel \
+    # For some reason, this doesn't run jobs in parallel, with or without -j \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
