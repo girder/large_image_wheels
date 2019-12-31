@@ -327,11 +327,13 @@ Packages = {
     },
     # other libraries don't work with openssl 1.1.1
     'openssl': {
-        'filelist': 'https://www.openssl.org/source/',
-        're': r'openssl-(1\.0(|\.[0-9]+)(|[a-z])).tar.(gz|xz)$'
-        # 'filelist': 'https://www.openssl.org/source/old/1.0.2/',
+        # 'filelist': 'https://www.openssl.org/source/',
+        # 're': r'openssl-(1\.0(|\.[0-9]+)(|[a-z])).tar.(gz|xz)$'
         # 'filelist': 'https://www.openssl.org/source/old/1.1.1/',
-        # 're': r'openssl-([0-9]+\.[0-9]+(|\.[0-9]+)(|[a-z])).tar.(gz|xz)$'
+        'filelist': 'https://www.openssl.org/source/old/1.0.2/',
+        # The packaging.version parser does poor things with 1.0.2r and other
+        # values, so include the ".tar" as part of the version
+        're': r'openssl-([0-9]+\.[0-9]+(|\.[0-9]+)(|[a-z])\.tar)\.(gz|xz)$'
     },
     'orc': {
         'git': 'https://github.com/GStreamer/orc.git',

@@ -125,7 +125,7 @@ RUN echo "`date` zlib" >> /build/log.txt && \
 # other libraries
 # We can't use make parallelism here
 RUN echo "`date` openssl" >> /build/log.txt && \
-    curl --retry 5 --silent https://www.openssl.org/source/openssl-1.0.2u.tar.gz -L -o openssl.tar.gz && \
+    curl --retry 5 --silent https://www.openssl.org/source/old/1.0.2/openssl-1.0.2u.tar.gz -L -o openssl.tar.gz && \
     mkdir openssl && \
     tar -zxf openssl.tar.gz -C openssl --strip-components 1 && \
     rm -f openssl.tar.gz && \
@@ -150,7 +150,7 @@ RUN echo "`date` libssh2" >> /build/log.txt && \
 
 RUN echo "`date` curl" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_67_0/curl-7.67.0.tar.gz -L -o curl.tar.gz && \
+    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_68_0/curl-7.68.0.tar.gz -L -o curl.tar.gz && \
     mkdir curl && \
     tar -zxf curl.tar.gz -C curl --strip-components 1 && \
     rm -f curl.tar.gz && \
@@ -246,7 +246,7 @@ RUN echo "`date` ultrajson" >> /build/log.txt && \
 RUN echo "`date` proj4" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 6.2.1 https://github.com/OSGeo/proj.4.git && \
+    git clone --depth=1 --single-branch -b 6.3.0 https://github.com/OSGeo/proj.4.git && \
     cd proj.4 && \
     curl --retry 5 --silent http://download.osgeo.org/proj/proj-datumgrid-1.8.zip -L -o proj-datumgrid.zip && \
     cd data && \
@@ -313,7 +313,7 @@ open(path, "w").write(s)' && \
 
 RUN echo "`date` libwebp" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent http://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.0.3.tar.gz -L -o libwebp.tar.gz && \
+    curl --retry 5 --silent http://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.1.0.tar.gz -L -o libwebp.tar.gz && \
     mkdir libwebp && \
     tar -zxf libwebp.tar.gz -C libwebp --strip-components 1 && \
     rm -f libwebp.tar.gz && \
@@ -327,7 +327,7 @@ RUN echo "`date` libwebp" >> /build/log.txt && \
 # For 12-bit jpeg
 RUN echo "`date` libjpeg-turbo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.3.tar.gz -L -o libjpeg-turbo.tar.gz && \
+    curl --retry 5 --silent https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.4.tar.gz -L -o libjpeg-turbo.tar.gz && \
     mkdir libjpeg-turbo && \
     tar -zxf libjpeg-turbo.tar.gz -C libjpeg-turbo --strip-components 1 && \
     rm -f libjpeg-turbo.tar.gz && \
@@ -820,6 +820,9 @@ RUN echo "`date` openmpi" >> /build/log.txt && \
 # This works with boost 1.69.0 and with 1.70 and 1.71 with an update to spirit
 # It probably won't work for 1.66.0 and before, as those versions didn't handle
 # multiple python versions properly.
+# Use Boost 1.72.0 when https://github.com/boostorg/mpi/issues/112 is resolved.
+# See also https://gitweb.gentoo.org/repo/gentoo.git/commit/
+#  ?id=af50ab943bce9e10c97e47ea5c7da87e11b51be9
 RUN echo "`date` boost" >> /build/log.txt && \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b boost-1.71.0 --quiet --recurse-submodules -j ${JOBS} https://github.com/boostorg/boost.git && \
@@ -1752,8 +1755,9 @@ RUN echo "`date` libgsf" >> /build/log.txt && \
 #  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz JXL LQR RAQM RAW WMF
 RUN echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.0.9-12 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.0.9-14 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
+    # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
     ./configure --prefix=/usr/local --with-modules --with-rsvg LIBS="-lrt `pkg-config --libs zlib`" && \
     make --silent -j ${JOBS} && \
@@ -1765,7 +1769,7 @@ RUN echo "`date` imagemagick" >> /build/log.txt && \
 RUN echo "`date` vips" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.8.4/vips-8.8.4.tar.gz -L -o vips.tar.gz && \
+    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.9.0/vips-8.9.0.tar.gz -L -o vips.tar.gz && \
     mkdir vips && \
     tar -zxf vips.tar.gz -C vips --strip-components 1 && \
     rm -f vips.tar.gz && \
@@ -1922,8 +1926,10 @@ RUN echo "`date` libmemcached" >> /build/log.txt && \
     cd libmemcached && \
     CXXFLAGS='-fpermissive' ./configure --silent --prefix=/usr/local && \
     # For some reason, this doesn't run jobs in parallel, with or without -j \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
+    # make --silent -j ${JOBS} && \
+    # make --silent -j ${JOBS} install && \
+    # Don't build docs; they are what takes the most time \
+    make --silent -j ${JOBS} install-exec install-data install-includeHEADERS install-libLTLIBRARIES install-binPROGRAMS && \
     ldconfig && \
     echo "`date` libmemcached" >> /build/log.txt
 
