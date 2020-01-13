@@ -421,7 +421,7 @@ open(path, "w").write(s)' && \
 
 RUN echo "`date` glymur" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v0.8.19 https://github.com/quintusdias/glymur.git && \
+    git clone -b release-0.9.0 https://github.com/quintusdias/glymur.git && \
     cd glymur && \
     mkdir glymur/bin && \
     find /build/openjpeg/_build/bin/ -executable -type f -name 'opj*' -exec cp {} glymur/bin/. \; && \
@@ -443,6 +443,7 @@ s = open(path).read() \n\
 s = s.replace("\'numpy>=1.7.1\', ", "") \n\
 s = s.replace("from setuptools import setup", \n\
 """from setuptools import setup \n\
+import os \n\
 from distutils.core import Extension""") \n\
 s = s.replace("\'test_suite\': \'glymur.test\'", \n\
 """\'test_suite\': \'glymur.test\', \n\
@@ -451,6 +452,41 @@ s = s.replace("\'data/*.jpx\'", "\'data/*.jpx\', \'bin/*\'") \n\
 s = s.replace("\'console_scripts\': [", \n\
 """\'console_scripts\': [\'%s=glymur.bin:program\' % name for name in os.listdir(\'glymur/bin\') if not name.endswith(\'.py\')] + [""") \n\
 open(path, "w").write(s)' && \
+    python -c $'# \n\
+import re \n\
+path = "glymur/config.py" \n\
+s = open(path).read() \n\
+s = s.replace("    path = find_library(libname)", \n\
+"""    path = find_library(libname) \n\
+    libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.realpath( \n\
+        __file__)), \'.libs\')) \n\
+    if path is None and os.path.exists(libpath): \n\
+        libs = os.listdir(libpath) \n\
+        path = [lib for lib in libs if lib.startswith(\'libopenjp2\')][0]""") \n\
+open(path, "w").write(s)' && \
+    # Strip libraries before building any wheels \
+    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
+    # Just python >= 3.6 \
+    find /opt/python -mindepth 1 -name '*cp3[^5]*' -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse' && \
+    # Python < 3.6 /
+    git stash && \
+    git checkout v0.8.19 && \
+    python -c $'# \n\
+import re \n\
+path = "setup.py" \n\
+s = open(path).read() \n\
+s = s.replace("\'numpy>=1.7.1\', ", "") \n\
+s = s.replace("from setuptools import setup", \n\
+"""from setuptools import setup \n\
+from distutils.core import Extension""") \n\
+s = s.replace("\'test_suite\': \'glymur.test\'", \n\
+"""\'test_suite\': \'glymur.test\', \n\
+\'ext_modules\': [Extension(\'glymur.openjpeg\', [], libraries=[\'openjp2\'])]""") \n\
+s = s.replace("\'data/*.jpx\'", "\'data/*.jpx\', \'bin/*\'") \n\
+s = s.replace("\'console_scripts\': [", \n\
+"""\'console_scripts\': [\'%s=glymur.bin:program\' % name for name in os.listdir(\'glymur/bin\') if not name.endswith(\'.py\')] + [""") \n\
+open(path, "w").write(s)' && \
+    find /opt/python -mindepth 1 -name '*cp2*' -o -name '*cp35*' -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse' && \
     python -c $'# \n\
 import re \n\
 path = "glymur/config.py" \n\
@@ -465,14 +501,12 @@ s = s.replace("    handles = tuple(handles)", \n\
             libopenjp2path = [lib for lib in libs if lib.startswith(\'libopenjp2\')][0] \n\
             handles = (ctypes.CDLL(os.path.join(libpath, libopenjp2path)), None)""") \n\
 open(path, "w").write(s)' && \
-    # Strip libraries before building any wheels \
-    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
-    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse' && \
+    # All \
     find /io/wheelhouse/ -name 'Glymur*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'Glymur*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'Glymur*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
-    echo "`date` glymur" >> /build/log.txt
+    echo "`date`" >> /build/log.txt
 
 # Install newer versions of glib2, gdk-pixbuf2
 
@@ -1166,7 +1200,7 @@ RUN echo "`date` netcdf" >> /build/log.txt && \
 
 RUN echo "`date` mysql" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://dev.mysql.com/get/Downloads/MySQL-5.7/mysql-boost-5.7.28.tar.gz -L -o mysql.tar.gz && \
+    curl --retry 5 --silent https://dev.mysql.com/get/Downloads/MySQL-5.7/mysql-boost-5.7.29.tar.gz -L -o mysql.tar.gz && \
     mkdir mysql && \
     tar -zxf mysql.tar.gz -C mysql --strip-components 1 && \
     rm -f mysql.tar.gz && \
@@ -1755,7 +1789,7 @@ RUN echo "`date` libgsf" >> /build/log.txt && \
 #  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz JXL LQR RAQM RAW WMF
 RUN echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.0.9-14 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.0.9-16 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \

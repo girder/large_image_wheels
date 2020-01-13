@@ -276,8 +276,8 @@ Packages = {
     #     're': r'MrSID_DSDK-([0-9]+\.[0-9]+(|\.[0-9]+(|\.[0-9]+)))-rhel6.x86-64.gcc531.tar.gz$'
     # },
     'mysql': {
-        'filelist': 'https://dev.mysql.com/downloads/mysql/5.7.html?tpl=version&os=src&version=5.7',
-        're': r'mysql-boost-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+        'filelist': 'https://dev.mysql.com/downloads/mysql/5.7.html?tpl=version&os=src',
+        're': r'mysql-boost-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)(&|$)'
     },
     'netcdf': {
         'git': 'https://github.com/Unidata/netcdf-c.git',
