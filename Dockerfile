@@ -202,6 +202,8 @@ RUN echo "`date` advancecomp" >> /build/log.txt && \
     tar -zxf advancecomp.tar.gz -C advancecomp --strip-components 1 && \
     rm -f advancecomp.tar.gz && \
     cd advancecomp && \
+    export CFLAGS="$CFLAGS -O3" && \
+    export CXXFLAGS="$CXXFLAGS -O3" && \
     ./configure --silent --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -421,7 +423,7 @@ open(path, "w").write(s)' && \
 
 RUN echo "`date` glymur" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone -b release-0.9.0 https://github.com/quintusdias/glymur.git && \
+    git clone -b v0.9.1 https://github.com/quintusdias/glymur.git && \
     cd glymur && \
     mkdir glymur/bin && \
     find /build/openjpeg/_build/bin/ -executable -type f -name 'opj*' -exec cp {} glymur/bin/. \; && \
@@ -462,7 +464,8 @@ s = s.replace("    path = find_library(libname)", \n\
         __file__)), \'.libs\')) \n\
     if path is None and os.path.exists(libpath): \n\
         libs = os.listdir(libpath) \n\
-        path = [lib for lib in libs if lib.startswith(\'libopenjp2\')][0]""") \n\
+        path = [lib for lib in libs if lib.startswith(\'libopenjp2\')][0] \n\
+        path = os.path.join(libpath, path)""") \n\
 open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
@@ -486,7 +489,6 @@ s = s.replace("\'data/*.jpx\'", "\'data/*.jpx\', \'bin/*\'") \n\
 s = s.replace("\'console_scripts\': [", \n\
 """\'console_scripts\': [\'%s=glymur.bin:program\' % name for name in os.listdir(\'glymur/bin\') if not name.endswith(\'.py\')] + [""") \n\
 open(path, "w").write(s)' && \
-    find /opt/python -mindepth 1 -name '*cp2*' -o -name '*cp35*' -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse' && \
     python -c $'# \n\
 import re \n\
 path = "glymur/config.py" \n\
@@ -501,12 +503,13 @@ s = s.replace("    handles = tuple(handles)", \n\
             libopenjp2path = [lib for lib in libs if lib.startswith(\'libopenjp2\')][0] \n\
             handles = (ctypes.CDLL(os.path.join(libpath, libopenjp2path)), None)""") \n\
 open(path, "w").write(s)' && \
+    find /opt/python -mindepth 1 \( -name '*cp2*' -o -name '*cp35*' \) -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse' && \
     # All \
     find /io/wheelhouse/ -name 'Glymur*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'Glymur*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'Glymur*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
-    echo "`date`" >> /build/log.txt
+    echo "`date` glymur" >> /build/log.txt
 
 # Install newer versions of glib2, gdk-pixbuf2
 
@@ -1725,7 +1728,7 @@ RUN echo "`date` libcroco" >> /build/log.txt && \
 RUN echo "`date` libde265" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v1.0.4 https://github.com/strukturag/libde265.git && \
+    git clone --depth=1 --single-branch -b v1.0.5 https://github.com/strukturag/libde265.git && \
     cd libde265 && \
     ./autogen.sh && \
     ./configure --silent --prefix=/usr/local && \
@@ -1753,7 +1756,7 @@ RUN echo "`date` rust" >> /build/log.txt && \
 RUN echo "`date` librsvg" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.47/librsvg-2.47.1.tar.xz -L -o librsvg.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.47/librsvg-2.47.2.tar.xz -L -o librsvg.tar.xz && \
     unxz librsvg.tar.xz && \
     mkdir librsvg && \
     tar -xf librsvg.tar -C librsvg --strip-components 1 && \
