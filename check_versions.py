@@ -161,8 +161,10 @@ Packages = {
         're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$'
     },
     'libdap': {
-        'filelist': 'https://www.opendap.org/pub/source/',
-        're': r'libdap-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+        'git': 'https://github.com/OPENDAP/libdap4.git',
+        're': r'version-([0-9]+\.[0-9]+(|\.[0-9]+))$',
+        # 'filelist': 'https://www.opendap.org/pub/source/',
+        # 're': r'libdap-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
     'libde265': {
         'git': 'https://github.com/strukturag/libde265.git',

@@ -188,7 +188,7 @@ RUN echo "`date` strip-nondeterminism" >> /build/log.txt && \
 
 # CMake - use a precompiled binary
 RUN echo "`date` cmake" >> /build/log.txt && \
-    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.16.2/cmake-3.16.2-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.16.4/cmake-3.16.4-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
     mkdir cmake && \
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz && \
@@ -218,7 +218,7 @@ RUN echo "`date` advancecomp" >> /build/log.txt && \
 
 RUN echo "`date` psutil" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b release-5.6.7 https://github.com/giampaolo/psutil.git && \
+    git clone --depth=1 --single-branch -b release-5.7.0 https://github.com/giampaolo/psutil.git && \
     cd psutil && \
     # Strip libraries before building any wheels \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
@@ -248,7 +248,7 @@ RUN echo "`date` ultrajson" >> /build/log.txt && \
 RUN echo "`date` proj4" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 6.3.0 https://github.com/OSGeo/proj.4.git && \
+    git clone --depth=1 --single-branch -b 6.3.1 https://github.com/OSGeo/proj.4.git && \
     cd proj.4 && \
     curl --retry 5 --silent http://download.osgeo.org/proj/proj-datumgrid-1.8.zip -L -o proj-datumgrid.zip && \
     cd data && \
@@ -515,7 +515,7 @@ open(path, "w").write(s)' && \
 
 RUN echo "`date` pcre" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.pcre.org/pub/pcre/pcre-8.43.tar.gz -L -o pcre.tar.gz && \
+    curl --retry 5 --silent https://ftp.pcre.org/pub/pcre/pcre-8.44.tar.gz -L -o pcre.tar.gz && \
     mkdir pcre && \
     tar -zxf pcre.tar.gz -C pcre --strip-components 1 && \
     rm -f pcre.tar.gz && \
@@ -531,11 +531,11 @@ RUN echo "`date` meson" >> /build/log.txt && \
     pip3 install meson && \
     echo "`date` meson" >> /build/log.txt
 
-# Ninja 1.9.0 doesn't work with glib-2.61.2 or 2.63.1
+# Ninja >= 1.9 has to be built locally
 RUN echo "`date` ninja" >> /build/log.txt && \
-    curl --retry 5 --silent https://github.com/ninja-build/ninja/releases/download/v1.8.2/ninja-linux.zip -L -o ninja.zip && \
-    unzip ninja.zip && \
-    rm -f ninja.zip && \
+    git clone --depth=1 --single-branch -b v1.10.0 https://github.com/ninja-build/ninja.git && \
+    cd ninja && \
+    ./configure.py --bootstrap && \
     mv ninja /usr/local/bin/. && \
     echo "`date` ninja" >> /build/log.txt
 
@@ -558,7 +558,7 @@ open(path, "w").write(s)' && \
 RUN echo "`date` util-linux" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v2.34 https://github.com/karelzak/util-linux.git && \
+    git clone --depth=1 --single-branch -b v2.35.1 https://github.com/karelzak/util-linux.git && \
     cd util-linux && \
     ./autogen.sh && \
     export CFLAGS="$CFLAGS -O2" && \
@@ -715,7 +715,7 @@ RUN echo "`date` rm glib 2.58" >> /build/log.txt && \
 RUN echo "`date` glib" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.63/glib-2.63.3.tar.xz -L -o glib-2.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.63/glib-2.63.5.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
@@ -773,10 +773,25 @@ RUN echo "`date` flex" >> /build/log.txt && \
     ldconfig && \
     echo "`date` flex" >> /build/log.txt
 
+RUN echo "`date` bison" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.5.2.tar.xz -L -o bison.tar.xz && \
+    unxz bison.tar.xz && \
+    mkdir bison && \
+    tar -xf bison.tar -C bison --strip-components 1 && \
+    rm -f bison.tar && \
+    cd bison && \
+    export CFLAGS="$CFLAGS -O2" && \
+    ./configure --silent --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` bison" >> /build/log.txt
+
 RUN echo "`date` gobject-introspection" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/gobject-introspection/1.62/gobject-introspection-1.62.0.tar.xz -L -o gobject-introspection.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/gobject-introspection/1.63/gobject-introspection-1.63.2.tar.xz -L -o gobject-introspection.tar.xz && \
     unxz gobject-introspection.tar.xz && \
     mkdir gobject-introspection && \
     tar -xf gobject-introspection.tar -C gobject-introspection --strip-components 1 && \
@@ -917,7 +932,7 @@ RUN echo "`date` tk" >> /build/log.txt && \
 
 RUN echo "`date` sqlite" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://sqlite.org/2019/sqlite-autoconf-3300100.tar.gz -L -o sqlite.tar.gz && \
+    curl --retry 5 --silent https://sqlite.org/2020/sqlite-autoconf-3310100.tar.gz -L -o sqlite.tar.gz && \
     mkdir sqlite && \
     tar -zxf sqlite.tar.gz -C sqlite --strip-components 1 && \
     rm -f sqlite.tar.gz && \
@@ -1073,28 +1088,11 @@ RUN echo "`date` lz4" >> /build/log.txt && \
     ldconfig && \
     echo "`date` lz4" >> /build/log.txt
 
-RUN echo "`date` bison" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.5.tar.xz -L -o bison.tar.xz && \
-    unxz bison.tar.xz && \
-    mkdir bison && \
-    tar -xf bison.tar -C bison --strip-components 1 && \
-    rm -f bison.tar && \
-    cd bison && \
-    export CFLAGS="$CFLAGS -O2" && \
-    ./configure --silent --prefix=/usr/local && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` bison" >> /build/log.txt
-
 RUN echo "`date` libdap" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://www.opendap.org/pub/source/libdap-3.20.4.tar.gz -L -o libdap.tar.gz && \
-    mkdir libdap && \
-    tar -zxf libdap.tar.gz -C libdap --strip-components 1 && \
-    rm -f libdap.tar.gz && \
-    cd libdap && \
+    git clone --depth=1 --single-branch -b version-3.20.5 https://github.com/OPENDAP/libdap4.git && \
+    cd libdap4 && \
+    autoreconf -ifv && \
     ./configure --silent --prefix=/usr/local --enable-threads=posix && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -1238,7 +1236,7 @@ RUN echo "`date` ogdi" >> /build/log.txt && \
 RUN echo "`date` postgres" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.postgresql.org/pub/source/v12.1/postgresql-12.1.tar.gz -L -o postgresql.tar.gz && \
+    curl --retry 5 --silent https://ftp.postgresql.org/pub/source/v12.2/postgresql-12.2.tar.gz -L -o postgresql.tar.gz && \
     mkdir postgresql && \
     tar -zxf postgresql.tar.gz -C postgresql --strip-components 1 && \
     rm -f postgresql.tar.gz && \
@@ -1253,7 +1251,7 @@ RUN echo "`date` postgres" >> /build/log.txt && \
 RUN echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-0.84.0.tar.xz -L -o poppler.tar.xz && \
+    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-0.85.0.tar.xz -L -o poppler.tar.xz && \
     unxz poppler.tar.xz && \
     mkdir poppler && \
     tar -xf poppler.tar -C poppler --strip-components 1 && \
@@ -1315,9 +1313,10 @@ RUN echo "`date` jasper" >> /build/log.txt && \
 RUN echo "`date` libxcrypt" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v4.4.10 https://github.com/besser82/libxcrypt.git && \
+    git clone --depth=1 --single-branch -b v4.4.14 https://github.com/besser82/libxcrypt.git && \
     cd libxcrypt && \
-    autoreconf -ifv && \
+    # autoreconf -ifv && \
+    ./autogen.sh && \
     CFLAGS="$CFLAGS -O2 -w" ./configure --silent --prefix=/usr/local --enable-obsolete-api --enable-hashes=all && \
     make --silent -j ${JOBS} && \
     (make --silent -j ${JOBS} install || true) && \
@@ -1368,7 +1367,7 @@ RUN echo "`date` xerces" >> /build/log.txt && \
 
 RUN echo "`date` openblas" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v0.3.7 https://github.com/xianyi/OpenBLAS.git && \
+    git clone --depth=1 --single-branch -b v0.3.8 https://github.com/xianyi/OpenBLAS.git && \
     cd OpenBLAS && \
     mkdir _build && \
     cd _build && \
@@ -1392,7 +1391,7 @@ RUN echo "`date` superlu" >> /build/log.txt && \
 
 RUN echo "`date` armadillo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-9.800.3.tar.xz -L -o armadillo.tar.xz && \
+    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-9.850.1.tar.xz -L -o armadillo.tar.xz && \
     unxz armadillo.tar.xz && \
     mkdir armadillo && \
     tar -xf armadillo.tar -C armadillo --strip-components 1 && \
@@ -1740,7 +1739,7 @@ RUN echo "`date` libde265" >> /build/log.txt && \
 RUN echo "`date` libheif" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v1.6.1 https://github.com/strukturag/libheif.git && \
+    git clone --depth=1 --single-branch -b v1.6.2 https://github.com/strukturag/libheif.git && \
     cd libheif && \
     ./autogen.sh && \
     ./configure --silent --prefix=/usr/local && \
@@ -1756,7 +1755,7 @@ RUN echo "`date` rust" >> /build/log.txt && \
 RUN echo "`date` librsvg" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.47/librsvg-2.47.2.tar.xz -L -o librsvg.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.47/librsvg-2.47.3.tar.xz -L -o librsvg.tar.xz && \
     unxz librsvg.tar.xz && \
     mkdir librsvg && \
     tar -xf librsvg.tar -C librsvg --strip-components 1 && \
@@ -1792,7 +1791,7 @@ RUN echo "`date` libgsf" >> /build/log.txt && \
 #  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz JXL LQR RAQM RAW WMF
 RUN echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.0.9-16 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.0.9-24 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
