@@ -1930,9 +1930,7 @@ open(path, "w").write(data)' && \
     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" install --no-cache-dir cython' && \
     find /opt/python -mindepth 1 -name '*cp2*' -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse' && \
     git stash && \
-    # git checkout v2.4.2rel && \
-    # 2.4.2.post1 \
-    git checkout 565475313fdc6ae79344853b7fba751b01258d2c && \
+    git checkout v2.5.0rel && \
     python -c $'# \n\
 path = "pyproj/__init__.py" \n\
 s = open(path).read() \n\

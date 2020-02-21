@@ -16,7 +16,7 @@ freetype 2.10.1
 freexl ce144a720f
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
-gdal 9cfbda621ac92ef2d5b20e41dfdd370906ea00a8
+gdal e52a02d4520f03df19952a056ca7b9a361738273
 gdal-pypi 3.0.4
 gdal-release 3.0.4
 gdk-pixbuf 2.40.0
@@ -84,14 +84,14 @@ pnetcdf 1.12.1
 poppler 0.85.0
 postgresql 12.2
 proj-datumgrid 1.8
-proj.4 9022252da3585b64e76e5d8f797edfcd2b909c67
+proj.4 f57a390398e3bc2a48a8d2ed8c41186a4e9b9bf3
 proj.4-release 6.3.1
 psutil 5.7.0
 pylibmc 1.6.1
 pylibtiff 51d6f2a41db654254397df1de6f9193e7317bce5
 pylibtiff-pypi 0.4.2
 pyproj4-pypi 2.4.2.post1
-pyproj4-release 2.4.2
+pyproj4-release 2.5.0
 python-mapnik 708290aff1ecbc2de080cab5588019caea1a02e1
 python-mapnik-pypi 0.1
 pyvips 9b20136c2fed9a7115a547e9adc4a542a14593b0
