@@ -448,6 +448,9 @@ Packages = {
         'git': 'https://github.com/esnme/ultrajson.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
+    'ultrajson-pypi': {
+        'pypi': 'ujson',
+    },
     'util-linux': {
         'git': 'https://github.com/karelzak/util-linux.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'

@@ -5,7 +5,7 @@ WORKDIR /build
 
 # Don't build python 3.4 wheels.
 RUN echo "`date` rm cp34" >> /build/log.txt && \
-    rm -r /opt/python/cp34* && \
+    rm -rf /opt/python/cp34* && \
     echo "`date` rm cp34" >> /build/log.txt
 
 RUN echo "`date` yum install" >> /build/log.txt && \
@@ -150,7 +150,7 @@ RUN echo "`date` libssh2" >> /build/log.txt && \
 
 RUN echo "`date` curl" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_68_0/curl-7.68.0.tar.gz -L -o curl.tar.gz && \
+    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_69_0/curl-7.69.0.tar.gz -L -o curl.tar.gz && \
     mkdir curl && \
     tar -zxf curl.tar.gz -C curl --strip-components 1 && \
     rm -f curl.tar.gz && \
@@ -188,7 +188,7 @@ RUN echo "`date` strip-nondeterminism" >> /build/log.txt && \
 
 # CMake - use a precompiled binary
 RUN echo "`date` cmake" >> /build/log.txt && \
-    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.16.4/cmake-3.16.4-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.16.5/cmake-3.16.5-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
     mkdir cmake && \
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz && \
@@ -235,6 +235,7 @@ RUN echo "`date` ultrajson" >> /build/log.txt && \
     cd ultrajson && \
     # Strip libraries before building any wheels \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
+    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" install --no-cache-dir setuptools-scm' && \
     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse' && \
     find /io/wheelhouse/ -name 'ujson*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux1_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'ujson*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
@@ -715,7 +716,7 @@ RUN echo "`date` rm glib 2.58" >> /build/log.txt && \
 RUN echo "`date` glib" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.63/glib-2.63.5.tar.xz -L -o glib-2.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.64/glib-2.64.0.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
@@ -775,7 +776,7 @@ RUN echo "`date` flex" >> /build/log.txt && \
 
 RUN echo "`date` bison" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.5.2.tar.xz -L -o bison.tar.xz && \
+    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.5.3.tar.xz -L -o bison.tar.xz && \
     unxz bison.tar.xz && \
     mkdir bison && \
     tar -xf bison.tar -C bison --strip-components 1 && \
@@ -791,7 +792,7 @@ RUN echo "`date` bison" >> /build/log.txt && \
 RUN echo "`date` gobject-introspection" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/gobject-introspection/1.63/gobject-introspection-1.63.2.tar.xz -L -o gobject-introspection.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/gobject-introspection/1.64/gobject-introspection-1.64.0.tar.xz -L -o gobject-introspection.tar.xz && \
     unxz gobject-introspection.tar.xz && \
     mkdir gobject-introspection && \
     tar -xf gobject-introspection.tar -C gobject-introspection --strip-components 1 && \
@@ -1139,7 +1140,7 @@ open(path, "w").write(data)' && \
 # Build items necessary for netcdf support
 RUN echo "`date` hdf4" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://support.hdfgroup.org/ftp/HDF/releases/HDF4.2.14/src/hdf-4.2.14.tar.gz -L -o hdf4.tar.gz && \
+    curl --retry 5 --silent https://support.hdfgroup.org/ftp/HDF/releases/HDF4.2.15/src/hdf-4.2.15.tar.gz -L -o hdf4.tar.gz && \
     mkdir hdf4 && \
     tar -zxf hdf4.tar.gz -C hdf4 --strip-components 1 && \
     rm -f hdf4.tar.gz && \
@@ -1152,6 +1153,7 @@ RUN echo "`date` hdf4" >> /build/log.txt && \
     ldconfig && \
     echo "`date` hdf4" >> /build/log.txt
 
+# hdf5 1.12.0 isnt' compatible with armadillo
 RUN echo "`date` hdf5" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
@@ -1251,7 +1253,7 @@ RUN echo "`date` postgres" >> /build/log.txt && \
 RUN echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-0.85.0.tar.xz -L -o poppler.tar.xz && \
+    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-0.86.1.tar.xz -L -o poppler.tar.xz && \
     unxz poppler.tar.xz && \
     mkdir poppler && \
     tar -xf poppler.tar -C poppler --strip-components 1 && \
@@ -1313,7 +1315,7 @@ RUN echo "`date` jasper" >> /build/log.txt && \
 RUN echo "`date` libxcrypt" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v4.4.14 https://github.com/besser82/libxcrypt.git && \
+    git clone --depth=1 --single-branch -b v4.4.15 https://github.com/besser82/libxcrypt.git && \
     cd libxcrypt && \
     # autoreconf -ifv && \
     ./autogen.sh && \
@@ -1367,7 +1369,7 @@ RUN echo "`date` xerces" >> /build/log.txt && \
 
 RUN echo "`date` openblas" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v0.3.8 https://github.com/xianyi/OpenBLAS.git && \
+    git clone --depth=1 --single-branch -b v0.3.9 https://github.com/xianyi/OpenBLAS.git && \
     cd OpenBLAS && \
     mkdir _build && \
     cd _build && \
@@ -1755,7 +1757,7 @@ RUN echo "`date` rust" >> /build/log.txt && \
 RUN echo "`date` librsvg" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.47/librsvg-2.47.3.tar.xz -L -o librsvg.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.48/librsvg-2.48.0.tar.xz -L -o librsvg.tar.xz && \
     unxz librsvg.tar.xz && \
     mkdir librsvg && \
     tar -xf librsvg.tar -C librsvg --strip-components 1 && \
@@ -1791,7 +1793,7 @@ RUN echo "`date` libgsf" >> /build/log.txt && \
 #  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz JXL LQR RAQM RAW WMF
 RUN echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.0.9-24 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.0.10-0 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
