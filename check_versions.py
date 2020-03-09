@@ -140,8 +140,10 @@ Packages = {
         'subre': r'hdf5-([0-9]+\.[0-9]+(|\.[0-9]+))\/'
     },
     'icu4c': {
-        'filelist': 'http://download.icu-project.org/files/icu4c/',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))\/$'
+        'git': 'https://github.com/unicode-org/icu.git',
+        're': r'release-([0-9]+-[0-9]+(|-[0-9]+))$',
+        # 'filelist': 'http://download.icu-project.org/files/icu4c/',
+        # 're': r'([0-9]+\.[0-9]+(|\.[0-9]+))\/$'
     },
     'imagemagick': {
         'git': 'https://github.com/ImageMagick/ImageMagick.git',

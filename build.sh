@@ -10,8 +10,8 @@ docker build --force-rm -t girder/large_image_wheels --build-arg SOURCE_DATE_EPO
 mkdir -p wheels
 ls -al wheels
 rm -f wheels/*many*.whl
-docker run -v `pwd`/wheels:/opt/mount --rm --entrypoint bash girder/large_image_wheels -c 'cp /io/wheelhouse/{psutil,ujson,libtiff,Glymur,openslide_python,GDAL,mapnik,pyvips,pyproj,pylibmc}*many* /opt/mount/. && chown '`id -u`':'`id -g`' /opt/mount/*.whl'
-cp wheels/*.whl gh-pages/.
+docker run -v `pwd`/wheels:/opt/mount --rm --entrypoint bash girder/large_image_wheels -c 'cp --preserve=timestamps /io/wheelhouse/{psutil,ujson,libtiff,Glymur,openslide_python,GDAL,mapnik,pyvips,pyproj,pylibmc}*many* /opt/mount/. && chown '`id -u`':'`id -g`' /opt/mount/*.whl'
+cp --preserve=timestamps wheels/*.whl gh-pages/.
 python make_index.py
 python make_index.py wheels
 ls -al wheels

@@ -150,7 +150,7 @@ RUN echo "`date` libssh2" >> /build/log.txt && \
 
 RUN echo "`date` curl" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_69_0/curl-7.69.0.tar.gz -L -o curl.tar.gz && \
+    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_69_1/curl-7.69.1.tar.gz -L -o curl.tar.gz && \
     mkdir curl && \
     tar -zxf curl.tar.gz -C curl --strip-components 1 && \
     rm -f curl.tar.gz && \
@@ -231,7 +231,7 @@ RUN echo "`date` psutil" >> /build/log.txt && \
 
 RUN echo "`date` ultrajson" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch https://github.com/esnme/ultrajson.git && \
+    git clone --depth=1 --single-branch -b 2.0.2 https://github.com/esnme/ultrajson.git && \
     cd ultrajson && \
     # Strip libraries before building any wheels \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
@@ -716,7 +716,7 @@ RUN echo "`date` rm glib 2.58" >> /build/log.txt && \
 RUN echo "`date` glib" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.64/glib-2.64.0.tar.xz -L -o glib-2.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.64/glib-2.64.1.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
@@ -846,11 +846,8 @@ RUN echo "`date` libiconv" >> /build/log.txt && \
 RUN echo "`date` icu4c" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent http://download.icu-project.org/files/icu4c/64.2/icu4c-64_2-src.tgz -L -o icu4c.tar.gz && \
-    mkdir icu4c && \
-    tar -zxf icu4c.tar.gz -C icu4c --strip-components 1 && \
-    rm -f icu4c.tar.gz && \
-    cd icu4c/source && \
+    git clone --depth=1 --single-branch -b release-65-1 https://github.com/unicode-org/icu.git && \
+    cd icu/icu4c/source && \
     CFLAGS="$CFLAGS -O2 -DUNISTR_FROM_CHAR_EXPLICIT=explicit -DUNISTR_FROM_STRING_EXPLICIT=explicit -DU_CHARSET_IS_UTF8=1 -DU_NO_DEFAULT_INCLUDE_UTF_HEADERS=1 -DU_HIDE_OBSOLETE_UTF_OLD_H=1" ./configure --silent --prefix=/usr/local --disable-tests --disable-samples --with-data-packaging=library && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -959,7 +956,7 @@ RUN echo "`date` freexl" >> /build/log.txt && \
 
 RUN echo "`date` libgeos" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 3.7.3 https://github.com/libgeos/geos.git && \
+    git clone --depth=1 --single-branch -b 3.8.1 https://github.com/libgeos/geos.git && \
     cd geos && \
     mkdir _build && \
     cd _build && \
