@@ -11,7 +11,9 @@ containers = [
     "python:3.7",
     "python:3.8",
     "centos/python-27-centos7",
-    "centos/python-35-centos7",
+    # The latest pyproj needs a newer version of python 3.5 than included in
+    # the centos/python-35-centos7 docker image.
+    # "centos/python-35-centos7",
     "centos/python-36-centos7",
 ]
 

@@ -1790,7 +1790,7 @@ RUN echo "`date` libgsf" >> /build/log.txt && \
 #  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz JXL LQR RAQM RAW WMF
 RUN echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.0.10-0 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.0.10-1 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
@@ -1916,8 +1916,8 @@ data = data.replace( \n\
     "    return package_data", \n\
 """    package_data["pyproj"].extend(["bin/*", "proj/*"]) \n\
     return package_data""") \n\
-data = data.replace("""license="OSI Approved",""", \n\
-"""license="OSI Approved", \n\
+data = data.replace("""version=get_version(),""", \n\
+"""version=get_version(), \n\
     entry_points={\'console_scripts\': [\'%s=pyproj.bin:program\' % name for name in os.listdir(\'pyproj/bin\') if not name.endswith(\'.py\')]},""") \n\
 open(path, "w").write(data)' && \
     # Strip libraries before building any wheels \
@@ -1929,7 +1929,7 @@ open(path, "w").write(data)' && \
     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" install --no-cache-dir cython' && \
     find /opt/python -mindepth 1 -name '*cp2*' -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse' && \
     git stash && \
-    git checkout v2.5.0rel && \
+    git checkout v2.6.0rel && \
     python -c $'# \n\
 path = "pyproj/__init__.py" \n\
 s = open(path).read() \n\
