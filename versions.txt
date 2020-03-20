@@ -5,7 +5,7 @@ boost 1.72.0
 cairo 1.16.0
 charls 25160a42fb62e71e4b0ce081f5cb3f8bb73938b5
 charls-release 2.1.0
-cmake 3.16.5
+cmake 3.17.0
 curl 7_69_1
 epsilon 0.9.2
 fitsio 3450
@@ -16,7 +16,7 @@ freetype 2.10.1
 freexl ce144a720f
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
-gdal 20569c002c19721d3eb6f7c276fdc7a43cdfd31d
+gdal 8d92a762a8024f12793646630d3a0f02087c439b
 gdal-pypi 3.0.4
 gdal-release 3.0.4
 gdk-pixbuf 2.40.0
@@ -30,7 +30,7 @@ harfbuzz 2.6.4
 hdf4 4.2.15
 hdf5 1.12.0
 icu4c 66-1
-imagemagick 7.0.10-1
+imagemagick 7.0.10-2
 jasper 2.0.16
 jbigkit 2.1
 libcroco 0.6.13
@@ -39,7 +39,7 @@ libde265 1.0.5
 libexpat 2_2_9
 libffi 3.3
 libgeotiff 1.5.1
-libgsf 1.14.46
+libgsf 1.14.47
 libgta 1.2.1
 libheif 1.6.2
 libiconv 1.16
@@ -57,7 +57,7 @@ libxcrypt 4.4.15
 libxml2 2.9.10
 lz4 1.9.2
 m4 1.4.18
-manylinux2010 a6c528105465faca519660016ce107ecae2f9d89b3e0440b8e721138a743eb0e
+manylinux2010 de4a24bbe5f87ee850e30213a81814a80758cef7e150b2245ec41ef6f1d9bf92
 mapnik e3f4e76c4743a7caedb7e5e0c410d32da2d2789c
 mapnik-release 3.0.23
 mysql 5.7.29
@@ -84,7 +84,7 @@ pnetcdf 1.12.1
 poppler 0.86.1
 postgresql 12.2
 proj-datumgrid 1.8
-proj.4 0c5802e0f840cf289dffa02571e414b276bb7d62
+proj.4 23d2941ef30f5fa62230606766ae8b9e296f814f
 proj.4-release 7.0.0
 psutil 5.7.0
 pylibmc 1.6.1
@@ -100,8 +100,8 @@ sqlite 3310100
 superlu 5.2.1
 tcl 8.6.10
 tk 8.6.10
-ultrajson 3b3abedd49fd9257e6d15a19f495e83300e7b56e
-ultrajson-pypi 2.0.2
+ultrajson 706ffeba1115c7b3343b9ca860d41c63924e2854
+ultrajson-pypi 2.0.3
 ultrajson-release 1.35
 util-linux 2.35.1
 xerces-c 3.2.2
