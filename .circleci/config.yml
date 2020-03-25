@@ -33,6 +33,18 @@ jobs:
           name: Show build times
           command: export TERM=xterm && docker run --rm --entrypoint bash girder/large_image_wheels -c 'cat log.txt'
       - run:
+          name: Install pv
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y pv
+      - run:
+          name: Archive docker image
+          # This took > 15 minutes on my machine.  Adding pv provides some
+          # output so circle won't timeout
+          command: docker save girder/large_image_wheels:latest | pv > liw_docker.tar
+      - store_artifacts:
+          path: ./liw_docker.tar
+      - run:
           name: Test the Docker
           command: python test_via_docker.py
       # Upload artifacts to github (or elsewhere)
