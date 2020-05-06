@@ -16,7 +16,7 @@ freetype 2.10.1
 freexl ce144a720f
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
-gdal eb79879640fb9cdcaadca48506c35eb8f39b54a1
+gdal 797bfd8b74cea25bc95993731ff51a56353f8349
 gdal-pypi 3.0.4
 gdal-release 3.0.4
 gdk-pixbuf 2.40.0
@@ -58,7 +58,7 @@ libxml2 2.9.10
 lz4 1.9.2
 m4 1.4.18
 manylinux2010 3586ef2772e6069d41c7397cfa4f26bc178e31b9a91da14e38b0924228b6da3c
-mapnik 9bfe888cef00a175e2396dc453862e9582654b0c
+mapnik d0b40f62dc1ae60f6aa8ecee704ee47d545df174
 mapnik-release 3.0.23
 mysql 5.7.30
 netcdf 4.7.4
@@ -84,7 +84,7 @@ pnetcdf 1.12.1
 poppler 0.88.0
 postgresql 12.2
 proj-datumgrid 1.8
-proj.4 de323f98dcf92597bded18fc3f51c856ee236228
+proj.4 72fc6ab0f5bd74468c0bc4d4f7a851991e6ac16c
 proj.4-release 7.0.1
 psutil 5.7.0
 pylibmc 1.6.1
