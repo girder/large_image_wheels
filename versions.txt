@@ -16,9 +16,9 @@ freetype 2.10.1
 freexl ce144a720f
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
-gdal 797bfd8b74cea25bc95993731ff51a56353f8349
-gdal-pypi 3.0.4
-gdal-release 3.0.4
+gdal 5e434ad4d80cd43ef35047e2ba76ca13203d3aa2
+gdal-pypi 3.1.0
+gdal-release 3.1.0
 gdk-pixbuf 2.40.0
 geos 3.8.1
 gettext 0.20.2
