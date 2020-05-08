@@ -778,7 +778,7 @@ RUN echo "`date` flex" >> /build/log.txt && \
 
 RUN echo "`date` bison" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.5.4.tar.xz -L -o bison.tar.xz && \
+    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.6.1.tar.xz -L -o bison.tar.xz && \
     unxz bison.tar.xz && \
     mkdir bison && \
     tar -xf bison.tar -C bison --strip-components 1 && \
@@ -1011,7 +1011,7 @@ RUN echo "`date` pixman" >> /build/log.txt && \
 
 RUN echo "`date` freetype" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.savannah.gnu.org/releases/freetype/freetype-2.10.1.tar.gz -L -o freetype.tar.gz && \
+    curl --retry 5 --silent https://download.savannah.gnu.org/releases/freetype/freetype-2.10.2.tar.gz -L -o freetype.tar.gz && \
     mkdir freetype && \
     tar -zxf freetype.tar.gz -C freetype --strip-components 1 && \
     rm -f freetype.tar.gz && \
@@ -1518,7 +1518,7 @@ open(path, "w").write(s)' && \
     cp samples/ogr2ogr.py scripts/ogr2ogr.py && \
     # Strip libraries before building any wheels \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
-    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse; git clean -nxd build' && \
+    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse; git clean -fxd build GDAL.egg-info' && \
     find /io/wheelhouse/ -name 'GDAL*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'GDAL*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'GDAL*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
@@ -1608,7 +1608,7 @@ s = open(path).read().replace( \n\
     "\'share/*/*\'", \n\
     """\'share/*/*\', \'input/*\', \'fonts/*\', \'proj/*\', \'gdal/*\', \'bin/*\'""").replace( \n\
     "path=font_path))", """path=font_path)) \n\
-    f_paths.write("localpath = os.path.dirname(os.path.dirname(os.path.abspath( __file__ )))\\\\n") \n\
+    f_paths.write("localpath = os.path.dirname(os.path.abspath( __file__ ))\\\\n") \n\
     f_paths.write("mapniklibpath = os.path.join(localpath, \'mapnik.libs\')\\\\n") \n\
     f_paths.write("mapniklibpath = os.path.normpath(mapniklibpath)\\\\n") \n\
     f_paths.write("inputpluginspath = os.path.join(localpath, \'input\')\\\\n") \n\

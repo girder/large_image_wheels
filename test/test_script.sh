@@ -115,6 +115,30 @@ print(ti['tile'][:4,:4])
 tile = ts.getTile(1178, 1507, 12)
 pprint.pprint(repr(tile[1400:1440]))
 EOF
+echo 'Use large_image to read a geotiff file with a projection via gdal'
+python <<EOF
+import large_image_source_gdal, pprint
+ts = large_image_source_gdal.GDALFileTileSource('landcover.tif', projection='EPSG:3857')
+pprint.pprint(ts.getMetadata())
+ti = ts.getSingleTile(tile_size=dict(width=1000, height=1000), tile_position=100)
+pprint.pprint(ti)
+print(ti['tile'].size)
+print(ti['tile'][:4,:4])
+tile = ts.getTile(1178, 1507, 12)
+pprint.pprint(repr(tile[1400:1440]))
+EOF
+echo 'Use large_image to read a geotiff file with a projection via mapnik'
+python <<EOF
+import large_image_source_mapnik, pprint
+ts = large_image_source_mapnik.MapnikFileTileSource('landcover.tif', projection='EPSG:3857')
+pprint.pprint(ts.getMetadata())
+ti = ts.getSingleTile(tile_size=dict(width=1000, height=1000), tile_position=100)
+pprint.pprint(ti)
+print(ti['tile'].size)
+print(ti['tile'][:4,:4])
+tile = ts.getTile(1178, 1507, 12)
+pprint.pprint(repr(tile[1400:1440]))
+EOF
 echo 'Test that pyvips and openslide can both be imported, pyvips first'
 python <<EOF
 import pyvips, openslide

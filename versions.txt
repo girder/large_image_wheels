@@ -1,6 +1,6 @@
 advancecomp 2.1
 armadillo 9.870.2
-bison 3.5.4
+bison 3.6.1
 boost 1.73.0
 cairo 1.16.0
 charls 25160a42fb62e71e4b0ce081f5cb3f8bb73938b5
@@ -12,11 +12,11 @@ fitsio 3450
 flex 2.6.4
 fontconfig 2.13.92
 fossil 2.10
-freetype 2.10.1
+freetype 2.10.2
 freexl ce144a720f
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
-gdal 5e434ad4d80cd43ef35047e2ba76ca13203d3aa2
+gdal 8a7d784d7b92428012849318b2149b856a23f0c1
 gdal-pypi 3.1.0
 gdal-release 3.1.0
 gdk-pixbuf 2.40.0
@@ -57,7 +57,7 @@ libxcrypt 4.4.16
 libxml2 2.9.10
 lz4 1.9.2
 m4 1.4.18
-manylinux2010 3586ef2772e6069d41c7397cfa4f26bc178e31b9a91da14e38b0924228b6da3c
+manylinux2010 f0ca10972f25aca20a91fd23600d398a19b36031a000aad3f8ce295b09d049c8
 mapnik d0b40f62dc1ae60f6aa8ecee704ee47d545df174
 mapnik-release 3.0.23
 mysql 5.7.30
@@ -100,7 +100,7 @@ sqlite 3310100
 superlu 5.2.1
 tcl 8.6.10
 tk 8.6.10
-ultrajson 602c4b723371827c4432e71607bbef8982c3d929
+ultrajson e56aa43e3d6f115c4cb29f3b0833c8c1fe7e2a7a
 ultrajson-pypi 2.0.3
 ultrajson-release 1.35
 util-linux 2.35.1
