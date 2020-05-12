@@ -164,7 +164,7 @@ RUN echo "`date` curl" >> /build/log.txt && \
 # Perl - building from source seems to have less issues
 RUN echo "`date` perl" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://www.cpan.org/src/5.0/perl-5.30.1.tar.xz -L -o perl.tar.xz && \
+    curl --retry 5 --silent https://www.cpan.org/src/5.0/perl-5.30.3.tar.xz -L -o perl.tar.xz && \
     unxz perl.tar.xz && \
     mkdir perl && \
     tar -xf perl.tar -C perl --strip-components 1 && \
@@ -188,7 +188,7 @@ RUN echo "`date` strip-nondeterminism" >> /build/log.txt && \
 
 # CMake - use a precompiled binary
 RUN echo "`date` cmake" >> /build/log.txt && \
-    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.17.2/cmake-3.17.2-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.17.3/cmake-3.17.3-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
     mkdir cmake && \
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz && \
@@ -231,12 +231,18 @@ RUN echo "`date` psutil" >> /build/log.txt && \
 
 RUN echo "`date` ultrajson" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 2.0.3 https://github.com/esnme/ultrajson.git && \
+    git clone -b 3.0.0 https://github.com/esnme/ultrajson.git && \
     cd ultrajson && \
     # Strip libraries before building any wheels \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" install --no-cache-dir setuptools-scm' && \
-    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    # Just python >= 3.5 \
+    find /opt/python -mindepth 1 -name '*cp3[^4]*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    # Python < 3.5 \
+    git stash && \
+    git checkout 2.0.3 && \
+    find /opt/python -mindepth 1 \( -name '*cp2*' -o -name '*cp34*' \) -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    # All \
     find /io/wheelhouse/ -name 'ujson*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux1_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'ujson*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'ujson*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
@@ -453,7 +459,7 @@ open(path, "w").write(s)' && \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
     # Just python >= 3.6 \
     find /opt/python -mindepth 1 -name '*cp3[^5]*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
-    # Python < 3.6 /
+    # Python < 3.6 \
     git stash && \
     git checkout v0.8.19 && \
     python -c $'# \n\
@@ -648,8 +654,6 @@ RUN echo "`date` openslide-python" >> /build/log.txt && \
 path = "setup.py" \n\
 s = open(path).read().replace( \n\
     "_convert.c\'", "_convert.c\'], libraries=[\'openslide\'") \n\
-s = s.replace(", Feature", "") \n\
-s = s[:s.index("features=")] + s[s.index("ext_modules"):s.index("    ],", s.index("ext_modules")) + 7] + s[s.index("    test_suite"):] \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
 path = "openslide/lowlevel.py" \n\
@@ -718,7 +722,7 @@ RUN echo "`date` rm glib 2.58" >> /build/log.txt && \
 RUN echo "`date` glib" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.64/glib-2.64.2.tar.xz -L -o glib-2.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.64/glib-2.64.3.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
@@ -778,7 +782,7 @@ RUN echo "`date` flex" >> /build/log.txt && \
 
 RUN echo "`date` bison" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.6.1.tar.xz -L -o bison.tar.xz && \
+    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.6.3.tar.xz -L -o bison.tar.xz && \
     unxz bison.tar.xz && \
     mkdir bison && \
     tar -xf bison.tar -C bison --strip-components 1 && \
@@ -933,7 +937,7 @@ RUN echo "`date` tk" >> /build/log.txt && \
 
 RUN echo "`date` sqlite" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://sqlite.org/2020/sqlite-autoconf-3310100.tar.gz -L -o sqlite.tar.gz && \
+    curl --retry 5 --silent https://sqlite.org/2020/sqlite-autoconf-3320100.tar.gz -L -o sqlite.tar.gz && \
     mkdir sqlite && \
     tar -zxf sqlite.tar.gz -C sqlite --strip-components 1 && \
     rm -f sqlite.tar.gz && \
@@ -1240,7 +1244,7 @@ RUN echo "`date` ogdi" >> /build/log.txt && \
 RUN echo "`date` postgres" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.postgresql.org/pub/source/v12.2/postgresql-12.2.tar.gz -L -o postgresql.tar.gz && \
+    curl --retry 5 --silent https://ftp.postgresql.org/pub/source/v12.3/postgresql-12.3.tar.gz -L -o postgresql.tar.gz && \
     mkdir postgresql && \
     tar -zxf postgresql.tar.gz -C postgresql --strip-components 1 && \
     rm -f postgresql.tar.gz && \
@@ -1255,7 +1259,7 @@ RUN echo "`date` postgres" >> /build/log.txt && \
 RUN echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-0.88.0.tar.xz -L -o poppler.tar.xz && \
+    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-0.89.0.tar.xz -L -o poppler.tar.xz && \
     unxz poppler.tar.xz && \
     mkdir poppler && \
     tar -xf poppler.tar -C poppler --strip-components 1 && \
@@ -1395,7 +1399,7 @@ RUN echo "`date` superlu" >> /build/log.txt && \
 
 RUN echo "`date` armadillo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-9.870.2.tar.xz -L -o armadillo.tar.xz && \
+    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-9.880.1.tar.xz -L -o armadillo.tar.xz && \
     unxz armadillo.tar.xz && \
     mkdir armadillo && \
     tar -xf armadillo.tar -C armadillo --strip-components 1 && \
@@ -1439,6 +1443,7 @@ RUN echo "`date` mrsid" >> /build/log.txt && \
 RUN echo "`date` gdal" >> /build/log.txt && \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b release/3.1 https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
     cd gdal/gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
     ./configure --prefix=/usr/local --disable-static --disable-rpath --with-cpp14 --without-libtool --with-jpeg12 --with-spatialite --with-liblzma --with-webp --with-epsilon --with-poppler --with-hdf5 --with-dods-root=/usr/local --with-sosi --with-mysql --with-rasterlite2 --with-pg --with-cfitsio=/usr/local --with-armadillo --with-mrsid=/build/mrsid/Raster_DSDK --with-mrsid_lidar=/build/mrsid/Lidar_DSDK && \
@@ -1759,7 +1764,7 @@ RUN echo "`date` rust" >> /build/log.txt && \
 RUN echo "`date` librsvg" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.48/librsvg-2.48.4.tar.xz -L -o librsvg.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.49/librsvg-2.49.1.tar.xz -L -o librsvg.tar.xz && \
     unxz librsvg.tar.xz && \
     mkdir librsvg && \
     tar -xf librsvg.tar -C librsvg --strip-components 1 && \
@@ -1795,7 +1800,7 @@ RUN echo "`date` libgsf" >> /build/log.txt && \
 #  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz JXL LQR RAQM RAW WMF
 RUN echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.0.10-10 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.0.10-16 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \

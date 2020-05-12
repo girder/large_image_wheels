@@ -8,7 +8,7 @@ pip install --upgrade setuptools
 # echo 'Test installing all libraries from wheels'
 # pip install libtiff openslide_python pyvips GDAL mapnik -f /wheels
 echo 'Test installing pyvips and other dependencies from wheels via large_image'
-pip install --pre pyvips large_image[sources,memcached] -f ${1:-/wheels}
+pip install pyvips large_image[sources,memcached] -f ${1:-/wheels}
 echo 'Test basic import of libtiff'
 python -c 'import libtiff'
 echo 'Test basic import of openslide'
