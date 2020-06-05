@@ -74,7 +74,7 @@ Packages = {
     'fossil': {
         'json': 'https://www.fossil-scm.org/index.html/juvlist',
         'keys': lambda data: [entry['name'] for entry in data],
-        're': r'fossil-linux-x64-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+        're': r'fossil-src-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
     'fyba': {
         'gitsha': 'https://github.com/kartverket/fyba.git',

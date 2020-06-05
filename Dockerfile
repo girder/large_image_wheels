@@ -3,9 +3,10 @@ FROM quay.io/pypa/manylinux2010_x86_64
 RUN mkdir /build
 WORKDIR /build
 
-# Don't build python 3.4 wheels.
+# Don't build python 3.4 or 3.9 wheels.
 RUN echo "`date` rm cp34" >> /build/log.txt && \
     rm -rf /opt/python/cp34* && \
+    rm -rf /opt/python/cp39* && \
     echo "`date` rm cp34" >> /build/log.txt
 
 RUN echo "`date` yum install" >> /build/log.txt && \
@@ -150,7 +151,7 @@ RUN echo "`date` libssh2" >> /build/log.txt && \
 
 RUN echo "`date` curl" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_70_0/curl-7.70.0.tar.gz -L -o curl.tar.gz && \
+    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_71_0/curl-7.71.0.tar.gz -L -o curl.tar.gz && \
     mkdir curl && \
     tar -zxf curl.tar.gz -C curl --strip-components 1 && \
     rm -f curl.tar.gz && \
@@ -164,7 +165,7 @@ RUN echo "`date` curl" >> /build/log.txt && \
 # Perl - building from source seems to have less issues
 RUN echo "`date` perl" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://www.cpan.org/src/5.0/perl-5.30.3.tar.xz -L -o perl.tar.xz && \
+    curl --retry 5 --silent https://www.cpan.org/src/5.0/perl-5.32.0.tar.xz -L -o perl.tar.xz && \
     unxz perl.tar.xz && \
     mkdir perl && \
     tar -xf perl.tar -C perl --strip-components 1 && \
@@ -229,25 +230,25 @@ RUN echo "`date` psutil" >> /build/log.txt && \
     ls -l /io/wheelhouse && \
     echo "`date` psutil" >> /build/log.txt
 
-RUN echo "`date` ultrajson" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    git clone -b 3.0.0 https://github.com/esnme/ultrajson.git && \
-    cd ultrajson && \
-    # Strip libraries before building any wheels \
-    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
-    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" install --no-cache-dir setuptools-scm' && \
-    # Just python >= 3.5 \
-    find /opt/python -mindepth 1 -name '*cp3[^4]*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
-    # Python < 3.5 \
-    git stash && \
-    git checkout 2.0.3 && \
-    find /opt/python -mindepth 1 \( -name '*cp2*' -o -name '*cp34*' \) -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
-    # All \
-    find /io/wheelhouse/ -name 'ujson*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux1_x86_64 -w /io/wheelhouse && \
-    find /io/wheelhouse/ -name 'ujson*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
-    find /io/wheelhouse/ -name 'ujson*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
-    ls -l /io/wheelhouse && \
-    echo "`date` ultrajson" >> /build/log.txt
+# RUN echo "`date` ultrajson" >> /build/log.txt && \
+#     export JOBS=`nproc` && \
+#     git clone -b 3.0.0 https://github.com/esnme/ultrajson.git && \
+#     cd ultrajson && \
+#     # Strip libraries before building any wheels \
+#     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
+#     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" install --no-cache-dir setuptools-scm' && \
+#     # Just python >= 3.5 \
+#     find /opt/python -mindepth 1 -name '*cp3[^4]*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+#     # Python < 3.5 \
+#     git stash && \
+#     git checkout 2.0.3 && \
+#     find /opt/python -mindepth 1 \( -name '*cp2*' -o -name '*cp34*' \) -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+#     # All \
+#     find /io/wheelhouse/ -name 'ujson*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux1_x86_64 -w /io/wheelhouse && \
+#     find /io/wheelhouse/ -name 'ujson*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
+#     find /io/wheelhouse/ -name 'ujson*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
+#     ls -l /io/wheelhouse && \
+#     echo "`date` ultrajson" >> /build/log.txt
 
 # OpenJPEG
 
@@ -317,7 +318,7 @@ RUN echo "`date` libwebp" >> /build/log.txt && \
 # For 12-bit jpeg
 RUN echo "`date` libjpeg-turbo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.4.tar.gz -L -o libjpeg-turbo.tar.gz && \
+    curl --retry 5 --silent https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.5.tar.gz -L -o libjpeg-turbo.tar.gz && \
     mkdir libjpeg-turbo && \
     tar -zxf libjpeg-turbo.tar.gz -C libjpeg-turbo --strip-components 1 && \
     rm -f libjpeg-turbo.tar.gz && \
@@ -629,6 +630,10 @@ RUN echo "`date` gdk-pixbuf 2.36" >> /build/log.txt && \
 # harm otherwise.
 COPY openslide-vendor-mirax.c.patch .
 
+# This allows building vips from GitHub source
+# (see https://github.com/libvips/libvips/issues/874)
+COPY openslide-init.patch .
+
 RUN echo "`date` openslide" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
@@ -638,6 +643,7 @@ RUN echo "`date` openslide" >> /build/log.txt && \
     rm -f openslide.tar.gz && \
     cd openslide && \
     patch src/openslide-vendor-mirax.c ../openslide-vendor-mirax.c.patch && \
+    patch src/openslide.c ../openslide-init.patch && \
     autoreconf -ifv && \
     export CFLAGS="$CFLAGS -O2" && \
     ./configure --prefix=/usr/local && \
@@ -722,7 +728,7 @@ RUN echo "`date` rm glib 2.58" >> /build/log.txt && \
 RUN echo "`date` glib" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.64/glib-2.64.3.tar.xz -L -o glib-2.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.65/glib-2.65.0.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
@@ -782,7 +788,7 @@ RUN echo "`date` flex" >> /build/log.txt && \
 
 RUN echo "`date` bison" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.6.3.tar.xz -L -o bison.tar.xz && \
+    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.6.4.tar.xz -L -o bison.tar.xz && \
     unxz bison.tar.xz && \
     mkdir bison && \
     tar -xf bison.tar -C bison --strip-components 1 && \
@@ -862,7 +868,7 @@ RUN echo "`date` icu4c" >> /build/log.txt && \
 
 RUN echo "`date` openmpi" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.2.tar.gz -L -o openmpi.tar.gz && \
+    curl --retry 5 --silent https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.4.tar.gz -L -o openmpi.tar.gz && \
     mkdir openmpi && \
     tar -zxf openmpi.tar.gz -C openmpi --strip-components 1 && \
     rm -f openmpi.tar.gz && \
@@ -903,10 +909,15 @@ RUN echo "`date` boost" >> /build/log.txt && \
     echo "`date` boost" >> /build/log.txt
 
 RUN echo "`date` fossil" >> /build/log.txt && \
-    curl --retry 5 --silent -L https://www.fossil-scm.org/index.html/uv/fossil-linux-x64-2.10.tar.gz -o fossil.tar.gz && \
-    tar -zxf fossil.tar.gz && \
+    curl --retry 5 --silent -L https://www.fossil-scm.org/index.html/uv/fossil-src-2.11.1.tar.gz -o fossil.tar.gz && \
+    mkdir fossil && \
+    tar -zxf fossil.tar.gz -C fossil --strip-components 1 && \
     rm -f fossil.tar.gz && \
-    mv fossil /usr/local/bin && \
+    cd fossil && \
+    ./configure --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
     echo "`date` fossil" >> /build/log.txt
 
 RUN echo "`date` tcl" >> /build/log.txt && \
@@ -937,7 +948,7 @@ RUN echo "`date` tk" >> /build/log.txt && \
 
 RUN echo "`date` sqlite" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://sqlite.org/2020/sqlite-autoconf-3320100.tar.gz -L -o sqlite.tar.gz && \
+    curl --retry 5 --silent https://sqlite.org/2020/sqlite-autoconf-3320300.tar.gz -L -o sqlite.tar.gz && \
     mkdir sqlite && \
     tar -zxf sqlite.tar.gz -C sqlite --strip-components 1 && \
     rm -f sqlite.tar.gz && \
@@ -1375,7 +1386,7 @@ RUN echo "`date` xerces" >> /build/log.txt && \
 
 RUN echo "`date` openblas" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v0.3.9 https://github.com/xianyi/OpenBLAS.git && \
+    git clone --depth=1 --single-branch -b v0.3.10 https://github.com/xianyi/OpenBLAS.git && \
     cd OpenBLAS && \
     mkdir _build && \
     cd _build && \
@@ -1399,7 +1410,7 @@ RUN echo "`date` superlu" >> /build/log.txt && \
 
 RUN echo "`date` armadillo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-9.880.1.tar.xz -L -o armadillo.tar.xz && \
+    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-9.900.1.tar.xz -L -o armadillo.tar.xz && \
     unxz armadillo.tar.xz && \
     mkdir armadillo && \
     tar -xf armadillo.tar -C armadillo --strip-components 1 && \
@@ -1442,14 +1453,18 @@ RUN echo "`date` mrsid" >> /build/log.txt && \
 # --with-dods-root is where libdap is installed
 RUN echo "`date` gdal" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b release/3.1 https://github.com/OSGeo/gdal.git && \
+    # Specific branch
+    # git clone --depth=1 --single-branch -b release/3.1 https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch -b v3.1.1 https://github.com/OSGeo/gdal.git && \
+    # Master -- also adjust version
     # git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
+    # Common
     cd gdal/gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
     ./configure --prefix=/usr/local --disable-static --disable-rpath --with-cpp14 --without-libtool --with-jpeg12 --with-spatialite --with-liblzma --with-webp --with-epsilon --with-poppler --with-hdf5 --with-dods-root=/usr/local --with-sosi --with-mysql --with-rasterlite2 --with-pg --with-cfitsio=/usr/local --with-armadillo --with-mrsid=/build/mrsid/Raster_DSDK --with-mrsid_lidar=/build/mrsid/Lidar_DSDK && \
-    make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings -Wno-stringop-overflow" && \
+    make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings -Wno-stringop-overflow -Wno-ignored-qualifiers" && \
     cd apps && \
-    make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings -Wno-stringop-overflow" test_ogrsf && \
+    make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings -Wno-stringop-overflow -Wno-ignored-qualifiers" test_ogrsf && \
     cd .. && \
     make -j ${JOBS} install && \
     ldconfig && \
@@ -1493,7 +1508,7 @@ data = data.replace( \n\
     "        except Exception:\\n" + \n\
     "            return True") \n\
 data = data.replace( \n\
-    "gdal_version = \'3.0.0\'", \n\
+    "gdal_version = \'3.1.0\'", \n\
     "gdal_version = \'" + os.popen("gdal-config --version").read().strip() + "\'") \n\
 data = data.replace( \n\
     "    scripts=glob(\'scripts/*.py\'),", \n\
@@ -1534,7 +1549,7 @@ open(path, "w").write(s)' && \
 
 RUN echo "`date` harfbuzz" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://www.freedesktop.org/software/harfbuzz/release/harfbuzz-2.6.4.tar.xz -L -o harfbuzz.tar.xz && \
+    curl --retry 5 --silent https://www.freedesktop.org/software/harfbuzz/release/harfbuzz-2.6.7.tar.xz -L -o harfbuzz.tar.xz && \
     unxz harfbuzz.tar.xz && \
     mkdir harfbuzz && \
     tar -xf harfbuzz.tar -C harfbuzz --strip-components 1 && \
@@ -1691,13 +1706,13 @@ RUN echo "`date` imagequant" >> /build/log.txt && \
 RUN echo "`date` pango" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.44/pango-1.44.7.tar.xz -L -o pango.tar.xz && \
+    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.45/pango-1.45.3.tar.xz -L -o pango.tar.xz && \
     unxz pango.tar.xz && \
     mkdir pango && \
     tar -xf pango.tar -C pango --strip-components 1 && \
     rm -f pango.tar && \
     cd pango && \
-    meson --prefix=/usr/local --buildtype=release -D gir=False _build && \
+    meson --prefix=/usr/local --buildtype=release -D introspection=False _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -1800,7 +1815,7 @@ RUN echo "`date` libgsf" >> /build/log.txt && \
 #  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz JXL LQR RAQM RAW WMF
 RUN echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.0.10-16 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.0.10-22 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
@@ -1814,11 +1829,18 @@ RUN echo "`date` imagemagick" >> /build/log.txt && \
 RUN echo "`date` vips" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
+    # Use these lines for a release \
     curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.9.2/vips-8.9.2.tar.gz -L -o vips.tar.gz && \
     mkdir vips && \
     tar -zxf vips.tar.gz -C vips --strip-components 1 && \
     rm -f vips.tar.gz && \
     cd vips && \
+    # Use these lines for master \
+    # yum install -y gtk-doc && \
+    # git clone --depth=1 https://github.com/libvips/libvips.git vips && \
+    # cd vips && \
+    # ./autogen.sh && \
+    # Common \
     ./configure --prefix=/usr/local CFLAGS="$CFLAGS `pkg-config --cflags glib-2.0`" LIBS="`pkg-config --libs glib-2.0`" && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
