@@ -32,6 +32,8 @@ hdf5 1.12.0
 icu4c 67-1
 imagemagick 7.0.10-23
 jasper 2.0.16
+javabridge 1.0.18
+javabridge-pypi 1.0.19
 jbigkit 2.1
 libcroco 0.6.13
 libdap 3.20.6
