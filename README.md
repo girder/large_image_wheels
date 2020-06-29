@@ -37,8 +37,10 @@ This makes wheels for the main libraries:
 Some wheels are built from master and therefore possibly newer than what is on pypi:
 - pyproj
 
-This also makes some wheels which aren't published in pypi:
+This also makes some wheels which weren't published in all desired Python versions in pypi:
 - psutil
+
+This use to make some wheels but now defers to those published on pypi:
 - ujson
 
 ## Extras

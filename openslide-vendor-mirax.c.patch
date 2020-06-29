@@ -1,4 +1,4 @@
---- /root/.vim_backup/openslide-vendor-mirax.c_150420224229	2018-11-20 13:35:12.900269121 +0000
+--- src/openslide-vendor-mirax.c	2018-11-20 13:35:12.900269121 +0000
 +++ src/openslide-vendor-mirax.c	2018-11-20 14:01:14.493237182 +0000
 @@ -398,6 +398,20 @@
    char *dirname = g_strndup(filename, strlen(filename) - strlen(MRXS_EXT));
