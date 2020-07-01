@@ -25,7 +25,11 @@ for container in containers:
         '-v', '%s/test:/test' % os.path.dirname(os.path.realpath(__file__)),
         '--rm', container, 'bash', '-e', '/test/test_script.sh']
     cmd += sys.argv[1:]
-    subprocess.check_call(cmd)
+    try:
+        subprocess.check_call(cmd)
+    except Exception:
+        print('---- Failed in %s ----' % container)
+        raise
 print('Passed')
 
 # To test manually, run a container such as
