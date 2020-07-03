@@ -211,8 +211,14 @@ RUN echo "`date` advancecomp" >> /build/log.txt && \
     ldconfig && \
     # Because we will recompress all wheels, we can create them with no \
     # compression to save some time \
-    sed -i 's/ZIP_DEFLATED/ZIP_STORED/g' /opt/_internal/cpython-3.7.7/lib/python3.7/site-packages/auditwheel/tools.py && \
+    sed -i 's/ZIP_DEFLATED/ZIP_STORED/g' /opt/_internal/cpython-3.7.8/lib/python3.7/site-packages/auditwheel/tools.py && \
     echo "`date` advancecomp" >> /build/log.txt
+
+# vips doesn't work with auditwheel 3.2 since the copylib doesn't adjust
+# rpaths the same as 3.1.1.  Revent that aspect of the behavior.
+RUN echo "`date` auditwheel" >> /build/log.txt && \
+    sed -i 's/patcher.set_rpath(dest_path, dest_dir)/new_rpath = os.path.relpath(dest_dir, os.path.dirname(dest_path))\n        new_rpath = os.path.join('\''$ORIGIN'\'', new_rpath)\n        patcher.set_rpath(dest_path, new_rpath)/g' /opt/_internal/cpython-3.7.8/lib/python3.7/site-packages/auditwheel/repair.py && \
+    echo "`date` auditwheel" >> /build/log.txt
 
 # Packages used by large_image that don't have published wheels for all the
 # versions of Python we are using.
@@ -591,8 +597,8 @@ data = open(path).read().replace( \n\
 open(path, "w").write(data)' && \
     # Also change auditwheel so it doesn't check for a higher priority \
     # platform; that process is slow \
-    sed -i 's/analyzed_tag = /analyzed_tag = reqd_tag  #/g' /opt/_internal/cpython-3.7.7/lib/python3.7/site-packages/auditwheel/main_repair.py && \
-    sed -i 's/if reqd_tag < get_priority_by_name(analyzed_tag):/if False:  #/g' /opt/_internal/cpython-3.7.7/lib/python3.7/site-packages/auditwheel/main_repair.py && \
+    sed -i 's/analyzed_tag = /analyzed_tag = reqd_tag  #/g' /opt/_internal/cpython-3.7.8/lib/python3.7/site-packages/auditwheel/main_repair.py && \
+    sed -i 's/if reqd_tag < get_priority_by_name(analyzed_tag):/if False:  #/g' /opt/_internal/cpython-3.7.8/lib/python3.7/site-packages/auditwheel/main_repair.py && \
     echo "`date` auditwheel policy" >> /build/log.txt
 
 # Build openslide with older glib2, gdk-pixbuf2, cairo
@@ -992,7 +998,7 @@ RUN echo "`date` libspatialite" >> /build/log.txt && \
     mkdir libspatialite && \
     cd libspatialite && \
     fossil open ../libspatialite.fossil && \
-    # fossil checkout 7dcf78e2d0 && \
+    fossil checkout 7dcf78e2d0 && \
     rm -f ../libspatialite.fossil && \
     CFLAGS="$CFLAGS -O2 -DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true" ./configure --silent --prefix=/usr/local --disable-examples && \
     make --silent -j ${JOBS} && \
@@ -1272,7 +1278,7 @@ RUN echo "`date` postgres" >> /build/log.txt && \
 RUN echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-0.89.0.tar.xz -L -o poppler.tar.xz && \
+    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-0.90.0.tar.xz -L -o poppler.tar.xz && \
     unxz poppler.tar.xz && \
     mkdir poppler && \
     tar -xf poppler.tar -C poppler --strip-components 1 && \
@@ -1456,9 +1462,9 @@ RUN echo "`date` mrsid" >> /build/log.txt && \
 RUN echo "`date` gdal" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # Specific branch
-    git clone --depth=1 --single-branch -b v3.1.1 https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch -b v3.1.1 https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version
-    # git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
     # Common
     cd gdal/gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
@@ -1780,7 +1786,7 @@ RUN echo "`date` rust" >> /build/log.txt && \
 RUN echo "`date` librsvg" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.49/librsvg-2.49.1.tar.xz -L -o librsvg.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.49/librsvg-2.49.3.tar.xz -L -o librsvg.tar.xz && \
     unxz librsvg.tar.xz && \
     mkdir librsvg && \
     tar -xf librsvg.tar -C librsvg --strip-components 1 && \
@@ -1816,7 +1822,7 @@ RUN echo "`date` libgsf" >> /build/log.txt && \
 #  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz JXL LQR RAQM RAW WMF
 RUN echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.0.10-22 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.0.10-23 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
@@ -1941,6 +1947,10 @@ def program(): \n\
 """ \n\
 open(path, "w").write(s)' && \
     cp -r /usr/local/share/proj pyproj/. && \
+    # Strip libraries before building any wheels \
+    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
+    # First build with the last 2.7 version \
+    git checkout 3db99248c8155a0170d7b2696b397dab7e37fb9d && \
     python -c $'# \n\
 import os \n\
 path = "setup.py" \n\
@@ -1953,12 +1963,6 @@ data = data.replace("""version=get_version(),""", \n\
 """version=get_version(), \n\
     entry_points={\'console_scripts\': [\'%s=pyproj.bin:program\' % name for name in os.listdir(\'pyproj/bin\') if not name.endswith(\'.py\')]},""") \n\
 open(path, "w").write(data)' && \
-    # Strip libraries before building any wheels \
-    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
-    # First build with the last 2.7 version \
-    git stash && \
-    git checkout 3db99248c8155a0170d7b2696b397dab7e37fb9d && \
-    git stash pop && \
     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" install --no-cache-dir cython' && \
     find /opt/python -mindepth 1 -name '*cp2*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     git stash && \
@@ -1976,7 +1980,18 @@ localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
 os.environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj")) \n\
 """) \n\
 open(path, "w").write(s)' && \
-    git stash pop && \
+    python -c $'# \n\
+import os \n\
+path = "setup.py" \n\
+data = open(path).read() \n\
+data = data.replace( \n\
+    "    return package_data", \n\
+"""    package_data["pyproj"].extend(["bin/*", "proj/*"]) \n\
+    return package_data""") \n\
+data = data.replace("""version=get_version(),""", \n\
+"""version=get_version(), \n\
+    entry_points={\'console_scripts\': [\'%s=pyproj.bin:program\' % name for name in os.listdir(\'pyproj/bin\') if not name.endswith(\'.py\')]},""") \n\
+open(path, "w").write(data)' && \
     # now rebuild anything that can work with master \
     find /opt/python -mindepth 1 -name '*cp3*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     # Make sure all binaries have the execute flag \

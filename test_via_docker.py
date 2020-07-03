@@ -15,6 +15,7 @@ containers = [
     # the centos/python-35-centos7 docker image.
     # "centos/python-35-centos7",
     "centos/python-36-centos7",
+    "centos/python-38-centos7",
 ]
 
 for container in containers:
