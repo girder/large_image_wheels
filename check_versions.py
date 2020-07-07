@@ -280,6 +280,10 @@ Packages = {
         'git': 'https://github.com/mapnik/mapnik.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
+    'minizip': {
+        'git': 'https://github.com/nmoinvaz/minizip.git',
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
     # MrSID's listing of versions is behind an agreement page, which prevents
     # easily checking the version.
     # 'mrsid': {

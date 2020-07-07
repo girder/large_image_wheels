@@ -1,12 +1,6 @@
 #!/usr/bin/env bash
 set -e
 
-# if ! (apt-get update && apt-get install -y openjdk-11-jre-headless); then 
-#   curl -OLJ https://download.java.net/java/GA/jdk14.0.1/664493ef4a6946b186ff29eb326336a2/7/GPL/openjdk-14.0.1_linux-x64_bin.tar.gz
-#   tar -zxvf openjdk-14.0.1_linux-x64_bin.tar.gz
-#   export PATH="`pwd`/jdk-14.0.1/bin:$PATH"
-# fi
-
 python --version
 pip install --upgrade pip 
 pip install --upgrade setuptools
@@ -218,12 +212,14 @@ opj_dump -h | grep -q 'opj_dump utility from the OpenJPEG project'
 openslide-show-properties --version
 `python -c 'import os,sys,osgeo;sys.stdout.write(os.path.dirname(osgeo.__file__))'`/bin/gdalinfo --version
 gdalinfo --version
+gdal-config --formats
 `python -c 'import os,sys,mapnik;sys.stdout.write(os.path.dirname(mapnik.__file__))'`/bin/mapnik-render --version 2>&1 | grep version
 mapnik-render --version 2>&1 | grep version
 `python -c 'import os,sys,pyvips;sys.stdout.write(os.path.dirname(pyvips.__file__))'`/bin/vips --version
 vips --version
 PROJ_LIB=`python -c 'import os,sys,pyproj;sys.stdout.write(os.path.dirname(pyproj.__file__))'`/proj `python -c 'import os,sys,pyproj;sys.stdout.write(os.path.dirname(pyproj.__file__))'`/bin/projinfo EPSG:4326
 projinfo EPSG:4326
+projinfo ESRI:102654
 
 if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 5)))'; then
 

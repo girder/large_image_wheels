@@ -76,7 +76,8 @@ RUN echo "`date` sed gettext" >> /build/log.txt && \
 
 ARG SOURCE_DATE_EPOCH
 ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-1567045200} \
-    CFLAGS=-g0
+    CFLAGS="-g0 -O2 -DNDEBUG" \
+    LDFLAGS="-Wl,--strip-debug,--strip-discarded,--discard-locals"
 
 # Update autotools, perl, m4, pkg-config
 
@@ -87,7 +88,7 @@ RUN echo "`date` pkg-config" >> /build/log.txt && \
     tar -zxf pkg-config.tar.gz -C pkg-config --strip-components 1 && \
     rm -f pkg-config.tar.gz && \
     cd pkg-config && \
-    ./configure --silent --prefix=/usr/local --with-internal-glib --disable-host-tool && \
+    ./configure --silent --prefix=/usr/local --with-internal-glib --disable-host-tool --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     echo "`date` pkg-config" >> /build/log.txt
@@ -145,7 +146,7 @@ RUN echo "`date` libssh2" >> /build/log.txt && \
     git clone --depth=1 --single-branch -b libssh2-1.9.0 https://github.com/libssh2/libssh2.git && \
     cd libssh2 && \
     ./buildconf && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -158,7 +159,7 @@ RUN echo "`date` curl" >> /build/log.txt && \
     tar -zxf curl.tar.gz -C curl --strip-components 1 && \
     rm -f curl.tar.gz && \
     cd curl && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -227,7 +228,7 @@ RUN echo "`date` auditwheel" >> /build/log.txt && \
 
 RUN echo "`date` psutil" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b release-5.7.0 https://github.com/giampaolo/psutil.git && \
+    git clone --depth=1 --single-branch -b release-5.7.1 https://github.com/giampaolo/psutil.git && \
     cd psutil && \
     # Strip libraries before building any wheels \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
@@ -270,7 +271,7 @@ RUN echo "`date` libpng" >> /build/log.txt && \
     rm -f libpng.tar && \
     cd libpng && \
     autoreconf -ifv && \
-    ./configure --silent --prefix=/usr/local LIBS="`pkg-config --libs zlib`" && \
+    ./configure --silent --prefix=/usr/local LIBS="`pkg-config --libs zlib`" --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -317,7 +318,7 @@ RUN echo "`date` libwebp" >> /build/log.txt && \
     tar -zxf libwebp.tar.gz -C libwebp --strip-components 1 && \
     rm -f libwebp.tar.gz && \
     cd libwebp && \
-    ./configure --silent --prefix=/usr/local --enable-libwebpmux --enable-libwebpdecoder --enable-libwebpextras && \
+    ./configure --silent --prefix=/usr/local --enable-libwebpmux --enable-libwebpdecoder --enable-libwebpextras --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -344,7 +345,7 @@ RUN echo "`date` libtiff" >> /build/log.txt && \
     tar -zxf tiff.tar.gz -C tiff --strip-components 1 && \
     rm -f tiff.tar.gz && \
     cd tiff && \
-    ./configure --prefix=/usr/local --enable-jpeg12 --with-jpeg12-include-dir=/build/libjpeg-turbo --with-jpeg12-lib=/build/libjpeg-turbo/libjpeg.so && \
+    ./configure --prefix=/usr/local --enable-jpeg12 --with-jpeg12-include-dir=/build/libjpeg-turbo --with-jpeg12-lib=/build/libjpeg-turbo/libjpeg.so --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -368,6 +369,7 @@ RUN echo "`date` pylibtiff" >> /build/log.txt && \
     cd pylibtiff && \
     mkdir libtiff/bin && \
     find /build/tiff/tools/.libs/ -executable -type f -exec cp {} libtiff/bin/. \; && \
+    strip libtiff/bin/* --strip-unneeded && \
     python -c $'# \n\
 path = "libtiff/bin/__init__.py" \n\
 s = """import os \n\
@@ -426,6 +428,7 @@ RUN echo "`date` glymur" >> /build/log.txt && \
     git checkout 7c02566ed2d72b039294b97fe5fd8f969fb5ec87 && \
     mkdir glymur/bin && \
     find /build/openjpeg/_build/bin/ -executable -type f -name 'opj*' -exec cp {} glymur/bin/. \; && \
+    strip glymur/bin/* --strip-unneeded && \
     python -c $'# \n\
 path = "glymur/bin/__init__.py" \n\
 s = """import os \n\
@@ -523,7 +526,7 @@ RUN echo "`date` proj4" >> /build/log.txt && \
     unzip -o ../proj-datumgrid.zip && \
     cd .. && \
     ./autogen.sh && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -538,7 +541,7 @@ RUN echo "`date` pcre" >> /build/log.txt && \
     tar -zxf pcre.tar.gz -C pcre --strip-components 1 && \
     rm -f pcre.tar.gz && \
     cd pcre && \
-    ./configure --silent --prefix=/usr/local --enable-unicode-properties --enable-pcre16 --enable-pcre32 --enable-jit && \
+    ./configure --silent --prefix=/usr/local --enable-unicode-properties --enable-pcre16 --enable-pcre32 --enable-jit --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -567,7 +570,7 @@ path = "Makefile.am" \n\
 s = open(path).read().replace("info_TEXINFOS", "# info_TEXINFOS") \n\
 open(path, "w").write(s)' && \
     ./autogen.sh && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -580,7 +583,7 @@ RUN echo "`date` util-linux" >> /build/log.txt && \
     cd util-linux && \
     ./autogen.sh && \
     export CFLAGS="$CFLAGS -O2" && \
-    ./configure --disable-all-programs --enable-libblkid --enable-libmount --silent --prefix=/usr/local && \
+    ./configure --disable-all-programs --enable-libblkid --enable-libmount --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -616,7 +619,7 @@ RUN echo "`date` glib 2.58" >> /build/log.txt && \
     cd glib-2 && \
     egrep -lrZ -- '-version-info \$\(LT_CURRENT\):\$\(LT_REVISION\):\$\(LT_AGE\)' * | xargs -0 -l sed -i -e 's/-version-info \$(LT_CURRENT):\$(LT_REVISION):\$(LT_AGE)/-release liw-older/g' && \
     ./autogen.sh && \
-    ./configure --prefix=/usr/local --libdir=/usr/local/lib64 --with-python=/opt/python/cp27-cp27mu/bin/python && \
+    ./configure --prefix=/usr/local --libdir=/usr/local/lib64 --with-python=/opt/python/cp27-cp27mu/bin/python --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -630,7 +633,7 @@ RUN echo "`date` gdk-pixbuf 2.36" >> /build/log.txt && \
     tar -xf gdk-pixbuf-2.tar -C gdk-pixbuf-2 --strip-components 1 && \
     rm -f gdk-pixbuf-2.tar && \
     cd gdk-pixbuf-2 && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -656,7 +659,7 @@ RUN echo "`date` openslide" >> /build/log.txt && \
     patch src/openslide.c ../openslide-init.patch && \
     autoreconf -ifv && \
     export CFLAGS="$CFLAGS -O2" && \
-    ./configure --prefix=/usr/local && \
+    ./configure --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -701,6 +704,7 @@ s = open(path).read().replace( \n\
 open(path, "w").write(s)' && \
     mkdir openslide/bin && \
     find /build/openslide/tools/.libs/ -executable -type f -exec cp {} openslide/bin/. \; && \
+    strip openslide/bin/* --strip-unneeded && \
     python -c $'# \n\
 path = "openslide/bin/__init__.py" \n\
 s = """import os \n\
@@ -778,7 +782,7 @@ RUN echo "`date` gettext" >> /build/log.txt && \
     tar -zxf gettext.tar.gz -C gettext --strip-components 1 && \
     rm -f gettext.tar.gz && \
     cd gettext && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -790,7 +794,7 @@ RUN echo "`date` flex" >> /build/log.txt && \
     git clone --depth=1 --single-branch -b v2.6.4 https://github.com/westes/flex.git && \
     cd flex && \
     autoreconf -ifv && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -859,7 +863,7 @@ RUN echo "`date` libiconv" >> /build/log.txt && \
     rm -f libiconv.tar.gz && \
     cd libiconv && \
     export CFLAGS="$CFLAGS -O2" && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -870,7 +874,7 @@ RUN echo "`date` icu4c" >> /build/log.txt && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
     git clone --depth=1 --single-branch -b release-67-1 https://github.com/unicode-org/icu.git && \
     cd icu/icu4c/source && \
-    CFLAGS="$CFLAGS -O2 -DUNISTR_FROM_CHAR_EXPLICIT=explicit -DUNISTR_FROM_STRING_EXPLICIT=explicit -DU_CHARSET_IS_UTF8=1 -DU_NO_DEFAULT_INCLUDE_UTF_HEADERS=1 -DU_HIDE_OBSOLETE_UTF_OLD_H=1" ./configure --silent --prefix=/usr/local --disable-tests --disable-samples --with-data-packaging=library && \
+    CFLAGS="$CFLAGS -O2 -DUNISTR_FROM_CHAR_EXPLICIT=explicit -DUNISTR_FROM_STRING_EXPLICIT=explicit -DU_CHARSET_IS_UTF8=1 -DU_NO_DEFAULT_INCLUDE_UTF_HEADERS=1 -DU_HIDE_OBSOLETE_UTF_OLD_H=1" ./configure --silent --prefix=/usr/local --disable-tests --disable-samples --with-data-packaging=library --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -924,7 +928,7 @@ RUN echo "`date` fossil" >> /build/log.txt && \
     tar -zxf fossil.tar.gz -C fossil --strip-components 1 && \
     rm -f fossil.tar.gz && \
     cd fossil && \
-    ./configure --prefix=/usr/local && \
+    ./configure --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -950,7 +954,7 @@ RUN echo "`date` tk" >> /build/log.txt && \
     tar -zxf tk.tar.gz -C tk --strip-components 1 && \
     rm -f tk.tar.gz && \
     cd tk/unix && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -963,7 +967,7 @@ RUN echo "`date` sqlite" >> /build/log.txt && \
     tar -zxf sqlite.tar.gz -C sqlite --strip-components 1 && \
     rm -f sqlite.tar.gz && \
     cd sqlite && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -976,7 +980,7 @@ RUN echo "`date` freexl" >> /build/log.txt && \
     cd freexl && \
     fossil open ../freexl.fossil && \
     rm -f ../freexl.fossil && \
-    LIBS=-liconv ./configure --silent --prefix=/usr/local && \
+    LIBS=-liconv ./configure --silent --prefix=/usr/local --disable-static && \
     LIBS=-liconv make -j ${JOBS} && \
     LIBS=-liconv make -j ${JOBS} install && \
     ldconfig && \
@@ -994,15 +998,27 @@ RUN echo "`date` libgeos" >> /build/log.txt && \
     ldconfig && \
     echo "`date` libgeos" >> /build/log.txt
 
+RUN echo "`date` minizip" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b 2.10.0 https://github.com/nmoinvaz/minizip.git && \
+    cd minizip && \
+    mkdir _build && \
+    cd _build && \
+    cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=yes -DINSTALL_INC_DIR=/usr/local/include/minizip .. && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` minizip" >> /build/log.txt
+
 RUN echo "`date` libspatialite" >> /build/log.txt && \
     export JOBS=`nproc` && \
     fossil --user=root clone https://www.gaia-gis.it/fossil/libspatialite libspatialite.fossil && \
     mkdir libspatialite && \
     cd libspatialite && \
     fossil open ../libspatialite.fossil && \
-    fossil checkout 7dcf78e2d0 && \
+    # fossil checkout 7dcf78e2d0 && \
     rm -f ../libspatialite.fossil && \
-    CFLAGS="$CFLAGS -O2 -DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true" ./configure --silent --prefix=/usr/local --disable-examples && \
+    CFLAGS="$CFLAGS -O2 -DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true" ./configure --silent --prefix=/usr/local --disable-examples --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1014,7 +1030,7 @@ RUN echo "`date` libgeotiff" >> /build/log.txt && \
     git clone --depth=1 --single-branch -b 1.5.1 https://github.com/OSGeo/libgeotiff.git && \
     cd libgeotiff/libgeotiff && \
     autoreconf -ifv && \
-    CFLAGS="$CFLAGS -DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true" ./configure --silent --prefix=/usr/local --with-zlib=yes --with-jpeg=yes && \
+    CFLAGS="$CFLAGS -DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true" ./configure --silent --prefix=/usr/local --with-zlib=yes --with-jpeg=yes --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1028,7 +1044,7 @@ RUN echo "`date` pixman" >> /build/log.txt && \
     rm -f pixman.tar.gz && \
     cd pixman && \
     export CFLAGS="$CFLAGS -O2" && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1041,7 +1057,7 @@ RUN echo "`date` freetype" >> /build/log.txt && \
     tar -zxf freetype.tar.gz -C freetype --strip-components 1 && \
     rm -f freetype.tar.gz && \
     cd freetype && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1056,7 +1072,7 @@ RUN echo "`date` libexpat" >> /build/log.txt && \
     rm -f libexpat.tar.gz && \
     cd libexpat/expat && \
     autoreconf -ifv && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1072,7 +1088,7 @@ RUN echo "`date` fontconfig" >> /build/log.txt && \
     cd fontconfig && \
     autoreconf -ifv && \
     export CFLAGS="$CFLAGS -O2" && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1086,7 +1102,7 @@ RUN echo "`date` cairo" >> /build/log.txt && \
     tar -xf cairo.tar -C cairo --strip-components 1 && \
     rm -f cairo.tar && \
     cd cairo && \
-    CXXFLAGS='-Wno-implicit-fallthrough -Wno-cast-function-type' CFLAGS="$CFLAGS -O2 -Wl,--allow-multiple-definition" ./configure --silent --prefix=/usr/local && \
+    CXXFLAGS='-Wno-implicit-fallthrough -Wno-cast-function-type' CFLAGS="$CFLAGS -O2 -Wl,--allow-multiple-definition" ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1119,7 +1135,7 @@ RUN echo "`date` libdap" >> /build/log.txt && \
     git clone --depth=1 --single-branch -b version-3.20.6 https://github.com/OPENDAP/libdap4.git && \
     cd libdap4 && \
     autoreconf -ifv && \
-    ./configure --silent --prefix=/usr/local --enable-threads=posix && \
+    ./configure --silent --prefix=/usr/local --enable-threads=posix --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1132,7 +1148,7 @@ RUN echo "`date` librasterlite2" >> /build/log.txt && \
     cd librasterlite2 && \
     fossil open ../librasterlite2.fossil && \
     rm -f ../librasterlite2.fossil && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1189,7 +1205,7 @@ RUN echo "`date` hdf5" >> /build/log.txt && \
     cd hdf5 && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DHDF5_BUILD_EXAMPLE=OFF -DHDF5_BUILD_FORTRAN=OFF -DHDF5_ENABLE_PARALLEL=ON -DHDF5_ENABLE_Z_LIB_SUPPORT=ON -DHDF5_BUILD_GENERATORS=ON -DHDF5_ENABLE_DIRECT_VFD=ON -DHDF5_BUILD_CPP_LIB=OFF -DHDF5_DISABLE_COMPILER_WARNINGS=ON -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DHDF5_BUILD_EXAMPLES=OFF -DHDF5_BUILD_FORTRAN=OFF -DHDF5_ENABLE_PARALLEL=ON -DHDF5_ENABLE_Z_LIB_SUPPORT=ON -DHDF5_BUILD_GENERATORS=ON -DHDF5_ENABLE_DIRECT_VFD=ON -DHDF5_BUILD_CPP_LIB=OFF -DHDF5_DISABLE_COMPILER_WARNINGS=ON -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1229,7 +1245,7 @@ RUN echo "`date` netcdf" >> /build/log.txt && \
 RUN echo "`date` mysql" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # curl --retry 5 --silent https://dev.mysql.com/get/Downloads/MySQL-5.7/mysql-boost-5.7.29.tar.gz -L -o mysql.tar.gz && \
-    curl --retry 5 --silent https://cdn.mysql.com//Downloads/MySQL-5.7/mysql-boost-5.7.30.tar.gz -L -o mysql.tar.gz && \
+    curl --retry 5 --silent https://cdn.mysql.com//Downloads/MySQL-5.7/mysql-boost-5.7.31.tar.gz -L -o mysql.tar.gz && \
     mkdir mysql && \
     tar -zxf mysql.tar.gz -C mysql --strip-components 1 && \
     rm -f mysql.tar.gz && \
@@ -1280,7 +1296,7 @@ RUN echo "`date` postgres" >> /build/log.txt && \
 RUN echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-0.90.0.tar.xz -L -o poppler.tar.xz && \
+    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-0.90.1.tar.xz -L -o poppler.tar.xz && \
     unxz poppler.tar.xz && \
     mkdir poppler && \
     tar -xf poppler.tar -C poppler --strip-components 1 && \
@@ -1314,7 +1330,7 @@ RUN echo "`date` epsilon" >> /build/log.txt && \
     tar -zxf epsilon.tar.gz -C epsilon --strip-components 1 && \
     rm -f epsilon.tar.gz && \
     cd epsilon && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1346,7 +1362,7 @@ RUN echo "`date` libxcrypt" >> /build/log.txt && \
     cd libxcrypt && \
     # autoreconf -ifv && \
     ./autogen.sh && \
-    CFLAGS="$CFLAGS -O2 -w" ./configure --silent --prefix=/usr/local --enable-obsolete-api --enable-hashes=all && \
+    CFLAGS="$CFLAGS -O2 -w" ./configure --silent --prefix=/usr/local --enable-obsolete-api --enable-hashes=all --disable-static && \
     make --silent -j ${JOBS} && \
     (make --silent -j ${JOBS} install || true) && \
     ldconfig && \
@@ -1359,7 +1375,7 @@ RUN echo "`date` libgta" >> /build/log.txt && \
     cd gta-mirror/libgta && \
     autoreconf -ifv && \
     export CFLAGS="$CFLAGS -O2" && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1488,6 +1504,7 @@ RUN echo "`date` gdal python" >> /build/log.txt && \
     mkdir osgeo/bin && \
     find /build/gdal/gdal/apps/ -executable -type f ! -name '*.cpp' -exec cp {} osgeo/bin/. \; && \
     find /build/libgeotiff/libgeotiff/bin/.libs -executable -type f -exec cp {} osgeo/bin/. \; && \
+    (strip osgeo/bin/* --strip-unneeded || true) && \
     python -c $'# \n\
 path = "osgeo/bin/__init__.py" \n\
 s = """import os \n\
@@ -1564,7 +1581,7 @@ RUN echo "`date` harfbuzz" >> /build/log.txt && \
     tar -xf harfbuzz.tar -C harfbuzz --strip-components 1 && \
     rm -f harfbuzz.tar && \
     cd harfbuzz && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1616,6 +1633,7 @@ RUN echo "`date` python-mapnik" >> /build/log.txt && \
     cp /build/mapnik/utils/mapnik-render/mapnik-render mapnik/bin/. && \
     cp /build/mapnik/utils/mapnik-index/mapnik-index mapnik/bin/. && \
     cp /build/mapnik/utils/shapeindex/shapeindex mapnik/bin/. && \
+    strip mapnik/bin/* --strip-unneeded && \
     python -c $'# \n\
 path = "mapnik/bin/__init__.py" \n\
 s = """import os \n\
@@ -1736,7 +1754,7 @@ RUN echo "`date` libxml" >> /build/log.txt && \
     tar -zxf libxml2.tar.gz -C libxml2 --strip-components 1 && \
     rm -f libxml2.tar.gz && \
     cd libxml2 && \
-    ./configure --prefix=/usr/local --with-python=/opt/python/cp36-cp36m && \
+    ./configure --prefix=/usr/local --with-python=/opt/python/cp36-cp36m --disable-static && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig && \
@@ -1751,7 +1769,7 @@ RUN echo "`date` libcroco" >> /build/log.txt && \
     rm -f libcroco.tar && \
     cd libcroco && \
     export CFLAGS="$CFLAGS -O2" && \
-    ./configure --prefix=/usr/local && \
+    ./configure --prefix=/usr/local --disable-static && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig && \
@@ -1763,7 +1781,7 @@ RUN echo "`date` libde265" >> /build/log.txt && \
     git clone --depth=1 --single-branch -b v1.0.5 https://github.com/strukturag/libde265.git && \
     cd libde265 && \
     ./autogen.sh && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1775,7 +1793,7 @@ RUN echo "`date` libheif" >> /build/log.txt && \
     git clone --depth=1 --single-branch -b v1.6.2 https://github.com/strukturag/libheif.git && \
     cd libheif && \
     ./autogen.sh && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1795,8 +1813,8 @@ RUN echo "`date` librsvg" >> /build/log.txt && \
     rm -f librsvg.tar && \
     cd librsvg && \
     export CFLAGS="$CFLAGS -O2" && \
-    export RUSTFLAGS="$RUSTFLAGS -O" && \
-    ./configure --silent --prefix=/usr/local --disable-rpath --disable-introspection && \
+    export RUSTFLAGS="$RUSTFLAGS -O -C link_args=-Wl,--strip-debug,--strip-discarded,--discard-local" && \
+    ./configure --silent --prefix=/usr/local --disable-rpath --disable-introspection --disable-debug --disable-static && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig && \
@@ -1814,7 +1832,7 @@ RUN echo "`date` libgsf" >> /build/log.txt && \
     rm -f libgsf.tar && \
     cd libgsf && \
     export CFLAGS="$CFLAGS -O2" && \
-    ./configure --silent --prefix=/usr/local --disable-introspection && \
+    ./configure --silent --prefix=/usr/local --disable-introspection --disable-static && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig && \
@@ -1828,7 +1846,7 @@ RUN echo "`date` imagemagick" >> /build/log.txt && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
-    ./configure --prefix=/usr/local --with-modules --with-rsvg LIBS="-lrt `pkg-config --libs zlib`" && \
+    ./configure --prefix=/usr/local --with-modules --with-rsvg LIBS="-lrt `pkg-config --libs zlib`" --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1850,7 +1868,7 @@ RUN echo "`date` vips" >> /build/log.txt && \
     # cd vips && \
     # ./autogen.sh && \
     # Common \
-    ./configure --prefix=/usr/local CFLAGS="$CFLAGS `pkg-config --cflags glib-2.0`" LIBS="`pkg-config --libs glib-2.0`" && \
+    ./configure --prefix=/usr/local CFLAGS="$CFLAGS `pkg-config --cflags glib-2.0`" LIBS="`pkg-config --libs glib-2.0`" --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1884,6 +1902,7 @@ open(path, "w").write(s)' && \
     find /build/vips/tools/.libs/ -executable -type f -exec cp {} pyvips/bin/. \; && \
     find /build/jasper/_build/src/appl/ -executable -type f -exec cp {} pyvips/bin/. \; && \
     cp /usr/local/bin/magick pyvips/bin/. && \
+    strip pyvips/bin/* --strip-unneeded && \
     python -c $'# \n\
 path = "pyvips/bin/__init__.py" \n\
 s = """import os \n\
@@ -1934,6 +1953,7 @@ os.environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj"))""") \n\
 open(path, "w").write(s)' && \
     mkdir pyproj/bin && \
     find /build/proj.4/src/.libs/ -executable -type f ! -name '*.so.*' -exec cp {} pyproj/bin/. \; && \
+    strip pyproj/bin/* --strip-unneeded && \
     python -c $'# \n\
 path = "pyproj/bin/__init__.py" \n\
 s = """import os \n\
@@ -2011,7 +2031,7 @@ RUN echo "`date` libmemcached" >> /build/log.txt && \
     tar -zxf libmemcached.tar.gz -C libmemcached --strip-components 1 && \
     rm -f libmemcached.tar.gz && \
     cd libmemcached && \
-    CXXFLAGS='-fpermissive' ./configure --silent --prefix=/usr/local && \
+    CXXFLAGS='-fpermissive' ./configure --silent --prefix=/usr/local --disable-static && \
     # For some reason, this doesn't run jobs in parallel, with or without -j \
     # make --silent -j ${JOBS} && \
     # make --silent -j ${JOBS} install && \
