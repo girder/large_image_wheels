@@ -153,6 +153,13 @@ Packages = {
         'git': 'https://github.com/mdadams/jasper.git',
         're': r'version-([0-9]+\.[0-9]+(|\.[0-9]+)(|-[0-9]+))$'
     },
+    'javabridge': {
+        'git': 'https://github.com/CellProfiler/python-javabridge.git',
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
+    'javabridge-pypi': {
+        'pypi': 'javabridge',
+    },
     'jbigkit': {
         'filelist': 'https://www.cl.cam.ac.uk/~mgk25/jbigkit/download/',
         're': r'jbigkit-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'

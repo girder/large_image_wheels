@@ -34,5 +34,6 @@ for container in containers:
 print('Passed')
 
 # To test manually, run a container such as
-#  docker run -v `pwd`/wheels:/wheels --rm -it python:2.7 bash
-# and then enter the script commands directly
+#  docker run -v `pwd`/wheels:/wheels --rm -it python:3.7 bash
+# and then enter the script commands directly, typically starting with
+#  pip install pyvips large_image[sources,memcached] javabridge -f ${1:-/wheels}

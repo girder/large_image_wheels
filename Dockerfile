@@ -27,6 +27,8 @@ RUN echo "`date` yum install" >> /build/log.txt && \
     mesa-libGLU-devel \
     SDL-devel \
     xz-devel \
+    # for javabridge \
+    java-1.8.0-openjdk-devel \
     # For glib2 \
     libtool \
     libxml2-devel \
@@ -1462,9 +1464,9 @@ RUN echo "`date` mrsid" >> /build/log.txt && \
 RUN echo "`date` gdal" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # Specific branch
-    git clone --depth=1 --single-branch -b v3.1.2 https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch -b v3.1.2 https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version
-    # git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
     # Common
     cd gdal/gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
@@ -2030,3 +2032,105 @@ RUN echo "`date` pylibmc" >> /build/log.txt && \
     find /io/wheelhouse/ -name 'pylibmc*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
     echo "`date` pylibmc" >> /build/log.txt
+
+# Tell auditwheel not to include libjvm.so
+RUN echo "`date` auditwheel policy 2" >> /build/log.txt && \
+    python -c $'# \n\
+import os \n\
+path = os.popen("find /opt/_internal -name policy.json").read().strip() \n\
+data = open(path).read().replace( \n\
+    "XlibXext.so.6", "libjvm.so") \n\
+open(path, "w").write(data)' && \
+    echo "`date` auditwheel policy 2" >> /build/log.txt
+
+RUN echo "`date` javabridge" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b 1.0.19 https://github.com/LeeKamentsky/python-javabridge.git && \
+    cd python-javabridge && \
+    # Include java libraries \
+    mkdir javabridge/jvm && \
+    cp -r -L /usr/lib/jvm/java-1.8.0/* javabridge/jvm/. && \
+    # libsaproc.so is only used for debugging \
+    rm javabridge/jvm/jre/lib/amd64/libsaproc.so && \
+    # allow installing binaries \
+    python -c $'# \n\
+path = "javabridge/jvm/bin/__init__.py" \n\
+s = """import os \n\
+import subprocess \n\
+import sys \n\
+\n\
+def program(): \n\
+    name = os.path.basename(sys.argv[0]) \n\
+    raise SystemExit(subprocess.call([os.path.join(os.path.dirname(__file__), name)] + sys.argv[1:])) \n\
+""" \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
+path = "setup.py" \n\
+s = open(path).read() \n\
+s = s.replace("""packages=[\'javabridge\',""", """packages=[\'javabridge\', \'javabridge.jvm.bin\',""") \n\
+s = s.replace("entry_points={", \n\
+"""entry_points={\'console_scripts\': [\'%s=javabridge.jvm.bin:program\' % name for name in os.listdir(\'javabridge/jvm/bin\') if not name.endswith(\'.py\')], """) \n\
+s = s.replace("""package_data={"javabridge": [""", \n\
+"""package_data={"javabridge": [\'jvm/*\', \'jvm/*/*\', \'jvm/*/*/*\', \'jvm/*/*/*/*\', \'jvm/*/*/*/*/*\', """) \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
+path = "javabridge/__init__.py" \n\
+s = open(path).read() \n\
+s = s.replace("if sys.platform.startswith(\'linux\'):", \n\
+"""if os.path.split(sys.argv[0])[-1] == \'java\': \n\
+    pass \n\
+elif sys.platform.startswith(\'linux\'):""") \n\
+open(path, "w").write(s)' && \
+    # use the java libraries we included \
+    python -c $'# \n\
+path = "javabridge/jutil.py" \n\
+s = open(path).read() \n\
+s = s.replace("import javabridge._javabridge as _javabridge", \n\
+"""libjvm_path = os.path.join(os.path.dirname(__file__), "jvm", "jre", "lib", "amd64", "server", "libjvm.so") \n\
+if os.path.exists(libjvm_path): \n\
+    import ctypes \n\
+    ctypes.CDLL(libjvm_path) \n\
+import javabridge._javabridge as _javabridge""") \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
+path = "javabridge/locate.py" \n\
+s = open(path).read() \n\
+s = s.replace("jdk_dir = os.path.abspath(jdk_dir)", \n\
+"""jvm_path = os.path.join(os.path.dirname(__file__), "jvm") \n\
+        if os.path.exists(jvm_path): \n\
+            jdk_dir = jvm_path \n\
+        jdk_dir = os.path.abspath(jdk_dir)""") \n\
+open(path, "w").write(s)' && \
+    # export library paths so that auditwheel doesn't complain \
+    export LD_LIBRARY_PATH="/usr/lib/jvm/jre/lib/amd64/:/usr/lib/jvm/jre/lib/amd64/jli:/usr/lib/jvm/jre/lib/amd64/client:/usr/lib/jvm/jre/lib/amd64/server:$LD_LIBRARY_PATH" && \
+    # Strip libraries before building any wheels \
+    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
+    # Only build for Python >=3.5 \
+    find /opt/python -mindepth 1 -name '*cp3*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse' && \
+    find /io/wheelhouse/ -name 'javabridge*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
+    # auditwheel modifies the java libraries, but some of those have \
+    # hard-coded relative paths, which doesn't work.  Replace them with the \
+    # unmodified versions.  See https://stackoverflow.com/questions/55904261 \
+    python -c $'# \n\
+path = "/build/fix_record.py" \n\
+s = """import base64 \n\
+import hashlib \n\
+import os \n\
+\n\
+record_path = os.path.join(next(dir for dir in os.listdir(".") if dir.endswith(".dist-info")), "RECORD") \n\
+newrecord = [] \n\
+for line in open(record_path): \n\
+    parts = line.rsplit(",", 2) \n\
+    if len(parts) == 3 and os.path.exists(parts[0]) and parts[1]: \n\
+        hashval = base64.urlsafe_b64encode(hashlib.sha256(open(parts[0], "rb").read()).digest()).decode("latin1").rstrip("=") \n\
+        filelen = os.path.getsize(parts[0]) \n\
+        line = ",".join([parts[0], "sha256=" + hashval, str(filelen)]) + "\\n" \n\
+    newrecord.append(line) \n\
+open(record_path, "w").write("".join(newrecord)) \n\
+""" \n\
+open(path, "w").write(s)' && \
+    find /io/wheelhouse/ -name 'javabridge*many*.whl' -print0 | xargs -n 1 -0 bash -c 'mkdir /tmp/ptmp; pushd /tmp/ptmp; unzip ${0}; cp -r -L /usr/lib/jvm/java-1.8.0/* javabridge/jvm/.; /opt/python/cp37-cp37m/bin/python /build/fix_record.py; zip -r ${0} *; popd; rm -rf /tmp/ptmp' && \
+    find /io/wheelhouse/ -name 'javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
+    find /io/wheelhouse/ -name 'javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
+    ls -l /io/wheelhouse && \
+    echo "`date` javabridge" >> /build/log.txt

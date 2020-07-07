@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -e
 
+# if ! (apt-get update && apt-get install -y openjdk-11-jre-headless); then 
+#   curl -OLJ https://download.java.net/java/GA/jdk14.0.1/664493ef4a6946b186ff29eb326336a2/7/GPL/openjdk-14.0.1_linux-x64_bin.tar.gz
+#   tar -zxvf openjdk-14.0.1_linux-x64_bin.tar.gz
+#   export PATH="`pwd`/jdk-14.0.1/bin:$PATH"
+# fi
+
 python --version
 pip install --upgrade pip 
 pip install --upgrade setuptools
@@ -9,6 +15,11 @@ pip install --upgrade setuptools
 # pip install libtiff openslide_python pyvips GDAL mapnik -f /wheels
 echo 'Test installing pyvips and other dependencies from wheels via large_image'
 pip install pyvips large_image[sources,memcached] -f ${1:-/wheels}
+
+if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 5)))'; then
+    pip install javabridge -f ${1:-/wheels}
+fi    
+
 echo 'Test basic import of libtiff'
 python -c 'import libtiff'
 echo 'Test basic import of openslide'
@@ -19,8 +30,15 @@ echo 'Test basic import of gdal'
 python -c 'import gdal'
 echo 'Test basic import of mapnik'
 python -c 'import mapnik'
-echo 'Test basic imports of all wheels'
-python -c 'import libtiff, openslide, pyvips, gdal, mapnik, glymur'
+if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 5)))'; then
+  echo 'Test basic import of javabridge'
+  python -c 'import javabridge'
+  echo 'Test basic imports of all wheels'
+  python -c 'import libtiff, openslide, pyvips, gdal, mapnik, glymur, javabridge'
+else  
+  echo 'Test basic imports of all wheels'
+  python -c 'import libtiff, openslide, pyvips, gdal, mapnik, glymur'
+fi
 echo 'Test import of pyproj after mapnik'
 python <<EOF
 import mapnik
@@ -207,3 +225,11 @@ vips --version
 PROJ_LIB=`python -c 'import os,sys,pyproj;sys.stdout.write(os.path.dirname(pyproj.__file__))'`/proj `python -c 'import os,sys,pyproj;sys.stdout.write(os.path.dirname(pyproj.__file__))'`/bin/projinfo EPSG:4326
 projinfo EPSG:4326
 
+if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 5)))'; then
+
+echo 'test javabridge'
+java -version
+pip install python-bioformats
+python -c 'import javabridge, bioformats;javabridge.start_vm(class_path=bioformats.JARS, run_headless=True);javabridge.kill_vm()'
+
+fi
