@@ -1462,9 +1462,9 @@ RUN echo "`date` mrsid" >> /build/log.txt && \
 RUN echo "`date` gdal" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # Specific branch
-    # git clone --depth=1 --single-branch -b v3.1.1 https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch -b v3.1.2 https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version
-    git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
     # Common
     cd gdal/gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
