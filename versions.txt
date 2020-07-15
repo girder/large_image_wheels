@@ -1,5 +1,5 @@
 advancecomp 2.1
-armadillo 9.900.1
+armadillo 9.900.2
 bison 3.6.4
 boost 1.73.0
 cairo 1.16.0
@@ -16,7 +16,7 @@ freetype 2.10.2
 freexl ce144a720f
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
-gdal aa6afd5454bd8f755d25ae8d10ceb3f659fdb785
+gdal 26ac557a72fc8d66ba4a595bd0d5c9e25b1877bd
 gdal-pypi 3.1.2
 gdal-release 3.1.2
 gdk-pixbuf 2.40.0
@@ -30,8 +30,8 @@ harfbuzz 2.6.7
 hdf4 4.2.15
 hdf5 1.12.0
 icu4c 67-1
-imagemagick 7.0.10-23
-jasper 2.0.16
+imagemagick 7.0.10-24
+jasper 2.0.17
 javabridge 1.0.18
 javabridge-pypi 1.0.19
 jbigkit 2.1
@@ -51,7 +51,7 @@ libmemcached 1.0.18
 libpng 1.6.37
 librasterlite2 e3d324390b
 librsvg 2.49.3
-libspatialite 41b92e961f
+libspatialite a02cd88d8d
 libtiff 4.1.0
 libvips 8.9.2
 libwebp 1.1.0
@@ -59,7 +59,7 @@ libxcrypt 4.4.16
 libxml2 2.9.10
 lz4 1.9.2
 m4 1.4.18
-manylinux2010 0fabf500419dbb1e6d12e7b357afc9d8574d2ebb1feb4de49392926301de6e0c
+manylinux2010 ff4bd1368206ade95679018b62bd035fe37e90d32413fca4ba2efe3be4becd0c
 mapnik 9cb1b7e37f9a36851ee8f395d1c2343b9cbf5b5d
 mapnik-release 3.0.23
 minizip 2.10.0
