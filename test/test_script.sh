@@ -254,12 +254,10 @@ if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 6)))' ; then
 echo 'test with Django gis'
 pip install django
 python <<EOF
-import os, re, sys, osgeo, django.conf
-libsdir = os.path.join(os.path.dirname(os.path.dirname(osgeo._gdal.__file__)),"GDAL.libs")
-libs = {re.split(r"-|\.",name)[0]: os.path.join(libsdir, name) for name in os.listdir(libsdir)}
+import sys, osgeo, django.conf
 django.conf.settings.configure()
-django.conf.settings.GDAL_LIBRARY_PATH=libs["libgdal"]
-django.conf.settings.GEOS_LIBRARY_PATH=libs["libgeos_c"]
+django.conf.settings.GDAL_LIBRARY_PATH=osgeo.GDAL_LIBRARY_PATH
+django.conf.settings.GEOS_LIBRARY_PATH=osgeo.GEOS_LIBRARY_PATH
 from django.contrib.gis.gdal import CoordTransform, SpatialReference
 from django.contrib.gis.geos import Polygon
 spatial_ref = SpatialReference('PROJCS["Albers Conical Equal Area",GEOGCS["NAD83",DATUM["North_American_Datum_1983",SPHEROID["GRS 1980",6378137,298.2572221010042,AUTHORITY["EPSG","7019"]],TOWGS84[0,0,0,0,0,0,0],AUTHORITY["EPSG","6269"]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433],AUTHORITY["EPSG","4269"]],PROJECTION["Albers_Conic_Equal_Area"],PARAMETER["standard_parallel_1",29.5],PARAMETER["standard_parallel_2",45.5],PARAMETER["latitude_of_center",23],PARAMETER["longitude_of_center",-96],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]]]')

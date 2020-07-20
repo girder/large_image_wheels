@@ -45,7 +45,7 @@ jobs:
       - store_artifacts:
           path: ./liw_docker.tar
       - run:
-          name: Test the Docker
+          name: Test wheels via Docker
           command: python test_via_docker.py
       # Upload artifacts to github (or elsewhere)
       # Copy wheels to the gh-pages branch; update index.html; force push

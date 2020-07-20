@@ -1338,6 +1338,7 @@ RUN echo "`date` epsilon" >> /build/log.txt && \
 
 COPY jasper-jp2_cod.c.patch .
 
+# Jasper 2.0.18 is not compatible with GDAL as of 2020-7-20
 RUN echo "`date` jasper" >> /build/log.txt && \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b version-2.0.16 https://github.com/mdadams/jasper.git && \
@@ -1549,13 +1550,22 @@ s = open(path).read().replace( \n\
 """osgeo package. \n\
 \n\
 import os \n\
+import re \n\
 \n\
-localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
-os.environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj")) \n\
-os.environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal")) \n\
-caPath = "/etc/ssl/certs/ca-certificates.crt" \n\
-if os.path.exists(caPath): \n\
-    os.environ.setdefault("CURL_CA_BUNDLE", caPath) \n\
+_localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
+os.environ.setdefault("PROJ_LIB", os.path.join(_localpath, "proj")) \n\
+os.environ.setdefault("GDAL_DATA", os.path.join(_localpath, "gdal")) \n\
+_caPath = "/etc/ssl/certs/ca-certificates.crt" \n\
+if os.path.exists(_caPath): \n\
+    os.environ.setdefault("CURL_CA_BUNDLE", _caPath) \n\
+\n\
+_libsdir = os.path.join(os.path.dirname(_localpath), "GDAL.libs") \n\
+_libs = { \n\
+    re.split(r"-|\\.", name)[0]: os.path.join(_libsdir, name) \n\
+    for name in os.listdir(_libsdir) \n\
+} \n\
+GDAL_LIBRARY_PATH = _libs["libgdal"] \n\
+GEOS_LIBRARY_PATH = _libs["libgeos_c"] \n\
 """) \n\
 open(path, "w").write(s)' && \
     # Copy python ports of c utilities to scripts so they get bundled.

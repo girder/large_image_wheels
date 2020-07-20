@@ -94,6 +94,25 @@ If these wheels were published under alternate names, they could be published to
 
 Using `--find-links` seems like the best choice of these options.  Downstream packages can list the expected modules in `install_requires`.  Installation doesn't become any harder for platforms without wheels, and custom-built libraries are supported.
 
+## Special use cases
+
+### GeoDjango
+
+GeoDjango expects libgdal and libgeos_c to be in standard locations.  These libraries can be installed by installing the GDAL wheel.  Starting with GDAL 3.1.2, the `osgeo` module from these wheels exposes two values that can be used to tell Django where these libraries are located.  Specifically, Django can be configured using these values::
+
+  import osgeo
+
+  django.conf.settings.configure()
+  django.conf.settings.GDAL_LIBRARY_PATH = osgeo.GDAL_LIBRARY_PATH
+  django.conf.settings.GEOS_LIBRARY_PATH = osgeo.GEOS_LIBRARY_PATH
+
+Inside a Django application's `settings.py` file, this is somewhat simpler::
+
+  import osgeo
+
+  GDAL_LIBRARY_PATH = osgeo.GDAL_LIBRARY_PATH
+  GEOS_LIBRARY_PATH = osgeo.GEOS_LIBRARY_PATH
+
 ## Future Work
 
 - More optional libraries
