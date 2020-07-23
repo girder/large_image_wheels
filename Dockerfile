@@ -192,7 +192,7 @@ RUN echo "`date` strip-nondeterminism" >> /build/log.txt && \
 
 # CMake - use a precompiled binary
 RUN echo "`date` cmake" >> /build/log.txt && \
-    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.17.3/cmake-3.17.3-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.18.1/cmake-3.18.1-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
     mkdir cmake && \
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz && \
@@ -579,8 +579,9 @@ open(path, "w").write(s)' && \
 RUN echo "`date` util-linux" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v2.35.1 https://github.com/karelzak/util-linux.git && \
+    git clone --depth=1 --single-branch -b v2.36 https://github.com/karelzak/util-linux.git && \
     cd util-linux && \
+    sed -i 's/#ifndef UMOUNT_UNUSED/#ifndef O_PATH\n# define O_PATH 010000000\n#endif\n\n#ifndef UMOUNT_UNUSED/g' libmount/src/context_umount.c && \
     ./autogen.sh && \
     export CFLAGS="$CFLAGS -O2" && \
     ./configure --disable-all-programs --enable-libblkid --enable-libmount --silent --prefix=/usr/local --disable-static && \
@@ -777,7 +778,7 @@ open(path, "w").write(s)' && \
 
 RUN echo "`date` gettext" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.gnu.org/pub/gnu/gettext/gettext-0.20.2.tar.gz -L -o gettext.tar.gz && \
+    curl --retry 5 --silent https://ftp.gnu.org/pub/gnu/gettext/gettext-0.21.tar.gz -L -o gettext.tar.gz && \
     mkdir gettext && \
     tar -zxf gettext.tar.gz -C gettext --strip-components 1 && \
     rm -f gettext.tar.gz && \
@@ -802,7 +803,7 @@ RUN echo "`date` flex" >> /build/log.txt && \
 
 RUN echo "`date` bison" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.6.4.tar.xz -L -o bison.tar.xz && \
+    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.7.1.tar.xz -L -o bison.tar.xz && \
     unxz bison.tar.xz && \
     mkdir bison && \
     tar -xf bison.tar -C bison --strip-components 1 && \
@@ -1296,7 +1297,7 @@ RUN echo "`date` postgres" >> /build/log.txt && \
 RUN echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-0.90.1.tar.xz -L -o poppler.tar.xz && \
+    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-20.08.0.tar.xz -L -o poppler.tar.xz && \
     unxz poppler.tar.xz && \
     mkdir poppler && \
     tar -xf poppler.tar -C poppler --strip-components 1 && \
@@ -1743,7 +1744,7 @@ RUN echo "`date` imagequant" >> /build/log.txt && \
 RUN echo "`date` pango" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.45/pango-1.45.3.tar.xz -L -o pango.tar.xz && \
+    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.45/pango-1.45.5.tar.xz -L -o pango.tar.xz && \
     unxz pango.tar.xz && \
     mkdir pango && \
     tar -xf pango.tar -C pango --strip-components 1 && \
@@ -1852,7 +1853,7 @@ RUN echo "`date` libgsf" >> /build/log.txt && \
 #  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz JXL LQR RAQM RAW WMF
 RUN echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.0.10-23 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.0.10-26 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
@@ -1867,7 +1868,7 @@ RUN echo "`date` vips" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
     # Use these lines for a release \
-    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.9.2/vips-8.9.2.tar.gz -L -o vips.tar.gz && \
+    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.10.0/vips-8.10.0.tar.gz -L -o vips.tar.gz && \
     mkdir vips && \
     tar -zxf vips.tar.gz -C vips --strip-components 1 && \
     rm -f vips.tar.gz && \
