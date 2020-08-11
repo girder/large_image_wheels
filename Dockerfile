@@ -154,7 +154,7 @@ RUN echo "`date` libssh2" >> /build/log.txt && \
 
 RUN echo "`date` curl" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_71_1/curl-7.71.1.tar.gz -L -o curl.tar.gz && \
+    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_72_0/curl-7.72.0.tar.gz -L -o curl.tar.gz && \
     mkdir curl && \
     tar -zxf curl.tar.gz -C curl --strip-components 1 && \
     rm -f curl.tar.gz && \
@@ -192,7 +192,7 @@ RUN echo "`date` strip-nondeterminism" >> /build/log.txt && \
 
 # CMake - use a precompiled binary
 RUN echo "`date` cmake" >> /build/log.txt && \
-    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.18.1/cmake-3.18.1-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.18.2/cmake-3.18.2-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
     mkdir cmake && \
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz && \
@@ -214,13 +214,13 @@ RUN echo "`date` advancecomp" >> /build/log.txt && \
     ldconfig && \
     # Because we will recompress all wheels, we can create them with no \
     # compression to save some time \
-    sed -i 's/ZIP_DEFLATED/ZIP_STORED/g' /opt/_internal/cpython-3.7.8/lib/python3.7/site-packages/auditwheel/tools.py && \
+    sed -i 's/ZIP_DEFLATED/ZIP_STORED/g' /opt/_internal/cpython-3.7.9/lib/python3.7/site-packages/auditwheel/tools.py && \
     echo "`date` advancecomp" >> /build/log.txt
 
 # vips doesn't work with auditwheel 3.2 since the copylib doesn't adjust
 # rpaths the same as 3.1.1.  Revent that aspect of the behavior.
 RUN echo "`date` auditwheel" >> /build/log.txt && \
-    sed -i 's/patcher.set_rpath(dest_path, dest_dir)/new_rpath = os.path.relpath(dest_dir, os.path.dirname(dest_path))\n        new_rpath = os.path.join('\''$ORIGIN'\'', new_rpath)\n        patcher.set_rpath(dest_path, new_rpath)/g' /opt/_internal/cpython-3.7.8/lib/python3.7/site-packages/auditwheel/repair.py && \
+    sed -i 's/patcher.set_rpath(dest_path, dest_dir)/new_rpath = os.path.relpath(dest_dir, os.path.dirname(dest_path))\n        new_rpath = os.path.join('\''$ORIGIN'\'', new_rpath)\n        patcher.set_rpath(dest_path, new_rpath)/g' /opt/_internal/cpython-3.7.9/lib/python3.7/site-packages/auditwheel/repair.py && \
     echo "`date` auditwheel" >> /build/log.txt
 
 # Packages used by large_image that don't have published wheels for all the
@@ -554,7 +554,7 @@ RUN echo "`date` meson" >> /build/log.txt && \
 
 # Ninja >= 1.9 has to be built locally
 RUN echo "`date` ninja" >> /build/log.txt && \
-    git clone --depth=1 --single-branch -b v1.10.0 https://github.com/ninja-build/ninja.git && \
+    git clone --depth=1 --single-branch -b v1.10.1 https://github.com/ninja-build/ninja.git && \
     cd ninja && \
     ./configure.py --bootstrap && \
     mv ninja /usr/local/bin/. && \
@@ -603,8 +603,8 @@ data = open(path).read().replace( \n\
 open(path, "w").write(data)' && \
     # Also change auditwheel so it doesn't check for a higher priority \
     # platform; that process is slow \
-    sed -i 's/analyzed_tag = /analyzed_tag = reqd_tag  #/g' /opt/_internal/cpython-3.7.8/lib/python3.7/site-packages/auditwheel/main_repair.py && \
-    sed -i 's/if reqd_tag < get_priority_by_name(analyzed_tag):/if False:  #/g' /opt/_internal/cpython-3.7.8/lib/python3.7/site-packages/auditwheel/main_repair.py && \
+    sed -i 's/analyzed_tag = /analyzed_tag = reqd_tag  #/g' /opt/_internal/cpython-3.7.9/lib/python3.7/site-packages/auditwheel/main_repair.py && \
+    sed -i 's/if reqd_tag < get_priority_by_name(analyzed_tag):/if False:  #/g' /opt/_internal/cpython-3.7.9/lib/python3.7/site-packages/auditwheel/main_repair.py && \
     echo "`date` auditwheel policy" >> /build/log.txt
 
 # Build openslide with older glib2, gdk-pixbuf2, cairo
@@ -883,7 +883,7 @@ RUN echo "`date` icu4c" >> /build/log.txt && \
 
 RUN echo "`date` openmpi" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.4.tar.gz -L -o openmpi.tar.gz && \
+    curl --retry 5 --silent https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.5.tar.gz -L -o openmpi.tar.gz && \
     mkdir openmpi && \
     tar -zxf openmpi.tar.gz -C openmpi --strip-components 1 && \
     rm -f openmpi.tar.gz && \
@@ -924,7 +924,7 @@ RUN echo "`date` boost" >> /build/log.txt && \
     echo "`date` boost" >> /build/log.txt
 
 RUN echo "`date` fossil" >> /build/log.txt && \
-    curl --retry 5 --silent -L https://www.fossil-scm.org/index.html/uv/fossil-src-2.11.1.tar.gz -o fossil.tar.gz && \
+    curl --retry 5 --silent -L https://www.fossil-scm.org/index.html/uv/fossil-src-2.12.1.tar.gz -o fossil.tar.gz && \
     mkdir fossil && \
     tar -zxf fossil.tar.gz -C fossil --strip-components 1 && \
     rm -f fossil.tar.gz && \
@@ -963,7 +963,7 @@ RUN echo "`date` tk" >> /build/log.txt && \
 
 RUN echo "`date` sqlite" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://sqlite.org/2020/sqlite-autoconf-3320300.tar.gz -L -o sqlite.tar.gz && \
+    curl --retry 5 --silent https://sqlite.org/2020/sqlite-autoconf-3330000.tar.gz -L -o sqlite.tar.gz && \
     mkdir sqlite && \
     tar -zxf sqlite.tar.gz -C sqlite --strip-components 1 && \
     rm -f sqlite.tar.gz && \
@@ -1282,7 +1282,7 @@ RUN echo "`date` ogdi" >> /build/log.txt && \
 RUN echo "`date` postgres" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.postgresql.org/pub/source/v12.3/postgresql-12.3.tar.gz -L -o postgresql.tar.gz && \
+    curl --retry 5 --silent https://ftp.postgresql.org/pub/source/v12.4/postgresql-12.4.tar.gz -L -o postgresql.tar.gz && \
     mkdir postgresql && \
     tar -zxf postgresql.tar.gz -C postgresql --strip-components 1 && \
     rm -f postgresql.tar.gz && \
@@ -1297,7 +1297,7 @@ RUN echo "`date` postgres" >> /build/log.txt && \
 RUN echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-20.08.0.tar.xz -L -o poppler.tar.xz && \
+    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-20.09.0.tar.xz -L -o poppler.tar.xz && \
     unxz poppler.tar.xz && \
     mkdir poppler && \
     tar -xf poppler.tar -C poppler --strip-components 1 && \
@@ -1360,7 +1360,7 @@ RUN echo "`date` jasper" >> /build/log.txt && \
 RUN echo "`date` libxcrypt" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v4.4.16 https://github.com/besser82/libxcrypt.git && \
+    git clone --depth=1 --single-branch -b v4.4.17 https://github.com/besser82/libxcrypt.git && \
     cd libxcrypt && \
     # autoreconf -ifv && \
     ./autogen.sh && \
@@ -1438,7 +1438,7 @@ RUN echo "`date` superlu" >> /build/log.txt && \
 
 RUN echo "`date` armadillo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-9.900.2.tar.xz -L -o armadillo.tar.xz && \
+    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-9.900.3.tar.xz -L -o armadillo.tar.xz && \
     unxz armadillo.tar.xz && \
     mkdir armadillo && \
     tar -xf armadillo.tar -C armadillo --strip-components 1 && \
@@ -1744,7 +1744,7 @@ RUN echo "`date` imagequant" >> /build/log.txt && \
 RUN echo "`date` pango" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.45/pango-1.45.5.tar.xz -L -o pango.tar.xz && \
+    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.46/pango-1.46.1.tar.xz -L -o pango.tar.xz && \
     unxz pango.tar.xz && \
     mkdir pango && \
     tar -xf pango.tar -C pango --strip-components 1 && \
@@ -1789,7 +1789,7 @@ RUN echo "`date` libcroco" >> /build/log.txt && \
 RUN echo "`date` libde265" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v1.0.5 https://github.com/strukturag/libde265.git && \
+    git clone --depth=1 --single-branch -b v1.0.6 https://github.com/strukturag/libde265.git && \
     cd libde265 && \
     ./autogen.sh && \
     ./configure --silent --prefix=/usr/local --disable-static && \
@@ -1801,7 +1801,7 @@ RUN echo "`date` libde265" >> /build/log.txt && \
 RUN echo "`date` libheif" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v1.6.2 https://github.com/strukturag/libheif.git && \
+    git clone --depth=1 --single-branch -b v1.8.0 https://github.com/strukturag/libheif.git && \
     cd libheif && \
     ./autogen.sh && \
     ./configure --silent --prefix=/usr/local --disable-static && \
@@ -1817,7 +1817,7 @@ RUN echo "`date` rust" >> /build/log.txt && \
 RUN echo "`date` librsvg" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.49/librsvg-2.49.3.tar.xz -L -o librsvg.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.49/librsvg-2.49.4.tar.xz -L -o librsvg.tar.xz && \
     unxz librsvg.tar.xz && \
     mkdir librsvg && \
     tar -xf librsvg.tar -C librsvg --strip-components 1 && \
@@ -1853,7 +1853,7 @@ RUN echo "`date` libgsf" >> /build/log.txt && \
 #  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz JXL LQR RAQM RAW WMF
 RUN echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.0.10-26 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.0.10-28 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
@@ -1868,7 +1868,7 @@ RUN echo "`date` vips" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
     # Use these lines for a release \
-    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.10.0/vips-8.10.0.tar.gz -L -o vips.tar.gz && \
+    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.10.1/vips-8.10.1.tar.gz -L -o vips.tar.gz && \
     mkdir vips && \
     tar -zxf vips.tar.gz -C vips --strip-components 1 && \
     rm -f vips.tar.gz && \
