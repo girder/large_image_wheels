@@ -1,6 +1,6 @@
 advancecomp 2.1
 armadillo 9.900.3
-bison 3.7.1
+bison 3.7.2
 boost 1.74.0
 cairo 1.16.0
 charls 25160a42fb62e71e4b0ce081f5cb3f8bb73938b5
@@ -16,9 +16,9 @@ freetype 2.10.2
 freexl ce144a720f
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
-gdal e67def79aec4f3354b093b35ddbf956c43812ffb
-gdal-pypi 3.1.2
-gdal-release 3.1.2
+gdal c12956bdb9f666f9f25716aed26506a43de461ac
+gdal-pypi 3.1.3
+gdal-release 3.1.3
 gdk-pixbuf 2.40.0
 geos 3.8.1
 gettext 0.21
@@ -30,9 +30,9 @@ harfbuzz 2.6.7
 hdf4 4.2.15
 hdf5 1.12.0
 icu4c 67-1
-imagemagick 7.0.10-28
-jasper 2.0.19
-javabridge 1.0.18
+imagemagick 7.0.10-29
+jasper 2.0.20
+javabridge 4.0.0
 javabridge-pypi 1.0.19
 jbigkit 2.1
 libcroco 0.6.13
@@ -50,7 +50,7 @@ libjpeg-turbo 2.0.5
 libmemcached 1.0.18
 libpng 1.6.37
 librasterlite2 0ca2cfcf20
-librsvg 2.49.4
+librsvg 2.49.5
 libspatialite c7f67038bf
 libtiff 4.1.0
 libvips 8.10.1
@@ -87,7 +87,7 @@ pnetcdf 1.12.1
 poppler 20.09.0
 postgresql 12.4
 proj-datumgrid 1.8
-proj.4 50bf1180df522e63a47323975535e5fb7bcd390c
+proj.4 7c2718623dd6607f49b557cd065aece9a4a00255
 proj.4-release 7.1.1
 psutil 5.7.2
 pylibmc 1.6.1
@@ -95,7 +95,7 @@ pylibtiff 51d6f2a41db654254397df1de6f9193e7317bce5
 pylibtiff-pypi 0.4.2
 pyproj4-pypi 3.0.dev1
 pyproj4-release 2.6.1
-python-mapnik 25499e34395ca614d74c1fc684753d8b95077f10
+python-mapnik a2c2a86eec954b42d7f00093da03807d0834b1b4
 python-mapnik-pypi 0.1
 pyvips 346e60ff3ab34ae9a36c980a6a3a139346f757ba
 pyvips-pypi 2.1.12
@@ -103,7 +103,7 @@ sqlite 3330000
 superlu 5.2.1
 tcl 8.6.10
 tk 8.6.10
-ultrajson 5dea5ef3dce50d0dbe96595c1e9c79a95675f126
+ultrajson 9db46542579467a3c8daa55aff1372b18b150044
 ultrajson-pypi 3.1.0
 ultrajson-release 1.35
 util-linux 2.36

@@ -803,7 +803,7 @@ RUN echo "`date` flex" >> /build/log.txt && \
 
 RUN echo "`date` bison" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.7.1.tar.xz -L -o bison.tar.xz && \
+    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.7.2.tar.xz -L -o bison.tar.xz && \
     unxz bison.tar.xz && \
     mkdir bison && \
     tar -xf bison.tar -C bison --strip-components 1 && \
@@ -1482,9 +1482,9 @@ RUN echo "`date` mrsid" >> /build/log.txt && \
 RUN echo "`date` gdal" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # Specific branch
-    # git clone --depth=1 --single-branch -b v3.1.2 https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch -b v3.1.3 https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version
-    git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
     # Common
     cd gdal/gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
@@ -1817,7 +1817,7 @@ RUN echo "`date` rust" >> /build/log.txt && \
 RUN echo "`date` librsvg" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.49/librsvg-2.49.4.tar.xz -L -o librsvg.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.49/librsvg-2.49.5.tar.xz -L -o librsvg.tar.xz && \
     unxz librsvg.tar.xz && \
     mkdir librsvg && \
     tar -xf librsvg.tar -C librsvg --strip-components 1 && \
@@ -1853,7 +1853,7 @@ RUN echo "`date` libgsf" >> /build/log.txt && \
 #  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz JXL LQR RAQM RAW WMF
 RUN echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.0.10-28 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.0.10-29 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
@@ -2076,7 +2076,7 @@ open(path, "w").write(data)' && \
 
 RUN echo "`date` javabridge" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 1.0.19 https://github.com/LeeKamentsky/python-javabridge.git && \
+    git clone --depth=1 --single-branch -b v4.0.0 https://github.com/CellProfiler/python-javabridge.git && \
     cd python-javabridge && \
     # Include java libraries \
     mkdir javabridge/jvm && \
@@ -2138,7 +2138,7 @@ open(path, "w").write(s)' && \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
     # Only build for Python >=3.5 \
     find /opt/python -mindepth 1 -name '*cp3*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse' && \
-    find /io/wheelhouse/ -name 'javabridge*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'python_javabridge*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
     # auditwheel modifies the java libraries, but some of those have \
     # hard-coded relative paths, which doesn't work.  Replace them with the \
     # unmodified versions.  See https://stackoverflow.com/questions/55904261 \
@@ -2160,8 +2160,8 @@ for line in open(record_path): \n\
 open(record_path, "w").write("".join(newrecord)) \n\
 """ \n\
 open(path, "w").write(s)' && \
-    find /io/wheelhouse/ -name 'javabridge*many*.whl' -print0 | xargs -n 1 -0 bash -c 'mkdir /tmp/ptmp; pushd /tmp/ptmp; unzip ${0}; cp -r -L /usr/lib/jvm/java-1.8.0/* javabridge/jvm/.; /opt/python/cp37-cp37m/bin/python /build/fix_record.py; zip -r ${0} *; popd; rm -rf /tmp/ptmp' && \
-    find /io/wheelhouse/ -name 'javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
-    find /io/wheelhouse/ -name 'javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
+    find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 bash -c 'mkdir /tmp/ptmp; pushd /tmp/ptmp; unzip ${0}; cp -r -L /usr/lib/jvm/java-1.8.0/* python_javabridge/jvm/.; /opt/python/cp37-cp37m/bin/python /build/fix_record.py; zip -r ${0} *; popd; rm -rf /tmp/ptmp' && \
+    find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
+    find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
     echo "`date` javabridge" >> /build/log.txt
