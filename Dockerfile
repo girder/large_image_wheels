@@ -668,7 +668,7 @@ RUN echo "`date` openslide" >> /build/log.txt && \
 
 RUN echo "`date` openslide-python" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch https://github.com/openslide/openslide-python.git && \
+    git clone --depth=1 --single-branch -b v1.1.2 https://github.com/openslide/openslide-python.git && \
     cd openslide-python && \
     python -c $'# \n\
 path = "setup.py" \n\
@@ -740,6 +740,7 @@ RUN echo "`date` rm glib 2.58" >> /build/log.txt && \
     echo "`date` rm glib 2.58" >> /build/log.txt
 
 # 2.59.x and above doesn't work with openslide on centos
+# >2.65.0 doesn't work with gobject-introspection 1.64.1
 RUN echo "`date` glib" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
@@ -1481,11 +1482,11 @@ RUN echo "`date` mrsid" >> /build/log.txt && \
 # --with-dods-root is where libdap is installed
 RUN echo "`date` gdal" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    # Specific branch
-    git clone --depth=1 --single-branch -b v3.1.3 https://github.com/OSGeo/gdal.git && \
-    # Master -- also adjust version
-    # git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
-    # Common
+    # Specific branch \
+    # git clone --depth=1 --single-branch -b v3.1.3 https://github.com/OSGeo/gdal.git && \
+    # Master -- also adjust version \
+    git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
+    # Common \
     cd gdal/gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
     ./configure --prefix=/usr/local --disable-static --disable-rpath --with-cpp14 --without-libtool --with-jpeg12 --with-spatialite --with-liblzma --with-webp --with-epsilon --with-poppler --with-hdf5 --with-dods-root=/usr/local --with-sosi --with-mysql --with-rasterlite2 --with-pg --with-cfitsio=/usr/local --with-armadillo --with-mrsid=/build/mrsid/Raster_DSDK --with-mrsid_lidar=/build/mrsid/Lidar_DSDK && \
@@ -1817,7 +1818,7 @@ RUN echo "`date` rust" >> /build/log.txt && \
 RUN echo "`date` librsvg" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.49/librsvg-2.49.5.tar.xz -L -o librsvg.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.50/librsvg-2.50.0.tar.xz -L -o librsvg.tar.xz && \
     unxz librsvg.tar.xz && \
     mkdir librsvg && \
     tar -xf librsvg.tar -C librsvg --strip-components 1 && \
