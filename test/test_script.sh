@@ -24,17 +24,17 @@ python -c 'import openslide'
 echo 'Test basic import of pyvips'
 python -c 'import pyvips'
 echo 'Test basic import of gdal'
-python -c 'import gdal'
+python -c 'from osgeo import gdal'
 echo 'Test basic import of mapnik'
 python -c 'import mapnik'
 if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 5)))'; then
   echo 'Test basic import of javabridge'
   python -c 'import javabridge'
   echo 'Test basic imports of all wheels'
-  python -c 'import libtiff, openslide, pyvips, gdal, mapnik, glymur, javabridge'
+  python -c 'import libtiff, openslide, pyvips, osgeo, mapnik, glymur, javabridge'
 else  
   echo 'Test basic imports of all wheels'
-  python -c 'import libtiff, openslide, pyvips, gdal, mapnik, glymur'
+  python -c 'import libtiff, openslide, pyvips, osgeo, mapnik, glymur'
 fi
 echo 'Test import of pyproj after mapnik'
 python <<EOF
@@ -88,7 +88,8 @@ echo 'Download a geotiff file'
 curl --retry 5 -L -o landcover.tif https://data.kitware.com/api/v1/file/5be43e848d777f217991e270/download
 echo 'Use gdal to open a geotiff file'
 python <<EOF
-import gdal, pprint
+from osgeo import gdal
+import pprint
 d = gdal.Open('landcover.tif')
 pprint.pprint({
   'RasterXSize': d.RasterXSize,
@@ -186,7 +187,8 @@ echo 'Download a somewhat bad nitf file'
 curl --retry 5 -L -o sample.ntf https://data.kitware.com/api/v1/file/5cee913e8d777f072bf1c47a/download
 echo 'Use gdal to open a nitf file'
 python <<EOF
-import gdal, pprint
+from osgeo import gdal
+import pprint
 d = gdal.Open('sample.ntf')
 pprint.pprint({
   'RasterXSize': d.RasterXSize,
@@ -225,7 +227,8 @@ projinfo EPSG:4326
 projinfo ESRI:102654
 echo 'test GDAL transform'
 python <<EOF
-import ogr, osr, sys
+from osgeo import ogr, osr
+import sys
 poly = ogr.CreateGeometryFromWkt('POLYGON ((1319547.040429464 2658548.125730889, 2005547.040429464 2658548.125730889, 2005547.040429464 2148548.125730889, 1319547.040429464 2148548.125730889, 1319547.040429464 2658548.125730889))')
 source = osr.SpatialReference()
 source.ImportFromWkt('PROJCS["Albers Conical Equal Area",GEOGCS["NAD83",DATUM["North_American_Datum_1983",SPHEROID["GRS 1980",6378137,298.2572221010042,AUTHORITY["EPSG","7019"]],TOWGS84[0,0,0,0,0,0,0],AUTHORITY["EPSG","6269"]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433],AUTHORITY["EPSG","4269"]],PROJECTION["Albers_Conic_Equal_Area"],PARAMETER["standard_parallel_1",29.5],PARAMETER["standard_parallel_2",45.5],PARAMETER["latitude_of_center",23],PARAMETER["longitude_of_center",-96],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]]]')

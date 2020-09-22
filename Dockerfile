@@ -26,7 +26,6 @@ RUN echo "`date` yum install" >> /build/log.txt && \
     mesa-libGL-devel \
     mesa-libGLU-devel \
     SDL-devel \
-    xz-devel \
     # for javabridge \
     java-1.8.0-openjdk-devel \
     # For glib2 \
@@ -154,7 +153,7 @@ RUN echo "`date` libssh2" >> /build/log.txt && \
 
 RUN echo "`date` curl" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_72_0/curl-7.72.0.tar.gz -L -o curl.tar.gz && \
+    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_73_0/curl-7.73.0.tar.gz -L -o curl.tar.gz && \
     mkdir curl && \
     tar -zxf curl.tar.gz -C curl --strip-components 1 && \
     rm -f curl.tar.gz && \
@@ -164,6 +163,19 @@ RUN echo "`date` curl" >> /build/log.txt && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
     echo "`date` curl" >> /build/log.txt
+
+RUN echo "`date` xz" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    curl --retry 5 --silent https://downloads.sourceforge.net/project/lzmautils/xz-5.2.5.tar.gz -L -o xz.tar.gz && \
+    mkdir xz && \
+    tar -zxf xz.tar.gz -C xz --strip-components 1 && \
+    rm -f xz.tar.gz && \
+    cd xz && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` xz" >> /build/log.txt
 
 # Perl - building from source seems to have less issues
 RUN echo "`date` perl" >> /build/log.txt && \
@@ -192,7 +204,7 @@ RUN echo "`date` strip-nondeterminism" >> /build/log.txt && \
 
 # CMake - use a precompiled binary
 RUN echo "`date` cmake" >> /build/log.txt && \
-    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.18.2/cmake-3.18.2-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.18.4/cmake-3.18.4-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
     mkdir cmake && \
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz && \
@@ -214,13 +226,13 @@ RUN echo "`date` advancecomp" >> /build/log.txt && \
     ldconfig && \
     # Because we will recompress all wheels, we can create them with no \
     # compression to save some time \
-    sed -i 's/ZIP_DEFLATED/ZIP_STORED/g' /opt/_internal/cpython-3.7.9/lib/python3.7/site-packages/auditwheel/tools.py && \
+    sed -i 's/ZIP_DEFLATED/ZIP_STORED/g' /opt/_internal/tools/lib/python3.7/site-packages/auditwheel/tools.py && \
     echo "`date` advancecomp" >> /build/log.txt
 
 # vips doesn't work with auditwheel 3.2 since the copylib doesn't adjust
-# rpaths the same as 3.1.1.  Revent that aspect of the behavior.
+# rpaths the same as 3.1.1.  Revert that aspect of the behavior.
 RUN echo "`date` auditwheel" >> /build/log.txt && \
-    sed -i 's/patcher.set_rpath(dest_path, dest_dir)/new_rpath = os.path.relpath(dest_dir, os.path.dirname(dest_path))\n        new_rpath = os.path.join('\''$ORIGIN'\'', new_rpath)\n        patcher.set_rpath(dest_path, new_rpath)/g' /opt/_internal/cpython-3.7.9/lib/python3.7/site-packages/auditwheel/repair.py && \
+    sed -i 's/patcher.set_rpath(dest_path, dest_dir)/new_rpath = os.path.relpath(dest_dir, os.path.dirname(dest_path))\n        new_rpath = os.path.join('\''$ORIGIN'\'', new_rpath)\n        patcher.set_rpath(dest_path, new_rpath)/g' /opt/_internal/tools/lib/python3.7/site-packages/auditwheel/repair.py && \
     echo "`date` auditwheel" >> /build/log.txt
 
 # Packages used by large_image that don't have published wheels for all the
@@ -228,7 +240,7 @@ RUN echo "`date` auditwheel" >> /build/log.txt && \
 
 RUN echo "`date` psutil" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b release-5.7.2 https://github.com/giampaolo/psutil.git && \
+    git clone --depth=1 --single-branch -b release-5.7.3 https://github.com/giampaolo/psutil.git && \
     cd psutil && \
     # Strip libraries before building any wheels \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
@@ -603,8 +615,8 @@ data = open(path).read().replace( \n\
 open(path, "w").write(data)' && \
     # Also change auditwheel so it doesn't check for a higher priority \
     # platform; that process is slow \
-    sed -i 's/analyzed_tag = /analyzed_tag = reqd_tag  #/g' /opt/_internal/cpython-3.7.9/lib/python3.7/site-packages/auditwheel/main_repair.py && \
-    sed -i 's/if reqd_tag < get_priority_by_name(analyzed_tag):/if False:  #/g' /opt/_internal/cpython-3.7.9/lib/python3.7/site-packages/auditwheel/main_repair.py && \
+    sed -i 's/analyzed_tag = /analyzed_tag = reqd_tag  #/g' /opt/_internal/tools/lib/python3.7/site-packages/auditwheel/main_repair.py && \
+    sed -i 's/if reqd_tag < get_priority_by_name(analyzed_tag):/if False:  #/g' /opt/_internal/tools/lib/python3.7/site-packages/auditwheel/main_repair.py && \
     echo "`date` auditwheel policy" >> /build/log.txt
 
 # Build openslide with older glib2, gdk-pixbuf2, cairo
@@ -804,7 +816,7 @@ RUN echo "`date` flex" >> /build/log.txt && \
 
 RUN echo "`date` bison" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.7.2.tar.xz -L -o bison.tar.xz && \
+    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.7.3.tar.xz -L -o bison.tar.xz && \
     unxz bison.tar.xz && \
     mkdir bison && \
     tar -xf bison.tar -C bison --strip-components 1 && \
@@ -1002,7 +1014,7 @@ RUN echo "`date` libgeos" >> /build/log.txt && \
 
 RUN echo "`date` minizip" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 2.10.0 https://github.com/nmoinvaz/minizip.git && \
+    git clone --depth=1 --single-branch -b 2.10.1 https://github.com/nmoinvaz/minizip.git && \
     cd minizip && \
     mkdir _build && \
     cd _build && \
@@ -1018,7 +1030,7 @@ RUN echo "`date` libspatialite" >> /build/log.txt && \
     mkdir libspatialite && \
     cd libspatialite && \
     fossil open ../libspatialite.fossil && \
-    # fossil checkout 7dcf78e2d0 && \
+    fossil checkout -f 39e9137b51 && \
     rm -f ../libspatialite.fossil && \
     CFLAGS="$CFLAGS -O2 -DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true" ./configure --silent --prefix=/usr/local --disable-examples --disable-static && \
     make --silent -j ${JOBS} && \
@@ -1054,7 +1066,7 @@ RUN echo "`date` pixman" >> /build/log.txt && \
 
 RUN echo "`date` freetype" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.savannah.gnu.org/releases/freetype/freetype-2.10.2.tar.gz -L -o freetype.tar.gz && \
+    curl --retry 5 --silent https://download.savannah.gnu.org/releases/freetype/freetype-2.10.4.tar.gz -L -o freetype.tar.gz && \
     mkdir freetype && \
     tar -zxf freetype.tar.gz -C freetype --strip-components 1 && \
     rm -f freetype.tar.gz && \
@@ -1068,7 +1080,7 @@ RUN echo "`date` freetype" >> /build/log.txt && \
 RUN echo "`date` libexpat" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/libexpat/libexpat/archive/R_2_2_9.tar.gz -L -o libexpat.tar.gz && \
+    curl --retry 5 --silent https://github.com/libexpat/libexpat/archive/R_2_2_10.tar.gz -L -o libexpat.tar.gz && \
     mkdir libexpat && \
     tar -zxf libexpat.tar.gz -C libexpat --strip-components 1 && \
     rm -f libexpat.tar.gz && \
@@ -1247,7 +1259,7 @@ RUN echo "`date` netcdf" >> /build/log.txt && \
 RUN echo "`date` mysql" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # curl --retry 5 --silent https://dev.mysql.com/get/Downloads/MySQL-5.7/mysql-boost-5.7.29.tar.gz -L -o mysql.tar.gz && \
-    curl --retry 5 --silent https://cdn.mysql.com//Downloads/MySQL-5.7/mysql-boost-5.7.31.tar.gz -L -o mysql.tar.gz && \
+    curl --retry 5 --silent https://cdn.mysql.com//Downloads/MySQL-5.7/mysql-boost-5.7.32.tar.gz -L -o mysql.tar.gz && \
     mkdir mysql && \
     tar -zxf mysql.tar.gz -C mysql --strip-components 1 && \
     rm -f mysql.tar.gz && \
@@ -1283,7 +1295,7 @@ RUN echo "`date` ogdi" >> /build/log.txt && \
 RUN echo "`date` postgres" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.postgresql.org/pub/source/v12.4/postgresql-12.4.tar.gz -L -o postgresql.tar.gz && \
+    curl --retry 5 --silent https://ftp.postgresql.org/pub/source/v13.0/postgresql-13.0.tar.gz -L -o postgresql.tar.gz && \
     mkdir postgresql && \
     tar -zxf postgresql.tar.gz -C postgresql --strip-components 1 && \
     rm -f postgresql.tar.gz && \
@@ -1298,7 +1310,7 @@ RUN echo "`date` postgres" >> /build/log.txt && \
 RUN echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-20.09.0.tar.xz -L -o poppler.tar.xz && \
+    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-20.10.0.tar.xz -L -o poppler.tar.xz && \
     unxz poppler.tar.xz && \
     mkdir poppler && \
     tar -xf poppler.tar -C poppler --strip-components 1 && \
@@ -1338,14 +1350,14 @@ RUN echo "`date` epsilon" >> /build/log.txt && \
     ldconfig && \
     echo "`date` epsilon" >> /build/log.txt
 
-COPY jasper-jp2_cod.c.patch .
+# COPY jasper-jp2_cod.c.patch .
 
 # Jasper 2.0.18 is not compatible with GDAL as of 2020-7-20
 RUN echo "`date` jasper" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b version-2.0.16 https://github.com/mdadams/jasper.git && \
+    git clone --depth=1 --single-branch -b version-2.0.21 https://github.com/mdadams/jasper.git && \
     cd jasper && \
-    git apply ../jasper-jp2_cod.c.patch && \
+    # git apply ../jasper-jp2_cod.c.patch && \
     mkdir _build && \
     cd _build && \
     cmake -DCMAKE_C_FLAGS_RELEASE=-DJAS_DEC_DEFAULT_MAX_SAMPLES=1000000000000 -DCMAKE_BUILD_TYPE=Release .. && \
@@ -1415,7 +1427,7 @@ RUN echo "`date` xerces" >> /build/log.txt && \
 
 RUN echo "`date` openblas" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v0.3.10 https://github.com/xianyi/OpenBLAS.git && \
+    git clone --depth=1 --single-branch -b v0.3.11 https://github.com/xianyi/OpenBLAS.git && \
     cd OpenBLAS && \
     mkdir _build && \
     cd _build && \
@@ -1427,7 +1439,7 @@ RUN echo "`date` openblas" >> /build/log.txt && \
 
 RUN echo "`date` superlu" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v5.2.1 https://github.com/xiaoyeli/superlu.git && \
+    git clone --depth=1 --single-branch -b v5.2.2 https://github.com/xiaoyeli/superlu.git && \
     cd superlu && \
     mkdir _build && \
     cd _build && \
@@ -1439,7 +1451,7 @@ RUN echo "`date` superlu" >> /build/log.txt && \
 
 RUN echo "`date` armadillo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-9.900.3.tar.xz -L -o armadillo.tar.xz && \
+    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-10.1.0.tar.xz -L -o armadillo.tar.xz && \
     unxz armadillo.tar.xz && \
     mkdir armadillo && \
     tar -xf armadillo.tar -C armadillo --strip-components 1 && \
@@ -1464,6 +1476,15 @@ RUN echo "`date` mrsid" >> /build/log.txt && \
     cp -n mrsid/Lidar_DSDK/lib/* /usr/local/lib/. && \
     echo "`date` mrsid" >> /build/log.txt
 
+RUN echo "`date` patchelf" >> /build/log.txt && \
+    git clone --depth=1 --single-branch -b 0.11 https://github.com/NixOS/patchelf.git && \
+    cd patchelf && \
+    ./bootstrap.sh && \
+    ./configure && \
+    make && \
+    make install && \
+    echo "`date` patchelf" >> /build/log.txt
+
 # This build doesn't support everything.
 # Unsupported without more work or investigation:
 #  GRASS Kea Ingres Google-libkml ODBC FGDB MDB OCI GEORASTER SDE Rasdaman
@@ -1483,7 +1504,7 @@ RUN echo "`date` mrsid" >> /build/log.txt && \
 RUN echo "`date` gdal" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # Specific branch \
-    # git clone --depth=1 --single-branch -b v3.1.3 https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch -b v3.1.4 https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
     git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
     # Common \
@@ -1745,7 +1766,7 @@ RUN echo "`date` imagequant" >> /build/log.txt && \
 RUN echo "`date` pango" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.46/pango-1.46.1.tar.xz -L -o pango.tar.xz && \
+    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.47/pango-1.47.0.tar.xz -L -o pango.tar.xz && \
     unxz pango.tar.xz && \
     mkdir pango && \
     tar -xf pango.tar -C pango --strip-components 1 && \
@@ -1790,7 +1811,7 @@ RUN echo "`date` libcroco" >> /build/log.txt && \
 RUN echo "`date` libde265" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v1.0.6 https://github.com/strukturag/libde265.git && \
+    git clone --depth=1 --single-branch -b v1.0.7 https://github.com/strukturag/libde265.git && \
     cd libde265 && \
     ./autogen.sh && \
     ./configure --silent --prefix=/usr/local --disable-static && \
@@ -1802,7 +1823,7 @@ RUN echo "`date` libde265" >> /build/log.txt && \
 RUN echo "`date` libheif" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v1.8.0 https://github.com/strukturag/libheif.git && \
+    git clone --depth=1 --single-branch -b v1.9.1 https://github.com/strukturag/libheif.git && \
     cd libheif && \
     ./autogen.sh && \
     ./configure --silent --prefix=/usr/local --disable-static && \
@@ -1818,7 +1839,7 @@ RUN echo "`date` rust" >> /build/log.txt && \
 RUN echo "`date` librsvg" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.50/librsvg-2.50.0.tar.xz -L -o librsvg.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.50/librsvg-2.50.1.tar.xz -L -o librsvg.tar.xz && \
     unxz librsvg.tar.xz && \
     mkdir librsvg && \
     tar -xf librsvg.tar -C librsvg --strip-components 1 && \
@@ -1854,7 +1875,7 @@ RUN echo "`date` libgsf" >> /build/log.txt && \
 #  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz JXL LQR RAQM RAW WMF
 RUN echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.0.10-29 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.0.10-34 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \

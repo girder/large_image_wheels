@@ -362,6 +362,10 @@ Packages = {
         'keys': lambda data: list(data[1]['pango']),
         're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$'
     },
+    'patchelf': {
+        'git': 'https://github.com/NixOS/patchelf.git',
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
     'pcre': {
         'filelist': 'https://ftp.pcre.org/pub/pcre/',
         're': r'pcre-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
