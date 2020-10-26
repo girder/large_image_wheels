@@ -1,5 +1,5 @@
 advancecomp 2.1
-armadillo 10.1.0
+armadillo 10.1.1
 bison 3.7.3
 boost 1.74.0
 cairo 1.16.0
@@ -16,7 +16,7 @@ freetype 2.10.4
 freexl ce144a720f
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
-gdal 36ebdf2e4834dba7d1b466ddf86c3625f672ba99
+gdal 399660c031c6c1e03596fd0d26c0e9a60eca7919
 gdal-pypi 3.1.4
 gdal-release 3.1.4
 gdk-pixbuf 2.40.0
@@ -29,7 +29,7 @@ gobject-introspection 1.66.1
 harfbuzz 2.6.7
 hdf4 4.2.15
 hdf5 1.12.0
-icu4c 67-1
+icu4c 68-1
 imagemagick 7.0.10-34
 jasper 2.0.22
 javabridge 4.0.0
@@ -59,7 +59,7 @@ libxcrypt 4.4.17
 libxml2 2.9.10
 lz4 1.9.2
 m4 1.4.18
-manylinux2010 64e11b765440ce28834577ff2e62c3d2b8a850265880ecd749eb38ba45a6a5b8
+manylinux2010 fd03591960bff149bbd3c27f920036db61bae43b8196c0ec54dd0bb298d784c7
 mapnik c6fc956a779123e3735c16ba28aa85922b924cac
 mapnik-release 3.0.23
 minizip 2.10.2
@@ -88,7 +88,7 @@ pnetcdf 1.12.1
 poppler 20.10.0
 postgresql 13.0
 proj-datumgrid 1.8
-proj.4 91a767b0cdebba317e20abdcee6bfa444cfe8455
+proj.4 64d46a6b2939272a0590d3e149ffec5b9ec0336f
 proj.4-release 7.1.1
 psutil 5.7.3
 pylibmc 1.6.1
@@ -104,9 +104,10 @@ sqlite 3330000
 superlu 5.2.2
 tcl 8.6.10
 tk 8.6.10
-ultrajson 0b5b6358893a4b593c2f977f67f1f7cce0dce0ec
+ultrajson ed4cfe5992b88a44f05a10341deebcf43c300d4a
 ultrajson-pypi 4.0.1
 ultrajson-release 1.35
 util-linux 2.36
 xerces-c 3.2.3
+xz 5.2.5
 zlib 1.2.11

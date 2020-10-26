@@ -305,7 +305,6 @@ Packages = {
         'filelist': 'https://sourceforge.net/projects/niftilib/files/nifticlib/',
         're': r'nifticlib_([0-9]+_[0-9]+(|_[0-9]+))\/$'
     },
-    # ninja 1.9.0 doesn't work with glib-2
     'ninja': {
         'git': 'https://github.com/ninja-build/ninja.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
@@ -478,6 +477,10 @@ Packages = {
     'xerces-c': {
         'filelist': 'http://xerces.apache.org/xerces-c/download.cgi',
         're': r'xerces-c-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+    },
+    'xz': {
+        'filelist': 'https://sourceforge.net/projects/lzmautils/files/',
+        're': r'xz-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.gz\/download'
     },
     'zlib': {
         'filelist': 'https://zlib.net/',

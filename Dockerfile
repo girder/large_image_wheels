@@ -6,7 +6,7 @@ WORKDIR /build
 # Don't build python 3.4 or 3.9 wheels.
 RUN echo "`date` rm cp34" >> /build/log.txt && \
     rm -rf /opt/python/cp34* && \
-    rm -rf /opt/python/cp39* && \
+    # rm -rf /opt/python/cp39* && \
     echo "`date` rm cp34" >> /build/log.txt
 
 RUN echo "`date` yum install" >> /build/log.txt && \
@@ -406,9 +406,12 @@ open(path, "w").write(s)' && \
     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
+      # earliest numpy wheel for 3.9 is 1.19.3 \
+      if [[ "${PYBIN}" =~ "39" ]]; then \
+        export NUMPY_VERSION="1.19"; \
       # 3.8 can work with numpy 1.15, but numpy only started publishing 3.8 \
-      # wheel at 1.17.1 \
-      if [[ "${PYBIN}" =~ "38" ]]; then \
+      # wheels at 1.17.1 \
+      elif [[ "${PYBIN}" =~ "38" ]]; then \
         export NUMPY_VERSION="1.17"; \
       elif [[ "${PYBIN}" =~ "37" ]]; then \
         export NUMPY_VERSION="1.14"; \
@@ -531,7 +534,7 @@ open(path, "w").write(s)' && \
 RUN echo "`date` proj4" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.1.0 https://github.com/OSGeo/proj.4.git && \
+    git clone --depth=1 --single-branch -b 7.1.1 https://github.com/OSGeo/proj.4.git && \
     cd proj.4 && \
     curl --retry 5 --silent http://download.osgeo.org/proj/proj-datumgrid-1.8.zip -L -o proj-datumgrid.zip && \
     cd data && \
@@ -748,7 +751,9 @@ open(path, "w").write(s)' && \
     echo "`date` openslide-python" >> /build/log.txt
 
 RUN echo "`date` rm glib 2.58" >> /build/log.txt && \
-    rm -rf glib-2 gdk-pixbuf2 && \
+    rm -rf glib-2 gdk-pixbuf2 /usr/local/include/glib-2.0 /usr/local/share/glib-2.0 /usr/local/lib64/glib-2.0 /usr/local/lib/gdk-pixbuf-2.0 /usr/local/include/gdk-pixbuf-2.0 && \
+    rm /usr/local/lib64/pkgconfig/glib-2.0.pc && \
+    rm /usr/local/lib/pkgconfig/gdk-pixbuf-2.0.pc && \
     echo "`date` rm glib 2.58" >> /build/log.txt
 
 # 2.59.x and above doesn't work with openslide on centos
@@ -756,7 +761,7 @@ RUN echo "`date` rm glib 2.58" >> /build/log.txt && \
 RUN echo "`date` glib" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.65/glib-2.65.0.tar.xz -L -o glib-2.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.67/glib-2.67.0.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
@@ -832,7 +837,7 @@ RUN echo "`date` bison" >> /build/log.txt && \
 RUN echo "`date` gobject-introspection" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/gobject-introspection/1.64/gobject-introspection-1.64.1.tar.xz -L -o gobject-introspection.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/gobject-introspection/1.66/gobject-introspection-1.66.1.tar.xz -L -o gobject-introspection.tar.xz && \
     unxz gobject-introspection.tar.xz && \
     mkdir gobject-introspection && \
     tar -xf gobject-introspection.tar -C gobject-introspection --strip-components 1 && \
@@ -886,7 +891,7 @@ RUN echo "`date` libiconv" >> /build/log.txt && \
 RUN echo "`date` icu4c" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    git clone --depth=1 --single-branch -b release-67-1 https://github.com/unicode-org/icu.git && \
+    git clone --depth=1 --single-branch -b release-68-1 https://github.com/unicode-org/icu.git && \
     cd icu/icu4c/source && \
     CFLAGS="$CFLAGS -O2 -DUNISTR_FROM_CHAR_EXPLICIT=explicit -DUNISTR_FROM_STRING_EXPLICIT=explicit -DU_CHARSET_IS_UTF8=1 -DU_NO_DEFAULT_INCLUDE_UTF_HEADERS=1 -DU_HIDE_OBSOLETE_UTF_OLD_H=1" ./configure --silent --prefix=/usr/local --disable-tests --disable-samples --with-data-packaging=library --disable-static && \
     make --silent -j ${JOBS} && \
@@ -914,25 +919,38 @@ RUN echo "`date` openmpi" >> /build/log.txt && \
 # resolved.
 # See also https://gitweb.gentoo.org/repo/gentoo.git/commit/
 #  ?id=af50ab943bce9e10c97e47ea5c7da87e11b51be9
+# With numpy 1.19 installed, it doesn't seem possible to build python 3.9 and
+# 2.7 at the same time.
 RUN echo "`date` boost" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b boost-1.71.0 --quiet --recurse-submodules -j ${JOBS} https://github.com/boostorg/boost.git && \
+    git clone --depth=1 --single-branch -b boost-1.74.0 --quiet --recurse-submodules -j ${JOBS} https://github.com/boostorg/boost.git && \
     cd boost && \
     pushd libs/spirit && \
     # switch to a version of spirit that fixes a bug in 1.70 and 1.71 \
     git fetch --depth=1000 && \
     git checkout 10d027f && \
     popd && \
+    # work-around for https://github.com/boostorg/mpi/issues/112
+    sed -i 's/boost_mpi_python mpi/boost_mpi_python/g' libs/mpi/build/Jamfile.v2 && \
     find . -name '.git' -exec rm -rf {} \+ && \
     echo "" > tools/build/src/user-config.jam && \
     echo "using mpi ;" >> tools/build/src/user-config.jam && \
-    echo "using python : 2.7 : /opt/python/cp27-cp27mu/bin/python : /opt/python/cp27-cp27mu/include/python2.7 : /opt/python/cp27-cp27mu/lib ;" >> tools/build/src/user-config.jam && \
+    # echo "using python : 2.7 : /opt/python/cp27-cp27mu/bin/python : /opt/python/cp27-cp27mu/include/python2.7 : /opt/python/cp27-cp27mu/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.5 : /opt/python/cp35-cp35m/bin/python : /opt/python/cp35-cp35m/include/python3.5m : /opt/python/cp35-cp35m/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.6 : /opt/python/cp36-cp36m/bin/python : /opt/python/cp36-cp36m/include/python3.6m : /opt/python/cp36-cp36m/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.7 : /opt/python/cp37-cp37m/bin/python : /opt/python/cp37-cp37m/include/python3.7m : /opt/python/cp37-cp37m/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.8 : /opt/python/cp38-cp38/bin/python : /opt/python/cp38-cp38/include/python3.8 : /opt/python/cp38-cp38/lib ;" >> tools/build/src/user-config.jam && \
+    echo "using python : 3.9 : /opt/python/cp39-cp39/bin/python : /opt/python/cp39-cp39/include/python3.9 : /opt/python/cp39-cp39/lib ;" >> tools/build/src/user-config.jam && \
     ./bootstrap.sh --prefix=/usr/local --with-toolset=gcc variant=release && \
-    ./b2 -d1 -j ${JOBS} toolset=gcc variant=release link=shared --build-type=minimal python=2.7,3.5,3.6,3.7,3.8 cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable -Wno-parentheses -Wno-maybe-uninitialized" install && \
+    # ./b2 -d1 -j ${JOBS} toolset=gcc variant=release link=shared --build-type=minimal python=2.7,3.5,3.6,3.7,3.8,3.9 cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable -Wno-parentheses -Wno-maybe-uninitialized" install && \
+    ./b2 -d1 -j ${JOBS} toolset=gcc variant=release link=shared --build-type=minimal python=3.5,3.6,3.7,3.8,3.9 cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable -Wno-parentheses -Wno-maybe-uninitialized" install && \
+    # Python 2 \
+    echo "" > tools/build/src/user-config.jam && \
+    echo "using mpi ;" >> tools/build/src/user-config.jam && \
+    echo "using python : 2.7 : /opt/python/cp27-cp27mu/bin/python : /opt/python/cp27-cp27mu/include/python2.7 : /opt/python/cp27-cp27mu/lib ;" >> tools/build/src/user-config.jam && \
+    ./bootstrap.sh --prefix=/usr/local --with-toolset=gcc variant=release && \
+    ./b2 -j ${JOBS} toolset=gcc variant=release clean && \
+    ./b2 -d1 -j ${JOBS} toolset=gcc variant=release link=shared --build-type=minimal python=2.7 cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable -Wno-parentheses -Wno-maybe-uninitialized" install && \
     ldconfig && \
     echo "`date` boost" >> /build/log.txt
 
@@ -1014,11 +1032,11 @@ RUN echo "`date` libgeos" >> /build/log.txt && \
 
 RUN echo "`date` minizip" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 2.10.1 https://github.com/nmoinvaz/minizip.git && \
+    git clone --depth=1 --single-branch -b 2.10.2 https://github.com/nmoinvaz/minizip.git && \
     cd minizip && \
     mkdir _build && \
     cd _build && \
-    cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=yes -DINSTALL_INC_DIR=/usr/local/include/minizip .. && \
+    cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=yes -DINSTALL_INC_DIR=/usr/local/include/minizip -DMZ_OPENSSL=yes .. && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1208,7 +1226,7 @@ RUN echo "`date` hdf4" >> /build/log.txt && \
     ldconfig && \
     echo "`date` hdf4" >> /build/log.txt
 
-# hdf5 1.12.0 isnt' compatible with armadillo
+# hdf5 1.12.0 isn't compatible with armadillo
 RUN echo "`date` hdf5" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
@@ -1353,6 +1371,7 @@ RUN echo "`date` epsilon" >> /build/log.txt && \
 # COPY jasper-jp2_cod.c.patch .
 
 # Jasper 2.0.18 is not compatible with GDAL as of 2020-7-20
+# Jasper 2.0.21 is compatible with GDAL 3.1.4 and above
 RUN echo "`date` jasper" >> /build/log.txt && \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b version-2.0.21 https://github.com/mdadams/jasper.git && \
@@ -1451,7 +1470,7 @@ RUN echo "`date` superlu" >> /build/log.txt && \
 
 RUN echo "`date` armadillo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-10.1.0.tar.xz -L -o armadillo.tar.xz && \
+    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-10.1.1.tar.xz -L -o armadillo.tar.xz && \
     unxz armadillo.tar.xz && \
     mkdir armadillo && \
     tar -xf armadillo.tar -C armadillo --strip-components 1 && \
@@ -1890,7 +1909,7 @@ RUN echo "`date` vips" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
     # Use these lines for a release \
-    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.10.1/vips-8.10.1.tar.gz -L -o vips.tar.gz && \
+    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.10.2/vips-8.10.2.tar.gz -L -o vips.tar.gz && \
     mkdir vips && \
     tar -zxf vips.tar.gz -C vips --strip-components 1 && \
     rm -f vips.tar.gz && \
