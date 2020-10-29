@@ -44,7 +44,7 @@ This also makes some wheels which weren't published in all desired Python versio
 This use to make some wheels but now defers to those published on pypi:
 - ujson
 
-Currently, wheels are built for Python 2.7, 3.5, 3.6, 3.7, and 3.8.  Some libraries have older versions for older versions of Python as support for those versions is ended.
+Currently, wheels are built for Python 2.7, 3.5, 3.6, 3.7, 3.8, and 3.9.  Some libraries have older versions for older versions of Python as support for those versions is ended.
 
 ## Extras
 

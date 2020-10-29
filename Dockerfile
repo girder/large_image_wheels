@@ -757,7 +757,6 @@ RUN echo "`date` rm glib 2.58" >> /build/log.txt && \
     echo "`date` rm glib 2.58" >> /build/log.txt
 
 # 2.59.x and above doesn't work with openslide on centos
-# >2.65.0 doesn't work with gobject-introspection 1.64.1
 RUN echo "`date` glib" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
@@ -1226,11 +1225,10 @@ RUN echo "`date` hdf4" >> /build/log.txt && \
     ldconfig && \
     echo "`date` hdf4" >> /build/log.txt
 
-# hdf5 1.12.0 isn't compatible with armadillo
 RUN echo "`date` hdf5" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    curl --retry 5 --silent https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.6/src/hdf5-1.10.6.tar.gz -L -o hdf5.tar.gz && \
+    curl --retry 5 --silent https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.12/hdf5-1.12.0/src/hdf5-1.12.0.tar.gz -L -o hdf5.tar.gz && \
     mkdir hdf5 && \
     tar -zxf hdf5.tar.gz -C hdf5 --strip-components 1 && \
     rm -f hdf5.tar.gz && \
@@ -1263,9 +1261,6 @@ RUN echo "`date` netcdf" >> /build/log.txt && \
     export AUTOMAKE_JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b v4.7.4 https://github.com/Unidata/netcdf-c && \
     cd netcdf-c && \
-    # autoreconf -ifv && \
-    # export CFLAGS="$CFLAGS -O2" && \
-    # ./configure --silent --prefix=/usr/local && \
     mkdir _build && \
     cd _build && \
     cmake .. -DCMAKE_BUILD_TYPE=Release -DENABLE_EXAMPLES=OFF -DENABLE_PARALLEL4=ON -DUSE_PARALLEL=ON -DUSE_PARALLEL4=ON -DENABLE_HDF4=ON -DENABLE_PNETCDF=ON -DENABLE_BYTERANGE=ON -DENABLE_JNA=ON -DCMAKE_SHARED_LINKER_FLAGS=-ljpeg -DENABLE_TESTS=OFF && \
