@@ -13,10 +13,6 @@ pip install --upgrade setuptools
 echo 'Test installing pyvips and other dependencies from wheels via large_image'
 pip install pyvips large_image[sources,memcached] -f ${1:-/wheels}
 
-if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 5)))'; then
-    pip install python-javabridge -f ${1:-/wheels}
-fi    
-
 echo 'Test basic import of libtiff'
 python -c 'import libtiff'
 echo 'Test basic import of openslide'

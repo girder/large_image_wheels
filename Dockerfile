@@ -534,7 +534,7 @@ open(path, "w").write(s)' && \
 RUN echo "`date` proj4" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.1.1 https://github.com/OSGeo/proj.4.git && \
+    git clone --depth=1 --single-branch -b 7.2.0 https://github.com/OSGeo/proj.4.git && \
     cd proj.4 && \
     curl --retry 5 --silent http://download.osgeo.org/proj/proj-datumgrid-1.8.zip -L -o proj-datumgrid.zip && \
     cd data && \
@@ -911,13 +911,11 @@ RUN echo "`date` openmpi" >> /build/log.txt && \
     ldconfig && \
     echo "`date` openmpi" >> /build/log.txt
 
-# This works with boost 1.69.0 and with 1.70 and 1.71 with an update to spirit
+# This works with boost 1.69.0 and with 1.70 and above with an update to spirit
 # It probably won't work for 1.66.0 and before, as those versions didn't handle
 # multiple python versions properly.
-# Use Boost 1.72.0 or 1.73.0 when https://github.com/boostorg/mpi/issues/112 is
+# Revisit the change to mpi when https://github.com/boostorg/mpi/issues/112 is
 # resolved.
-# See also https://gitweb.gentoo.org/repo/gentoo.git/commit/
-#  ?id=af50ab943bce9e10c97e47ea5c7da87e11b51be9
 # With numpy 1.19 installed, it doesn't seem possible to build python 3.9 and
 # 2.7 at the same time.
 RUN echo "`date` boost" >> /build/log.txt && \
@@ -954,7 +952,7 @@ RUN echo "`date` boost" >> /build/log.txt && \
     echo "`date` boost" >> /build/log.txt
 
 RUN echo "`date` fossil" >> /build/log.txt && \
-    curl --retry 5 --silent -L https://www.fossil-scm.org/index.html/uv/fossil-src-2.12.1.tar.gz -o fossil.tar.gz && \
+    curl --retry 5 --silent -L https://www.fossil-scm.org/index.html/uv/fossil-src-2.13.tar.gz -o fossil.tar.gz && \
     mkdir fossil && \
     tar -zxf fossil.tar.gz -C fossil --strip-components 1 && \
     rm -f fossil.tar.gz && \
@@ -1323,7 +1321,7 @@ RUN echo "`date` postgres" >> /build/log.txt && \
 RUN echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-20.10.0.tar.xz -L -o poppler.tar.xz && \
+    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-20.11.0.tar.xz -L -o poppler.tar.xz && \
     unxz poppler.tar.xz && \
     mkdir poppler && \
     tar -xf poppler.tar -C poppler --strip-components 1 && \
@@ -1518,7 +1516,7 @@ RUN echo "`date` patchelf" >> /build/log.txt && \
 RUN echo "`date` gdal" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # Specific branch \
-    # git clone --depth=1 --single-branch -b v3.1.4 https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch -b v3.2.0 https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
     git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
     # Common \
@@ -1889,7 +1887,7 @@ RUN echo "`date` libgsf" >> /build/log.txt && \
 #  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz JXL LQR RAQM RAW WMF
 RUN echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.0.10-34 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.0.10-35 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
@@ -2035,8 +2033,7 @@ open(path, "w").write(data)' && \
     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" install --no-cache-dir cython' && \
     find /opt/python -mindepth 1 -name '*cp2*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     git stash && \
-    # git checkout v2.6.1rel && \
-    # 2.6.1.post1 \
+    # Build with last 3.5 version \
     git checkout 625dc5d69c8a00c4757a41dda1856f7c7edbed5a && \
     python -c $'# \n\
 path = "pyproj/__init__.py" \n\
@@ -2061,8 +2058,35 @@ data = data.replace("""version=get_version(),""", \n\
 """version=get_version(), \n\
     entry_points={\'console_scripts\': [\'%s=pyproj.bin:program\' % name for name in os.listdir(\'pyproj/bin\') if not name.endswith(\'.py\')]},""") \n\
 open(path, "w").write(data)' && \
+    find /opt/python -mindepth 1 -name '*cp35*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    git stash && \
+    # Python >= 3.6 \
+    git checkout 3.0.0 && \
+    python -c $'# \n\
+path = "pyproj/__init__.py" \n\
+s = open(path).read() \n\
+s = s.replace("2.4.rc0", "2.4") \n\
+s = s.replace("import warnings", \n\
+"""import warnings \n\
+import os \n\
+localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
+os.environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj")) \n\
+""") \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
+import os \n\
+path = "setup.py" \n\
+data = open(path).read() \n\
+data = data.replace( \n\
+    "    return package_data", \n\
+"""    package_data["pyproj"].extend(["bin/*", "proj/*"]) \n\
+    return package_data""") \n\
+data = data.replace("""version=get_version(),""", \n\
+"""version=get_version(), \n\
+    entry_points={\'console_scripts\': [\'%s=pyproj.bin:program\' % name for name in os.listdir(\'pyproj/bin\') if not name.endswith(\'.py\')]},""") \n\
+open(path, "w").write(data)' && \
     # now rebuild anything that can work with master \
-    find /opt/python -mindepth 1 -name '*cp3*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    find /opt/python -mindepth 1 -name '*cp3*' -a \! -name '*cp35*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     # Make sure all binaries have the execute flag \
     find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 bash -c 'mkdir /tmp/ptmp; pushd /tmp/ptmp; unzip ${0}; chmod a+x pyproj/bin/*; chmod a-x pyproj/bin/*.py; zip -r ${0} *; popd; rm -rf /tmp/ptmp' && \
     find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
