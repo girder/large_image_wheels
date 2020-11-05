@@ -946,7 +946,7 @@ RUN echo "`date` boost" >> /build/log.txt && \
     echo "using mpi ;" >> tools/build/src/user-config.jam && \
     echo "using python : 2.7 : /opt/python/cp27-cp27mu/bin/python : /opt/python/cp27-cp27mu/include/python2.7 : /opt/python/cp27-cp27mu/lib ;" >> tools/build/src/user-config.jam && \
     ./bootstrap.sh --prefix=/usr/local --with-toolset=gcc variant=release && \
-    ./b2 -j ${JOBS} toolset=gcc variant=release clean && \
+    # ./b2 -j ${JOBS} toolset=gcc variant=release clean && \
     ./b2 -d1 -j ${JOBS} toolset=gcc variant=release link=shared --build-type=minimal python=2.7 cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable -Wno-parentheses -Wno-maybe-uninitialized" install && \
     ldconfig && \
     echo "`date` boost" >> /build/log.txt
@@ -2061,7 +2061,7 @@ open(path, "w").write(data)' && \
     find /opt/python -mindepth 1 -name '*cp35*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     git stash && \
     # Python >= 3.6 \
-    git checkout 3.0.0 && \
+    git checkout 3.0.0.post1 && \
     python -c $'# \n\
 path = "pyproj/__init__.py" \n\
 s = open(path).read() \n\

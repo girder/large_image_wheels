@@ -16,7 +16,7 @@ freetype 2.10.4
 freexl ce144a720f
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
-gdal a29e93fc07d528cc0eba1b08e501ca10030a3a09
+gdal c79d28eba6b231cea04aee5ced3404259bbbf411
 gdal-pypi 3.2.0
 gdal-release 3.2.0
 gdk-pixbuf 2.40.0
@@ -94,7 +94,7 @@ psutil 5.7.3
 pylibmc 1.6.1
 pylibtiff 51d6f2a41db654254397df1de6f9193e7317bce5
 pylibtiff-pypi 0.4.2
-pyproj4-pypi 3.0.0
+pyproj4-pypi 3.0.0.post1
 pyproj4-release 2.6.1
 python-mapnik a2c2a86eec954b42d7f00093da03807d0834b1b4
 python-mapnik-pypi 0.1
