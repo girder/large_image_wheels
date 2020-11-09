@@ -31,8 +31,6 @@ RUN echo "`date` yum install" >> /build/log.txt && \
     # For glib2 \
     libtool \
     libxml2-devel \
-    # For older glib2 \
-    cairo-devel \
     # For util-linux \
     gettext \
     # We need flex to build a newer version of flex \
@@ -204,7 +202,7 @@ RUN echo "`date` strip-nondeterminism" >> /build/log.txt && \
 
 # CMake - use a precompiled binary
 RUN echo "`date` cmake" >> /build/log.txt && \
-    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.18.4/cmake-3.18.4-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.19.1/cmake-3.19.1-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
     mkdir cmake && \
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz && \
@@ -243,12 +241,14 @@ RUN echo "`date` psutil" >> /build/log.txt && \
     git clone --depth=1 --single-branch -b release-5.7.3 https://github.com/giampaolo/psutil.git && \
     cd psutil && \
     # Strip libraries before building any wheels \
-    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
+    # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
+    find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     find /io/wheelhouse/ -name 'psutil*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
+    rm -rf ~/.cache && \
     echo "`date` psutil" >> /build/log.txt
 
 # RUN echo "`date` ultrajson" >> /build/log.txt && \
@@ -256,7 +256,8 @@ RUN echo "`date` psutil" >> /build/log.txt && \
 #     git clone -b 3.0.0 https://github.com/esnme/ultrajson.git && \
 #     cd ultrajson && \
 #     # Strip libraries before building any wheels \
-#     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
+#     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
+#     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
 #     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" install --no-cache-dir setuptools-scm' && \
 #     # Just python >= 3.5 \
 #     find /opt/python -mindepth 1 -name '*cp3[^4]*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
@@ -269,6 +270,7 @@ RUN echo "`date` psutil" >> /build/log.txt && \
 #     find /io/wheelhouse/ -name 'ujson*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
 #     find /io/wheelhouse/ -name 'ujson*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
 #     ls -l /io/wheelhouse && \
+#     rm -rf ~/.cache && \
 #     echo "`date` ultrajson" >> /build/log.txt
 
 # OpenJPEG
@@ -339,7 +341,7 @@ RUN echo "`date` libwebp" >> /build/log.txt && \
 # For 12-bit jpeg
 RUN echo "`date` libjpeg-turbo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.5.tar.gz -L -o libjpeg-turbo.tar.gz && \
+    curl --retry 5 --silent https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.90.tar.gz -L -o libjpeg-turbo.tar.gz && \
     mkdir libjpeg-turbo && \
     tar -zxf libjpeg-turbo.tar.gz -C libjpeg-turbo --strip-components 1 && \
     rm -f libjpeg-turbo.tar.gz && \
@@ -381,7 +383,7 @@ RUN echo "`date` pylibtiff" >> /build/log.txt && \
     cd pylibtiff && \
     mkdir libtiff/bin && \
     find /build/tiff/tools/.libs/ -executable -type f -exec cp {} libtiff/bin/. \; && \
-    strip libtiff/bin/* --strip-unneeded && \
+    strip libtiff/bin/* --strip-unneeded -p -D && \
     python -c $'# \n\
 path = "libtiff/bin/__init__.py" \n\
 s = """import os \n\
@@ -403,7 +405,8 @@ s = open(path).read().replace( \n\
         entry_points={\'console_scripts\': [\'%s=libtiff.bin:program\' % name for name in os.listdir(\'libtiff/bin\') if not name.endswith(\'.py\')]},""") \n\
 open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
-    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
+    # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
+    find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     for PYBIN in /opt/python/*/bin/; do \
       echo "${PYBIN}" && \
       # earliest numpy wheel for 3.9 is 1.19.3 \
@@ -433,6 +436,7 @@ open(path, "w").write(s)' && \
     find /io/wheelhouse/ -name 'libtiff*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'libtiff*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
+    rm -rf ~/.cache && \
     echo "`date` pylibtiff" >> /build/log.txt
 
 RUN echo "`date` glymur" >> /build/log.txt && \
@@ -443,7 +447,7 @@ RUN echo "`date` glymur" >> /build/log.txt && \
     git checkout 7c02566ed2d72b039294b97fe5fd8f969fb5ec87 && \
     mkdir glymur/bin && \
     find /build/openjpeg/_build/bin/ -executable -type f -name 'opj*' -exec cp {} glymur/bin/. \; && \
-    strip glymur/bin/* --strip-unneeded && \
+    strip glymur/bin/* --strip-unneeded -p -D && \
     python -c $'# \n\
 path = "glymur/bin/__init__.py" \n\
 s = """import os \n\
@@ -485,7 +489,8 @@ s = s.replace("    path = find_library(libname)", \n\
         path = os.path.join(libpath, path)""") \n\
 open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
-    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
+    # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
+    find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     # Just python >= 3.6 \
     find /opt/python -mindepth 1 -name '*cp3[^5]*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     # Python < 3.6 \
@@ -526,6 +531,7 @@ open(path, "w").write(s)' && \
     find /io/wheelhouse/ -name 'Glymur*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'Glymur*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
+    rm -rf ~/.cache && \
     echo "`date` glymur" >> /build/log.txt
 
 # As of 2019-05-21, there were bugs fixed in master that seem important, so use
@@ -547,8 +553,6 @@ RUN echo "`date` proj4" >> /build/log.txt && \
     ldconfig && \
     echo "`date` proj4" >> /build/log.txt
 
-# Install newer versions of glib2, gdk-pixbuf2
-
 RUN echo "`date` pcre" >> /build/log.txt && \
     export JOBS=`nproc` && \
     curl --retry 5 --silent https://ftp.pcre.org/pub/pcre/pcre-8.44.tar.gz -L -o pcre.tar.gz && \
@@ -565,11 +569,12 @@ RUN echo "`date` pcre" >> /build/log.txt && \
 RUN echo "`date` meson" >> /build/log.txt && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
     pip3 install meson && \
+    rm -rf ~/.cache && \
     echo "`date` meson" >> /build/log.txt
 
 # Ninja >= 1.9 has to be built locally
 RUN echo "`date` ninja" >> /build/log.txt && \
-    git clone --depth=1 --single-branch -b v1.10.1 https://github.com/ninja-build/ninja.git && \
+    git clone --depth=1 --single-branch -b v1.10.2 https://github.com/ninja-build/ninja.git && \
     cd ninja && \
     ./configure.py --bootstrap && \
     mv ninja /usr/local/bin/. && \
@@ -622,141 +627,6 @@ open(path, "w").write(data)' && \
     sed -i 's/if reqd_tag < get_priority_by_name(analyzed_tag):/if False:  #/g' /opt/_internal/tools/lib/python3.7/site-packages/auditwheel/main_repair.py && \
     echo "`date` auditwheel policy" >> /build/log.txt
 
-# Build openslide with older glib2, gdk-pixbuf2, cairo
-
-RUN echo "`date` glib 2.58" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    export AUTOMAKE_JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.58/glib-2.58.3.tar.xz -L -o glib-2.tar.xz && \
-    unxz glib-2.tar.xz && \
-    mkdir glib-2 && \
-    tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
-    rm -f glib-2.tar && \
-    cd glib-2 && \
-    egrep -lrZ -- '-version-info \$\(LT_CURRENT\):\$\(LT_REVISION\):\$\(LT_AGE\)' * | xargs -0 -l sed -i -e 's/-version-info \$(LT_CURRENT):\$(LT_REVISION):\$(LT_AGE)/-release liw-older/g' && \
-    ./autogen.sh && \
-    ./configure --prefix=/usr/local --libdir=/usr/local/lib64 --with-python=/opt/python/cp27-cp27mu/bin/python --disable-static && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` glib 2.58" >> /build/log.txt
-
-RUN echo "`date` gdk-pixbuf 2.36" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.acc.umu.se/pub/gnome/sources/gdk-pixbuf/2.36/gdk-pixbuf-2.36.12.tar.xz -L -o gdk-pixbuf-2.tar.xz && \
-    unxz gdk-pixbuf-2.tar.xz && \
-    mkdir gdk-pixbuf-2 && \
-    tar -xf gdk-pixbuf-2.tar -C gdk-pixbuf-2 --strip-components 1 && \
-    rm -f gdk-pixbuf-2.tar && \
-    cd gdk-pixbuf-2 && \
-    ./configure --silent --prefix=/usr/local --disable-static && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` gdk-pixbuf 2.36" >> /build/log.txt
-
-# This patch allows girder's file layout to work with mirax files and does no
-# harm otherwise.
-COPY openslide-vendor-mirax.c.patch .
-
-# This allows building vips from GitHub source
-# (see https://github.com/libvips/libvips/issues/874)
-COPY openslide-init.patch .
-
-RUN echo "`date` openslide" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    export AUTOMAKE_JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/openslide/openslide/archive/v3.4.1.tar.gz -L -o openslide.tar.gz && \
-    mkdir openslide && \
-    tar -zxf openslide.tar.gz -C openslide --strip-components 1 && \
-    rm -f openslide.tar.gz && \
-    cd openslide && \
-    patch src/openslide-vendor-mirax.c ../openslide-vendor-mirax.c.patch && \
-    patch src/openslide.c ../openslide-init.patch && \
-    autoreconf -ifv && \
-    export CFLAGS="$CFLAGS -O2" && \
-    ./configure --prefix=/usr/local --disable-static && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` openslide" >> /build/log.txt
-
-RUN echo "`date` openslide-python" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v1.1.2 https://github.com/openslide/openslide-python.git && \
-    cd openslide-python && \
-    python -c $'# \n\
-path = "setup.py" \n\
-s = open(path).read().replace( \n\
-    "_convert.c\'", "_convert.c\'], libraries=[\'openslide\'") \n\
-open(path, "w").write(s)' && \
-    python -c $'# \n\
-path = "openslide/lowlevel.py" \n\
-s = open(path).read().replace( \n\
-"""    _lib = cdll.LoadLibrary(\'libopenslide.so.0\')""", \n\
-"""    try: \n\
-        import os \n\
-        libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath( \n\
-            __file__))), \'openslide_python.libs\')) \n\
-        libs = os.listdir(libpath) \n\
-        loadCount = 0 \n\
-        while True: \n\
-            numLoaded = 0 \n\
-            for name in libs: \n\
-                try: \n\
-                    somelib = os.path.join(libpath, name) \n\
-                    if name.startswith(\'libopenslide\'): \n\
-                        lib = somelib \n\
-                    cdll.LoadLibrary(somelib) \n\
-                    numLoaded += 1 \n\
-                except Exception: \n\
-                    pass \n\
-            if numLoaded - loadCount <= 0: \n\
-                break \n\
-            loadCount = numLoaded \n\
-        _lib = cdll.LoadLibrary(lib) \n\
-    except Exception: \n\
-        _lib = cdll.LoadLibrary(\'libopenslide.so.0\')""") \n\
-open(path, "w").write(s)' && \
-    mkdir openslide/bin && \
-    find /build/openslide/tools/.libs/ -executable -type f -exec cp {} openslide/bin/. \; && \
-    strip openslide/bin/* --strip-unneeded && \
-    python -c $'# \n\
-path = "openslide/bin/__init__.py" \n\
-s = """import os \n\
-import subprocess \n\
-import sys \n\
-\n\
-def program(): \n\
-    name = os.path.basename(sys.argv[0]) \n\
-    raise SystemExit(subprocess.call([os.path.join(os.path.dirname(__file__), name)] + sys.argv[1:])) \n\
-""" \n\
-open(path, "w").write(s)' && \
-    python -c $'# \n\
-path = "setup.py" \n\
-s = open(path).read().replace( \n\
-"""    zip_safe=True,""", \n\
-"""    zip_safe=True, \n\
-    include_package_data=True, \n\
-    package_data={\'openslide\': [\'bin/*\']}, \n\
-    entry_points={\'console_scripts\': [\'%s=openslide.bin:program\' % name for name in os.listdir(\'openslide/bin\') if not name.endswith(\'.py\')]},""") \n\
-open(path, "w").write(s)' && \
-    # Strip libraries before building any wheels \
-    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
-    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
-    find /io/wheelhouse/ -name 'openslide*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
-    find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
-    find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
-    ls -l /io/wheelhouse && \
-    echo "`date` openslide-python" >> /build/log.txt
-
-RUN echo "`date` rm glib 2.58" >> /build/log.txt && \
-    rm -rf glib-2 gdk-pixbuf2 /usr/local/include/glib-2.0 /usr/local/share/glib-2.0 /usr/local/lib64/glib-2.0 /usr/local/lib/gdk-pixbuf-2.0 /usr/local/include/gdk-pixbuf-2.0 && \
-    rm /usr/local/lib64/pkgconfig/glib-2.0.pc && \
-    rm /usr/local/lib/pkgconfig/gdk-pixbuf-2.0.pc && \
-    echo "`date` rm glib 2.58" >> /build/log.txt
-
-# 2.59.x and above doesn't work with openslide on centos
 RUN echo "`date` glib" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
@@ -820,7 +690,7 @@ RUN echo "`date` flex" >> /build/log.txt && \
 
 RUN echo "`date` bison" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.7.3.tar.xz -L -o bison.tar.xz && \
+    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.7.4.tar.xz -L -o bison.tar.xz && \
     unxz bison.tar.xz && \
     mkdir bison && \
     tar -xf bison.tar -C bison --strip-components 1 && \
@@ -895,6 +765,8 @@ RUN echo "`date` icu4c" >> /build/log.txt && \
     CFLAGS="$CFLAGS -O2 -DUNISTR_FROM_CHAR_EXPLICIT=explicit -DUNISTR_FROM_STRING_EXPLICIT=explicit -DU_CHARSET_IS_UTF8=1 -DU_NO_DEFAULT_INCLUDE_UTF_HEADERS=1 -DU_HIDE_OBSOLETE_UTF_OLD_H=1" ./configure --silent --prefix=/usr/local --disable-tests --disable-samples --with-data-packaging=library --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
+    # reduce docker size \
+    rm -rf data/out/tmp && \
     ldconfig && \
     echo "`date` icu4c" >> /build/log.txt
 
@@ -909,6 +781,7 @@ RUN echo "`date` openmpi" >> /build/log.txt && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
+    find . -name '*.a' -delete && \
     echo "`date` openmpi" >> /build/log.txt
 
 # This works with boost 1.69.0 and with 1.70 and above with an update to spirit
@@ -1029,7 +902,7 @@ RUN echo "`date` libgeos" >> /build/log.txt && \
 
 RUN echo "`date` minizip" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 2.10.2 https://github.com/nmoinvaz/minizip.git && \
+    git clone --depth=1 --single-branch -b 2.10.3 https://github.com/nmoinvaz/minizip.git && \
     cd minizip && \
     mkdir _build && \
     cd _build && \
@@ -1051,6 +924,7 @@ RUN echo "`date` libspatialite" >> /build/log.txt && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
+    find . -name '*.a' -delete && \
     echo "`date` libspatialite" >> /build/log.txt
 
 RUN echo "`date` libgeotiff" >> /build/log.txt && \
@@ -1109,17 +983,16 @@ RUN echo "`date` libexpat" >> /build/log.txt && \
 
 RUN echo "`date` fontconfig" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    export AUTOMAKE_JOBS=`nproc` && \
-    curl --retry 5 --silent https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.13.92.tar.gz -L -o fontconfig.tar.gz && \
+    export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
+    curl --retry 5 --silent https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.13.93.tar.gz -L -o fontconfig.tar.gz && \
     mkdir fontconfig && \
     tar -zxf fontconfig.tar.gz -C fontconfig --strip-components 1 && \
     rm -f fontconfig.tar.gz && \
     cd fontconfig && \
-    autoreconf -ifv && \
-    export CFLAGS="$CFLAGS -O2" && \
-    ./configure --silent --prefix=/usr/local --disable-static && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
+    meson --prefix=/usr/local --buildtype=release -Ddoc=disabled -Dtests=disabled _build && \
+    cd _build && \
+    ninja -j ${JOBS} && \
+    ninja -j ${JOBS} install && \
     ldconfig && \
     echo "`date` fontconfig" >> /build/log.txt
 
@@ -1152,7 +1025,7 @@ RUN echo "`date` charls" >> /build/log.txt && \
 
 RUN echo "`date` lz4" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v1.9.2 https://github.com/lz4/lz4.git && \
+    git clone --depth=1 --single-branch -b v1.9.3 https://github.com/lz4/lz4.git && \
     cd lz4 && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -1270,20 +1143,23 @@ RUN echo "`date` netcdf" >> /build/log.txt && \
 RUN echo "`date` mysql" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # curl --retry 5 --silent https://dev.mysql.com/get/Downloads/MySQL-5.7/mysql-boost-5.7.29.tar.gz -L -o mysql.tar.gz && \
-    curl --retry 5 --silent https://cdn.mysql.com//Downloads/MySQL-5.7/mysql-boost-5.7.32.tar.gz -L -o mysql.tar.gz && \
+    curl --retry 5 --silent https://cdn.mysql.com/Downloads/MySQL-8.0/mysql-boost-8.0.22.tar.gz -L -o mysql.tar.gz && \
     mkdir mysql && \
     tar -zxf mysql.tar.gz -C mysql --strip-components 1 && \
     rm -f mysql.tar.gz && \
     cd mysql && \
+    # reduce docker size \
+    rm -rf mysql-test && \
     # See https://bugs.mysql.com/bug.php?id=87348 \
     mkdir -p storage/ndb && \
     touch storage/ndb/CMakeLists.txt && \
     mkdir _build && \
     cd _build && \
-    # CXXFLAGS="-Wno-deprecated-declarations" cmake -DBUILD_CONFIG=mysql_release -DIGNORE_AIO_CHECK=ON -DBUILD_SHARED_LIBS=ON -DWITH_BOOST=../boost/boost_1_59_0 -DWITH_SSL=/usr/local -DWITH_ZLIB=system -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DWITH_RAPID=OFF -DCMAKE_BUILD_TYPE=Release -DWITH_EMBEDDED_SERVER=OFF -DWITHOUT_SERVER=ON -DREPRODUCIBLE_BUILD=ON -DINSTALL_MYSQLTESTDIR="" .. && \
-    CXXFLAGS="-Wno-deprecated-declarations" cmake -DBUILD_CONFIG=mysql_release -DIGNORE_AIO_CHECK=ON -DBUILD_SHARED_LIBS=ON -DWITH_BOOST=../boost/boost_1_59_0 -DWITH_ZLIB=system -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DWITH_RAPID=OFF -DCMAKE_BUILD_TYPE=Release -DWITH_EMBEDDED_SERVER=OFF -DWITHOUT_SERVER=ON -DREPRODUCIBLE_BUILD=ON -DINSTALL_MYSQLTESTDIR="" .. && \
+    CXXFLAGS="-Wno-deprecated-declarations" cmake -DBUILD_CONFIG=mysql_release -DIGNORE_AIO_CHECK=ON -DBUILD_SHARED_LIBS=ON -DWITH_BOOST=../boost/boost_1_73_0 -DWITH_ZLIB=system -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DWITH_RAPID=OFF -DCMAKE_BUILD_TYPE=Release -DWITH_EMBEDDED_SERVER=OFF -DWITHOUT_SERVER=ON -DREPRODUCIBLE_BUILD=ON -DINSTALL_MYSQLTESTDIR="" .. && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
+    # reduce docker size \
+    make clean && \
     ldconfig && \
     echo "`date` mysql" >> /build/log.txt
 
@@ -1306,7 +1182,7 @@ RUN echo "`date` ogdi" >> /build/log.txt && \
 RUN echo "`date` postgres" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.postgresql.org/pub/source/v13.0/postgresql-13.0.tar.gz -L -o postgresql.tar.gz && \
+    curl --retry 5 --silent https://ftp.postgresql.org/pub/source/v13.1/postgresql-13.1.tar.gz -L -o postgresql.tar.gz && \
     mkdir postgresql && \
     tar -zxf postgresql.tar.gz -C postgresql --strip-components 1 && \
     rm -f postgresql.tar.gz && \
@@ -1463,7 +1339,7 @@ RUN echo "`date` superlu" >> /build/log.txt && \
 
 RUN echo "`date` armadillo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-10.1.1.tar.xz -L -o armadillo.tar.xz && \
+    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-10.1.2.tar.xz -L -o armadillo.tar.xz && \
     unxz armadillo.tar.xz && \
     mkdir armadillo && \
     tar -xf armadillo.tar -C armadillo --strip-components 1 && \
@@ -1524,13 +1400,12 @@ RUN echo "`date` gdal" >> /build/log.txt && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
     ./configure --prefix=/usr/local --disable-static --disable-rpath --with-cpp14 --without-libtool --with-jpeg12 --with-spatialite --with-liblzma --with-webp --with-epsilon --with-poppler --with-hdf5 --with-dods-root=/usr/local --with-sosi --with-mysql --with-rasterlite2 --with-pg --with-cfitsio=/usr/local --with-armadillo --with-mrsid=/build/mrsid/Raster_DSDK --with-mrsid_lidar=/build/mrsid/Lidar_DSDK && \
     make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings -Wno-stringop-overflow -Wno-ignored-qualifiers" && \
-    cd apps && \
-    make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings -Wno-stringop-overflow -Wno-ignored-qualifiers" test_ogrsf && \
-    cd .. && \
     make -j ${JOBS} install && \
     ldconfig && \
     # This takes a lot of space in the Docker file, and we don't use it \
     rm libgdal.a && \
+    # reduce docker size \
+    rm -rf ogr/ogrsf_frmts/o/*.o frmts/o/*.o && \
     echo "`date` gdal" >> /build/log.txt
 
 RUN echo "`date` gdal python" >> /build/log.txt && \
@@ -1608,12 +1483,14 @@ open(path, "w").write(s)' && \
     cp samples/ogrinfo.py scripts/ogrinfo.py && \
     cp samples/ogr2ogr.py scripts/ogr2ogr.py && \
     # Strip libraries before building any wheels \
-    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
+    # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
+    find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse; git clean -fxd build GDAL.egg-info' && \
     find /io/wheelhouse/ -name 'GDAL*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'GDAL*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'GDAL*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
+    rm -rf ~/.cache && \
     echo "`date` gdal python" >> /build/log.txt
 
 # Mapnik
@@ -1678,7 +1555,7 @@ RUN echo "`date` python-mapnik" >> /build/log.txt && \
     cp /build/mapnik/utils/mapnik-render/mapnik-render mapnik/bin/. && \
     cp /build/mapnik/utils/mapnik-index/mapnik-index mapnik/bin/. && \
     cp /build/mapnik/utils/shapeindex/shapeindex mapnik/bin/. && \
-    strip mapnik/bin/* --strip-unneeded && \
+    strip mapnik/bin/* --strip-unneeded -p -D && \
     python -c $'# \n\
 path = "mapnik/bin/__init__.py" \n\
 s = """import os \n\
@@ -1722,13 +1599,112 @@ os.environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal")) \n\
 def bootstrap_env():""") \n\
 open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
-    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
+    # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
+    find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c 'export WORKDIR=/tmp/python-mapnik-`basename ${0}`; mkdir -p $WORKDIR; cp -r . $WORKDIR/.; pushd $WORKDIR; BOOST_PYTHON_LIB=`"${0}/bin/python" -c "import sys;sys.stdout.write('\''boost_python'\''+str(sys.version_info.major)+str(sys.version_info.minor))"` "${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && popd && rm -rf $WORKDIR' && \
     find /io/wheelhouse/ -name 'mapnik*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'mapnik*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'mapnik*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
+    rm -rf ~/.cache && \
     echo "`date` python-mapnik" >> /build/log.txt
+
+# This patch allows girder's file layout to work with mirax files and does no
+# harm otherwise.
+COPY openslide-vendor-mirax.c.patch .
+
+# This allows building vips from GitHub source
+# (see https://github.com/libvips/libvips/issues/874)
+COPY openslide-init.patch .
+
+RUN echo "`date` openslide" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
+    curl --retry 5 --silent https://github.com/openslide/openslide/archive/v3.4.1.tar.gz -L -o openslide.tar.gz && \
+    mkdir openslide && \
+    tar -zxf openslide.tar.gz -C openslide --strip-components 1 && \
+    rm -f openslide.tar.gz && \
+    cd openslide && \
+    patch src/openslide-vendor-mirax.c ../openslide-vendor-mirax.c.patch && \
+    patch src/openslide.c ../openslide-init.patch && \
+    autoreconf -ifv && \
+    export CFLAGS="$CFLAGS -O2" && \
+    ./configure --prefix=/usr/local --disable-static && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` openslide" >> /build/log.txt
+
+RUN echo "`date` openslide-python" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b v1.1.2 https://github.com/openslide/openslide-python.git && \
+    cd openslide-python && \
+    python -c $'# \n\
+path = "setup.py" \n\
+s = open(path).read().replace( \n\
+    "_convert.c\'", "_convert.c\'], libraries=[\'openslide\'") \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
+path = "openslide/lowlevel.py" \n\
+s = open(path).read().replace( \n\
+"""    _lib = cdll.LoadLibrary(\'libopenslide.so.0\')""", \n\
+"""    try: \n\
+        import os \n\
+        libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath( \n\
+            __file__))), \'openslide_python.libs\')) \n\
+        libs = os.listdir(libpath) \n\
+        loadCount = 0 \n\
+        while True: \n\
+            numLoaded = 0 \n\
+            for name in libs: \n\
+                try: \n\
+                    somelib = os.path.join(libpath, name) \n\
+                    if name.startswith(\'libopenslide\'): \n\
+                        lib = somelib \n\
+                    cdll.LoadLibrary(somelib) \n\
+                    numLoaded += 1 \n\
+                except Exception: \n\
+                    pass \n\
+            if numLoaded - loadCount <= 0: \n\
+                break \n\
+            loadCount = numLoaded \n\
+        _lib = cdll.LoadLibrary(lib) \n\
+    except Exception: \n\
+        _lib = cdll.LoadLibrary(\'libopenslide.so.0\')""") \n\
+open(path, "w").write(s)' && \
+    mkdir openslide/bin && \
+    find /build/openslide/tools/.libs/ -executable -type f -exec cp {} openslide/bin/. \; && \
+    strip openslide/bin/* --strip-unneeded -p -D && \
+    python -c $'# \n\
+path = "openslide/bin/__init__.py" \n\
+s = """import os \n\
+import subprocess \n\
+import sys \n\
+\n\
+def program(): \n\
+    name = os.path.basename(sys.argv[0]) \n\
+    raise SystemExit(subprocess.call([os.path.join(os.path.dirname(__file__), name)] + sys.argv[1:])) \n\
+""" \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
+path = "setup.py" \n\
+s = open(path).read().replace( \n\
+"""    zip_safe=True,""", \n\
+"""    zip_safe=True, \n\
+    include_package_data=True, \n\
+    package_data={\'openslide\': [\'bin/*\']}, \n\
+    entry_points={\'console_scripts\': [\'%s=openslide.bin:program\' % name for name in os.listdir(\'openslide/bin\') if not name.endswith(\'.py\')]},""") \n\
+open(path, "w").write(s)' && \
+    # Strip libraries before building any wheels \
+    # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
+    find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
+    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    find /io/wheelhouse/ -name 'openslide*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
+    find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
+    ls -l /io/wheelhouse && \
+    rm -rf ~/.cache && \
+    echo "`date` openslide-python" >> /build/log.txt
 
 # VIPS
 
@@ -1764,7 +1740,7 @@ RUN echo "`date` nifti" >> /build/log.txt && \
 
 RUN echo "`date` imagequant" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/ImageOptim/libimagequant/archive/2.12.5.tar.gz -L -o imagequant.tar.gz && \
+    curl --retry 5 --silent https://github.com/ImageOptim/libimagequant/archive/2.13.1.tar.gz -L -o imagequant.tar.gz && \
     mkdir imagequant && \
     tar -zxf imagequant.tar.gz -C imagequant --strip-components 1 && \
     rm -f imagequant.tar.gz && \
@@ -1778,13 +1754,13 @@ RUN echo "`date` imagequant" >> /build/log.txt && \
 RUN echo "`date` pango" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.47/pango-1.47.0.tar.xz -L -o pango.tar.xz && \
+    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.48/pango-1.48.0.tar.xz -L -o pango.tar.xz && \
     unxz pango.tar.xz && \
     mkdir pango && \
     tar -xf pango.tar -C pango --strip-components 1 && \
     rm -f pango.tar && \
     cd pango && \
-    meson --prefix=/usr/local --buildtype=release -D introspection=False _build && \
+    meson --prefix=/usr/local --buildtype=release -D introspection=disabled _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -1830,6 +1806,7 @@ RUN echo "`date` libde265" >> /build/log.txt && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
+    find . -name '*.a' -delete && \
     echo "`date` libde265" >> /build/log.txt
 
 RUN echo "`date` libheif" >> /build/log.txt && \
@@ -1845,13 +1822,13 @@ RUN echo "`date` libheif" >> /build/log.txt && \
     echo "`date` libheif" >> /build/log.txt
 
 RUN echo "`date` rust" >> /build/log.txt && \
-    curl --retry 5 --silent https://sh.rustup.rs -sSf | sh -s -- -y && \
+    curl --retry 5 --silent https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal && \
     echo "`date` rust" >> /build/log.txt
 
 RUN echo "`date` librsvg" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.50/librsvg-2.50.1.tar.xz -L -o librsvg.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.50/librsvg-2.50.2.tar.xz -L -o librsvg.tar.xz && \
     unxz librsvg.tar.xz && \
     mkdir librsvg && \
     tar -xf librsvg.tar -C librsvg --strip-components 1 && \
@@ -1865,6 +1842,7 @@ RUN echo "`date` librsvg" >> /build/log.txt && \
     ldconfig && \
     # rust leaves huge build artifacts that aren't useful to us \
     rm -rf target/release/deps && \
+    find . -name '*.a' -delete && \
     echo "`date` librsvg" >> /build/log.txt
 
 RUN echo "`date` libgsf" >> /build/log.txt && \
@@ -1887,7 +1865,7 @@ RUN echo "`date` libgsf" >> /build/log.txt && \
 #  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz JXL LQR RAQM RAW WMF
 RUN echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.0.10-35 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.0.10-45 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
@@ -1947,7 +1925,7 @@ open(path, "w").write(s)' && \
     find /build/vips/tools/.libs/ -executable -type f -exec cp {} pyvips/bin/. \; && \
     find /build/jasper/_build/src/appl/ -executable -type f -exec cp {} pyvips/bin/. \; && \
     cp /usr/local/bin/magick pyvips/bin/. && \
-    strip pyvips/bin/* --strip-unneeded && \
+    strip pyvips/bin/* --strip-unneeded -p -D && \
     python -c $'# \n\
 path = "pyvips/bin/__init__.py" \n\
 s = """import os \n\
@@ -1971,12 +1949,14 @@ import os""").replace( \n\
         entry_points={\'console_scripts\': [\'%s=pyvips.bin:program\' % name for name in os.listdir(\'pyvips/bin\') if not name.endswith(\'.py\')]},""") \n\
 open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
-    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
+    # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
+    find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse; git clean -fxd -e pyvips/bin' && \
     find /io/wheelhouse/ -name 'pyvips*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'pyvips*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'pyvips*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
+    rm -rf ~/.cache && \
     echo "`date` pyvips" >> /build/log.txt
 
 # 3db99248c8155a0170d7b2696b397dab7e37fb9d (7/12/2019) is the last pyproj
@@ -1998,7 +1978,7 @@ os.environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj"))""") \n\
 open(path, "w").write(s)' && \
     mkdir pyproj/bin && \
     find /build/proj.4/src/.libs/ -executable -type f ! -name '*.so.*' -exec cp {} pyproj/bin/. \; && \
-    strip pyproj/bin/* --strip-unneeded && \
+    strip pyproj/bin/* --strip-unneeded -p -D && \
     python -c $'# \n\
 path = "pyproj/bin/__init__.py" \n\
 s = """import os \n\
@@ -2015,7 +1995,8 @@ def program(): \n\
 open(path, "w").write(s)' && \
     cp -r /usr/local/share/proj pyproj/. && \
     # Strip libraries before building any wheels \
-    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
+    # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
+    find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     # First build with the last 2.7 version \
     git checkout 3db99248c8155a0170d7b2696b397dab7e37fb9d && \
     python -c $'# \n\
@@ -2093,6 +2074,7 @@ open(path, "w").write(data)' && \
     find /io/wheelhouse/ -name 'pyproj*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'pyproj*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
+    rm -rf ~/.cache && \
     echo "`date` pyproj4" >> /build/log.txt
 
 RUN echo "`date` libmemcached" >> /build/log.txt && \
@@ -2116,12 +2098,14 @@ RUN echo "`date` pylibmc" >> /build/log.txt && \
     git clone --depth=1 --single-branch -b 1.6.1 https://github.com/lericson/pylibmc.git && \
     cd pylibmc && \
     # Strip libraries before building any wheels \
-    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
+    # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
+    find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     find /io/wheelhouse/ -name 'pylibmc*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux1_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'pylibmc*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'pylibmc*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
+    rm -rf ~/.cache && \
     echo "`date` pylibmc" >> /build/log.txt
 
 # Tell auditwheel not to include libjvm.so
@@ -2141,6 +2125,9 @@ RUN echo "`date` javabridge" >> /build/log.txt && \
     # Include java libraries \
     mkdir javabridge/jvm && \
     cp -r -L /usr/lib/jvm/java-1.8.0/* javabridge/jvm/. && \
+    # use a placeholder for the jar files to reduce the docker file size; \
+    # they'll be restored later && \
+    find javabridge/jvm -name '*.jar' -exec bash -c "echo placeholder > {}" \; && \
     # libsaproc.so is only used for debugging \
     rm javabridge/jvm/jre/lib/amd64/libsaproc.so && \
     # allow installing binaries \
@@ -2195,7 +2182,8 @@ open(path, "w").write(s)' && \
     # export library paths so that auditwheel doesn't complain \
     export LD_LIBRARY_PATH="/usr/lib/jvm/jre/lib/amd64/:/usr/lib/jvm/jre/lib/amd64/jli:/usr/lib/jvm/jre/lib/amd64/client:/usr/lib/jvm/jre/lib/amd64/server:$LD_LIBRARY_PATH" && \
     # Strip libraries before building any wheels \
-    strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
+    # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
+    find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     # Only build for Python >=3.5 \
     find /opt/python -mindepth 1 -name '*cp3*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse' && \
     find /io/wheelhouse/ -name 'python_javabridge*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
@@ -2215,13 +2203,14 @@ for line in open(record_path): \n\
     if len(parts) == 3 and os.path.exists(parts[0]) and parts[1]: \n\
         hashval = base64.urlsafe_b64encode(hashlib.sha256(open(parts[0], "rb").read()).digest()).decode("latin1").rstrip("=") \n\
         filelen = os.path.getsize(parts[0]) \n\
-        line = ",".join([parts[0], "sha256=" + hashval, str(filelen)]) + "\\n" \n\
+        line = ",".join([parts[0], "sha256=" + hashval, str(filelen)]) + "\\\\n" \n\
     newrecord.append(line) \n\
 open(record_path, "w").write("".join(newrecord)) \n\
 """ \n\
 open(path, "w").write(s)' && \
-    find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 bash -c 'mkdir /tmp/ptmp; pushd /tmp/ptmp; unzip ${0}; cp -r -L /usr/lib/jvm/java-1.8.0/* python_javabridge/jvm/.; /opt/python/cp37-cp37m/bin/python /build/fix_record.py; zip -r ${0} *; popd; rm -rf /tmp/ptmp' && \
+    find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 bash -c 'mkdir /tmp/ptmp; pushd /tmp/ptmp; unzip ${0}; cp -r -L /usr/lib/jvm/java-1.8.0/* javabridge/jvm/.; /opt/python/cp37-cp37m/bin/python /build/fix_record.py; zip -r ${0} *; popd; rm -rf /tmp/ptmp' && \
     find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
+    rm -rf ~/.cache && \
     echo "`date` javabridge" >> /build/log.txt

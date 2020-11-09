@@ -269,6 +269,5 @@ print(poly2)
 sys.exit(str(poly)[10:]==str(poly2)[10:])
 EOF
 
-
 fi
 
