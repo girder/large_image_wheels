@@ -70,7 +70,7 @@ Packages = {
         're': r'freetype-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
     'freexl': {
-        'fossil': 'https://www.gaia-gis.it/fossil/freexl/timeline?n=10&r=trunk',
+        'fossil': 'https://www.gaia-gis.it/fossil/freexl/timeline?n=10&r=trunk&&s=x',
         # 'filelist': 'https://www.gaia-gis.it/fossil/freexl/',
         # 're': r'freexl-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
@@ -233,12 +233,12 @@ Packages = {
         're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$'
     },
     'libspatialite': {
-        'fossil': 'https://www.gaia-gis.it/fossil/libspatialite/timeline?n=10&r=trunk',
+        'fossil': 'https://www.gaia-gis.it/fossil/libspatialite/timeline?n=10&r=trunk&ss=x',
         # 'filelist': 'https://www.gaia-gis.it/fossil/libspatialite/',
         # 're': r'libspatialite-([0-9]+\.[0-9]+(|\.[0-9]+)(|[a-z])).tar.(gz|xz)$'
     },
     'librasterlite2': {
-        'fossil': 'https://www.gaia-gis.it/fossil/librasterlite2/timeline?n=10&r=trunk',
+        'fossil': 'https://www.gaia-gis.it/fossil/librasterlite2/timeline?n=10&r=trunk&ss=x',
         # 'filelist': 'https://www.gaia-gis.it/fossil/librasterlite2/',
         # 're': r'librasterlite2-([0-9]+\.[0-9]+(|\.[0-9]+)(|-beta[0-9]+)).tar.(gz|xz)$'
     },
@@ -487,6 +487,10 @@ Packages = {
         'filelist': 'https://zlib.net/',
         're': r'zlib-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
+    'zstd': {
+        'git': 'https://github.com/facebook/zstd.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
 }
 
 
@@ -499,90 +503,95 @@ def compareVersions(a, b):
 
 
 for pkg in sorted(Packages):
-    pkginfo = Packages[pkg]
-    entries = None
-    versions = None
-    if 'filelist' in pkginfo:
-        data = requests.get(pkginfo['filelist']).text
-        if verbose >= 2:
-            print(pkg, 'filelist data', data)
-        data = data.replace('<A ', '<a ').replace('HREF="', 'href="')
-        entries = [entry.split('href="', 1)[-1].split('"')[0] for entry in data.split('<a ')[1:]]
-        if verbose >= 1:
-            print(pkg, 'filelist entries', entries)
-    elif 'git' in pkginfo:
-        cmd = ['git', 'ls-remote', '--refs', '--tags', pkginfo['git']]
-        entries = [entry for entry in
-                   subprocess.check_output(cmd).decode('utf8').split('\n')
-                   if '/' in entry]
-        if verbose >= 1:
-            print(pkg, 'git entries', entries)
-    elif 'gitsha' in pkginfo:
-        cmd = ['git', 'ls-remote', pkginfo['gitsha'], pkginfo.get('branch', 'HEAD')]
-        versions = [subprocess.check_output(cmd).decode('utf8').split()[0]]
-        if verbose >= 1:
-            print(pkg, 'gitsha versions', versions)
-    elif 'json' in pkginfo:
-        data = requests.get(pkginfo['json']).json()
-        if verbose >= 2:
-            print(pkg, 'json data', data)
-        entries = pkginfo['keys'](data)
-        if verbose >= 1:
-            print(pkg, 'json entries', entries)
-    elif 'pypi' in pkginfo:
-        url = 'https://pypi.python.org/pypi/%s/json' % pkginfo['pypi']
-        releases = requests.get(url).json()['releases']
-        if verbose >= 2:
-            print(pkg, 'pypi releases', entries)
-        versions = sorted(releases, key=pkg_resources.parse_version)
-        if verbose >= 1:
-            print(pkg, 'pypi versions', versions)
-    elif 'text' in pkginfo:
-        data = requests.get(pkginfo['text']).content.decode('utf8')
-        if verbose >= 2:
-            print(pkg, 'text data', data)
-        entries = pkginfo['keys'](data)
-        if verbose >= 1:
-            print(pkg, 'text entries', entries)
-    elif 'fossil' in pkginfo:
-        data = requests.get(pkginfo['fossil']).text
-        if verbose >= 2:
-            print(pkg, 'fossil data', data)
-        entries = [entry.split(']<')[0]
-                   for entry in data.split('<span class="timelineHistDsp">[')[1:]]
-        if verbose >= 1:
-            print(pkg, 'fossil entries', entries)
-    if 're' in pkginfo:
-        entries = [entry for entry in entries if re.search(pkginfo['re'], entry)]
-        if verbose >= 2:
-            print(pkg, 're entries', entries)
-        versions = [re.search(pkginfo['re'], entry).group(1) for entry in entries]
-        if verbose >= 2:
-            print(pkg, 're versions', versions)
-        versions.sort(key=functools.cmp_to_key(compareVersions))
-    if 'subre' in pkginfo:
-        pversions = versions
-        for pos in range(-1, -len(pversions) - 1, -1):
-            data = requests.get(pkginfo['filelist'] + pkginfo['sub'](pversions[pos])).text
+    try:
+        pkginfo = Packages[pkg]
+        entries = None
+        versions = None
+        if 'filelist' in pkginfo:
+            data = requests.get(pkginfo['filelist']).text
             if verbose >= 2:
-                print(pkg, 'subre data', data)
+                print(pkg, 'filelist data', data)
             data = data.replace('<A ', '<a ').replace('HREF="', 'href="')
-            entries = [entry.split('href="', 1)[-1].split('"')[0]
-                       for entry in data.split('<a ')[1:]]
+            entries = [entry.split('href="', 1)[-1].split('"')[0] for entry in data.split('<a ')[1:]]
+            if verbose >= 1:
+                print(pkg, 'filelist entries', entries)
+        elif 'git' in pkginfo:
+            cmd = ['git', 'ls-remote', '--refs', '--tags', pkginfo['git']]
+            entries = [entry for entry in
+                       subprocess.check_output(cmd).decode('utf8').split('\n')
+                       if '/' in entry]
+            if verbose >= 1:
+                print(pkg, 'git entries', entries)
+        elif 'gitsha' in pkginfo:
+            cmd = ['git', 'ls-remote', pkginfo['gitsha'], pkginfo.get('branch', 'HEAD')]
+            versions = [subprocess.check_output(cmd).decode('utf8').split()[0]]
+            if verbose >= 1:
+                print(pkg, 'gitsha versions', versions)
+        elif 'json' in pkginfo:
+            data = requests.get(pkginfo['json']).json()
             if verbose >= 2:
-                print(pkg, 'subre entries', entries)
-            entries = [entry for entry in entries if re.search(pkginfo['subre'], entry)]
-            versions = [re.search(pkginfo['subre'], entry).group(1) for entry in entries]
+                print(pkg, 'json data', data)
+            entries = pkginfo['keys'](data)
+            if verbose >= 1:
+                print(pkg, 'json entries', entries)
+        elif 'pypi' in pkginfo:
+            url = 'https://pypi.python.org/pypi/%s/json' % pkginfo['pypi']
+            releases = requests.get(url).json()['releases']
             if verbose >= 2:
-                print(pkg, 'subre versions', versions)
+                print(pkg, 'pypi releases', entries)
+            versions = sorted(releases, key=pkg_resources.parse_version)
+            if verbose >= 1:
+                print(pkg, 'pypi versions', versions)
+        elif 'text' in pkginfo:
+            data = requests.get(pkginfo['text']).content.decode('utf8')
+            if verbose >= 2:
+                print(pkg, 'text data', data)
+            entries = pkginfo['keys'](data)
+            if verbose >= 1:
+                print(pkg, 'text entries', entries)
+        elif 'fossil' in pkginfo:
+            data = requests.get(pkginfo['fossil']).text
+            if verbose >= 2:
+                print(pkg, 'fossil data', data)
+            entries = [entry.split(']<')[0]
+                       for entry in data.split('<span class="timelineHistDsp">[')[1:]]
+            if verbose >= 1:
+                print(pkg, 'fossil entries', entries)
+        if 're' in pkginfo:
+            entries = [entry for entry in entries if re.search(pkginfo['re'], entry)]
+            if verbose >= 2:
+                print(pkg, 're entries', entries)
+            versions = [re.search(pkginfo['re'], entry).group(1) for entry in entries]
+            if verbose >= 2:
+                print(pkg, 're versions', versions)
             versions.sort(key=functools.cmp_to_key(compareVersions))
-            if len(versions):
-                break
-    if versions is None and entries:
-        versions = entries
-        if verbose >= 2:
-            print(pkg, 'entries versions', versions)
-    if not len(versions):
-        print('%s -- failed to get versions' % pkg)
-    else:
-        print('%s %s' % (pkg, versions[-1]))
+        if 'subre' in pkginfo:
+            pversions = versions
+            for pos in range(-1, -len(pversions) - 1, -1):
+                data = requests.get(pkginfo['filelist'] + pkginfo['sub'](pversions[pos])).text
+                if verbose >= 2:
+                    print(pkg, 'subre data', data)
+                data = data.replace('<A ', '<a ').replace('HREF="', 'href="')
+                entries = [entry.split('href="', 1)[-1].split('"')[0]
+                           for entry in data.split('<a ')[1:]]
+                if verbose >= 2:
+                    print(pkg, 'subre entries', entries)
+                entries = [entry for entry in entries if re.search(pkginfo['subre'], entry)]
+                versions = [re.search(pkginfo['subre'], entry).group(1) for entry in entries]
+                if verbose >= 2:
+                    print(pkg, 'subre versions', versions)
+                versions.sort(key=functools.cmp_to_key(compareVersions))
+                if len(versions):
+                    break
+        if versions is None and entries:
+            versions = entries
+            if verbose >= 2:
+                print(pkg, 'entries versions', versions)
+        if versions is None or not len(versions):
+            print('%s -- failed to get versions' % pkg)
+        else:
+            print('%s %s' % (pkg, versions[-1]))
+    except Exception:
+        import traceback
+
+        print('Exception getting %s\n%s' % (pkg, traceback.format_exc()))

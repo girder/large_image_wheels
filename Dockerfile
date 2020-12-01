@@ -22,7 +22,6 @@ RUN echo "`date` yum install" >> /build/log.txt && \
     freeglut-devel \
     libjpeg-devel \
     libXi-devel \
-    libzstd-devel \
     mesa-libGL-devel \
     mesa-libGLU-devel \
     SDL-devel \
@@ -151,7 +150,7 @@ RUN echo "`date` libssh2" >> /build/log.txt && \
 
 RUN echo "`date` curl" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_73_0/curl-7.73.0.tar.gz -L -o curl.tar.gz && \
+    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_74_0/curl-7.74.0.tar.gz -L -o curl.tar.gz && \
     mkdir curl && \
     tar -zxf curl.tar.gz -C curl --strip-components 1 && \
     rm -f curl.tar.gz && \
@@ -202,7 +201,7 @@ RUN echo "`date` strip-nondeterminism" >> /build/log.txt && \
 
 # CMake - use a precompiled binary
 RUN echo "`date` cmake" >> /build/log.txt && \
-    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.19.1/cmake-3.19.1-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.19.2/cmake-3.19.2-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
     mkdir cmake && \
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz && \
@@ -307,6 +306,15 @@ RUN echo "`date` openjpeg" >> /build/log.txt && \
     echo "`date` openjpeg" >> /build/log.txt
 
 # libtiff
+
+RUN echo "`date` zstd" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b v1.4.7 https://github.com/facebook/zstd && \
+    cd zstd && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` zstd" >> /build/log.txt
 
 RUN echo "`date` jbigkit" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -630,7 +638,7 @@ open(path, "w").write(data)' && \
 RUN echo "`date` glib" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.67/glib-2.67.0.tar.xz -L -o glib-2.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.67/glib-2.67.1.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
@@ -728,7 +736,7 @@ open(path, "w").write(s)' && \
 RUN echo "`date` gdk-pixbuf" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/gdk-pixbuf/2.40/gdk-pixbuf-2.40.0.tar.xz -L -o gdk-pixbuf.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/gdk-pixbuf/2.42/gdk-pixbuf-2.42.2.tar.xz -L -o gdk-pixbuf.tar.xz && \
     unxz gdk-pixbuf.tar.xz && \
     mkdir gdk-pixbuf && \
     tar -xf gdk-pixbuf.tar -C gdk-pixbuf --strip-components 1 && \
@@ -760,7 +768,7 @@ RUN echo "`date` libiconv" >> /build/log.txt && \
 RUN echo "`date` icu4c" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    git clone --depth=1 --single-branch -b release-68-1 https://github.com/unicode-org/icu.git && \
+    git clone --depth=1 --single-branch -b release-68-2 https://github.com/unicode-org/icu.git && \
     cd icu/icu4c/source && \
     CFLAGS="$CFLAGS -O2 -DUNISTR_FROM_CHAR_EXPLICIT=explicit -DUNISTR_FROM_STRING_EXPLICIT=explicit -DU_CHARSET_IS_UTF8=1 -DU_NO_DEFAULT_INCLUDE_UTF_HEADERS=1 -DU_HIDE_OBSOLETE_UTF_OLD_H=1" ./configure --silent --prefix=/usr/local --disable-tests --disable-samples --with-data-packaging=library --disable-static && \
     make --silent -j ${JOBS} && \
@@ -793,13 +801,13 @@ RUN echo "`date` openmpi" >> /build/log.txt && \
 # 2.7 at the same time.
 RUN echo "`date` boost" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b boost-1.74.0 --quiet --recurse-submodules -j ${JOBS} https://github.com/boostorg/boost.git && \
+    git clone --depth=1 --single-branch -b boost-1.75.0 --quiet --recurse-submodules -j ${JOBS} https://github.com/boostorg/boost.git && \
     cd boost && \
-    pushd libs/spirit && \
-    # switch to a version of spirit that fixes a bug in 1.70 and 1.71 \
-    git fetch --depth=1000 && \
-    git checkout 10d027f && \
-    popd && \
+    # pushd libs/spirit && \
+    # # switch to a version of spirit that fixes a bug in 1.70 and 1.71 \
+    # git fetch --depth=1000 && \
+    # git checkout 10d027f && \
+    # popd && \
     # work-around for https://github.com/boostorg/mpi/issues/112
     sed -i 's/boost_mpi_python mpi/boost_mpi_python/g' libs/mpi/build/Jamfile.v2 && \
     find . -name '.git' -exec rm -rf {} \+ && \
@@ -824,6 +832,8 @@ RUN echo "`date` boost" >> /build/log.txt && \
     ldconfig && \
     echo "`date` boost" >> /build/log.txt
 
+# We have to build fossil to allow it to work in our environment.  The prebuilt
+# binaries fail because they can't find any of a list of versions of GLIBC.
 RUN echo "`date` fossil" >> /build/log.txt && \
     curl --retry 5 --silent -L https://www.fossil-scm.org/index.html/uv/fossil-src-2.13.tar.gz -o fossil.tar.gz && \
     mkdir fossil && \
@@ -864,7 +874,7 @@ RUN echo "`date` tk" >> /build/log.txt && \
 
 RUN echo "`date` sqlite" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://sqlite.org/2020/sqlite-autoconf-3330000.tar.gz -L -o sqlite.tar.gz && \
+    curl --retry 5 --silent https://sqlite.org/2020/sqlite-autoconf-3340000.tar.gz -L -o sqlite.tar.gz && \
     mkdir sqlite && \
     tar -zxf sqlite.tar.gz -C sqlite --strip-components 1 && \
     rm -f sqlite.tar.gz && \
@@ -890,7 +900,7 @@ RUN echo "`date` freexl" >> /build/log.txt && \
 
 RUN echo "`date` libgeos" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 3.8.1 https://github.com/libgeos/geos.git && \
+    git clone --depth=1 --single-branch -b 3.9.0 https://github.com/libgeos/geos.git && \
     cd geos && \
     mkdir _build && \
     cd _build && \
@@ -902,7 +912,7 @@ RUN echo "`date` libgeos" >> /build/log.txt && \
 
 RUN echo "`date` minizip" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 2.10.3 https://github.com/nmoinvaz/minizip.git && \
+    git clone --depth=1 --single-branch -b 2.10.5 https://github.com/nmoinvaz/minizip.git && \
     cd minizip && \
     mkdir _build && \
     cd _build && \
@@ -918,7 +928,7 @@ RUN echo "`date` libspatialite" >> /build/log.txt && \
     mkdir libspatialite && \
     cd libspatialite && \
     fossil open ../libspatialite.fossil && \
-    fossil checkout -f 39e9137b51 && \
+    # fossil checkout -f 39e9137b51 && \
     rm -f ../libspatialite.fossil && \
     CFLAGS="$CFLAGS -O2 -DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true" ./configure --silent --prefix=/usr/local --disable-examples --disable-static && \
     make --silent -j ${JOBS} && \
@@ -1197,7 +1207,7 @@ RUN echo "`date` postgres" >> /build/log.txt && \
 RUN echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-20.11.0.tar.xz -L -o poppler.tar.xz && \
+    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-20.12.1.tar.xz -L -o poppler.tar.xz && \
     unxz poppler.tar.xz && \
     mkdir poppler && \
     tar -xf poppler.tar -C poppler --strip-components 1 && \
@@ -1243,7 +1253,7 @@ RUN echo "`date` epsilon" >> /build/log.txt && \
 # Jasper 2.0.21 is compatible with GDAL 3.1.4 and above
 RUN echo "`date` jasper" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b version-2.0.21 https://github.com/mdadams/jasper.git && \
+    git clone --depth=1 --single-branch -b version-2.0.23 https://github.com/mdadams/jasper.git && \
     cd jasper && \
     # git apply ../jasper-jp2_cod.c.patch && \
     mkdir _build && \
@@ -1315,7 +1325,7 @@ RUN echo "`date` xerces" >> /build/log.txt && \
 
 RUN echo "`date` openblas" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v0.3.11 https://github.com/xianyi/OpenBLAS.git && \
+    git clone --depth=1 --single-branch -b v0.3.13 https://github.com/xianyi/OpenBLAS.git && \
     cd OpenBLAS && \
     mkdir _build && \
     cd _build && \
@@ -1812,7 +1822,7 @@ RUN echo "`date` libde265" >> /build/log.txt && \
 RUN echo "`date` libheif" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v1.9.1 https://github.com/strukturag/libheif.git && \
+    git clone --depth=1 --single-branch -b v1.10.0 https://github.com/strukturag/libheif.git && \
     cd libheif && \
     ./autogen.sh && \
     ./configure --silent --prefix=/usr/local --disable-static && \
@@ -1865,7 +1875,7 @@ RUN echo "`date` libgsf" >> /build/log.txt && \
 #  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz JXL LQR RAQM RAW WMF
 RUN echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.0.10-45 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.0.10-50 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
@@ -1880,7 +1890,7 @@ RUN echo "`date` vips" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
     # Use these lines for a release \
-    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.10.2/vips-8.10.2.tar.gz -L -o vips.tar.gz && \
+    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.10.5/vips-8.10.5.tar.gz -L -o vips.tar.gz && \
     mkdir vips && \
     tar -zxf vips.tar.gz -C vips --strip-components 1 && \
     rm -f vips.tar.gz && \
