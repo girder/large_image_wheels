@@ -182,6 +182,10 @@ Packages = {
         'git': 'https://github.com/strukturag/libde265.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
+    'libdeflate': {
+        'git': 'https://github.com/ebiggers/libdeflate.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
     'libexpat': {
         'git': 'https://github.com/libexpat/libexpat.git',
         're': r'R_([0-9]+_[0-9]+(|_[0-9]+))$'

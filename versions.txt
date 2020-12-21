@@ -16,7 +16,7 @@ freetype 2.10.4
 freexl -- failed to get versions
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
-gdal e463628ee4971add5ff2a5747e146911ad8ced1c
+gdal 6fdb70978a0ee86ccf89dcb493636a431e60306b
 gdal-pypi 3.2.0
 gdal-release 3.2.0
 gdk-pixbuf 2.42.2
@@ -30,7 +30,7 @@ harfbuzz 2.6.7
 hdf4 4.2.15
 hdf5 1.12.0
 icu4c 68-2
-imagemagick 7.0.10-50
+imagemagick 7.0.10-51
 jasper 2.0.23
 javabridge 4.0.0
 javabridge-pypi 1.0.19
@@ -38,6 +38,7 @@ jbigkit 2.1
 libcroco 0.6.13
 libdap 3.20.6
 libde265 1.0.8
+libdeflate 1.7
 libexpat 2_2_10
 libffi 3.3
 libgeotiff 1.6.0
@@ -52,14 +53,14 @@ libpng 1.6.37
 librasterlite2 8cc3ace7b4
 librsvg 2.50.2
 libspatialite 8b6d038947
-libtiff 4.1.0
+libtiff 4.2.0
 libvips 8.10.5
 libwebp 1.1.0
 libxcrypt 4.4.17
 libxml2 2.9.10
 lz4 1.9.3
 m4 1.4.18
-manylinux2010 75b1a3128080aef0a98f40af1625407be64bcded80e244fcce293ca1c3e2f613
+manylinux2010 ee08b69bd60cf9a57103c15fe6f8bdf5a2ec245a70619f227954c0343499fd2c
 mapnik c8b8b5c1d0d418f4060cf4dd69dd936e08592334
 mapnik-release 3.0.23
 minizip 2.10.5
@@ -88,9 +89,9 @@ pnetcdf 1.12.1
 poppler 20.12.1
 postgresql 13.1
 proj-datumgrid 1.8
-proj.4 edcf6a2ea62a3bc0365442688bd83426450c8482
+proj.4 fd98b78140b5b3f976af25d71cb121ee1ba30fa6
 proj.4-release 7.2.0
-psutil 5.7.3
+psutil 5.8.0
 pylibmc 1.6.1
 pylibtiff 51d6f2a41db654254397df1de6f9193e7317bce5
 pylibtiff-pypi 0.4.2
@@ -111,4 +112,4 @@ util-linux 2.36.1
 xerces-c 3.2.3
 xz 5.2.5
 zlib 1.2.11
-zstd 1.4.7
+zstd 1.4.8

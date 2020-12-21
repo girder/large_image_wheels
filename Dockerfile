@@ -237,7 +237,7 @@ RUN echo "`date` auditwheel" >> /build/log.txt && \
 
 RUN echo "`date` psutil" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b release-5.7.3 https://github.com/giampaolo/psutil.git && \
+    git clone --depth=1 --single-branch -b release-5.8.0 https://github.com/giampaolo/psutil.git && \
     cd psutil && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
@@ -309,7 +309,7 @@ RUN echo "`date` openjpeg" >> /build/log.txt && \
 
 RUN echo "`date` zstd" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v1.4.7 https://github.com/facebook/zstd && \
+    git clone --depth=1 --single-branch -b v1.4.8 https://github.com/facebook/zstd && \
     cd zstd && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -360,9 +360,20 @@ RUN echo "`date` libjpeg-turbo" >> /build/log.txt && \
     # don't install this; we reference it explicitly \
     echo "`date` libjpeg-turbo" >> /build/log.txt
 
+# libdeflate is faster than libzip
+RUN echo "`date` libdeflate" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b v1.7 https://github.com/ebiggers/libdeflate.git && \
+    cd libdeflate && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` libdeflate" >> /build/log.txt
+
 RUN echo "`date` libtiff" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.osgeo.org/libtiff/tiff-4.1.0.tar.gz -L -o tiff.tar.gz && \
+    curl --retry 5 --silent https://download.osgeo.org/libtiff/tiff-4.2.0.tar.gz -L -o tiff.tar.gz && \
     mkdir tiff && \
     tar -zxf tiff.tar.gz -C tiff --strip-components 1 && \
     rm -f tiff.tar.gz && \
@@ -1875,7 +1886,7 @@ RUN echo "`date` libgsf" >> /build/log.txt && \
 #  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz JXL LQR RAQM RAW WMF
 RUN echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.0.10-50 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.0.10-51 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
