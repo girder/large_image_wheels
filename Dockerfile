@@ -292,7 +292,7 @@ RUN echo "`date` libpng" >> /build/log.txt && \
 
 RUN echo "`date` openjpeg" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/uclouvain/openjpeg/archive/v2.3.1.tar.gz -L -o openjpeg.tar.gz && \
+    curl --retry 5 --silent https://github.com/uclouvain/openjpeg/archive/v2.4.0.tar.gz -L -o openjpeg.tar.gz && \
     mkdir openjpeg && \
     tar -zxf openjpeg.tar.gz -C openjpeg --strip-components 1 && \
     rm -f openjpeg.tar.gz && \
@@ -406,12 +406,11 @@ RUN echo "`date` pylibtiff" >> /build/log.txt && \
     python -c $'# \n\
 path = "libtiff/bin/__init__.py" \n\
 s = """import os \n\
-import subprocess \n\
 import sys \n\
 \n\
 def program(): \n\
-    name = os.path.basename(sys.argv[0]) \n\
-    raise SystemExit(subprocess.call([os.path.join(os.path.dirname(__file__), name)] + sys.argv[1:])) \n\
+    path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0])) \n\
+    os.execv(path, sys.argv) \n\
 """ \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
@@ -460,22 +459,22 @@ open(path, "w").write(s)' && \
 
 RUN echo "`date` glymur" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    # git clone -b v0.9.2 https://github.com/quintusdias/glymur.git && \
+    # git clone -b v0.9.3 https://github.com/quintusdias/glymur.git && \
     git clone https://github.com/quintusdias/glymur.git && \
     cd glymur && \
-    git checkout 7c02566ed2d72b039294b97fe5fd8f969fb5ec87 && \
+    # version 0.9.3's commit \
+    git checkout f4399d4e5e4fcb9e110e2af34515bcb08ff77053 && \
     mkdir glymur/bin && \
     find /build/openjpeg/_build/bin/ -executable -type f -name 'opj*' -exec cp {} glymur/bin/. \; && \
     strip glymur/bin/* --strip-unneeded -p -D && \
     python -c $'# \n\
 path = "glymur/bin/__init__.py" \n\
 s = """import os \n\
-import subprocess \n\
 import sys \n\
 \n\
 def program(): \n\
-    name = os.path.basename(sys.argv[0]) \n\
-    raise SystemExit(subprocess.call([os.path.join(os.path.dirname(__file__), name)] + sys.argv[1:])) \n\
+    path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0])) \n\
+    os.execv(path, sys.argv) \n\
 """ \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
@@ -559,7 +558,7 @@ open(path, "w").write(s)' && \
 RUN echo "`date` proj4" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.2.0 https://github.com/OSGeo/proj.4.git && \
+    git clone --depth=1 --single-branch -b 7.2.1 https://github.com/OSGeo/proj.4.git && \
     cd proj.4 && \
     curl --retry 5 --silent http://download.osgeo.org/proj/proj-datumgrid-1.8.zip -L -o proj-datumgrid.zip && \
     cd data && \
@@ -859,7 +858,7 @@ RUN echo "`date` fossil" >> /build/log.txt && \
 
 RUN echo "`date` tcl" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://prdownloads.sourceforge.net/tcl/tcl8.6.10-src.tar.gz -L -o tcl.tar.gz && \
+    curl --retry 5 --silent https://prdownloads.sourceforge.net/tcl/tcl8.6.11-src.tar.gz -L -o tcl.tar.gz && \
     mkdir tcl && \
     tar -zxf tcl.tar.gz -C tcl --strip-components 1 && \
     rm -f tcl.tar.gz && \
@@ -872,7 +871,7 @@ RUN echo "`date` tcl" >> /build/log.txt && \
 
 RUN echo "`date` tk" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://prdownloads.sourceforge.net/tcl/tk8.6.10-src.tar.gz -L -o tk.tar.gz && \
+    curl --retry 5 --silent https://prdownloads.sourceforge.net/tcl/tk8.6.11-src.tar.gz -L -o tk.tar.gz && \
     mkdir tk && \
     tar -zxf tk.tar.gz -C tk --strip-components 1 && \
     rm -f tk.tar.gz && \
@@ -923,7 +922,7 @@ RUN echo "`date` libgeos" >> /build/log.txt && \
 
 RUN echo "`date` minizip" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 2.10.5 https://github.com/nmoinvaz/minizip.git && \
+    git clone --depth=1 --single-branch -b 2.10.6 https://github.com/nmoinvaz/minizip.git && \
     cd minizip && \
     mkdir _build && \
     cd _build && \
@@ -1218,7 +1217,7 @@ RUN echo "`date` postgres" >> /build/log.txt && \
 RUN echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-20.12.1.tar.xz -L -o poppler.tar.xz && \
+    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-21.01.0.tar.xz -L -o poppler.tar.xz && \
     unxz poppler.tar.xz && \
     mkdir poppler && \
     tar -xf poppler.tar -C poppler --strip-components 1 && \
@@ -1264,7 +1263,7 @@ RUN echo "`date` epsilon" >> /build/log.txt && \
 # Jasper 2.0.21 is compatible with GDAL 3.1.4 and above
 RUN echo "`date` jasper" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b version-2.0.23 https://github.com/mdadams/jasper.git && \
+    git clone --depth=1 --single-branch -b version-2.0.24 https://github.com/mdadams/jasper.git && \
     cd jasper && \
     # git apply ../jasper-jp2_cod.c.patch && \
     mkdir _build && \
@@ -1413,9 +1412,9 @@ RUN echo "`date` patchelf" >> /build/log.txt && \
 RUN echo "`date` gdal" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # Specific branch \
-    # git clone --depth=1 --single-branch -b v3.2.0 https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch -b v3.2.1 https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
-    git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
     # Common \
     cd gdal/gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
@@ -1440,19 +1439,19 @@ RUN echo "`date` gdal python" >> /build/log.txt && \
     python -c $'# \n\
 path = "osgeo/bin/__init__.py" \n\
 s = """import os \n\
-import subprocess \n\
 import sys \n\
 \n\
-localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
-os.environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj")) \n\
-os.environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal")) \n\
-caPath = "/etc/ssl/certs/ca-certificates.crt" \n\
-if os.path.exists(caPath): \n\
-    os.environ.setdefault("CURL_CA_BUNDLE", caPath) \n\
-\n\
 def program(): \n\
-    name = os.path.basename(sys.argv[0]) \n\
-    raise SystemExit(subprocess.call([os.path.join(os.path.dirname(__file__), name)] + sys.argv[1:])) \n\
+    environ = os.environ.copy() \n\
+    localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
+    environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj")) \n\
+    environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal")) \n\
+    caPath = "/etc/ssl/certs/ca-certificates.crt" \n\
+    if os.path.exists(caPath): \n\
+        environ.setdefault("CURL_CA_BUNDLE", caPath) \n\
+\n\
+    path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0])) \n\
+    os.execve(path, sys.argv, environ) \n\
 """ \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
@@ -1580,16 +1579,16 @@ RUN echo "`date` python-mapnik" >> /build/log.txt && \
     python -c $'# \n\
 path = "mapnik/bin/__init__.py" \n\
 s = """import os \n\
-import subprocess \n\
 import sys \n\
 \n\
-localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
-os.environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj")) \n\
-os.environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal")) \n\
-\n\
 def program(): \n\
-    name = os.path.basename(sys.argv[0]) \n\
-    raise SystemExit(subprocess.call([os.path.join(os.path.dirname(__file__), name)] + sys.argv[1:])) \n\
+    environ = os.environ.copy() \n\
+    localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
+    environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj")) \n\
+    environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal")) \n\
+\n\
+    path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0])) \n\
+    os.execve(path, sys.argv, environ) \n\
 """ \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
@@ -1699,12 +1698,11 @@ open(path, "w").write(s)' && \
     python -c $'# \n\
 path = "openslide/bin/__init__.py" \n\
 s = """import os \n\
-import subprocess \n\
 import sys \n\
 \n\
 def program(): \n\
-    name = os.path.basename(sys.argv[0]) \n\
-    raise SystemExit(subprocess.call([os.path.join(os.path.dirname(__file__), name)] + sys.argv[1:])) \n\
+    path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0])) \n\
+    os.execv(path, sys.argv) \n\
 """ \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
@@ -1886,7 +1884,7 @@ RUN echo "`date` libgsf" >> /build/log.txt && \
 #  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz JXL LQR RAQM RAW WMF
 RUN echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.0.10-51 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.0.10-55 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
@@ -1950,12 +1948,11 @@ open(path, "w").write(s)' && \
     python -c $'# \n\
 path = "pyvips/bin/__init__.py" \n\
 s = """import os \n\
-import subprocess \n\
 import sys \n\
 \n\
 def program(): \n\
-    name = os.path.basename(sys.argv[0]) \n\
-    raise SystemExit(subprocess.call([os.path.join(os.path.dirname(__file__), name)] + sys.argv[1:])) \n\
+    path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0])) \n\
+    os.execv(path, sys.argv) \n\
 """ \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
@@ -2003,15 +2000,15 @@ open(path, "w").write(s)' && \
     python -c $'# \n\
 path = "pyproj/bin/__init__.py" \n\
 s = """import os \n\
-import subprocess \n\
 import sys \n\
 \n\
-localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
-os.environ.setdefault("PROJ_LIB", os.path.join(localpath, "..", "proj")) \n\
-\n\
 def program(): \n\
-    name = os.path.basename(sys.argv[0]) \n\
-    raise SystemExit(subprocess.call([os.path.join(os.path.dirname(__file__), name)] + sys.argv[1:])) \n\
+    environ = os.environ.copy() \n\
+    localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
+    environ.setdefault("PROJ_LIB", os.path.join(localpath, "..", "proj")) \n\
+\n\
+    path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0])) \n\
+    os.execve(path, sys.argv, environ) \n\
 """ \n\
 open(path, "w").write(s)' && \
     cp -r /usr/local/share/proj pyproj/. && \
@@ -2155,12 +2152,11 @@ RUN echo "`date` javabridge" >> /build/log.txt && \
     python -c $'# \n\
 path = "javabridge/jvm/bin/__init__.py" \n\
 s = """import os \n\
-import subprocess \n\
 import sys \n\
 \n\
 def program(): \n\
-    name = os.path.basename(sys.argv[0]) \n\
-    raise SystemExit(subprocess.call([os.path.join(os.path.dirname(__file__), name)] + sys.argv[1:])) \n\
+    path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0])) \n\
+    os.execv(path, sys.argv) \n\
 """ \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
