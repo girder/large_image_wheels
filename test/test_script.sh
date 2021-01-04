@@ -11,7 +11,13 @@ pip install --upgrade setuptools
 # echo 'Test installing all libraries from wheels'
 # pip install libtiff openslide_python pyvips GDAL mapnik -f /wheels
 echo 'Test installing pyvips and other dependencies from wheels via large_image'
+# Install python-bioformats here; it requires an older version of 
+# python-javabridge.  When it is updated, reenable its installation further in
+# this script.
+pip install python-bioformats -f ${1:-/wheels} -f https://girder.github.io/large_image_wheels 
 pip install pyvips large_image[sources,memcached] -f ${1:-/wheels}
+# Install the most recent python-javabridge so we can test it.  
+pip install --upgrade python-javabridge -f ${1:-/wheels} 
 
 echo 'Test basic import of libtiff'
 python -c 'import libtiff'
@@ -23,15 +29,10 @@ echo 'Test basic import of gdal'
 python -c 'from osgeo import gdal'
 echo 'Test basic import of mapnik'
 python -c 'import mapnik'
-if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 5)))'; then
-  echo 'Test basic import of javabridge'
-  python -c 'import javabridge'
-  echo 'Test basic imports of all wheels'
-  python -c 'import libtiff, openslide, pyvips, osgeo, mapnik, glymur, javabridge'
-else  
-  echo 'Test basic imports of all wheels'
-  python -c 'import libtiff, openslide, pyvips, osgeo, mapnik, glymur'
-fi
+echo 'Test basic import of javabridge'
+python -c 'import javabridge'
+echo 'Test basic imports of all wheels'
+python -c 'import libtiff, openslide, pyvips, osgeo, mapnik, glymur, javabridge'
 echo 'Test import of pyproj after mapnik'
 python <<EOF
 import mapnik
@@ -239,16 +240,10 @@ print(d)
 sys.exit(s == d)
 EOF
 
-if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 5)))'; then
-
 echo 'test javabridge'
 java -version
-pip install python-bioformats
+# pip install python-bioformats
 python -c 'import javabridge, bioformats;javabridge.start_vm(class_path=bioformats.JARS, run_headless=True);javabridge.kill_vm()'
-
-fi
-
-if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 6)))' ; then
 
 echo 'test with Django gis'
 pip install django
@@ -268,6 +263,4 @@ poly2 = poly.transform(trans, clone=True)
 print(poly2)
 sys.exit(str(poly)[10:]==str(poly2)[10:])
 EOF
-
-fi
 

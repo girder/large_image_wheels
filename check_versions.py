@@ -65,6 +65,11 @@ Packages = {
         'filelist': 'https://www.freedesktop.org/software/fontconfig/release/',
         're': r'fontconfig-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
+    'fossil': {
+        'json': 'https://www.fossil-scm.org/index.html/juvlist',
+        'keys': lambda data: [entry['name'] for entry in data],
+        're': r'fossil-src-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+    },
     'freetype': {
         'filelist': 'https://download.savannah.gnu.org/releases/freetype',
         're': r'freetype-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
@@ -73,11 +78,6 @@ Packages = {
         'fossil': 'https://www.gaia-gis.it/fossil/freexl/timeline?n=10&r=trunk&&s=x',
         # 'filelist': 'https://www.gaia-gis.it/fossil/freexl/',
         # 're': r'freexl-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
-    },
-    'fossil': {
-        'json': 'https://www.fossil-scm.org/index.html/juvlist',
-        'keys': lambda data: [entry['name'] for entry in data],
-        're': r'fossil-src-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
     'fyba': {
         'gitsha': 'https://github.com/kartverket/fyba.git',
@@ -96,10 +96,6 @@ Packages = {
         'git': 'https://github.com/OSGeo/gdal.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
-    'gettext': {
-        'filelist': 'https://ftp.gnu.org/pub/gnu/gettext/',
-        're': r'gettext-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
-    },
     'gdk-pixbuf': {
         'json': 'https://download.gnome.org/sources/gdk-pixbuf/cache.json',
         'keys': lambda data: list(data[1]['gdk-pixbuf']),
@@ -108,6 +104,14 @@ Packages = {
     'geos': {
         'git': 'https://github.com/libgeos/geos.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
+    'gettext': {
+        'filelist': 'https://ftp.gnu.org/pub/gnu/gettext/',
+        're': r'gettext-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+    },
+    'giflib': {
+        'filelist': 'https://sourceforge.net/projects/giflib/files/',
+        're': r'giflib-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.gz\/download'
     },
     'glib': {
         'json': 'https://download.gnome.org/sources/glib/cache.json',
