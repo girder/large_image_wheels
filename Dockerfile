@@ -220,7 +220,7 @@ cd /build && \
 # CMake - use a precompiled binary
 RUN \
     echo "`date` cmake" >> /build/log.txt && \
-    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.19.4/cmake-3.19.4-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.19.5/cmake-3.19.5-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
     mkdir cmake && \
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz && \
@@ -603,7 +603,7 @@ cd /build && \
     echo "`date` util-linux" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v2.36 https://github.com/karelzak/util-linux.git && \
+    git clone --depth=1 --single-branch -b v2.36.2 https://github.com/karelzak/util-linux.git && \
     cd util-linux && \
     sed -i 's/#ifndef UMOUNT_UNUSED/#ifndef O_PATH\n# define O_PATH 010000000\n#endif\n\n#ifndef UMOUNT_UNUSED/g' libmount/src/context_umount.c && \
     ./autogen.sh && \
@@ -2166,7 +2166,7 @@ open(path, "w").write(data)' && \
 RUN \
     echo "`date` javabridge" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v4.0.1 https://github.com/CellProfiler/python-javabridge.git && \
+    git clone --depth=1 --single-branch -b v4.0.2 https://github.com/CellProfiler/python-javabridge.git && \
     cd python-javabridge && \
     # Include java libraries \
     mkdir javabridge/jvm && \

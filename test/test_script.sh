@@ -5,19 +5,19 @@ export CPL_DEBUG=ON
 export OGR_CT_DEBUG=ON
 
 python --version
-pip install --upgrade pip 
+pip install --upgrade pip
 pip install --upgrade setuptools
 # which pip2 && pip2 install virtualenv==20.0.5 || true
 # echo 'Test installing all libraries from wheels'
 # pip install libtiff openslide_python pyvips GDAL mapnik -f /wheels
 echo 'Test installing pyvips and other dependencies from wheels via large_image'
-# Install python-bioformats here; it requires an older version of 
+# Install python-bioformats here; it requires an older version of
 # python-javabridge.  When it is updated, reenable its installation further in
 # this script.
-pip install python-bioformats -f ${1:-/wheels} -f https://girder.github.io/large_image_wheels 
+## pip install python-bioformats -f ${1:-/wheels} -f https://girder.github.io/large_image_wheels
 pip install pyvips large_image[sources,memcached] -f ${1:-/wheels}
-# Install the most recent python-javabridge so we can test it.  
-pip install --upgrade python-javabridge -f ${1:-/wheels} 
+# Install the most recent python-javabridge so we can test it.
+## pip install --upgrade python-javabridge -f ${1:-/wheels}
 
 echo 'Test basic import of libtiff'
 python -c 'import libtiff'
@@ -71,7 +71,7 @@ echo 'Use large_image to read a tiff file that requires a newer openjpeg'
 python <<EOF
 import pyvips
 pyvips.Image.new_from_file('sample_jp2.tif').write_to_file(
-  'sample_jp2_out.tif', compression='jpeg', Q=90, tile=True, 
+  'sample_jp2_out.tif', compression='jpeg', Q=90, tile=True,
   tile_width=256, tile_height=256, pyramid=True, bigtiff=True)
 import large_image, pprint
 ts = large_image.getTileSource('sample_jp2_out.tif')
@@ -242,7 +242,8 @@ EOF
 
 echo 'test javabridge'
 java -version
-# pip install python-bioformats
+# Disable this line if we need a specific version
+pip install python-bioformats
 python -c 'import javabridge, bioformats;javabridge.start_vm(class_path=bioformats.JARS, run_headless=True);javabridge.kill_vm()'
 
 echo 'test with Django gis'
