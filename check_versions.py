@@ -7,6 +7,7 @@ import re
 import requests
 import subprocess
 import sys
+import urllib3
 
 verbose = len([arg for arg in sys.argv[1:] if arg == '-v'])
 
@@ -510,13 +511,19 @@ def compareVersions(a, b):
     return 0
 
 
+session = requests.Session()
+retries = urllib3.util.retry.Retry(
+    total=10, backoff_factor=0.1, status_forcelist=[104, 500, 502, 503, 504])
+session.mount('http://', requests.adapters.HTTPAdapter(max_retries=retries))
+session.mount('https://', requests.adapters.HTTPAdapter(max_retries=retries))
+
 for pkg in sorted(Packages):
     try:
         pkginfo = Packages[pkg]
         entries = None
         versions = None
         if 'filelist' in pkginfo:
-            data = requests.get(pkginfo['filelist']).text
+            data = session.get(pkginfo['filelist']).text
             if verbose >= 2:
                 print(pkg, 'filelist data', data)
             data = data.replace('<A ', '<a ').replace('HREF="', 'href="')
@@ -536,7 +543,7 @@ for pkg in sorted(Packages):
             if verbose >= 1:
                 print(pkg, 'gitsha versions', versions)
         elif 'json' in pkginfo:
-            data = requests.get(pkginfo['json']).json()
+            data = session.get(pkginfo['json']).json()
             if verbose >= 2:
                 print(pkg, 'json data', data)
             entries = pkginfo['keys'](data)
@@ -544,21 +551,21 @@ for pkg in sorted(Packages):
                 print(pkg, 'json entries', entries)
         elif 'pypi' in pkginfo:
             url = 'https://pypi.python.org/pypi/%s/json' % pkginfo['pypi']
-            releases = requests.get(url).json()['releases']
+            releases = session.get(url).json()['releases']
             if verbose >= 2:
                 print(pkg, 'pypi releases', entries)
             versions = sorted(releases, key=pkg_resources.parse_version)
             if verbose >= 1:
                 print(pkg, 'pypi versions', versions)
         elif 'text' in pkginfo:
-            data = requests.get(pkginfo['text']).content.decode('utf8')
+            data = session.get(pkginfo['text']).content.decode('utf8')
             if verbose >= 2:
                 print(pkg, 'text data', data)
             entries = pkginfo['keys'](data)
             if verbose >= 1:
                 print(pkg, 'text entries', entries)
         elif 'fossil' in pkginfo:
-            data = requests.get(pkginfo['fossil']).text
+            data = session.get(pkginfo['fossil']).text
             if verbose >= 2:
                 print(pkg, 'fossil data', data)
             entries = [entry.split(']<')[0]
@@ -576,7 +583,7 @@ for pkg in sorted(Packages):
         if 'subre' in pkginfo:
             pversions = versions
             for pos in range(-1, -len(pversions) - 1, -1):
-                data = requests.get(pkginfo['filelist'] + pkginfo['sub'](pversions[pos])).text
+                data = session.get(pkginfo['filelist'] + pkginfo['sub'](pversions[pos])).text
                 if verbose >= 2:
                     print(pkg, 'subre data', data)
                 data = data.replace('<A ', '<a ').replace('HREF="', 'href="')
