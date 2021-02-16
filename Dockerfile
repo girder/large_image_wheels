@@ -2166,7 +2166,7 @@ open(path, "w").write(data)' && \
 RUN \
     echo "`date` javabridge" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v4.0.2 https://github.com/CellProfiler/python-javabridge.git && \
+    git clone --depth=1 --single-branch -b v4.0.3 https://github.com/CellProfiler/python-javabridge.git && \
     cd python-javabridge && \
     # Include java libraries \
     mkdir javabridge/jvm && \

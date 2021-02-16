@@ -23,7 +23,7 @@ gdk-pixbuf 2.42.2
 geos 3.9.1
 gettext 0.21
 giflib 5.2.1
-glib 2.67.3
+glib 2.67.4
 glymur 0.9.3
 glymur-pypi 0.9.3
 gobject-introspection 1.66.1
@@ -33,7 +33,7 @@ hdf5 1.12.0
 icu4c 68-2
 imagemagick 7.0.10-62
 jasper 2.0.25
-javabridge 4.0.2
+javabridge 4.0.3
 javabridge-pypi 1.0.19
 jbigkit 2.1
 libcroco 0.6.13
