@@ -172,6 +172,10 @@ Packages = {
         'filelist': 'https://www.cl.cam.ac.uk/~mgk25/jbigkit/download/',
         're': r'jbigkit-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
+    'lapack': {
+        'git': 'https://github.com/Reference-LAPACK/lapack',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
     'libcroco': {
         'json': 'https://download.gnome.org/sources/libcroco/cache.json',
         'keys': lambda data: list(data[1]['libcroco']),
