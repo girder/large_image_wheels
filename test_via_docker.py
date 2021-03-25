@@ -88,6 +88,6 @@ if __name__ == '__main__':
     print('Passed')
 
 # To test manually, run a container such as
-#  docker run -v `pwd`/wheels:/wheels --rm -it python:3.7 bash
+#  docker run -v `pwd`/wheels:/wheels -v `pwd`/test:/test --rm -it python:3.7 bash
 # and then enter the script commands directly, typically starting with
 #  pip install pyvips large_image[sources,memcached] -f ${1:-/wheels}

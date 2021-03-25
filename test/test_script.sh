@@ -4,6 +4,9 @@ set -e
 export CPL_DEBUG=ON
 export OGR_CT_DEBUG=ON
 
+# python -m venv venv
+# . venv/bin/activate
+
 python --version
 pip install --upgrade pip
 pip install --upgrade setuptools

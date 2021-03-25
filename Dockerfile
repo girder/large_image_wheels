@@ -172,7 +172,7 @@ cd /build && \
 # RUN \
     echo "`date` curl" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_75_0/curl-7.75.0.tar.gz -L -o curl.tar.gz && \
+    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_76_1/curl-7.76.1.tar.gz -L -o curl.tar.gz && \
     mkdir curl && \
     tar -zxf curl.tar.gz -C curl --strip-components 1 && \
     rm -f curl.tar.gz && \
@@ -229,7 +229,7 @@ cd /build && \
 # CMake - use a precompiled binary
 RUN \
     echo "`date` cmake" >> /build/log.txt && \
-    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.20.0/cmake-3.20.0-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.20.1/cmake-3.20.1-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
     mkdir cmake && \
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz && \
@@ -282,7 +282,7 @@ RUN \
     rm -rf ~/.cache && \
     echo "`date` psutil" >> /build/log.txt
 
-# We had build ultajsn, but it now supplies its own wheels.
+# We had built ultrajson, but it now supplies its own wheels.
 
 # OpenJPEG
 
@@ -384,7 +384,7 @@ cd /build && \
 # RUN \
     echo "`date` libjpeg-turbo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.0.90.tar.gz -L -o libjpeg-turbo.tar.gz && \
+    curl --retry 5 --silent https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.1.0.tar.gz -L -o libjpeg-turbo.tar.gz && \
     mkdir libjpeg-turbo && \
     tar -zxf libjpeg-turbo.tar.gz -C libjpeg-turbo --strip-components 1 && \
     rm -f libjpeg-turbo.tar.gz && \
@@ -645,7 +645,7 @@ RUN \
     echo "`date` glib" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.68/glib-2.68.0.tar.xz -L -o glib-2.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.68/glib-2.68.1.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
@@ -749,7 +749,7 @@ RUN \
     echo "`date` gdk-pixbuf" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/gdk-pixbuf/2.42/gdk-pixbuf-2.42.4.tar.xz -L -o gdk-pixbuf.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/gdk-pixbuf/2.42/gdk-pixbuf-2.42.6.tar.xz -L -o gdk-pixbuf.tar.xz && \
     unxz gdk-pixbuf.tar.xz && \
     mkdir gdk-pixbuf && \
     tar -xf gdk-pixbuf.tar -C gdk-pixbuf --strip-components 1 && \
@@ -783,7 +783,7 @@ RUN \
     echo "`date` icu4c" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    git clone --depth=1 --single-branch -b release-68-2 https://github.com/unicode-org/icu.git && \
+    git clone --depth=1 --single-branch -b release-69-1 https://github.com/unicode-org/icu.git && \
     cd icu/icu4c/source && \
     CFLAGS="$CFLAGS -O2 -DUNISTR_FROM_CHAR_EXPLICIT=explicit -DUNISTR_FROM_STRING_EXPLICIT=explicit -DU_CHARSET_IS_UTF8=1 -DU_NO_DEFAULT_INCLUDE_UTF_HEADERS=1 -DU_HIDE_OBSOLETE_UTF_OLD_H=1" ./configure --silent --prefix=/usr/local --disable-tests --disable-samples --with-data-packaging=library --disable-static && \
     make --silent -j ${JOBS} && \
@@ -816,7 +816,7 @@ RUN \
 RUN \
     echo "`date` boost" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b boost-1.75.0 --quiet --recurse-submodules -j ${JOBS} https://github.com/boostorg/boost.git && \
+    git clone --depth=1 --single-branch -b boost-1.76.0 --quiet --recurse-submodules -j ${JOBS} https://github.com/boostorg/boost.git && \
     cd boost && \
     # pushd libs/spirit && \
     # # switch to a version of spirit that fixes a bug in 1.70 and 1.71 \
@@ -841,7 +841,7 @@ RUN \
 # binaries fail because they can't find any of a list of versions of GLIBC.
 RUN \
     echo "`date` fossil" >> /build/log.txt && \
-    curl --retry 5 --silent -L https://www.fossil-scm.org/index.html/uv/fossil-src-2.14.tar.gz -o fossil.tar.gz && \
+    curl --retry 5 --silent -L https://www.fossil-scm.org/index.html/uv/fossil-src-2.15.1.tar.gz -o fossil.tar.gz && \
     mkdir fossil && \
     tar -zxf fossil.tar.gz -C fossil --strip-components 1 && \
     rm -f fossil.tar.gz && \
@@ -883,7 +883,7 @@ RUN \
 RUN \
     echo "`date` sqlite" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://sqlite.org/2021/sqlite-autoconf-3350200.tar.gz -L -o sqlite.tar.gz && \
+    curl --retry 5 --silent https://sqlite.org/2021/sqlite-autoconf-3350500.tar.gz -L -o sqlite.tar.gz && \
     mkdir sqlite && \
     tar -zxf sqlite.tar.gz -C sqlite --strip-components 1 && \
     rm -f sqlite.tar.gz && \
@@ -1013,7 +1013,7 @@ RUN \
     echo "`date` libexpat" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/libexpat/libexpat/archive/R_2_2_10.tar.gz -L -o libexpat.tar.gz && \
+    curl --retry 5 --silent https://github.com/libexpat/libexpat/archive/R_2_3_0.tar.gz -L -o libexpat.tar.gz && \
     mkdir libexpat && \
     tar -zxf libexpat.tar.gz -C libexpat --strip-components 1 && \
     rm -f libexpat.tar.gz && \
@@ -1158,7 +1158,7 @@ RUN \
     cd hdf5 && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DHDF5_BUILD_EXAMPLES=OFF -DHDF5_BUILD_FORTRAN=OFF -DHDF5_ENABLE_PARALLEL=ON -DHDF5_ENABLE_Z_LIB_SUPPORT=ON -DHDF5_BUILD_GENERATORS=ON -DHDF5_ENABLE_DIRECT_VFD=ON -DHDF5_BUILD_CPP_LIB=OFF -DHDF5_DISABLE_COMPILER_WARNINGS=ON -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DDEFAULT_API_VERSION=v18 -DHDF5_BUILD_EXAMPLES=OFF -DHDF5_BUILD_FORTRAN=OFF -DHDF5_ENABLE_PARALLEL=ON -DHDF5_ENABLE_Z_LIB_SUPPORT=ON -DHDF5_BUILD_GENERATORS=ON -DHDF5_ENABLE_DIRECT_VFD=ON -DHDF5_BUILD_CPP_LIB=OFF -DHDF5_DISABLE_COMPILER_WARNINGS=ON -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1184,7 +1184,7 @@ RUN \
     echo "`date` netcdf" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v4.7.4 https://github.com/Unidata/netcdf-c && \
+    git clone --depth=1 --single-branch -b v4.8.0 https://github.com/Unidata/netcdf-c && \
     cd netcdf-c && \
     mkdir _build && \
     cd _build && \
@@ -1198,7 +1198,7 @@ RUN \
     echo "`date` mysql" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # curl --retry 5 --silent https://dev.mysql.com/get/Downloads/MySQL-5.7/mysql-boost-5.7.29.tar.gz -L -o mysql.tar.gz && \
-    curl --retry 5 --silent https://cdn.mysql.com/Downloads/MySQL-8.0/mysql-boost-8.0.23.tar.gz -L -o mysql.tar.gz && \
+    curl --retry 5 --silent https://cdn.mysql.com/Downloads/MySQL-8.0/mysql-boost-8.0.24.tar.gz -L -o mysql.tar.gz && \
     mkdir mysql && \
     tar -zxf mysql.tar.gz -C mysql --strip-components 1 && \
     rm -f mysql.tar.gz && \
@@ -1244,7 +1244,7 @@ RUN \
     tar -zxf postgresql.tar.gz -C postgresql --strip-components 1 && \
     rm -f postgresql.tar.gz && \
     cd postgresql && \
-    sed -i 's/2\.69/2.70/g' configure.in && \
+    sed -i 's/2\.69/2.71/g' configure.in && \
     autoreconf -ifv && \
     ./configure --silent --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
@@ -1256,7 +1256,7 @@ RUN \
     echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-21.03.0.tar.xz -L -o poppler.tar.xz && \
+    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-21.04.0.tar.xz -L -o poppler.tar.xz && \
     unxz poppler.tar.xz && \
     mkdir poppler && \
     tar -xf poppler.tar -C poppler --strip-components 1 && \
@@ -1305,7 +1305,7 @@ RUN \
 RUN \
     echo "`date` jasper" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b version-2.0.27 https://github.com/mdadams/jasper.git && \
+    git clone --depth=1 --single-branch -b version-2.0.32 https://github.com/mdadams/jasper.git && \
     cd jasper && \
     # git apply ../jasper-jp2_cod.c.patch && \
     mkdir _build && \
@@ -1324,7 +1324,7 @@ RUN \
     echo "`date` libxcrypt" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v4.4.18 https://github.com/besser82/libxcrypt.git && \
+    git clone --depth=1 --single-branch -b v4.4.19 https://github.com/besser82/libxcrypt.git && \
     cd libxcrypt && \
     # autoreconf -ifv && \
     ./autogen.sh && \
@@ -1422,7 +1422,7 @@ RUN \
 RUN \
     echo "`date` armadillo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-10.3.0.tar.xz -L -o armadillo.tar.xz && \
+    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-10.4.1.tar.xz -L -o armadillo.tar.xz && \
     unxz armadillo.tar.xz && \
     mkdir armadillo && \
     tar -xf armadillo.tar -C armadillo --strip-components 1 && \
@@ -1540,8 +1540,8 @@ data = re.sub( \n\
     "gdal_version = \'" + os.popen("gdal-config --version").read().strip() + "\'", \n\
     data) \n\
 data = data.replace( \n\
-    "    scripts=glob(\'scripts/*.py\'),", \n\
-"""    scripts=glob(\'scripts/*.py\'), \n\
+    "scripts/*.py\'),", \n\
+"""scripts/*.py\'), \n\
     package_data={\'osgeo\': [\'proj/*\', \'gdal/*\', \'bin/*\']}, \n\
     entry_points={\'console_scripts\': [\'%s=osgeo.bin:program\' % name for name in os.listdir(\'osgeo/bin\') if not name.endswith(\'.py\')]},""") \n\
 data = data.replace("    python_requires=\'>=3.6.0\',", "") \n\
@@ -1572,9 +1572,10 @@ GEOS_LIBRARY_PATH = _libs["libgeos_c"] \n\
 """) \n\
 open(path, "w").write(s)' && \
     # Copy python ports of c utilities to scripts so they get bundled.
-    cp samples/gdalinfo.py scripts/gdalinfo.py && \
-    cp samples/ogrinfo.py scripts/ogrinfo.py && \
-    cp samples/ogr2ogr.py scripts/ogr2ogr.py && \
+    mkdir scripts && \
+    cp gdal-utils/osgeo_utils/samples/gdalinfo.py scripts/gdalinfo.py && \
+    cp gdal-utils/osgeo_utils/samples/ogrinfo.py scripts/ogrinfo.py && \
+    cp gdal-utils/osgeo_utils/samples/ogr2ogr.py scripts/ogr2ogr.py && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
@@ -1608,10 +1609,15 @@ RUN \
 RUN \
     echo "`date` mapnik" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    # git clone --depth=10 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
-    git clone --depth=1 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
+    # Master \
+    # git clone --depth=1 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
+    # cd mapnik && \
+    # Specific checkout \
+    git clone --depth=1000 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
     cd mapnik && \
-    # git checkout fdf60044c3042c1de94f6b4b854fed2830d79b37 && \
+    # Mar 5 \
+    git checkout f1fc3c49488c3692c4c64afc98ef4c7eca9b6165 && \
+    # Common \
     rm -rf .git && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
     python scons/scons.py configure JOBS=`nproc` \
@@ -1855,7 +1861,7 @@ RUN \
     echo "`date` pango" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.48/pango-1.48.3.tar.xz -L -o pango.tar.xz && \
+    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.48/pango-1.48.4.tar.xz -L -o pango.tar.xz && \
     unxz pango.tar.xz && \
     mkdir pango && \
     tar -xf pango.tar -C pango --strip-components 1 && \
@@ -1935,7 +1941,7 @@ RUN \
     echo "`date` librsvg" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.51/librsvg-2.51.0.tar.xz -L -o librsvg.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.51/librsvg-2.51.1.tar.xz -L -o librsvg.tar.xz && \
     unxz librsvg.tar.xz && \
     mkdir librsvg && \
     tar -xf librsvg.tar -C librsvg --strip-components 1 && \
@@ -1974,7 +1980,7 @@ RUN \
 RUN \
     echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.0.11-4 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.0.11-9 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
@@ -2072,18 +2078,8 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` pyproj4" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --single-branch https://github.com/pyproj4/pyproj.git && \
+    git clone --single-branch -b 3.0.1 https://github.com/pyproj4/pyproj.git && \
     cd pyproj && \
-    python -c $'# \n\
-path = "pyproj/__init__.py" \n\
-s = open(path).read() \n\
-s = s.replace(\n\
-    "import sys", \n\
-"""import sys \n\
-import os \n\
-localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
-os.environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj"))""") \n\
-open(path, "w").write(s)' && \
     mkdir pyproj/bin && \
     find /build/proj.4/src/.libs/ -executable -type f ! -name '*.so.*' -exec cp {} pyproj/bin/. \; && \
     strip pyproj/bin/* --strip-unneeded -p -D && \
@@ -2105,11 +2101,11 @@ open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    # Python >= 3.6 \
-    git checkout 3.0.1 && \
     python -c $'# \n\
+import re \n\
 path = "pyproj/__init__.py" \n\
 s = open(path).read() \n\
+s = re.sub(r"(__version__ = \\"[^\\"]*)\\"", "\\\\1.1\\"", s) \n\
 s = s.replace("2.4.rc0", "2.4") \n\
 s = s.replace("import warnings", \n\
 """import warnings \n\
