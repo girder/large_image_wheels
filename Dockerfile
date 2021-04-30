@@ -3,13 +3,13 @@ FROM quay.io/pypa/manylinux2010_x86_64
 RUN mkdir /build
 WORKDIR /build
 
-# Don't build python 3.4 or 3.5 wheels.
+# Don't build some versions of python.
 RUN \
-    echo "`date` rm cp34 cp35" >> /build/log.txt && \
-    rm -rf /opt/python/cp34* && \
+    echo "`date` rm python versions" >> /build/log.txt && \
     rm -rf /opt/python/cp35* && \
-    # rm -rf /opt/python/cp39* && \
-    echo "`date` rm cp34 cp35" >> /build/log.txt
+    # Enable 3.10 in boost as well \
+    rm -rf /opt/python/cp310* && \
+    echo "`date` rm python versions" >> /build/log.txt
 
 RUN \
     echo "`date` yum install" >> /build/log.txt && \
@@ -229,7 +229,7 @@ cd /build && \
 # CMake - use a precompiled binary
 RUN \
     echo "`date` cmake" >> /build/log.txt && \
-    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.20.1/cmake-3.20.1-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.20.2/cmake-3.20.2-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
     mkdir cmake && \
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz && \
@@ -253,14 +253,14 @@ cd /build && \
     ldconfig && \
     # Because we will recompress all wheels, we can create them with no \
     # compression to save some time \
-    sed -i 's/ZIP_DEFLATED/ZIP_STORED/g' /opt/_internal/tools/lib/python3.7/site-packages/auditwheel/tools.py && \
+    sed -i 's/ZIP_DEFLATED/ZIP_STORED/g' /opt/_internal/tools/lib/python3.9/site-packages/auditwheel/tools.py && \
     echo "`date` advancecomp" >> /build/log.txt
 
 # vips doesn't work with auditwheel 3.2 since the copylib doesn't adjust
 # rpaths the same as 3.1.1.  Revert that aspect of the behavior.
 RUN \
     echo "`date` auditwheel" >> /build/log.txt && \
-    sed -i 's/patcher.set_rpath(dest_path, dest_dir)/new_rpath = os.path.relpath(dest_dir, os.path.dirname(dest_path))\n        new_rpath = os.path.join('\''$ORIGIN'\'', new_rpath)\n        patcher.set_rpath(dest_path, new_rpath)/g' /opt/_internal/tools/lib/python3.7/site-packages/auditwheel/repair.py && \
+    sed -i 's/patcher.set_rpath(dest_path, dest_dir)/new_rpath = os.path.relpath(dest_dir, os.path.dirname(dest_path))\n        new_rpath = os.path.join('\''$ORIGIN'\'', new_rpath)\n        patcher.set_rpath(dest_path, new_rpath)/g' /opt/_internal/tools/lib/python3.9/site-packages/auditwheel/repair.py && \
     echo "`date` auditwheel" >> /build/log.txt
 
 # Packages used by large_image that don't have published wheels for all the
@@ -637,8 +637,8 @@ data = open(path).read().replace( \n\
 open(path, "w").write(data)' && \
     # Also change auditwheel so it doesn't check for a higher priority \
     # platform; that process is slow \
-    sed -i 's/analyzed_tag = /analyzed_tag = reqd_tag  #/g' /opt/_internal/tools/lib/python3.7/site-packages/auditwheel/main_repair.py && \
-    sed -i 's/if reqd_tag < get_priority_by_name(analyzed_tag):/if False:  #/g' /opt/_internal/tools/lib/python3.7/site-packages/auditwheel/main_repair.py && \
+    sed -i 's/analyzed_tag = /analyzed_tag = reqd_tag  #/g' /opt/_internal/tools/lib/python3.9/site-packages/auditwheel/main_repair.py && \
+    sed -i 's/if reqd_tag < get_priority_by_name(analyzed_tag):/if False:  #/g' /opt/_internal/tools/lib/python3.9/site-packages/auditwheel/main_repair.py && \
     echo "`date` auditwheel policy" >> /build/log.txt
 
 RUN \
@@ -832,6 +832,7 @@ RUN \
     echo "using python : 3.7 : /opt/python/cp37-cp37m/bin/python : /opt/python/cp37-cp37m/include/python3.7m : /opt/python/cp37-cp37m/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.8 : /opt/python/cp38-cp38/bin/python : /opt/python/cp38-cp38/include/python3.8 : /opt/python/cp38-cp38/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.9 : /opt/python/cp39-cp39/bin/python : /opt/python/cp39-cp39/include/python3.9 : /opt/python/cp39-cp39/lib ;" >> tools/build/src/user-config.jam && \
+    # echo "using python : 3.10 : /opt/python/cp39-cp39/bin/python : /opt/python/cp310-cp319/include/python3.10 : /opt/python/cp310-cp310/lib ;" >> tools/build/src/user-config.jam && \
     ./bootstrap.sh --prefix=/usr/local --with-toolset=gcc variant=release && \
     ./b2 -d1 -j ${JOBS} toolset=gcc variant=release link=shared --build-type=minimal python=3.6,3.7,3.8,3.9 cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable -Wno-parentheses -Wno-maybe-uninitialized" install && \
     ldconfig && \
@@ -1256,7 +1257,7 @@ RUN \
     echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-21.04.0.tar.xz -L -o poppler.tar.xz && \
+    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-21.05.0.tar.xz -L -o poppler.tar.xz && \
     unxz poppler.tar.xz && \
     mkdir poppler && \
     tar -xf poppler.tar -C poppler --strip-components 1 && \
@@ -1324,7 +1325,7 @@ RUN \
     echo "`date` libxcrypt" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v4.4.19 https://github.com/besser82/libxcrypt.git && \
+    git clone --depth=1 --single-branch -b v4.4.20 https://github.com/besser82/libxcrypt.git && \
     cd libxcrypt && \
     # autoreconf -ifv && \
     ./autogen.sh && \
@@ -1383,7 +1384,7 @@ RUN \
 RUN \
     echo "`date` openblas" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v0.3.14 https://github.com/xianyi/OpenBLAS.git && \
+    git clone --depth=1 --single-branch -b v0.3.15 https://github.com/xianyi/OpenBLAS.git && \
     cd OpenBLAS && \
     mkdir _build && \
     cd _build && \
@@ -1481,9 +1482,9 @@ RUN \
     echo "`date` gdal" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # Specific branch \
-    # git clone --depth=1 --single-branch -b v3.2.2 https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch -b v3.3.0 https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
-    git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
     # Common \
     cd gdal/gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
@@ -1923,7 +1924,7 @@ RUN \
     echo "`date` libheif" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v1.11.0 https://github.com/strukturag/libheif.git && \
+    git clone --depth=1 --single-branch -b v1.12.0 https://github.com/strukturag/libheif.git && \
     cd libheif && \
     ./autogen.sh && \
     ./configure --silent --prefix=/usr/local --disable-static && \
@@ -1980,7 +1981,7 @@ RUN \
 RUN \
     echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.0.11-9 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.0.11-10 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
