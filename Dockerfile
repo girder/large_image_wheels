@@ -9,6 +9,7 @@ RUN \
     rm -rf /opt/python/cp35* && \
     # Enable 3.10 in boost as well \
     rm -rf /opt/python/cp310* && \
+    rm -rf /opt/python/pp37* && \
     echo "`date` rm python versions" >> /build/log.txt
 
 RUN \
@@ -202,7 +203,7 @@ cd /build && \
 RUN \
     echo "`date` perl" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://www.cpan.org/src/5.0/perl-5.32.1.tar.xz -L -o perl.tar.xz && \
+    curl --retry 5 --silent https://www.cpan.org/src/5.0/perl-5.34.0.tar.xz -L -o perl.tar.xz && \
     unxz perl.tar.xz && \
     mkdir perl && \
     tar -xf perl.tar -C perl --strip-components 1 && \
@@ -338,7 +339,7 @@ cd /build && \
 # RUN \
     echo "`date` zstd" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v1.4.9 https://github.com/facebook/zstd && \
+    git clone --depth=1 --single-branch -b v1.5.0 https://github.com/facebook/zstd && \
     cd zstd && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -575,7 +576,7 @@ cd /build && \
 #
 # RUN \
     echo "`date` meson" >> /build/log.txt && \
-    export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
+    export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
     pip3 install meson && \
     rm -rf ~/.cache && \
     echo "`date` meson" >> /build/log.txt && \
@@ -644,8 +645,8 @@ open(path, "w").write(data)' && \
 RUN \
     echo "`date` glib" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.68/glib-2.68.1.tar.xz -L -o glib-2.tar.xz && \
+    export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
+    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.68/glib-2.68.2.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
@@ -725,7 +726,7 @@ cd /build && \
 RUN \
     echo "`date` gobject-introspection" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
+    export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
     curl --retry 5 --silent https://download.gnome.org/sources/gobject-introspection/1.68/gobject-introspection-1.68.0.tar.xz -L -o gobject-introspection.tar.xz && \
     unxz gobject-introspection.tar.xz && \
     mkdir gobject-introspection && \
@@ -748,7 +749,7 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` gdk-pixbuf" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
+    export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
     curl --retry 5 --silent https://download.gnome.org/sources/gdk-pixbuf/2.42/gdk-pixbuf-2.42.6.tar.xz -L -o gdk-pixbuf.tar.xz && \
     unxz gdk-pixbuf.tar.xz && \
     mkdir gdk-pixbuf && \
@@ -782,7 +783,7 @@ RUN \
 RUN \
     echo "`date` icu4c" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
+    export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
     git clone --depth=1 --single-branch -b release-69-1 https://github.com/unicode-org/icu.git && \
     cd icu/icu4c/source && \
     CFLAGS="$CFLAGS -O2 -DUNISTR_FROM_CHAR_EXPLICIT=explicit -DUNISTR_FROM_STRING_EXPLICIT=explicit -DU_CHARSET_IS_UTF8=1 -DU_NO_DEFAULT_INCLUDE_UTF_HEADERS=1 -DU_HIDE_OBSOLETE_UTF_OLD_H=1" ./configure --silent --prefix=/usr/local --disable-tests --disable-samples --with-data-packaging=library --disable-static && \
@@ -942,7 +943,7 @@ RUN \
 RUN \
     echo "`date` minizip" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 3.0.1 https://github.com/nmoinvaz/minizip.git && \
+    git clone --depth=1 --single-branch -b 3.0.2 https://github.com/nmoinvaz/minizip.git && \
     cd minizip && \
     mkdir _build && \
     cd _build && \
@@ -1014,7 +1015,7 @@ RUN \
     echo "`date` libexpat" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/libexpat/libexpat/archive/R_2_3_0.tar.gz -L -o libexpat.tar.gz && \
+    curl --retry 5 --silent https://github.com/libexpat/libexpat/archive/R_2_4_1.tar.gz -L -o libexpat.tar.gz && \
     mkdir libexpat && \
     tar -zxf libexpat.tar.gz -C libexpat --strip-components 1 && \
     rm -f libexpat.tar.gz && \
@@ -1029,7 +1030,7 @@ RUN \
 RUN \
     echo "`date` fontconfig" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
+    export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
     curl --retry 5 --silent https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.13.93.tar.gz -L -o fontconfig.tar.gz && \
     mkdir fontconfig && \
     tar -zxf fontconfig.tar.gz -C fontconfig --strip-components 1 && \
@@ -1199,7 +1200,7 @@ RUN \
     echo "`date` mysql" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # curl --retry 5 --silent https://dev.mysql.com/get/Downloads/MySQL-5.7/mysql-boost-5.7.29.tar.gz -L -o mysql.tar.gz && \
-    curl --retry 5 --silent https://cdn.mysql.com/Downloads/MySQL-8.0/mysql-boost-8.0.24.tar.gz -L -o mysql.tar.gz && \
+    curl --retry 5 --silent https://cdn.mysql.com/Downloads/MySQL-8.0/mysql-boost-8.0.25.tar.gz -L -o mysql.tar.gz && \
     mkdir mysql && \
     tar -zxf mysql.tar.gz -C mysql --strip-components 1 && \
     rm -f mysql.tar.gz && \
@@ -1240,7 +1241,7 @@ RUN \
     echo "`date` postgres" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.postgresql.org/pub/source/v13.1/postgresql-13.1.tar.gz -L -o postgresql.tar.gz && \
+    curl --retry 5 --silent https://ftp.postgresql.org/pub/source/v13.3/postgresql-13.3.tar.gz -L -o postgresql.tar.gz && \
     mkdir postgresql && \
     tar -zxf postgresql.tar.gz -C postgresql --strip-components 1 && \
     rm -f postgresql.tar.gz && \
@@ -1256,7 +1257,7 @@ RUN \
 RUN \
     echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
+    export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
     curl --retry 5 --silent https://poppler.freedesktop.org/poppler-21.05.0.tar.xz -L -o poppler.tar.xz && \
     unxz poppler.tar.xz && \
     mkdir poppler && \
@@ -1423,7 +1424,7 @@ RUN \
 RUN \
     echo "`date` armadillo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-10.4.1.tar.xz -L -o armadillo.tar.xz && \
+    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-10.5.0.tar.xz -L -o armadillo.tar.xz && \
     unxz armadillo.tar.xz && \
     mkdir armadillo && \
     tar -xf armadillo.tar -C armadillo --strip-components 1 && \
@@ -1482,9 +1483,9 @@ RUN \
     echo "`date` gdal" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # Specific branch \
-    git clone --depth=1 --single-branch -b v3.3.0 https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch -b v3.3.0 https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
-    # git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
     # Common \
     cd gdal/gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
@@ -1620,7 +1621,7 @@ RUN \
     git checkout f1fc3c49488c3692c4c64afc98ef4c7eca9b6165 && \
     # Common \
     rm -rf .git && \
-    export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
+    export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
     python scons/scons.py configure JOBS=`nproc` \
     BOOST_INCLUDES=/usr/local/include BOOST_LIBS=/usr/local/lib \
     ICU_INCLUDES=/usr/local/include ICU_LIBS=/usr/local/lib \
@@ -1815,7 +1816,7 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` orc" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
+    export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
     curl --retry 5 --silent https://github.com/GStreamer/orc/archive/0.4.31.tar.gz -L -o orc.tar.gz && \
     mkdir orc && \
     tar -zxf orc.tar.gz -C orc --strip-components 1 && \
@@ -1847,7 +1848,7 @@ RUN \
 RUN \
     echo "`date` imagequant" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/ImageOptim/libimagequant/archive/2.14.0.tar.gz -L -o imagequant.tar.gz && \
+    curl --retry 5 --silent https://github.com/ImageOptim/libimagequant/archive/2.15.1.tar.gz -L -o imagequant.tar.gz && \
     mkdir imagequant && \
     tar -zxf imagequant.tar.gz -C imagequant --strip-components 1 && \
     rm -f imagequant.tar.gz && \
@@ -1861,8 +1862,8 @@ RUN \
 RUN \
     echo "`date` pango" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
-    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.48/pango-1.48.4.tar.xz -L -o pango.tar.xz && \
+    export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
+    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.48/pango-1.48.5.tar.xz -L -o pango.tar.xz && \
     unxz pango.tar.xz && \
     mkdir pango && \
     tar -xf pango.tar -C pango --strip-components 1 && \
@@ -1879,12 +1880,12 @@ RUN \
     echo "`date` libxml" >> /build/log.txt && \
     export JOBS=`nproc` && \
     rm -rf libxml2* && \
-    curl --retry 5 --silent http://xmlsoft.org/sources/libxml2-2.9.10.tar.gz -L -o libxml2.tar.gz && \
+    curl --retry 5 --silent http://xmlsoft.org/sources/libxml2-2.9.12.tar.gz -L -o libxml2.tar.gz && \
     mkdir libxml2 && \
     tar -zxf libxml2.tar.gz -C libxml2 --strip-components 1 && \
     rm -f libxml2.tar.gz && \
     cd libxml2 && \
-    ./configure --prefix=/usr/local --with-python=/opt/python/cp36-cp36m --disable-static && \
+    ./configure --prefix=/usr/local --with-python=/opt/python/cp38-cp38 --disable-static && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig && \
@@ -1981,7 +1982,7 @@ RUN \
 RUN \
     echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.0.11-10 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.0.11-13 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
@@ -1995,7 +1996,7 @@ RUN \
 RUN \
     echo "`date` vips" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    export PATH="/opt/python/cp36-cp36m/bin:$PATH" && \
+    export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
     # Use these lines for a release \
     curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.10.6/vips-8.10.6.tar.gz -L -o vips.tar.gz && \
     mkdir vips && \
@@ -2079,7 +2080,7 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` pyproj4" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --single-branch -b 3.0.1 https://github.com/pyproj4/pyproj.git && \
+    git clone --single-branch -b 3.1.0 https://github.com/pyproj4/pyproj.git && \
     cd pyproj && \
     mkdir pyproj/bin && \
     find /build/proj.4/src/.libs/ -executable -type f ! -name '*.so.*' -exec cp {} pyproj/bin/. \; && \
@@ -2128,7 +2129,7 @@ data = data.replace("""version=get_version(),""", \n\
     entry_points={\'console_scripts\': [\'%s=pyproj.bin:program\' % name for name in os.listdir(\'pyproj/bin\') if not name.endswith(\'.py\')]},""") \n\
 open(path, "w").write(data)' && \
     # now rebuild anything that can work with master \
-    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    find /opt/python -mindepth 1 -name '*cp3*' -not -name '*cp36*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     # Make sure all binaries have the execute flag \
     find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 bash -c 'mkdir /tmp/ptmp; pushd /tmp/ptmp; unzip ${0}; chmod a+x pyproj/bin/*; chmod a-x pyproj/bin/*.py; zip -r ${0} *; popd; rm -rf /tmp/ptmp' && \
     find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \

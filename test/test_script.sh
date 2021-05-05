@@ -36,12 +36,14 @@ echo 'Test basic import of javabridge'
 python -c 'import javabridge'
 echo 'Test basic imports of all wheels'
 python -c 'import libtiff, openslide, pyvips, osgeo, mapnik, glymur, javabridge'
+if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 7)))'; then
 echo 'Test import of pyproj after mapnik'
 python <<EOF
 import mapnik
 import pyproj
 print(pyproj.Proj('+init=epsg:4326 +type=crs'))
 EOF
+fi
 echo 'Download an openslide file'
 curl --retry 5 -L -o sample.svs https://data.kitware.com/api/v1/file/5be43d9c8d777f217991e1c2/download
 echo 'Use large_image to read an openslide file'
@@ -199,6 +201,7 @@ pprint.pprint({
   })
 pprint.pprint(d.GetMetadata()['NITF_BLOCKA_FRFC_LOC_01'])
 EOF
+if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 7)))'; then
 echo 'Test import order with shapely'
 if pip install shapely; then (
 python -c 'import shapely;import mapnik;import pyproj;print(pyproj.Proj("+init=epsg:4326 +type=crs"))'
@@ -208,6 +211,7 @@ python -c 'import shapely;import pyproj;import mapnik;print(pyproj.Proj("+init=e
 python -c 'import mapnik;import shapely;import pyproj;print(pyproj.Proj("+init=epsg:4326 +type=crs"))'
 python -c 'import pyproj;import mapnik;import shapely;print(pyproj.Proj("+init=epsg:4326 +type=crs"))'
 ); else echo 'no shapely available'; fi
+fi
 echo 'Test running executables'
 `python -c 'import os,sys,libtiff;sys.stdout.write(os.path.dirname(libtiff.__file__))'`/bin/tiffinfo landcover.tif
 tiffinfo landcover.tif
@@ -222,9 +226,11 @@ gdal-config --formats
 mapnik-render --version 2>&1 | grep version
 `python -c 'import os,sys,pyvips;sys.stdout.write(os.path.dirname(pyvips.__file__))'`/bin/vips --version
 vips --version
+if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 7)))'; then
 PROJ_LIB=`python -c 'import os,sys,pyproj;sys.stdout.write(os.path.dirname(pyproj.__file__))'`/proj `python -c 'import os,sys,pyproj;sys.stdout.write(os.path.dirname(pyproj.__file__))'`/bin/projinfo EPSG:4326
 projinfo EPSG:4326
 projinfo ESRI:102654
+fi
 echo 'test GDAL transform'
 python <<EOF
 from osgeo import ogr, osr
