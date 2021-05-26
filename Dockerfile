@@ -110,7 +110,7 @@ ENV PKG_CONFIG=/usr/local/bin/pkg-config \
 RUN \
     echo "`date` m4" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.gnu.org/gnu/m4/m4-1.4.18.tar.gz -L -o m4.tar.gz && \
+    curl --retry 5 --silent https://ftp.gnu.org/gnu/m4/m4-1.4.19.tar.gz -L -o m4.tar.gz && \
     mkdir m4 && \
     tar -zxf m4.tar.gz -C m4 --strip-components 1 && \
     rm -f m4.tar.gz && \
@@ -173,12 +173,12 @@ cd /build && \
 # RUN \
     echo "`date` curl" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_76_1/curl-7.76.1.tar.gz -L -o curl.tar.gz && \
+    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_77_0/curl-7.77.0.tar.gz -L -o curl.tar.gz && \
     mkdir curl && \
     tar -zxf curl.tar.gz -C curl --strip-components 1 && \
     rm -f curl.tar.gz && \
     cd curl && \
-    ./configure --silent --prefix=/usr/local --disable-static && \
+    ./configure --silent --prefix=/usr/local --disable-static --with-openssl && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -230,7 +230,7 @@ cd /build && \
 # CMake - use a precompiled binary
 RUN \
     echo "`date` cmake" >> /build/log.txt && \
-    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.20.2/cmake-3.20.2-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.20.5/cmake-3.20.5-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
     mkdir cmake && \
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz && \
@@ -562,7 +562,7 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` pcre" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.pcre.org/pub/pcre/pcre-8.44.tar.gz -L -o pcre.tar.gz && \
+    curl --retry 5 --silent https://ftp.pcre.org/pub/pcre/pcre-8.45.tar.gz -L -o pcre.tar.gz && \
     mkdir pcre && \
     tar -zxf pcre.tar.gz -C pcre --strip-components 1 && \
     rm -f pcre.tar.gz && \
@@ -613,7 +613,7 @@ cd /build && \
     echo "`date` util-linux" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v2.36.2 https://github.com/karelzak/util-linux.git && \
+    git clone --depth=1 --single-branch -b v2.37 https://github.com/karelzak/util-linux.git && \
     cd util-linux && \
     sed -i 's/#ifndef UMOUNT_UNUSED/#ifndef O_PATH\n# define O_PATH 010000000\n#endif\n\n#ifndef UMOUNT_UNUSED/g' libmount/src/context_umount.c && \
     ./autogen.sh && \
@@ -646,7 +646,7 @@ RUN \
     echo "`date` glib" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.68/glib-2.68.2.tar.xz -L -o glib-2.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.68/glib-2.68.3.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
@@ -797,7 +797,7 @@ RUN \
 RUN \
     echo "`date` openmpi" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.5.tar.gz -L -o openmpi.tar.gz && \
+    curl --retry 5 --silent https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.6.tar.gz -L -o openmpi.tar.gz && \
     mkdir openmpi && \
     tar -zxf openmpi.tar.gz -C openmpi --strip-components 1 && \
     rm -f openmpi.tar.gz && \
@@ -843,7 +843,7 @@ RUN \
 # binaries fail because they can't find any of a list of versions of GLIBC.
 RUN \
     echo "`date` fossil" >> /build/log.txt && \
-    curl --retry 5 --silent -L https://www.fossil-scm.org/index.html/uv/fossil-src-2.15.1.tar.gz -o fossil.tar.gz && \
+    curl --retry 5 --silent -L https://fossil-scm.org/home/tarball/7cfd58d771e77123dcccfce67da9da633fdba912b6e7019a84912146aa8f06ba/fossil-2.15.2.tar.gz -o fossil.tar.gz && \
     mkdir fossil && \
     tar -zxf fossil.tar.gz -C fossil --strip-components 1 && \
     rm -f fossil.tar.gz && \
@@ -885,7 +885,7 @@ RUN \
 RUN \
     echo "`date` sqlite" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://sqlite.org/2021/sqlite-autoconf-3350500.tar.gz -L -o sqlite.tar.gz && \
+    curl --retry 5 --silent https://sqlite.org/2021/sqlite-autoconf-3360000.tar.gz -L -o sqlite.tar.gz && \
     mkdir sqlite && \
     tar -zxf sqlite.tar.gz -C sqlite --strip-components 1 && \
     rm -f sqlite.tar.gz && \
@@ -914,6 +914,35 @@ RUN \
     echo "`date` proj4" >> /build/log.txt
 
 RUN \
+    echo "`date` minizip" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b 3.0.2 https://github.com/nmoinvaz/minizip.git && \
+    cd minizip && \
+    mkdir _build && \
+    cd _build && \
+    cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=yes -DINSTALL_INC_DIR=/usr/local/include/minizip -DMZ_OPENSSL=yes .. && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` minizip" >> /build/log.txt
+
+RUN \
+    echo "`date` libexpat" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
+    curl --retry 5 --silent https://github.com/libexpat/libexpat/archive/R_2_4_1.tar.gz -L -o libexpat.tar.gz && \
+    mkdir libexpat && \
+    tar -zxf libexpat.tar.gz -C libexpat --strip-components 1 && \
+    rm -f libexpat.tar.gz && \
+    cd libexpat/expat && \
+    autoreconf -ifv && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` libexpat" >> /build/log.txt
+
+RUN \
     echo "`date` freexl" >> /build/log.txt && \
     export JOBS=`nproc` && \
     fossil --user=root clone https://www.gaia-gis.it/fossil/freexl freexl.fossil && \
@@ -939,19 +968,6 @@ RUN \
     make --silent -j ${JOBS} install && \
     ldconfig && \
     echo "`date` libgeos" >> /build/log.txt
-
-RUN \
-    echo "`date` minizip" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 3.0.2 https://github.com/nmoinvaz/minizip.git && \
-    cd minizip && \
-    mkdir _build && \
-    cd _build && \
-    cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=yes -DINSTALL_INC_DIR=/usr/local/include/minizip -DMZ_OPENSSL=yes .. && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` minizip" >> /build/log.txt
 
 RUN \
     echo "`date` libspatialite" >> /build/log.txt && \
@@ -1010,22 +1026,6 @@ RUN \
     make --silent -j ${JOBS} install && \
     ldconfig && \
     echo "`date` freetype" >> /build/log.txt
-
-RUN \
-    echo "`date` libexpat" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    export AUTOMAKE_JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/libexpat/libexpat/archive/R_2_4_1.tar.gz -L -o libexpat.tar.gz && \
-    mkdir libexpat && \
-    tar -zxf libexpat.tar.gz -C libexpat --strip-components 1 && \
-    rm -f libexpat.tar.gz && \
-    cd libexpat/expat && \
-    autoreconf -ifv && \
-    ./configure --silent --prefix=/usr/local --disable-static && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` libexpat" >> /build/log.txt
 
 RUN \
     echo "`date` fontconfig" >> /build/log.txt && \
@@ -1258,7 +1258,7 @@ RUN \
     echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
-    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-21.05.0.tar.xz -L -o poppler.tar.xz && \
+    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-21.06.1.tar.xz -L -o poppler.tar.xz && \
     unxz poppler.tar.xz && \
     mkdir poppler && \
     tar -xf poppler.tar -C poppler --strip-components 1 && \
@@ -1326,7 +1326,7 @@ RUN \
     echo "`date` libxcrypt" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v4.4.20 https://github.com/besser82/libxcrypt.git && \
+    git clone --depth=1 --single-branch -b v4.4.23 https://github.com/besser82/libxcrypt.git && \
     cd libxcrypt && \
     # autoreconf -ifv && \
     ./autogen.sh && \
@@ -1424,7 +1424,7 @@ RUN \
 RUN \
     echo "`date` armadillo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-10.5.0.tar.xz -L -o armadillo.tar.xz && \
+    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-10.5.2.tar.xz -L -o armadillo.tar.xz && \
     unxz armadillo.tar.xz && \
     mkdir armadillo && \
     tar -xf armadillo.tar -C armadillo --strip-components 1 && \
@@ -1464,7 +1464,7 @@ RUN \
 # Unsupported without more work or investigation:
 #  GRASS Kea Ingres Google-libkml ODBC FGDB MDB OCI GEORASTER SDE Rasdaman
 #  SFCGAL OpenCL MongoDB MongoCXX HDFS TileDB
-# -- GRASS should be striaghtforward (see github.com/OSGeo/grass), but gdal
+# -- GRASS should be straightforward (see github.com/OSGeo/grass), but gdal
 #  as to be installed first, then grass, then spatialite and gdal recompiled
 #  with GRASS support.
 # Unused because there is a working alternative:
@@ -1943,7 +1943,7 @@ RUN \
     echo "`date` librsvg" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.51/librsvg-2.51.1.tar.xz -L -o librsvg.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.51/librsvg-2.51.3.tar.xz -L -o librsvg.tar.xz && \
     unxz librsvg.tar.xz && \
     mkdir librsvg && \
     tar -xf librsvg.tar -C librsvg --strip-components 1 && \
@@ -1982,7 +1982,7 @@ RUN \
 RUN \
     echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.0.11-13 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.1.0-2 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
@@ -2018,7 +2018,7 @@ RUN \
 RUN \
     echo "`date` pyvips" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch https://github.com/libvips/pyvips.git && \
+    git clone --depth=1 --single-branch -b v2.1.15 https://github.com/libvips/pyvips.git && \
     cd pyvips && \
     python -c $'# \n\
 path = "pyvips/__init__.py" \n\

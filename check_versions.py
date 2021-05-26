@@ -69,14 +69,14 @@ Packages = {
     'fossil': {
         'json': 'https://www.fossil-scm.org/index.html/juvlist',
         'keys': lambda data: [entry['name'] for entry in data],
-        're': r'fossil-src-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+        're': r'fossil-linux-x64-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
     'freetype': {
         'filelist': 'https://download.savannah.gnu.org/releases/freetype',
         're': r'freetype-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
     'freexl': {
-        'fossil': 'https://www.gaia-gis.it/fossil/freexl/timeline?n=10&r=trunk&&s=x',
+        'fossil': 'https://www.gaia-gis.it/fossil/freexl/timeline?n=10&r=trunk&ss=x',
         # 'filelist': 'https://www.gaia-gis.it/fossil/freexl/',
         # 're': r'freexl-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
@@ -521,7 +521,7 @@ retries = urllib3.util.retry.Retry(
 session.mount('http://', requests.adapters.HTTPAdapter(max_retries=retries))
 session.mount('https://', requests.adapters.HTTPAdapter(max_retries=retries))
 
-for pkg in sorted(Packages):
+for pkg in sorted(Packages):  # noqa
     try:
         pkginfo = Packages[pkg]
         entries = None
@@ -531,7 +531,8 @@ for pkg in sorted(Packages):
             if verbose >= 2:
                 print(pkg, 'filelist data', data)
             data = data.replace('<A ', '<a ').replace('HREF="', 'href="')
-            entries = [entry.split('href="', 1)[-1].split('"')[0] for entry in data.split('<a ')[1:]]
+            entries = [
+                entry.split('href="', 1)[-1].split('"')[0] for entry in data.split('<a ')[1:]]
             if verbose >= 1:
                 print(pkg, 'filelist entries', entries)
         elif 'git' in pkginfo:
