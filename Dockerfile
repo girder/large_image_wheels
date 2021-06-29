@@ -595,7 +595,7 @@ RUN \
     echo "`date` libffi" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v3.3 https://github.com/libffi/libffi.git && \
+    git clone --depth=1 --single-branch -b v3.4.2 https://github.com/libffi/libffi.git && \
     cd libffi && \
     python -c $'# \n\
 path = "Makefile.am" \n\
@@ -646,7 +646,7 @@ RUN \
     echo "`date` glib" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.68/glib-2.68.3.tar.xz -L -o glib-2.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.69/glib-2.69.0.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
@@ -843,7 +843,7 @@ RUN \
 # binaries fail because they can't find any of a list of versions of GLIBC.
 RUN \
     echo "`date` fossil" >> /build/log.txt && \
-    curl --retry 5 --silent -L https://fossil-scm.org/home/tarball/7cfd58d771e77123dcccfce67da9da633fdba912b6e7019a84912146aa8f06ba/fossil-2.15.2.tar.gz -o fossil.tar.gz && \
+    curl --retry 5 --silent -L https://fossil-scm.org/home/tarball/7aedd5675883d4412cf20917d340b6985e3ecb842e88a39f135df034b2d5f4d3/fossil-src-2.16.tar.gz -o fossil.tar.gz && \
     mkdir fossil && \
     tar -zxf fossil.tar.gz -C fossil --strip-components 1 && \
     rm -f fossil.tar.gz && \
@@ -900,7 +900,7 @@ RUN \
     echo "`date` proj4" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.2.1 https://github.com/OSGeo/proj.4.git && \
+    git clone --depth=1 --single-branch -b 8.1.0 https://github.com/OSGeo/proj.4.git && \
     cd proj.4 && \
     curl --retry 5 --silent http://download.osgeo.org/proj/proj-datumgrid-1.8.zip -L -o proj-datumgrid.zip && \
     cd data && \
@@ -978,7 +978,7 @@ RUN \
     fossil open ../libspatialite.fossil && \
     # fossil checkout -f 5808354e84 && \
     rm -f ../libspatialite.fossil && \
-    CFLAGS="$CFLAGS -O2 -DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true" ./configure --silent --prefix=/usr/local --disable-examples --disable-static --disable-rttopo --disable-gcp && \
+    CFLAGS="$CFLAGS -O2" ./configure --silent --prefix=/usr/local --disable-examples --disable-static --disable-rttopo --disable-gcp && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -989,10 +989,10 @@ RUN \
     echo "`date` libgeotiff" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 1.5.1 https://github.com/OSGeo/libgeotiff.git && \
+    git clone --depth=1 --single-branch -b 1.7.0 https://github.com/OSGeo/libgeotiff.git && \
     cd libgeotiff/libgeotiff && \
     autoreconf -ifv && \
-    CFLAGS="$CFLAGS -DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=true" ./configure --silent --prefix=/usr/local --with-zlib=yes --with-jpeg=yes --disable-static && \
+    ./configure --silent --prefix=/usr/local --with-zlib=yes --with-jpeg=yes --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1031,7 +1031,7 @@ RUN \
     echo "`date` fontconfig" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
-    curl --retry 5 --silent https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.13.93.tar.gz -L -o fontconfig.tar.gz && \
+    curl --retry 5 --silent https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.13.94.tar.gz -L -o fontconfig.tar.gz && \
     mkdir fontconfig && \
     tar -zxf fontconfig.tar.gz -C fontconfig --strip-components 1 && \
     rm -f fontconfig.tar.gz && \
@@ -1258,7 +1258,7 @@ RUN \
     echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
-    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-21.06.1.tar.xz -L -o poppler.tar.xz && \
+    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-21.07.0.tar.xz -L -o poppler.tar.xz && \
     unxz poppler.tar.xz && \
     mkdir poppler && \
     tar -xf poppler.tar -C poppler --strip-components 1 && \
@@ -1411,7 +1411,7 @@ RUN \
 RUN \
     echo "`date` lapack" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v3.9.0 https://github.com/Reference-LAPACK/lapack && \
+    git clone --depth=1 --single-branch -b v3.10.0 https://github.com/Reference-LAPACK/lapack && \
     cd lapack && \
     mkdir _build && \
     cd _build && \
@@ -1424,7 +1424,7 @@ RUN \
 RUN \
     echo "`date` armadillo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-10.5.2.tar.xz -L -o armadillo.tar.xz && \
+    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-10.5.3.tar.xz -L -o armadillo.tar.xz && \
     unxz armadillo.tar.xz && \
     mkdir armadillo && \
     tar -xf armadillo.tar -C armadillo --strip-components 1 && \
@@ -1483,9 +1483,9 @@ RUN \
     echo "`date` gdal" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # Specific branch \
-    # git clone --depth=1 --single-branch -b v3.3.0 https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch -b v3.3.1 https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
-    git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
     # Common \
     cd gdal/gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
@@ -1606,19 +1606,18 @@ RUN \
     ldconfig && \
     echo "`date` harfbuzz" >> /build/log.txt
 
-# scons needs to have a modern python in the path, but scons in the included
-# python 3.7 doesn't support parallel builds, so use python 3.6.
+# We are stuck on the march 5th version until python-mapnik catches up.
 RUN \
     echo "`date` mapnik" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # Master \
-    # git clone --depth=1 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
-    # cd mapnik && \
-    # Specific checkout \
-    git clone --depth=1000 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
+    git clone --depth=1 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
     cd mapnik && \
-    # Mar 5 \
-    git checkout f1fc3c49488c3692c4c64afc98ef4c7eca9b6165 && \
+    # Specific checkout \
+    # git clone --depth=1000 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
+    # cd mapnik && \
+    # # Mar 5 \
+    # git checkout f1fc3c49488c3692c4c64afc98ef4c7eca9b6165 && \
     # Common \
     rm -rf .git && \
     export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
@@ -1633,7 +1632,6 @@ RUN \
     PROJ_INCLUDES=/usr/local/include PROJ_LIBS=/usr/local/lib \
     SQLITE_INCLUDES=/usr/local/include SQLITE_LIBS=/usr/local/lib \
     RASTERLITE_INCLUDES=/usr/local/include RASTERLITE_LIBS=/usr/local/lib \
-    CUSTOM_DEFINES="-DACCEPT_USE_OF_DEPRECATED_PROJ_API_H=1" \
     WARNING_CXXFLAGS="-Wno-unused-variable -Wno-unused-but-set-variable -Wno-attributes -Wno-unknown-pragmas -Wno-maybe-uninitialized" \
     QUIET=true \
     CPP_TESTS=false \
@@ -1643,6 +1641,8 @@ RUN \
     make --silent -j ${JOBS} install && \
     ldconfig && \
     echo "`date` mapnik" >> /build/log.txt
+
+COPY mapnik_proj_transform.cpp.patch .
 
 RUN \
     echo "`date` python-mapnik" >> /build/log.txt && \
@@ -1702,6 +1702,7 @@ os.environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal")) \n\
 \n\
 def bootstrap_env():""") \n\
 open(path, "w").write(s)' && \
+    git apply ../mapnik_proj_transform.cpp.patch && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
@@ -1863,7 +1864,7 @@ RUN \
     echo "`date` pango" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
-    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.48/pango-1.48.5.tar.xz -L -o pango.tar.xz && \
+    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.48/pango-1.48.7.tar.xz -L -o pango.tar.xz && \
     unxz pango.tar.xz && \
     mkdir pango && \
     tar -xf pango.tar -C pango --strip-components 1 && \
@@ -1998,7 +1999,7 @@ RUN \
     export JOBS=`nproc` && \
     export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
     # Use these lines for a release \
-    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.10.6/vips-8.10.6.tar.gz -L -o vips.tar.gz && \
+    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.11.2/vips-8.11.2.tar.gz -L -o vips.tar.gz && \
     mkdir vips && \
     tar -zxf vips.tar.gz -C vips --strip-components 1 && \
     rm -f vips.tar.gz && \
