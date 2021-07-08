@@ -16,7 +16,7 @@ freetype 2.10.4
 freexl 97c9f43cea
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
-gdal a4a3dd7b0a3ae31f40d8f4beaada2f2132b0a6b6
+gdal a40fbbeea2a7d4bcf9ec9c27b34573a21ccccf98
 gdal-pypi 3.3.1
 gdal-release 3.3.1
 gdk-pixbuf 2.42.6
@@ -29,7 +29,7 @@ glymur-pypi 0.9.3
 gobject-introspection 1.68.0
 harfbuzz 2.6.7
 hdf4 4.2.15
-hdf5 1.12.0
+hdf5 1.12.1
 icu4c 69-1
 imagemagick 7.1.0-2
 jasper 2.0.32
@@ -53,8 +53,8 @@ libjpeg-turbo 2.1.0
 libmemcached 1.0.18
 libpng 1.6.37
 librasterlite2 b8b8a8b099
-librsvg 2.51.3
-libspatialite 27605998ab
+librsvg 2.51.4
+libspatialite 4e0bd3ca19
 libtiff 4.3.0
 libvips 8.11.2
 libwebp 1.2.0
@@ -71,7 +71,7 @@ netcdf 4.8.0
 nifti 2_0_0
 ninja 1.10.2
 ogdi 4.1.0
-openblas 0.3.15
+openblas 0.3.16
 openjpeg 2.4.0
 openmpi 4.0.6
 openslide 4eb6e9c44b5ee9c60ddb30749ddaf709d54ce3e4
@@ -91,7 +91,7 @@ pnetcdf 1.12.2
 poppler 21.07.0
 postgresql 13.3
 proj-datumgrid 1.8
-proj.4 9a46b4ac490c415bc8a98d8bfcfd241b1490e0fe
+proj.4 d902272785a55e48f6b46a907a34a71a5220fccc
 proj.4-release 8.1.0
 psutil 5.8.0
 pylibmc 1.6.1

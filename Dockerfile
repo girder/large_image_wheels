@@ -1149,6 +1149,7 @@ RUN \
     ldconfig && \
     echo "`date` hdf4" >> /build/log.txt
 
+# netcdf-c doesn't work with 1.12.1
 RUN \
     echo "`date` hdf5" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1160,7 +1161,7 @@ RUN \
     cd hdf5 && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DDEFAULT_API_VERSION=v18 -DHDF5_BUILD_EXAMPLES=OFF -DHDF5_BUILD_FORTRAN=OFF -DHDF5_ENABLE_PARALLEL=ON -DHDF5_ENABLE_Z_LIB_SUPPORT=ON -DHDF5_BUILD_GENERATORS=ON -DHDF5_ENABLE_DIRECT_VFD=ON -DHDF5_BUILD_CPP_LIB=OFF -DHDF5_DISABLE_COMPILER_WARNINGS=ON -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DDEFAULT_API_VERSION=v18 -DHDF5_BUILD_EXAMPLES=OFF -DHDF5_BUILD_FORTRAN=OFF -DHDF5_ENABLE_PARALLEL=ON -DHDF5_ENABLE_Z_LIB_SUPPORT=ON -DHDF5_BUILD_GENERATORS=ON -DHDF5_ENABLE_DIRECT_VFD=ON -DHDF5_BUILD_CPP_LIB=OFF -DHDF5_DISABLE_COMPILER_WARNINGS=ON -DBUILD_TESTING=OFF -DZLIB_DIR=/usr/local/lib -DMPI_C_COMPILER=/usr/local/bin/mpicc -DMPI_C_HEADER_DIR=/usr/local/include -DMPI_mpi_LIBRARY=/usr/local/lib/libmpi.so -DMPI_C_LIB_NAMES=mpi -DCMAKE_INSTALL_PREFIX=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1382,31 +1383,31 @@ RUN \
     ldconfig && \
     echo "`date` xerces" >> /build/log.txt
 
-RUN \
-    echo "`date` openblas" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v0.3.15 https://github.com/xianyi/OpenBLAS.git && \
-    cd OpenBLAS && \
-    mkdir _build && \
-    cd _build && \
-    cmake -DUSE_OPENMP=True -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release .. && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` openblas" >> /build/log.txt
+# RUN \
+#     echo "`date` openblas" >> /build/log.txt && \
+#     export JOBS=`nproc` && \
+#     git clone --depth=1 --single-branch -b v0.3.16 https://github.com/xianyi/OpenBLAS.git && \
+#     cd OpenBLAS && \
+#     mkdir _build && \
+#     cd _build && \
+#     cmake -DUSE_OPENMP=True -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release .. && \
+#     make --silent -j ${JOBS} && \
+#     make --silent -j ${JOBS} install && \
+#     ldconfig && \
+#     echo "`date` openblas" >> /build/log.txt
 
-RUN \
-    echo "`date` superlu" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v5.2.2 https://github.com/xiaoyeli/superlu.git && \
-    cd superlu && \
-    mkdir _build && \
-    cd _build && \
-    cmake -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release -Denable_blaslib=OFF -Denable_tests=OFF -DTPL_BLAS_LIBRARIES=/usr/local/lib64/libopenblas.so .. && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` superlu" >> /build/log.txt
+# RUN \
+#     echo "`date` superlu" >> /build/log.txt && \
+#     export JOBS=`nproc` && \
+#     git clone --depth=1 --single-branch -b v5.2.2 https://github.com/xiaoyeli/superlu.git && \
+#     cd superlu && \
+#     mkdir _build && \
+#     cd _build && \
+#     cmake -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release -Denable_internal_blaslib=OFF -Denable_tests=OFF -DTPL_BLAS_LIBRARIES=/usr/local/lib64/libopenblas.so .. && \
+#     make --silent -j ${JOBS} && \
+#     make --silent -j ${JOBS} install && \
+#     ldconfig && \
+#     echo "`date` superlu" >> /build/log.txt
 
 RUN \
     echo "`date` lapack" >> /build/log.txt && \
@@ -1424,7 +1425,7 @@ RUN \
 RUN \
     echo "`date` armadillo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent http://sourceforge.net/projects/arma/files/armadillo-10.5.3.tar.xz -L -o armadillo.tar.xz && \
+    curl --retry 5 --silent https://sourceforge.net/projects/arma/files/armadillo-10.5.3.tar.xz -L -o armadillo.tar.xz && \
     unxz armadillo.tar.xz && \
     mkdir armadillo && \
     tar -xf armadillo.tar -C armadillo --strip-components 1 && \
@@ -1465,7 +1466,7 @@ RUN \
 #  GRASS Kea Ingres Google-libkml ODBC FGDB MDB OCI GEORASTER SDE Rasdaman
 #  SFCGAL OpenCL MongoDB MongoCXX HDFS TileDB
 # -- GRASS should be straightforward (see github.com/OSGeo/grass), but gdal
-#  as to be installed first, then grass, then spatialite and gdal recompiled
+#  has to be installed first, then grass, then spatialite and gdal recompiled
 #  with GRASS support.
 # Unused because there is a working alternative:
 #  cryptopp (crypto/openssl)
@@ -1483,13 +1484,31 @@ RUN \
     echo "`date` gdal" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # Specific branch \
-    # git clone --depth=1 --single-branch -b v3.3.1 https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch -b v3.3.1 https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
-    git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
     # Common \
     cd gdal/gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
-    ./configure --prefix=/usr/local --disable-static --disable-rpath --with-cpp14 --without-libtool --with-jpeg12 --with-spatialite --with-liblzma --with-webp --with-epsilon --with-poppler --with-hdf5 --with-dods-root=/usr/local --with-sosi --with-mysql --with-rasterlite2 --with-pg --with-cfitsio=/usr/local --with-armadillo --with-mrsid=/build/mrsid/Raster_DSDK --with-mrsid_lidar=/build/mrsid/Lidar_DSDK && \
+    # export CFLAGS="$CFLAGS -DDEBUG_VERBOSE=ON" && \
+    ./configure --prefix=/usr/local --disable-static --disable-rpath --with-cpp14 --without-libtool \
+    --with-armadillo \
+    --with-cfitsio=/usr/local \
+    --with-dods-root=/usr/local \
+    --with-epsilon \
+    --with-hdf5 \
+    --with-jpeg12 \
+    --with-liblzma \
+    --with-mrsid=/build/mrsid/Raster_DSDK --with-mrsid_lidar=/build/mrsid/Lidar_DSDK \
+    --with-mysql \
+    --with-pg \
+    --with-poppler \
+    --with-rasterlite2 \
+    --with-sosi \
+    --with-spatialite \
+    --with-webp \
+    # --with-debug \
+    && \
     make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings -Wno-stringop-overflow -Wno-ignored-qualifiers" && \
     make -j ${JOBS} install && \
     ldconfig && \
@@ -1944,7 +1963,7 @@ RUN \
     echo "`date` librsvg" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.51/librsvg-2.51.3.tar.xz -L -o librsvg.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.51/librsvg-2.51.4.tar.xz -L -o librsvg.tar.xz && \
     unxz librsvg.tar.xz && \
     mkdir librsvg && \
     tar -xf librsvg.tar -C librsvg --strip-components 1 && \

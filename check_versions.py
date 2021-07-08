@@ -17,8 +17,9 @@ Packages = {
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'armadillo': {
-        'filelist': 'http://arma.sourceforge.net/download.html',
-        're': r'armadillo-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
+        'filelist': 'https://sourceforge.net/projects/arma/files/',
+        're': r'armadillo-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)/download$',
+        'session': False,
     },
     'bison': {
         'filelist': 'https://ftp.gnu.org/pub/gnu/bison/',
@@ -527,7 +528,8 @@ for pkg in sorted(Packages):  # noqa
         entries = None
         versions = None
         if 'filelist' in pkginfo:
-            data = session.get(pkginfo['filelist']).text
+            data = (session if pkginfo.get('session') is not False else requests).get(
+                pkginfo['filelist']).text
             if verbose >= 2:
                 print(pkg, 'filelist data', data)
             data = data.replace('<A ', '<a ').replace('HREF="', 'href="')
