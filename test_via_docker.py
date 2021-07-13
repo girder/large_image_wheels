@@ -16,6 +16,7 @@ containers = [
     # 'centos/python-35-centos7',
     'centos/python-36-centos7',
     'centos/python-38-centos7',
+    # 'pypy:3.7',
 ]
 
 

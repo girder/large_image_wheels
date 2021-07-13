@@ -87,6 +87,16 @@ ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/lib"
 RUN rm -rf /etc/ld.so.conf.d/* && \
     ldconfig
 
+# Several build steps need to be in a python 3 environment; set up a virtualenv
+# with a specific version.  This venv is added to the path so that it is
+# available by default.
+RUN \
+    echo "`date` virtualenv" >> /build/log.txt && \
+    export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
+    pip3 install --no-cache-dir virtualenv && \
+    virtualenv /venv && \
+    echo "`date` virtualenv" >> /build/log.txt
+
 # Update autotools, perl, m4, pkg-config
 
 RUN \
@@ -105,7 +115,7 @@ RUN \
 # Some of these paths are added later
 ENV PKG_CONFIG=/usr/local/bin/pkg-config \
     PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:/usr/lib64/pkgconfig:/usr/share/pkgconfig \
-    PATH="/usr/localperl/bin:$PATH"
+    PATH="/venv/bin:/usr/localperl/bin:$PATH"
 
 RUN \
     echo "`date` m4" >> /build/log.txt && \
@@ -173,7 +183,7 @@ cd /build && \
 # RUN \
     echo "`date` curl" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_77_0/curl-7.77.0.tar.gz -L -o curl.tar.gz && \
+    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_78_0/curl-7.78.0.tar.gz -L -o curl.tar.gz && \
     mkdir curl && \
     tar -zxf curl.tar.gz -C curl --strip-components 1 && \
     rm -f curl.tar.gz && \
@@ -230,7 +240,7 @@ cd /build && \
 # CMake - use a precompiled binary
 RUN \
     echo "`date` cmake" >> /build/log.txt && \
-    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.20.5/cmake-3.20.5-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.21.1/cmake-3.21.1-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
     mkdir cmake && \
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz && \
@@ -254,36 +264,51 @@ cd /build && \
     ldconfig && \
     # Because we will recompress all wheels, we can create them with no \
     # compression to save some time \
-    sed -i 's/ZIP_DEFLATED/ZIP_STORED/g' /opt/_internal/tools/lib/python3.9/site-packages/auditwheel/tools.py && \
+    sed -i 's/ZIP_DEFLATED/ZIP_STORED/g' /opt/_internal/pipx/venvs/auditwheel/lib/python3.9/site-packages/auditwheel/tools.py && \
     echo "`date` advancecomp" >> /build/log.txt
 
 # vips doesn't work with auditwheel 3.2 since the copylib doesn't adjust
 # rpaths the same as 3.1.1.  Revert that aspect of the behavior.
 RUN \
     echo "`date` auditwheel" >> /build/log.txt && \
-    sed -i 's/patcher.set_rpath(dest_path, dest_dir)/new_rpath = os.path.relpath(dest_dir, os.path.dirname(dest_path))\n        new_rpath = os.path.join('\''$ORIGIN'\'', new_rpath)\n        patcher.set_rpath(dest_path, new_rpath)/g' /opt/_internal/tools/lib/python3.9/site-packages/auditwheel/repair.py && \
+    sed -i 's/patcher.set_rpath(dest_path, dest_dir)/new_rpath = os.path.relpath(dest_dir, os.path.dirname(dest_path))\n        new_rpath = os.path.join('\''$ORIGIN'\'', new_rpath)\n        patcher.set_rpath(dest_path, new_rpath)/g' /opt/_internal/pipx/venvs/auditwheel/lib/python3.9/site-packages/auditwheel/repair.py && \
     echo "`date` auditwheel" >> /build/log.txt
 
 # Packages used by large_image that don't have published wheels for all the
 # versions of Python we are using.
 
-RUN \
-    echo "`date` psutil" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b release-5.8.0 https://github.com/giampaolo/psutil.git && \
-    cd psutil && \
-    # Strip libraries before building any wheels \
-    # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
-    find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
-    find /io/wheelhouse/ -name 'psutil*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
-    find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
-    find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
-    ls -l /io/wheelhouse && \
-    rm -rf ~/.cache && \
-    echo "`date` psutil" >> /build/log.txt
+# RUN \
+#     echo "`date` psutil" >> /build/log.txt && \
+#     export JOBS=`nproc` && \
+#     git clone --depth=1 --single-branch -b release-5.8.0 https://github.com/giampaolo/psutil.git && \
+#     cd psutil && \
+#     # Strip libraries before building any wheels \
+#     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
+#     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
+#     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+#     find /io/wheelhouse/ -name 'psutil*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
+#     find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
+#     find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
+#     ls -l /io/wheelhouse && \
+#     rm -rf ~/.cache && \
+#     echo "`date` psutil" >> /build/log.txt
 
 # We had built ultrajson, but it now supplies its own wheels.
+# # Reenable this as we want the pypy wheels, too.
+# RUN echo "`date` ultrajson" >> /build/log.txt && \
+#     export JOBS=`nproc` && \
+#     git clone -b 4.0.2 https://github.com/esnme/ultrajson.git && \
+#     cd ultrajson && \
+#     # Strip libraries before building any wheels \
+#     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
+#     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" install --no-cache-dir setuptools-scm' && \
+#     # Just python >= 3.5 \
+#     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+#     find /io/wheelhouse/ -name 'ujson*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux1_x86_64 -w /io/wheelhouse && \
+#     find /io/wheelhouse/ -name 'ujson*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
+#     find /io/wheelhouse/ -name 'ujson*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
+#     ls -l /io/wheelhouse && \
+#     echo "`date` ultrajson" >> /build/log.txt
 
 # OpenJPEG
 
@@ -402,7 +427,7 @@ cd /build && \
     echo "`date` libdeflate" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v1.7 https://github.com/ebiggers/libdeflate.git && \
+    git clone --depth=1 --single-branch -b v1.8 https://github.com/ebiggers/libdeflate.git && \
     cd libdeflate && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -435,7 +460,30 @@ RUN \
     echo "`date` openjpeg again" >> /build/log.txt
 
 # Use an older version of numpy -- we can work with newer versions, but have to
-# have at least this version to use our wheel.
+# have at least this version to use our wheels.
+RUN \
+    echo "`date` numpy" >> /build/log.txt && \
+    for PYBIN in /opt/python/*/bin/; do \
+      echo "${PYBIN}" && \
+      # earliest numpy wheel for pypy 3.7 is 1.20.0 \
+      if [[ "${PYBIN}" =~ "pp37" ]]; then \
+        export NUMPY_VERSION="1.20"; \
+      # earliest numpy wheel for 3.9 is 1.19.3 \
+      elif [[ "${PYBIN}" =~ "39" ]]; then \
+        export NUMPY_VERSION="1.19"; \
+      # 3.8 can work with numpy 1.15, but numpy only started publishing 3.8 \
+      # wheels at 1.17.1 \
+      elif [[ "${PYBIN}" =~ "38" ]]; then \
+        export NUMPY_VERSION="1.17"; \
+      elif [[ "${PYBIN}" =~ "37" ]]; then \
+        export NUMPY_VERSION="1.14"; \
+      else \
+        export NUMPY_VERSION="1.11"; \
+      fi && \
+      "${PYBIN}/pip" install --no-cache-dir "numpy==${NUMPY_VERSION}.*"; \
+    done && \
+    echo "`date` numpy" >> /build/log.txt
+
 RUN \
     echo "`date` pylibtiff" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -467,27 +515,15 @@ open(path, "w").write(s)' && \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     for PYBIN in /opt/python/*/bin/; do \
-      echo "${PYBIN}" && \
-      # earliest numpy wheel for 3.9 is 1.19.3 \
-      if [[ "${PYBIN}" =~ "39" ]]; then \
-        export NUMPY_VERSION="1.19"; \
-      # 3.8 can work with numpy 1.15, but numpy only started publishing 3.8 \
-      # wheels at 1.17.1 \
-      elif [[ "${PYBIN}" =~ "38" ]]; then \
-        export NUMPY_VERSION="1.17"; \
-      elif [[ "${PYBIN}" =~ "37" ]]; then \
-        export NUMPY_VERSION="1.14"; \
-      else \
-        export NUMPY_VERSION="1.11"; \
-      fi && \
       python -c $'# \n\
+import numpy \n\
 import re \n\
+numpyver = ".".join(numpy.__version__.split(".")[:2]) \n\
 path = "setup.py" \n\
 s = open(path).read() \n\
 s = re.sub(\n\
-  r"install_requires=.*,", "install_requires=[\'numpy>='"${NUMPY_VERSION}"$'\'],", s) \n\
+  r"install_requires=.*,", "install_requires=[\'numpy>='" + numpyver + r"$'\'],", s) \n\
 open(path, "w").write(s)' && \
-      "${PYBIN}/pip" install --no-cache-dir "numpy==${NUMPY_VERSION}.*" && \
       "${PYBIN}/python" -c 'import libtiff' || true && \
       "${PYBIN}/pip" wheel --no-deps . -w /io/wheelhouse; \
     done && \
@@ -507,7 +543,7 @@ RUN \
     # version 0.9.3's commit \
     git checkout f4399d4e5e4fcb9e110e2af34515bcb08ff77053 && \
     mkdir glymur/bin && \
-    find /build/openjpeg/_build/bin/ -executable -type f -name 'opj*' -exec cp {} glymur/bin/. \; && \
+    find /usr/local/bin -executable -type f -name 'opj*' -exec cp {} glymur/bin/. \; && \
     strip glymur/bin/* --strip-unneeded -p -D && \
     python -c $'# \n\
 path = "glymur/bin/__init__.py" \n\
@@ -576,9 +612,7 @@ cd /build && \
 #
 # RUN \
     echo "`date` meson" >> /build/log.txt && \
-    export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
-    pip3 install meson && \
-    rm -rf ~/.cache && \
+    pip install --no-cache-dir meson && \
     echo "`date` meson" >> /build/log.txt && \
 cd /build && \
 #
@@ -613,7 +647,7 @@ cd /build && \
     echo "`date` util-linux" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v2.37 https://github.com/karelzak/util-linux.git && \
+    git clone --depth=1 --single-branch -b v2.37.1 https://github.com/karelzak/util-linux.git && \
     cd util-linux && \
     sed -i 's/#ifndef UMOUNT_UNUSED/#ifndef O_PATH\n# define O_PATH 010000000\n#endif\n\n#ifndef UMOUNT_UNUSED/g' libmount/src/context_umount.c && \
     ./autogen.sh && \
@@ -638,15 +672,14 @@ data = open(path).read().replace( \n\
 open(path, "w").write(data)' && \
     # Also change auditwheel so it doesn't check for a higher priority \
     # platform; that process is slow \
-    sed -i 's/analyzed_tag = /analyzed_tag = reqd_tag  #/g' /opt/_internal/tools/lib/python3.9/site-packages/auditwheel/main_repair.py && \
-    sed -i 's/if reqd_tag < get_priority_by_name(analyzed_tag):/if False:  #/g' /opt/_internal/tools/lib/python3.9/site-packages/auditwheel/main_repair.py && \
+    sed -i 's/analyzed_tag = /analyzed_tag = reqd_tag  #/g' /opt/_internal/pipx/venvs/auditwheel/lib/python3.9/site-packages/auditwheel/main_repair.py && \
+    sed -i 's/if reqd_tag < get_priority_by_name(analyzed_tag):/if False:  #/g' /opt/_internal/pipx/venvs/auditwheel/lib/python3.9/site-packages/auditwheel/main_repair.py && \
     echo "`date` auditwheel policy" >> /build/log.txt
 
 RUN \
     echo "`date` glib" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.69/glib-2.69.0.tar.xz -L -o glib-2.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.69/glib-2.69.1.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
@@ -726,7 +759,6 @@ cd /build && \
 RUN \
     echo "`date` gobject-introspection" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
     curl --retry 5 --silent https://download.gnome.org/sources/gobject-introspection/1.68/gobject-introspection-1.68.0.tar.xz -L -o gobject-introspection.tar.xz && \
     unxz gobject-introspection.tar.xz && \
     mkdir gobject-introspection && \
@@ -749,7 +781,6 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` gdk-pixbuf" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
     curl --retry 5 --silent https://download.gnome.org/sources/gdk-pixbuf/2.42/gdk-pixbuf-2.42.6.tar.xz -L -o gdk-pixbuf.tar.xz && \
     unxz gdk-pixbuf.tar.xz && \
     mkdir gdk-pixbuf && \
@@ -783,7 +814,6 @@ RUN \
 RUN \
     echo "`date` icu4c" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
     git clone --depth=1 --single-branch -b release-69-1 https://github.com/unicode-org/icu.git && \
     cd icu/icu4c/source && \
     CFLAGS="$CFLAGS -O2 -DUNISTR_FROM_CHAR_EXPLICIT=explicit -DUNISTR_FROM_STRING_EXPLICIT=explicit -DU_CHARSET_IS_UTF8=1 -DU_NO_DEFAULT_INCLUDE_UTF_HEADERS=1 -DU_HIDE_OBSOLETE_UTF_OLD_H=1" ./configure --silent --prefix=/usr/local --disable-tests --disable-samples --with-data-packaging=library --disable-static && \
@@ -824,7 +854,7 @@ RUN \
     # git fetch --depth=1000 && \
     # git checkout 10d027f && \
     # popd && \
-    # work-around for https://github.com/boostorg/mpi/issues/112
+    # work-around for https://github.com/boostorg/mpi/issues/112 /
     sed -i 's/boost_mpi_python mpi/boost_mpi_python/g' libs/mpi/build/Jamfile.v2 && \
     find . -name '.git' -exec rm -rf {} \+ && \
     echo "" > tools/build/src/user-config.jam && \
@@ -833,9 +863,17 @@ RUN \
     echo "using python : 3.7 : /opt/python/cp37-cp37m/bin/python : /opt/python/cp37-cp37m/include/python3.7m : /opt/python/cp37-cp37m/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.8 : /opt/python/cp38-cp38/bin/python : /opt/python/cp38-cp38/include/python3.8 : /opt/python/cp38-cp38/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.9 : /opt/python/cp39-cp39/bin/python : /opt/python/cp39-cp39/include/python3.9 : /opt/python/cp39-cp39/lib ;" >> tools/build/src/user-config.jam && \
-    # echo "using python : 3.10 : /opt/python/cp39-cp39/bin/python : /opt/python/cp310-cp319/include/python3.10 : /opt/python/cp310-cp310/lib ;" >> tools/build/src/user-config.jam && \
+    # echo "using python : 3.10 : /opt/python/cp310-cp310/bin/python : /opt/python/cp310-cp319/include/python3.10 : /opt/python/cp310-cp310/lib ;" >> tools/build/src/user-config.jam && \
     ./bootstrap.sh --prefix=/usr/local --with-toolset=gcc variant=release && \
     ./b2 -d1 -j ${JOBS} toolset=gcc variant=release link=shared --build-type=minimal python=3.6,3.7,3.8,3.9 cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable -Wno-parentheses -Wno-maybe-uninitialized" install && \
+    # pypy  \
+    # This conflicts with the non-pypy version \
+    # echo "" > tools/build/src/user-config.jam && \
+    # echo "using mpi ;" >> tools/build/src/user-config.jam && \
+    # echo "using python : 3.7 : /opt/python/pp37-pypy37_pp73/bin/python : /opt/python/pp37-pypy37_pp73/include : /opt/python/pp37-pypy37_pp73/lib ;" >> tools/build/src/user-config.jam && \
+    # ./bootstrap.sh --prefix=/usr/local --with-toolset=gcc variant=release && \
+    # ./b2 -d1 -j ${JOBS} toolset=gcc variant=release link=shared --build-type=minimal python=3.7 cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable -Wno-parentheses -Wno-maybe-uninitialized" install && \
+    # common \
     ldconfig && \
     echo "`date` boost" >> /build/log.txt
 
@@ -1016,7 +1054,7 @@ RUN \
 RUN \
     echo "`date` freetype" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.savannah.gnu.org/releases/freetype/freetype-2.10.4.tar.gz -L -o freetype.tar.gz && \
+    curl --retry 5 --silent https://download.savannah.gnu.org/releases/freetype/freetype-2.11.0.tar.gz -L -o freetype.tar.gz && \
     mkdir freetype && \
     tar -zxf freetype.tar.gz -C freetype --strip-components 1 && \
     rm -f freetype.tar.gz && \
@@ -1030,7 +1068,6 @@ RUN \
 RUN \
     echo "`date` fontconfig" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
     curl --retry 5 --silent https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.13.94.tar.gz -L -o fontconfig.tar.gz && \
     mkdir fontconfig && \
     tar -zxf fontconfig.tar.gz -C fontconfig --strip-components 1 && \
@@ -1117,14 +1154,14 @@ RUN \
     python -c $'# \n\
 import os \n\
 path = "src/FYBA/FYLU.cpp" \n\
-data = open(path).read() \n\
+data = open(path, "rb").read() \n\
 data = data.replace( \n\
-    "#include \\"stdafx.h\\"", "") \n\
+    b"#include \\"stdafx.h\\"", b"") \n\
 data = data.replace( \n\
-    "#include <locale>", \n\
-    "#include <locale>\\n" + \n\
-    "#include \\"stdafx.h\\"") \n\
-open(path, "w").write(data)' && \
+    b"#include <locale>", \n\
+    b"#include <locale>\\n" + \n\
+    b"#include \\"stdafx.h\\"") \n\
+open(path, "wb").write(data)' && \
     autoreconf -ifv && \
     ./configure --silent --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
@@ -1200,8 +1237,7 @@ RUN \
 RUN \
     echo "`date` mysql" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    # curl --retry 5 --silent https://dev.mysql.com/get/Downloads/MySQL-5.7/mysql-boost-5.7.29.tar.gz -L -o mysql.tar.gz && \
-    curl --retry 5 --silent https://cdn.mysql.com/Downloads/MySQL-8.0/mysql-boost-8.0.25.tar.gz -L -o mysql.tar.gz && \
+    curl --retry 5 --silent https://cdn.mysql.com/Downloads/MySQL-8.0/mysql-boost-8.0.26.tar.gz -L -o mysql.tar.gz && \
     mkdir mysql && \
     tar -zxf mysql.tar.gz -C mysql --strip-components 1 && \
     rm -f mysql.tar.gz && \
@@ -1258,8 +1294,7 @@ RUN \
 RUN \
     echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
-    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-21.07.0.tar.xz -L -o poppler.tar.xz && \
+    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-21.08.0.tar.xz -L -o poppler.tar.xz && \
     unxz poppler.tar.xz && \
     mkdir poppler && \
     tar -xf poppler.tar -C poppler --strip-components 1 && \
@@ -1301,14 +1336,12 @@ RUN \
     ldconfig && \
     echo "`date` epsilon" >> /build/log.txt
 
-# COPY jasper-jp2_cod.c.patch .
-
 # Jasper 2.0.18 is not compatible with GDAL as of 2020-7-20
 # Jasper 2.0.21 is compatible with GDAL 3.1.4 and above
 RUN \
     echo "`date` jasper" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b version-2.0.32 https://github.com/mdadams/jasper.git && \
+    git clone --depth=1 --single-branch -b version-2.0.33 https://github.com/mdadams/jasper.git && \
     cd jasper && \
     # git apply ../jasper-jp2_cod.c.patch && \
     mkdir _build && \
@@ -1327,7 +1360,7 @@ RUN \
     echo "`date` libxcrypt" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v4.4.23 https://github.com/besser82/libxcrypt.git && \
+    git clone --depth=1 --single-branch -b v4.4.25 https://github.com/besser82/libxcrypt.git && \
     cd libxcrypt && \
     # autoreconf -ifv && \
     ./autogen.sh && \
@@ -1370,7 +1403,7 @@ RUN \
 RUN \
     echo "`date` xerces" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://www-us.apache.org/dist/xerces/c/3/sources/xerces-c-3.2.3.tar.gz -L -o xerces-c.tar.gz && \
+    curl --retry 5 --silent https://www.apache.org/dist/xerces/c/3/sources/xerces-c-3.2.3.tar.gz -L -o xerces-c.tar.gz && \
     mkdir xerces-c && \
     tar -zxf xerces-c.tar.gz -C xerces-c --strip-components 1 && \
     rm -f xerces-c.tar.gz && \
@@ -1425,7 +1458,7 @@ RUN \
 RUN \
     echo "`date` armadillo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://sourceforge.net/projects/arma/files/armadillo-10.5.3.tar.xz -L -o armadillo.tar.xz && \
+    curl --retry 5 --silent https://sourceforge.net/projects/arma/files/armadillo-10.6.1.tar.xz -L -o armadillo.tar.xz && \
     unxz armadillo.tar.xz && \
     mkdir armadillo && \
     tar -xf armadillo.tar -C armadillo --strip-components 1 && \
@@ -1484,9 +1517,9 @@ RUN \
     echo "`date` gdal" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # Specific branch \
-    git clone --depth=1 --single-branch -b v3.3.1 https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch -b v3.3.1 https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
-    # git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
     # Common \
     cd gdal/gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
@@ -1639,7 +1672,6 @@ RUN \
     # git checkout f1fc3c49488c3692c4c64afc98ef4c7eca9b6165 && \
     # Common \
     rm -rf .git && \
-    export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
     python scons/scons.py configure JOBS=`nproc` \
     BOOST_INCLUDES=/usr/local/include BOOST_LIBS=/usr/local/lib \
     ICU_INCLUDES=/usr/local/include ICU_LIBS=/usr/local/lib \
@@ -1709,6 +1741,9 @@ s = open(path).read().replace( \n\
 s = s.replace("test_suite=\'nose.collector\',", \n\
 """test_suite=\'nose.collector\', \n\
     entry_points={\'console_scripts\': [\'%s=mapnik.bin:program\' % name for name in os.listdir(\'mapnik/bin\') if not name.endswith(\'.py\')]},""") \n\
+p1 = s.index("cflags =") \n\
+p2 = s.index("os.environ", p1) \n\
+s = s[:p1] + "try:\\n    " + s[p1:p2].replace("\\n", "\\n    ") + "\\nexcept Exception:\\n    pass\\n" + s[p2:] \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
 path = "mapnik/__init__.py" \n\
@@ -1836,7 +1871,6 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` orc" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
     curl --retry 5 --silent https://github.com/GStreamer/orc/archive/0.4.31.tar.gz -L -o orc.tar.gz && \
     mkdir orc && \
     tar -zxf orc.tar.gz -C orc --strip-components 1 && \
@@ -1882,7 +1916,6 @@ RUN \
 RUN \
     echo "`date` pango" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
     curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.48/pango-1.48.7.tar.xz -L -o pango.tar.xz && \
     unxz pango.tar.xz && \
     mkdir pango && \
@@ -1905,7 +1938,7 @@ RUN \
     tar -zxf libxml2.tar.gz -C libxml2 --strip-components 1 && \
     rm -f libxml2.tar.gz && \
     cd libxml2 && \
-    ./configure --prefix=/usr/local --with-python=/opt/python/cp38-cp38 --disable-static && \
+    ./configure --prefix=/usr/local --disable-static && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig && \
@@ -2002,7 +2035,7 @@ RUN \
 RUN \
     echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.1.0-2 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.1.0-4 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
@@ -2016,7 +2049,6 @@ RUN \
 RUN \
     echo "`date` vips" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
     # Use these lines for a release \
     curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.11.2/vips-8.11.2.tar.gz -L -o vips.tar.gz && \
     mkdir vips && \
@@ -2149,7 +2181,7 @@ data = data.replace("""version=get_version(),""", \n\
     entry_points={\'console_scripts\': [\'%s=pyproj.bin:program\' % name for name in os.listdir(\'pyproj/bin\') if not name.endswith(\'.py\')]},""") \n\
 open(path, "w").write(data)' && \
     # now rebuild anything that can work with master \
-    find /opt/python -mindepth 1 -name '*cp3*' -not -name '*cp36*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    find /opt/python -mindepth 1 -not -name '*cp36*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     # Make sure all binaries have the execute flag \
     find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 bash -c 'mkdir /tmp/ptmp; pushd /tmp/ptmp; unzip ${0}; chmod a+x pyproj/bin/*; chmod a-x pyproj/bin/*.py; zip -r ${0} *; popd; rm -rf /tmp/ptmp' && \
     find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
@@ -2272,7 +2304,7 @@ open(path, "w").write(s)' && \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     # Only build for Python >=3.5 \
-    find /opt/python -mindepth 1 -name '*cp3*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse' && \
+    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse' && \
     find /io/wheelhouse/ -name 'python_javabridge*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
     # auditwheel modifies the java libraries, but some of those have \
     # hard-coded relative paths, which doesn't work.  Replace them with the \
