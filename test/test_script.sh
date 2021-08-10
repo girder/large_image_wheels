@@ -37,7 +37,11 @@ python -c 'import pyvips'
 echo 'Test basic import of javabridge'
 python -c 'import javabridge'
 echo 'Test basic imports of all wheels'
+if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 7)))'; then
 python -c 'import libtiff, openslide, pyproj, pyvips, osgeo, mapnik, glymur, javabridge'
+else
+python -c 'import libtiff, openslide, pyvips, osgeo, mapnik, javabridge'
+fi
 echo 'Time import of gdal'
 python -c 'import sys,time;s = time.time();from osgeo import gdal;sys.exit(0 if time.time()-s < 1 else ("Slow GDAL import %5.3fs" % (time.time() - s)))'
 if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 7)))'; then
@@ -219,8 +223,10 @@ fi
 echo 'Test running executables'
 `python -c 'import os,sys,libtiff;sys.stdout.write(os.path.dirname(libtiff.__file__))'`/bin/tiffinfo landcover.tif
 tiffinfo landcover.tif
+if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 7)))'; then
 `python -c 'import os,sys,glymur;sys.stdout.write(os.path.dirname(glymur.__file__))'`/bin/opj_dump -h | grep -q 'opj_dump utility from the OpenJPEG project'
 opj_dump -h | grep -q 'opj_dump utility from the OpenJPEG project'
+fi
 `python -c 'import os,sys,openslide;sys.stdout.write(os.path.dirname(openslide.__file__))'`/bin/openslide-show-properties --version
 openslide-show-properties --version
 `python -c 'import os,sys,osgeo;sys.stdout.write(os.path.dirname(osgeo.__file__))'`/bin/gdalinfo --version

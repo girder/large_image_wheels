@@ -241,6 +241,11 @@ Packages = {
         'filelist': 'https://sourceforge.net/projects/libpng/files/libpng16/',
         're': r'libpng16\/([0-9]+\.[0-9]+(|\.[0-9]+))\/$'
     },
+    'librasterlite2': {
+        'fossil': 'https://www.gaia-gis.it/fossil/librasterlite2/timeline?n=10&r=trunk&ss=x',
+        # 'filelist': 'https://www.gaia-gis.it/fossil/librasterlite2/',
+        # 're': r'librasterlite2-([0-9]+\.[0-9]+(|\.[0-9]+)(|-beta[0-9]+)).tar.(gz|xz)$'
+    },
     'librsvg': {
         'json': 'https://download.gnome.org/sources/librsvg/cache.json',
         'keys': lambda data: list(data[1]['librsvg']),
@@ -251,10 +256,9 @@ Packages = {
         # 'filelist': 'https://www.gaia-gis.it/fossil/libspatialite/',
         # 're': r'libspatialite-([0-9]+\.[0-9]+(|\.[0-9]+)(|[a-z])).tar.(gz|xz)$'
     },
-    'librasterlite2': {
-        'fossil': 'https://www.gaia-gis.it/fossil/librasterlite2/timeline?n=10&r=trunk&ss=x',
-        # 'filelist': 'https://www.gaia-gis.it/fossil/librasterlite2/',
-        # 're': r'librasterlite2-([0-9]+\.[0-9]+(|\.[0-9]+)(|-beta[0-9]+)).tar.(gz|xz)$'
+    'libssh2': {
+        'git': 'https://github.com/libssh2/libssh2.git',
+        're': r'libssh2-([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'libtiff': {
         'filelist': 'https://download.osgeo.org/libtiff/',
@@ -352,10 +356,6 @@ Packages = {
     },
     'openslide-python-pypi': {
         'pypi': 'openslide-python',
-    },
-    'openssh2': {
-        'git': 'https://github.com/libssh2/libssh2.git',
-        're': r'libssh2-([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     # other libraries don't work with openssl 1.1.1
     'openssl': {

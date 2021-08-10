@@ -170,7 +170,7 @@ cd /build && \
 # RUN \
     echo "`date` libssh2" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b libssh2-1.9.0 https://github.com/libssh2/libssh2.git && \
+    git clone --depth=1 --single-branch -b libssh2-1.10.0 https://github.com/libssh2/libssh2.git && \
     cd libssh2 && \
     ./buildconf || (sed -i 's/m4_undefine/# m4_undefine/g' configure.ac && ./buildconf) && \
     ./configure --silent --prefix=/usr/local --disable-static && \
@@ -240,7 +240,7 @@ cd /build && \
 # CMake - use a precompiled binary
 RUN \
     echo "`date` cmake" >> /build/log.txt && \
-    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.21.1/cmake-3.21.1-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.21.2/cmake-3.21.2-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
     mkdir cmake && \
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz && \
@@ -394,7 +394,7 @@ cd /build && \
 # RUN \
     echo "`date` libwebp" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent http://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.2.0.tar.gz -L -o libwebp.tar.gz && \
+    curl --retry 5 --silent http://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.2.1.tar.gz -L -o libwebp.tar.gz && \
     mkdir libwebp && \
     tar -zxf libwebp.tar.gz -C libwebp --strip-components 1 && \
     rm -f libwebp.tar.gz && \
@@ -410,7 +410,7 @@ cd /build && \
 # RUN \
     echo "`date` libjpeg-turbo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.1.0.tar.gz -L -o libjpeg-turbo.tar.gz && \
+    curl --retry 5 --silent https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.1.1.tar.gz -L -o libjpeg-turbo.tar.gz && \
     mkdir libjpeg-turbo && \
     tar -zxf libjpeg-turbo.tar.gz -C libjpeg-turbo --strip-components 1 && \
     rm -f libjpeg-turbo.tar.gz && \
@@ -537,11 +537,11 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` glymur" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    # git clone -b v0.9.3 https://github.com/quintusdias/glymur.git && \
-    git clone https://github.com/quintusdias/glymur.git && \
+    git clone -b v0.9.4 https://github.com/quintusdias/glymur.git && \
+    # git clone https://github.com/quintusdias/glymur.git && \
     cd glymur && \
     # version 0.9.3's commit \
-    git checkout f4399d4e5e4fcb9e110e2af34515bcb08ff77053 && \
+    # git checkout f4399d4e5e4fcb9e110e2af34515bcb08ff77053 && \
     mkdir glymur/bin && \
     find /usr/local/bin -executable -type f -name 'opj*' -exec cp {} glymur/bin/. \; && \
     strip glymur/bin/* --strip-unneeded -p -D && \
@@ -587,7 +587,7 @@ open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    find /opt/python -mindepth 1 -not -name '*cp36*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     find /io/wheelhouse/ -name 'Glymur*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'Glymur*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'Glymur*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
@@ -679,7 +679,7 @@ open(path, "w").write(data)' && \
 RUN \
     echo "`date` glib" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.69/glib-2.69.1.tar.xz -L -o glib-2.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.69/glib-2.69.2.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
@@ -759,7 +759,7 @@ cd /build && \
 RUN \
     echo "`date` gobject-introspection" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.gnome.org/sources/gobject-introspection/1.68/gobject-introspection-1.68.0.tar.xz -L -o gobject-introspection.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/gobject-introspection/1.69/gobject-introspection-1.69.0.tar.xz -L -o gobject-introspection.tar.xz && \
     unxz gobject-introspection.tar.xz && \
     mkdir gobject-introspection && \
     tar -xf gobject-introspection.tar -C gobject-introspection --strip-components 1 && \
@@ -855,18 +855,19 @@ RUN \
     # git checkout 10d027f && \
     # popd && \
     # work-around for https://github.com/boostorg/mpi/issues/112 /
-    sed -i 's/boost_mpi_python mpi/boost_mpi_python/g' libs/mpi/build/Jamfile.v2 && \
+    # sed -i 's/boost_mpi_python mpi/boost_mpi_python/g' libs/mpi/build/Jamfile.v2 && \
     find . -name '.git' -exec rm -rf {} \+ && \
     echo "" > tools/build/src/user-config.jam && \
-    echo "using mpi ;" >> tools/build/src/user-config.jam && \
+    echo "using mpi : /usr/local/lib ;" >> tools/build/src/user-config.jam && \
+    # echo "using mpi ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.6 : /opt/python/cp36-cp36m/bin/python : /opt/python/cp36-cp36m/include/python3.6m : /opt/python/cp36-cp36m/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.7 : /opt/python/cp37-cp37m/bin/python : /opt/python/cp37-cp37m/include/python3.7m : /opt/python/cp37-cp37m/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.8 : /opt/python/cp38-cp38/bin/python : /opt/python/cp38-cp38/include/python3.8 : /opt/python/cp38-cp38/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.9 : /opt/python/cp39-cp39/bin/python : /opt/python/cp39-cp39/include/python3.9 : /opt/python/cp39-cp39/lib ;" >> tools/build/src/user-config.jam && \
     # echo "using python : 3.10 : /opt/python/cp310-cp310/bin/python : /opt/python/cp310-cp319/include/python3.10 : /opt/python/cp310-cp310/lib ;" >> tools/build/src/user-config.jam && \
     ./bootstrap.sh --prefix=/usr/local --with-toolset=gcc variant=release && \
-    ./b2 -d1 -j ${JOBS} toolset=gcc variant=release link=shared --build-type=minimal python=3.6,3.7,3.8,3.9 cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable -Wno-parentheses -Wno-maybe-uninitialized" install && \
-    # pypy  \
+    ./b2 -d1 -j ${JOBS} toolset=gcc variant=release link=shared --build-type=minimal python=3.6,3.7,3.8,3.9 cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable -Wno-parentheses -Wno-maybe-uninitialized -Wno-attributes" install && \
+    # pypy \
     # This conflicts with the non-pypy version \
     # echo "" > tools/build/src/user-config.jam && \
     # echo "using mpi ;" >> tools/build/src/user-config.jam && \
@@ -938,7 +939,7 @@ RUN \
     echo "`date` proj4" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 8.1.0 https://github.com/OSGeo/proj.4.git && \
+    git clone --depth=1 --single-branch -b 8.1.1 https://github.com/OSGeo/proj.4.git && \
     cd proj.4 && \
     curl --retry 5 --silent http://download.osgeo.org/proj/proj-datumgrid-1.8.zip -L -o proj-datumgrid.zip && \
     cd data && \
@@ -1278,7 +1279,7 @@ RUN \
     echo "`date` postgres" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.postgresql.org/pub/source/v13.3/postgresql-13.3.tar.gz -L -o postgresql.tar.gz && \
+    curl --retry 5 --silent https://ftp.postgresql.org/pub/source/v13.4/postgresql-13.4.tar.gz -L -o postgresql.tar.gz && \
     mkdir postgresql && \
     tar -zxf postgresql.tar.gz -C postgresql --strip-components 1 && \
     rm -f postgresql.tar.gz && \
@@ -1294,7 +1295,7 @@ RUN \
 RUN \
     echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-21.08.0.tar.xz -L -o poppler.tar.xz && \
+    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-21.09.0.tar.xz -L -o poppler.tar.xz && \
     unxz poppler.tar.xz && \
     mkdir poppler && \
     tar -xf poppler.tar -C poppler --strip-components 1 && \
@@ -1658,20 +1659,35 @@ RUN \
     ldconfig && \
     echo "`date` harfbuzz" >> /build/log.txt
 
-# We are stuck on the march 5th version until python-mapnik catches up.
+RUN \
+    echo "`date` libxml" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    rm -rf libxml2* && \
+    curl --retry 5 --silent http://xmlsoft.org/sources/libxml2-2.9.12.tar.gz -L -o libxml2.tar.gz && \
+    mkdir libxml2 && \
+    tar -zxf libxml2.tar.gz -C libxml2 --strip-components 1 && \
+    rm -f libxml2.tar.gz && \
+    cd libxml2 && \
+    ./configure --prefix=/usr/local --disable-static && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` libxml" >> /build/log.txt
+
 RUN \
     echo "`date` mapnik" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # Master \
-    git clone --depth=1 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
-    cd mapnik && \
-    # Specific checkout \
-    # git clone --depth=1000 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
+    # git clone --depth=1 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
     # cd mapnik && \
-    # # Mar 5 \
-    # git checkout f1fc3c49488c3692c4c64afc98ef4c7eca9b6165 && \
+    # Specific checkout \
+    git clone --depth=1000 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
+    cd mapnik && \
+    # Apr 28 2021 \
+    git checkout fb2e45c57981f8a3b071f37a0b27f211bf233081 && \
     # Common \
     rm -rf .git && \
+    # Scons build process \
     python scons/scons.py configure JOBS=`nproc` \
     BOOST_INCLUDES=/usr/local/include BOOST_LIBS=/usr/local/lib \
     ICU_INCLUDES=/usr/local/include ICU_LIBS=/usr/local/lib \
@@ -1683,11 +1699,26 @@ RUN \
     PROJ_INCLUDES=/usr/local/include PROJ_LIBS=/usr/local/lib \
     SQLITE_INCLUDES=/usr/local/include SQLITE_LIBS=/usr/local/lib \
     RASTERLITE_INCLUDES=/usr/local/include RASTERLITE_LIBS=/usr/local/lib \
-    WARNING_CXXFLAGS="-Wno-unused-variable -Wno-unused-but-set-variable -Wno-attributes -Wno-unknown-pragmas -Wno-maybe-uninitialized" \
+    WARNING_CXXFLAGS="-Wno-unused-variable -Wno-unused-but-set-variable -Wno-attributes -Wno-unknown-pragmas -Wno-maybe-uninitialized -Wno-parentheses" \
     QUIET=true \
     CPP_TESTS=false \
     DEBUG=false \
+    DEMO=false \
     && \
+    # CMake build process -- doesn't build mapnik-config as of 9/6/21 \
+    # mkdir _build && \
+    # cd _build && \
+    # CXXFLAGS="-Wno-unused-variable -Wno-unused-but-set-variable -Wno-attributes -Wno-unknown-pragmas -Wno-maybe-uninitialized -Wno-parentheses" \
+    # cmake -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release \
+    # -DBUILD_BENCHMARK=OFF \
+    # -DBUILD_DEMO_CPP=OFF \
+    # -DBUILD_DEMO_VIEWER=OFF \
+    # -DBUILD_TEST=OFF \
+    # -DJPEG_INCLUDE_DIR=/usr/local/include \
+    # -DJPEG_LIBRARY_RELEASE=/usr/local/lib/libopenjp2.so \
+    # -DCMAKE_INSTALL_LIBDIR=lib \
+    # .. && \
+    # Common build process \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1916,7 +1947,7 @@ RUN \
 RUN \
     echo "`date` pango" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.48/pango-1.48.7.tar.xz -L -o pango.tar.xz && \
+    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.49/pango-1.49.0.tar.xz -L -o pango.tar.xz && \
     unxz pango.tar.xz && \
     mkdir pango && \
     tar -xf pango.tar -C pango --strip-components 1 && \
@@ -1928,21 +1959,6 @@ RUN \
     ninja -j ${JOBS} install && \
     ldconfig && \
     echo "`date` pango" >> /build/log.txt
-
-RUN \
-    echo "`date` libxml" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    rm -rf libxml2* && \
-    curl --retry 5 --silent http://xmlsoft.org/sources/libxml2-2.9.12.tar.gz -L -o libxml2.tar.gz && \
-    mkdir libxml2 && \
-    tar -zxf libxml2.tar.gz -C libxml2 --strip-components 1 && \
-    rm -f libxml2.tar.gz && \
-    cd libxml2 && \
-    ./configure --prefix=/usr/local --disable-static && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` libxml" >> /build/log.txt
 
 RUN \
     echo "`date` libcroco" >> /build/log.txt && \
@@ -2004,7 +2020,7 @@ RUN \
     cd librsvg && \
     export CFLAGS="$CFLAGS -O2" && \
     export RUSTFLAGS="$RUSTFLAGS -O -C link_args=-Wl,--strip-debug,--strip-discarded,--discard-local" && \
-    ./configure --silent --prefix=/usr/local --disable-rpath --disable-introspection --disable-debug --disable-static && \
+    ./configure --silent --prefix=/usr/local --disable-introspection --disable-debug --disable-static && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig && \
@@ -2035,7 +2051,7 @@ RUN \
 RUN \
     echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.1.0-4 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.1.0-6 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
@@ -2050,7 +2066,7 @@ RUN \
     echo "`date` vips" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # Use these lines for a release \
-    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.11.2/vips-8.11.2.tar.gz -L -o vips.tar.gz && \
+    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.11.3/vips-8.11.3.tar.gz -L -o vips.tar.gz && \
     mkdir vips && \
     tar -zxf vips.tar.gz -C vips --strip-components 1 && \
     rm -f vips.tar.gz && \
@@ -2132,7 +2148,7 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` pyproj4" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --single-branch -b 3.1.0 https://github.com/pyproj4/pyproj.git && \
+    git clone --single-branch -b 3.2.0 https://github.com/pyproj4/pyproj.git && \
     cd pyproj && \
     mkdir pyproj/bin && \
     find /build/proj.4/src/.libs/ -executable -type f ! -name '*.so.*' -exec cp {} pyproj/bin/. \; && \
