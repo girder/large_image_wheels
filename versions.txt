@@ -16,14 +16,14 @@ freetype 2.11.0
 freexl 97c9f43cea
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
-gdal 753d4f3a3428aa47b2ea6d1704afd66ca114a493
-gdal-pypi 3.3.1
-gdal-release 3.3.1
+gdal 05e8bafbe638e631aac256e10b90567b9d05bcc8
+gdal-pypi 3.3.2
+gdal-release 3.3.2
 gdk-pixbuf 2.42.6
 geos 3.9.1
 gettext 0.21
 giflib 5.2.1
-glib 2.69.2
+glib 2.69.3
 glymur 0.9.4
 glymur-pypi 0.9.4
 gobject-introspection 1.69.0
@@ -66,7 +66,7 @@ m4 1.4.19
 manylinux2010 91e0555219449da2e57068485aca906488f4fc0c035043b0afcec96a00c79adb
 mapnik 737e7a69c2679b33093e1ebf0b4c3fa34ae36878
 mapnik-release 3.1.0
-minizip 3.0.2
+minizip 3.0.3
 mysql 8.0.26
 netcdf 4.8.1
 nifti 2_0_0
@@ -107,7 +107,7 @@ sqlite 3360000
 superlu 5.2.2
 tcl 8.6.11
 tk 8.6.11.1
-ultrajson f7dc48a89a64b0c3d1d99b4e9a83b6edae9d974b
+ultrajson 2b13dc4dcc27843a24794d2bc8a9af89efb22799
 ultrajson-pypi 4.1.0
 ultrajson-release 1.35
 util-linux 2.37.2

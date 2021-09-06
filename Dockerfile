@@ -679,7 +679,7 @@ open(path, "w").write(data)' && \
 RUN \
     echo "`date` glib" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.69/glib-2.69.2.tar.xz -L -o glib-2.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.69/glib-2.69.3.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
@@ -955,7 +955,7 @@ RUN \
 RUN \
     echo "`date` minizip" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 3.0.2 https://github.com/nmoinvaz/minizip.git && \
+    git clone --depth=1 --single-branch -b 3.0.3 https://github.com/nmoinvaz/minizip.git && \
     cd minizip && \
     mkdir _build && \
     cd _build && \
@@ -1518,9 +1518,9 @@ RUN \
     echo "`date` gdal" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # Specific branch \
-    # git clone --depth=1 --single-branch -b v3.3.1 https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch -b v3.3.2 https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
-    git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
     # Common \
     cd gdal/gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
