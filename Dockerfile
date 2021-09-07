@@ -125,7 +125,6 @@ RUN \
     tar -zxf m4.tar.gz -C m4 --strip-components 1 && \
     rm -f m4.tar.gz && \
     cd m4 && \
-    export CFLAGS="$CFLAGS -O2" && \
     ./configure --silent --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -183,7 +182,7 @@ cd /build && \
 # RUN \
     echo "`date` curl" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_78_0/curl-7.78.0.tar.gz -L -o curl.tar.gz && \
+    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_79_0/curl-7.79.0.tar.gz -L -o curl.tar.gz && \
     mkdir curl && \
     tar -zxf curl.tar.gz -C curl --strip-components 1 && \
     rm -f curl.tar.gz && \
@@ -534,6 +533,18 @@ open(path, "w").write(s)' && \
     rm -rf ~/.cache && \
     echo "`date` pylibtiff" >> /build/log.txt
 
+# Tell auditwheel not to include libz.so
+RUN \
+    echo "`date` auditwheel policy 3" >> /build/log.txt && \
+    python -c $'# \n\
+import os \n\
+path = os.popen("find /opt/_internal -name manylinux-policy.json").read().strip() \n\
+data = open(path).read().replace( \n\
+    "libz.so.1", "Xlibz.so.1").replace( \n\
+    "ZLIB", "XXZLIB") \n\
+open(path, "w").write(data)' && \
+    echo "`date` auditwheel policy 3" >> /build/log.txt
+
 RUN \
     echo "`date` glymur" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -651,7 +662,6 @@ cd /build && \
     cd util-linux && \
     sed -i 's/#ifndef UMOUNT_UNUSED/#ifndef O_PATH\n# define O_PATH 010000000\n#endif\n\n#ifndef UMOUNT_UNUSED/g' libmount/src/context_umount.c && \
     ./autogen.sh && \
-    export CFLAGS="$CFLAGS -O2" && \
     ./configure --disable-all-programs --enable-libblkid --enable-libmount --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -662,7 +672,7 @@ RUN \
     echo "`date` auditwheel policy" >> /build/log.txt && \
     python -c $'# \n\
 import os \n\
-path = os.popen("find /opt/_internal -name policy.json").read().strip() \n\
+path = os.popen("find /opt/_internal -name manylinux-policy.json").read().strip() \n\
 data = open(path).read().replace( \n\
     "libXext.so.6", "XlibXext.so.6").replace( \n\
     "libXrender.so.1", "XlibXrender.so.1").replace( \n\
@@ -679,7 +689,7 @@ open(path, "w").write(data)' && \
 RUN \
     echo "`date` glib" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.69/glib-2.69.3.tar.xz -L -o glib-2.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.70/glib-2.70.0.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
@@ -743,13 +753,12 @@ cd /build && \
 # RUN \
     echo "`date` bison" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.7.6.tar.xz -L -o bison.tar.xz && \
+    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.8.1.tar.xz -L -o bison.tar.xz && \
     unxz bison.tar.xz && \
     mkdir bison && \
     tar -xf bison.tar -C bison --strip-components 1 && \
     rm -f bison.tar && \
     cd bison && \
-    export CFLAGS="$CFLAGS -O2" && \
     ./configure --silent --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -759,7 +768,7 @@ cd /build && \
 RUN \
     echo "`date` gobject-introspection" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.gnome.org/sources/gobject-introspection/1.69/gobject-introspection-1.69.0.tar.xz -L -o gobject-introspection.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/gobject-introspection/1.70/gobject-introspection-1.70.0.tar.xz -L -o gobject-introspection.tar.xz && \
     unxz gobject-introspection.tar.xz && \
     mkdir gobject-introspection && \
     tar -xf gobject-introspection.tar -C gobject-introspection --strip-components 1 && \
@@ -804,7 +813,6 @@ RUN \
     tar -zxf libiconv.tar.gz -C libiconv --strip-components 1 && \
     rm -f libiconv.tar.gz && \
     cd libiconv && \
-    export CFLAGS="$CFLAGS -O2" && \
     ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -816,7 +824,7 @@ RUN \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b release-69-1 https://github.com/unicode-org/icu.git && \
     cd icu/icu4c/source && \
-    CFLAGS="$CFLAGS -O2 -DUNISTR_FROM_CHAR_EXPLICIT=explicit -DUNISTR_FROM_STRING_EXPLICIT=explicit -DU_CHARSET_IS_UTF8=1 -DU_NO_DEFAULT_INCLUDE_UTF_HEADERS=1 -DU_HIDE_OBSOLETE_UTF_OLD_H=1" ./configure --silent --prefix=/usr/local --disable-tests --disable-samples --with-data-packaging=library --disable-static && \
+    CFLAGS="$CFLAGS -DUNISTR_FROM_CHAR_EXPLICIT=explicit -DUNISTR_FROM_STRING_EXPLICIT=explicit -DU_CHARSET_IS_UTF8=1 -DU_NO_DEFAULT_INCLUDE_UTF_HEADERS=1 -DU_HIDE_OBSOLETE_UTF_OLD_H=1" ./configure --silent --prefix=/usr/local --disable-tests --disable-samples --with-data-packaging=library --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     # reduce docker size \
@@ -833,7 +841,7 @@ RUN \
     rm -f openmpi.tar.gz && \
     cd openmpi && \
     ./configure --silent --prefix=/usr/local --disable-dependency-tracking --enable-silent-rules --disable-dlopen --disable-libompitrace --disable-opal-btl-usnic-unit-tests --disable-picky --disable-debug --disable-mem-profile --disable-mem-debug --disable-static --disable-mpi-java && \
-    make --silent -j ${JOBS} && \
+    # make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
     find . -name '*.a' -delete && \
@@ -1017,7 +1025,7 @@ RUN \
     fossil open ../libspatialite.fossil && \
     # fossil checkout -f 5808354e84 && \
     rm -f ../libspatialite.fossil && \
-    CFLAGS="$CFLAGS -O2" ./configure --silent --prefix=/usr/local --disable-examples --disable-static --disable-rttopo --disable-gcp && \
+    ./configure --silent --prefix=/usr/local --disable-examples --disable-static --disable-rttopo --disable-gcp && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1045,7 +1053,6 @@ RUN \
     tar -zxf pixman.tar.gz -C pixman --strip-components 1 && \
     rm -f pixman.tar.gz && \
     cd pixman && \
-    export CFLAGS="$CFLAGS -O2" && \
     ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -1090,7 +1097,7 @@ RUN \
     tar -xf cairo.tar -C cairo --strip-components 1 && \
     rm -f cairo.tar && \
     cd cairo && \
-    CXXFLAGS='-Wno-implicit-fallthrough -Wno-cast-function-type' CFLAGS="$CFLAGS -O2 -Wl,--allow-multiple-definition" ./configure --silent --prefix=/usr/local --disable-static && \
+    CXXFLAGS='-Wno-implicit-fallthrough -Wno-cast-function-type' CFLAGS="$CFLAGS -Wl,--allow-multiple-definition" ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1214,7 +1221,6 @@ RUN \
     git clone --depth=1 --single-branch -b checkpoint.1.12.2 https://github.com/Parallel-NetCDF/PnetCDF && \
     cd PnetCDF && \
     autoreconf -ifv && \
-    export CFLAGS="$CFLAGS -O2" && \
     ./configure --silent --prefix=/usr/local --enable-shared --disable-fortran --enable-thread-safe --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -1267,7 +1273,6 @@ RUN \
     rm -f ogdi.tar.gz && \
     cd ogdi && \
     export TOPDIR=`pwd` && \
-    export CFLAGS="$CFLAGS -O2" && \
     ./configure --silent --prefix=/usr/local --with-zlib --with-expat && \
     make --silent && \
     make --silent install && \
@@ -1361,11 +1366,11 @@ RUN \
     echo "`date` libxcrypt" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v4.4.25 https://github.com/besser82/libxcrypt.git && \
+    git clone --depth=1 --single-branch -b v4.4.26 https://github.com/besser82/libxcrypt.git && \
     cd libxcrypt && \
     # autoreconf -ifv && \
     ./autogen.sh && \
-    CFLAGS="$CFLAGS -O2 -w" ./configure --silent --prefix=/usr/local --enable-obsolete-api --enable-hashes=all --disable-static && \
+    CFLAGS="$CFLAGS -w" ./configure --silent --prefix=/usr/local --enable-obsolete-api --enable-hashes=all --disable-static && \
     make --silent -j ${JOBS} && \
     rm -f /usr/local/lib/pkgconfig/libcrypt.pc && \
     make --silent -j ${JOBS} install && \
@@ -1379,7 +1384,6 @@ RUN \
     git clone --depth=1 --single-branch -b libgta-1.2.1 https://github.com/marlam/gta-mirror.git && \
     cd gta-mirror/libgta && \
     autoreconf -ifv && \
-    export CFLAGS="$CFLAGS -O2" && \
     ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -1518,9 +1522,9 @@ RUN \
     echo "`date` gdal" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # Specific branch \
-    git clone --depth=1 --single-branch -b v3.3.2 https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch -b v3.3.2 https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
-    # git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
     # Common \
     cd gdal/gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
@@ -1819,7 +1823,6 @@ RUN \
     patch src/openslide-vendor-mirax.c ../openslide-vendor-mirax.c.patch && \
     patch src/openslide.c ../openslide-init.patch && \
     autoreconf -ifv && \
-    export CFLAGS="$CFLAGS -O2" && \
     ./configure --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -1969,7 +1972,6 @@ RUN \
     tar -xf libcroco.tar -C libcroco --strip-components 1 && \
     rm -f libcroco.tar && \
     cd libcroco && \
-    export CFLAGS="$CFLAGS -O2" && \
     ./configure --prefix=/usr/local --disable-static && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
@@ -2012,13 +2014,12 @@ RUN \
     echo "`date` librsvg" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.51/librsvg-2.51.4.tar.xz -L -o librsvg.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.52/librsvg-2.52.0.tar.xz -L -o librsvg.tar.xz && \
     unxz librsvg.tar.xz && \
     mkdir librsvg && \
     tar -xf librsvg.tar -C librsvg --strip-components 1 && \
     rm -f librsvg.tar && \
     cd librsvg && \
-    export CFLAGS="$CFLAGS -O2" && \
     export RUSTFLAGS="$RUSTFLAGS -O -C link_args=-Wl,--strip-debug,--strip-discarded,--discard-local" && \
     ./configure --silent --prefix=/usr/local --disable-introspection --disable-debug --disable-static && \
     make -j ${JOBS} && \
@@ -2039,7 +2040,6 @@ RUN \
     tar -xf libgsf.tar -C libgsf --strip-components 1 && \
     rm -f libgsf.tar && \
     cd libgsf && \
-    export CFLAGS="$CFLAGS -O2" && \
     ./configure --silent --prefix=/usr/local --disable-introspection --disable-static && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
@@ -2051,7 +2051,7 @@ RUN \
 RUN \
     echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.1.0-6 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.1.0-8 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
@@ -2148,7 +2148,7 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` pyproj4" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --single-branch -b 3.2.0 https://github.com/pyproj4/pyproj.git && \
+    git clone --single-branch -b 3.2.1 https://github.com/pyproj4/pyproj.git && \
     cd pyproj && \
     mkdir pyproj/bin && \
     find /build/proj.4/src/.libs/ -executable -type f ! -name '*.so.*' -exec cp {} pyproj/bin/. \; && \
@@ -2245,7 +2245,7 @@ RUN \
     echo "`date` auditwheel policy 2" >> /build/log.txt && \
     python -c $'# \n\
 import os \n\
-path = os.popen("find /opt/_internal -name policy.json").read().strip() \n\
+path = os.popen("find /opt/_internal -name manylinux-policy.json").read().strip() \n\
 data = open(path).read().replace( \n\
     "XlibXext.so.6", "libjvm.so") \n\
 open(path, "w").write(data)' && \
