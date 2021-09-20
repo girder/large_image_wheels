@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 
 import functools
-import packaging.version
-import pkg_resources
 import re
-import requests
 import subprocess
 import sys
+
+import packaging.version
+import pkg_resources
+import requests
 import urllib3
+
+urllib3.disable_warnings()
 
 verbose = len([arg for arg in sys.argv[1:] if arg == '-v'])
 
@@ -56,8 +59,10 @@ Packages = {
         're': r'\/([0-9]+\.[0-9]+(|\.[0-9]+))\/$'
     },
     'fitsio': {
-        'filelist': 'http://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/',
-        're': r'^cfitsio([0-9]+).tar.(gz|xz)$'
+        'filelist': 'https://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/',
+        're': r'^cfitsio([0-9]+).tar.(gz|xz)$',
+        'session': False,
+        'insecure': True,
     },
     'flex': {
         'git': 'https://github.com/westes/flex.git',
@@ -291,6 +296,12 @@ Packages = {
     'manylinux2010': {
         # See also https://github.com/pypa/manylinux
         'json': 'https://quay.io/api/v1/repository/pypa/manylinux2010_x86_64?includeTags=true',
+        'keys': lambda data: [data['tags']['latest']['manifest_digest']],
+        're': r':([0-9a-fA-F]+)$'
+    },
+    'manylinux2014': {
+        # See also https://github.com/pypa/manylinux
+        'json': 'https://quay.io/api/v1/repository/pypa/manylinux2014_x86_64?includeTags=true',
         'keys': lambda data: [data['tags']['latest']['manifest_digest']],
         're': r':([0-9a-fA-F]+)$'
     },
@@ -529,7 +540,8 @@ for pkg in sorted(Packages):  # noqa
         versions = None
         if 'filelist' in pkginfo:
             data = (session if pkginfo.get('session') is not False else requests).get(
-                pkginfo['filelist']).text
+                pkginfo['filelist'],
+                **({'verify': False} if pkginfo.get('insecure') else {})).text
             if verbose >= 2:
                 print(pkg, 'filelist data', data)
             data = data.replace('<A ', '<a ').replace('HREF="', 'href="')

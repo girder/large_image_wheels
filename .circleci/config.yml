@@ -39,12 +39,14 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y pv
       - run:
-          name: Archive docker image
+          name: Archive docker images
           # This took > 15 minutes on my machine.  Adding pv provides some
           # output so circle won't timeout
-          command: docker save girder/large_image_wheels:latest | pv > liw_docker.tar
+          command: |
+            docker save girder/large_image_wheels:latest | pv > liw_docker.tar
+            docker save girder/large_image_wheels:2014 | pv > liw_docker_2014.tar
       - store_artifacts:
-          path: ./liw_docker.tar
+          path: ./liw_docker*.tar
       - run:
           name: Test wheels via Docker
           command: python test_via_docker.py

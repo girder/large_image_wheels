@@ -94,7 +94,7 @@ RUN \
     echo "`date` virtualenv" >> /build/log.txt && \
     export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
     pip3 install --no-cache-dir virtualenv && \
-    virtualenv /venv && \
+    virtualenv -p python3.8 /venv && \
     echo "`date` virtualenv" >> /build/log.txt
 
 # Update autotools, perl, m4, pkg-config
@@ -182,7 +182,7 @@ cd /build && \
 # RUN \
     echo "`date` curl" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_79_0/curl-7.79.0.tar.gz -L -o curl.tar.gz && \
+    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_79_1/curl-7.79.1.tar.gz -L -o curl.tar.gz && \
     mkdir curl && \
     tar -zxf curl.tar.gz -C curl --strip-components 1 && \
     rm -f curl.tar.gz && \
@@ -239,7 +239,7 @@ cd /build && \
 # CMake - use a precompiled binary
 RUN \
     echo "`date` cmake" >> /build/log.txt && \
-    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.21.2/cmake-3.21.2-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.21.3/cmake-3.21.3-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
     mkdir cmake && \
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz && \
@@ -1317,7 +1317,7 @@ RUN \
 RUN \
     echo "`date` fitsio" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent http://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/cfitsio3450.tar.gz -L -o cfitsio.tar.gz && \
+    curl --retry 5 --silent -k https://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/cfitsio3450.tar.gz -L -o cfitsio.tar.gz && \
     mkdir cfitsio && \
     tar -zxf cfitsio.tar.gz -C cfitsio --strip-components 1 && \
     rm -f cfitsio.tar.gz && \
@@ -1529,6 +1529,7 @@ RUN \
     cd gdal/gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
     # export CFLAGS="$CFLAGS -DDEBUG_VERBOSE=ON" && \
+    ./autogen.sh && \
     ./configure --prefix=/usr/local --disable-static --disable-rpath --with-cpp14 --without-libtool \
     --with-armadillo \
     --with-cfitsio=/usr/local \
@@ -1936,7 +1937,7 @@ RUN \
 RUN \
     echo "`date` imagequant" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/ImageOptim/libimagequant/archive/2.15.1.tar.gz -L -o imagequant.tar.gz && \
+    curl --retry 5 --silent https://github.com/ImageOptim/libimagequant/archive/2.16.0.tar.gz -L -o imagequant.tar.gz && \
     mkdir imagequant && \
     tar -zxf imagequant.tar.gz -C imagequant --strip-components 1 && \
     rm -f imagequant.tar.gz && \
@@ -2066,7 +2067,7 @@ RUN \
     echo "`date` vips" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # Use these lines for a release \
-    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.11.3/vips-8.11.3.tar.gz -L -o vips.tar.gz && \
+    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.11.4/vips-8.11.4.tar.gz -L -o vips.tar.gz && \
     mkdir vips && \
     tar -zxf vips.tar.gz -C vips --strip-components 1 && \
     rm -f vips.tar.gz && \
@@ -2239,113 +2240,113 @@ RUN \
     ls -l /io/wheelhouse && \
     rm -rf ~/.cache && \
     echo "`date` pylibmc" >> /build/log.txt
-
-# Tell auditwheel not to include libjvm.so
-RUN \
-    echo "`date` auditwheel policy 2" >> /build/log.txt && \
-    python -c $'# \n\
-import os \n\
-path = os.popen("find /opt/_internal -name manylinux-policy.json").read().strip() \n\
-data = open(path).read().replace( \n\
-    "XlibXext.so.6", "libjvm.so") \n\
-open(path, "w").write(data)' && \
-    echo "`date` auditwheel policy 2" >> /build/log.txt
-
-RUN \
-    echo "`date` javabridge" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v4.0.3 https://github.com/CellProfiler/python-javabridge.git && \
-    cd python-javabridge && \
-    # Include java libraries \
-    mkdir javabridge/jvm && \
-    cp -r -L /usr/lib/jvm/java-1.8.0/* javabridge/jvm/. && \
-    # use a placeholder for the jar files to reduce the docker file size; \
-    # they'll be restored later && \
-    find javabridge/jvm -name '*.jar' -exec bash -c "echo placeholder > {}" \; && \
-    # libsaproc.so is only used for debugging \
-    rm javabridge/jvm/jre/lib/amd64/libsaproc.so && \
-    # allow installing binaries \
-    python -c $'# \n\
-path = "javabridge/jvm/bin/__init__.py" \n\
-s = """import os \n\
-import sys \n\
-\n\
-def program(): \n\
-    path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0])) \n\
-    os.execv(path, sys.argv) \n\
-""" \n\
-open(path, "w").write(s)' && \
-    python -c $'# \n\
-import re \n\
-path = "setup.py" \n\
-s = open(path).read() \n\
-s = s.replace("""packages=[\'javabridge\',""", """packages=[\'javabridge\', \'javabridge.jvm.bin\',""") \n\
-s = s.replace("entry_points={", \n\
-"""entry_points={\'console_scripts\': [\'%s=javabridge.jvm.bin:program\' % name for name in os.listdir(\'javabridge/jvm/bin\') if not name.endswith(\'.py\')], """) \n\
-s = s.replace("""package_data={"javabridge": [""", \n\
-"""package_data={"javabridge": [\'jvm/*\', \'jvm/*/*\', \'jvm/*/*/*\', \'jvm/*/*/*/*\', \'jvm/*/*/*/*/*\', """) \n\
-s = re.sub(r"(numpy)[>=.0-9]*", "numpy", s) \n\
-open(path, "w").write(s)' && \
-    python -c $'# \n\
-path = "javabridge/__init__.py" \n\
-s = open(path).read() \n\
-s = s.replace("if sys.platform.startswith(\'linux\'):", \n\
-"""if os.path.split(sys.argv[0])[-1] == \'java\': \n\
-    pass \n\
-elif sys.platform.startswith(\'linux\'):""") \n\
-open(path, "w").write(s)' && \
-    # use the java libraries we included \
-    python -c $'# \n\
-path = "javabridge/jutil.py" \n\
-s = open(path).read() \n\
-s = s.replace("import javabridge._javabridge as _javabridge", \n\
-"""libjvm_path = os.path.join(os.path.dirname(__file__), "jvm", "jre", "lib", "amd64", "server", "libjvm.so") \n\
-if os.path.exists(libjvm_path): \n\
-    import ctypes \n\
-    ctypes.CDLL(libjvm_path) \n\
-import javabridge._javabridge as _javabridge""") \n\
-open(path, "w").write(s)' && \
-    python -c $'# \n\
-path = "javabridge/locate.py" \n\
-s = open(path).read() \n\
-s = s.replace("jdk_dir = os.path.abspath(jdk_dir)", \n\
-"""jvm_path = os.path.join(os.path.dirname(__file__), "jvm") \n\
-        if os.path.exists(jvm_path): \n\
-            jdk_dir = jvm_path \n\
-        jdk_dir = os.path.abspath(jdk_dir)""") \n\
-open(path, "w").write(s)' && \
-    # export library paths so that auditwheel doesn't complain \
-    export LD_LIBRARY_PATH="/usr/lib/jvm/jre/lib/amd64/:/usr/lib/jvm/jre/lib/amd64/jli:/usr/lib/jvm/jre/lib/amd64/client:/usr/lib/jvm/jre/lib/amd64/server:$LD_LIBRARY_PATH" && \
-    # Strip libraries before building any wheels \
-    # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
-    find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    # Only build for Python >=3.5 \
-    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse' && \
-    find /io/wheelhouse/ -name 'python_javabridge*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
-    # auditwheel modifies the java libraries, but some of those have \
-    # hard-coded relative paths, which doesn't work.  Replace them with the \
-    # unmodified versions.  See https://stackoverflow.com/questions/55904261 \
-    python -c $'# \n\
-path = "/build/fix_record.py" \n\
-s = """import base64 \n\
-import hashlib \n\
-import os \n\
-\n\
-record_path = os.path.join(next(dir for dir in os.listdir(".") if dir.endswith(".dist-info")), "RECORD") \n\
-newrecord = [] \n\
-for line in open(record_path): \n\
-    parts = line.rsplit(",", 2) \n\
-    if len(parts) == 3 and os.path.exists(parts[0]) and parts[1]: \n\
-        hashval = base64.urlsafe_b64encode(hashlib.sha256(open(parts[0], "rb").read()).digest()).decode("latin1").rstrip("=") \n\
-        filelen = os.path.getsize(parts[0]) \n\
-        line = ",".join([parts[0], "sha256=" + hashval, str(filelen)]) + "\\\\n" \n\
-    newrecord.append(line) \n\
-open(record_path, "w").write("".join(newrecord)) \n\
-""" \n\
-open(path, "w").write(s)' && \
-    find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 bash -c 'mkdir /tmp/ptmp; pushd /tmp/ptmp; unzip ${0}; cp -r -L /usr/lib/jvm/java-1.8.0/* javabridge/jvm/.; /opt/python/cp37-cp37m/bin/python /build/fix_record.py; zip -r ${0} *; popd; rm -rf /tmp/ptmp' && \
-    find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
-    find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
-    ls -l /io/wheelhouse && \
-    rm -rf ~/.cache && \
-    echo "`date` javabridge" >> /build/log.txt
+##
+## # Tell auditwheel not to include libjvm.so
+## RUN \
+##     echo "`date` auditwheel policy 2" >> /build/log.txt && \
+##     python -c $'# \n\
+## import os \n\
+## path = os.popen("find /opt/_internal -name manylinux-policy.json").read().strip() \n\
+## data = open(path).read().replace( \n\
+##     "XlibXext.so.6", "libjvm.so") \n\
+## open(path, "w").write(data)' && \
+##     echo "`date` auditwheel policy 2" >> /build/log.txt
+##
+## RUN \
+##     echo "`date` javabridge" >> /build/log.txt && \
+##     export JOBS=`nproc` && \
+##     git clone --depth=1 --single-branch -b v4.0.3 https://github.com/CellProfiler/python-javabridge.git && \
+##     cd python-javabridge && \
+##     # Include java libraries \
+##     mkdir javabridge/jvm && \
+##     cp -r -L /usr/lib/jvm/java/* javabridge/jvm/. && \
+##     # use a placeholder for the jar files to reduce the docker file size; \
+##     # they'll be restored later && \
+##     find javabridge/jvm -name '*.jar' -exec bash -c "echo placeholder > {}" \; && \
+##     # libsaproc.so is only used for debugging \
+##     rm javabridge/jvm/jre/lib/amd64/libsaproc.so && \
+##     # allow installing binaries \
+##     python -c $'# \n\
+## path = "javabridge/jvm/bin/__init__.py" \n\
+## s = """import os \n\
+## import sys \n\
+## \n\
+## def program(): \n\
+##     path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0])) \n\
+##     os.execv(path, sys.argv) \n\
+## """ \n\
+## open(path, "w").write(s)' && \
+##     python -c $'# \n\
+## import re \n\
+## path = "setup.py" \n\
+## s = open(path).read() \n\
+## s = s.replace("""packages=[\'javabridge\',""", """packages=[\'javabridge\', \'javabridge.jvm.bin\',""") \n\
+## s = s.replace("entry_points={", \n\
+## """entry_points={\'console_scripts\': [\'%s=javabridge.jvm.bin:program\' % name for name in os.listdir(\'javabridge/jvm/bin\') if not name.endswith(\'.py\')], """) \n\
+## s = s.replace("""package_data={"javabridge": [""", \n\
+## """package_data={"javabridge": [\'jvm/*\', \'jvm/*/*\', \'jvm/*/*/*\', \'jvm/*/*/*/*\', \'jvm/*/*/*/*/*\', """) \n\
+## s = re.sub(r"(numpy)[>=.0-9]*", "numpy", s) \n\
+## open(path, "w").write(s)' && \
+##     python -c $'# \n\
+## path = "javabridge/__init__.py" \n\
+## s = open(path).read() \n\
+## s = s.replace("if sys.platform.startswith(\'linux\'):", \n\
+## """if os.path.split(sys.argv[0])[-1] == \'java\': \n\
+##     pass \n\
+## elif sys.platform.startswith(\'linux\'):""") \n\
+## open(path, "w").write(s)' && \
+##     # use the java libraries we included \
+##     python -c $'# \n\
+## path = "javabridge/jutil.py" \n\
+## s = open(path).read() \n\
+## s = s.replace("import javabridge._javabridge as _javabridge", \n\
+## """libjvm_path = os.path.join(os.path.dirname(__file__), "jvm", "jre", "lib", "amd64", "server", "libjvm.so") \n\
+## if os.path.exists(libjvm_path): \n\
+##     import ctypes \n\
+##     ctypes.CDLL(libjvm_path) \n\
+## import javabridge._javabridge as _javabridge""") \n\
+## open(path, "w").write(s)' && \
+##     python -c $'# \n\
+## path = "javabridge/locate.py" \n\
+## s = open(path).read() \n\
+## s = s.replace("jdk_dir = os.path.abspath(jdk_dir)", \n\
+## """jvm_path = os.path.join(os.path.dirname(__file__), "jvm") \n\
+##         if os.path.exists(jvm_path): \n\
+##             jdk_dir = jvm_path \n\
+##         jdk_dir = os.path.abspath(jdk_dir)""") \n\
+## open(path, "w").write(s)' && \
+##     # export library paths so that auditwheel doesn't complain \
+##     export LD_LIBRARY_PATH="/usr/lib/jvm/jre/lib/amd64/:/usr/lib/jvm/jre/lib/amd64/jli:/usr/lib/jvm/jre/lib/amd64/client:/usr/lib/jvm/jre/lib/amd64/server:$LD_LIBRARY_PATH" && \
+##     # Strip libraries before building any wheels \
+##     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
+##     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
+##     # Only build for Python >=3.5 \
+##     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse' && \
+##     find /io/wheelhouse/ -name 'python_javabridge*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
+##     # auditwheel modifies the java libraries, but some of those have \
+##     # hard-coded relative paths, which doesn't work.  Replace them with the \
+##     # unmodified versions.  See https://stackoverflow.com/questions/55904261 \
+##     python -c $'# \n\
+## path = "/build/fix_record.py" \n\
+## s = """import base64 \n\
+## import hashlib \n\
+## import os \n\
+## \n\
+## record_path = os.path.join(next(dir for dir in os.listdir(".") if dir.endswith(".dist-info")), "RECORD") \n\
+## newrecord = [] \n\
+## for line in open(record_path): \n\
+##     parts = line.rsplit(",", 2) \n\
+##     if len(parts) == 3 and os.path.exists(parts[0]) and parts[1]: \n\
+##         hashval = base64.urlsafe_b64encode(hashlib.sha256(open(parts[0], "rb").read()).digest()).decode("latin1").rstrip("=") \n\
+##         filelen = os.path.getsize(parts[0]) \n\
+##         line = ",".join([parts[0], "sha256=" + hashval, str(filelen)]) + "\\\\n" \n\
+##     newrecord.append(line) \n\
+## open(record_path, "w").write("".join(newrecord)) \n\
+## """ \n\
+## open(path, "w").write(s)' && \
+##     find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 bash -c 'mkdir /tmp/ptmp; pushd /tmp/ptmp; unzip ${0}; cp -r -L /usr/lib/jvm/java/* javabridge/jvm/.; /opt/python/cp37-cp37m/bin/python /build/fix_record.py; zip -r ${0} *; popd; rm -rf /tmp/ptmp' && \
+##     find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
+##     find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
+##     ls -l /io/wheelhouse && \
+##     rm -rf ~/.cache && \
+##     echo "`date` javabridge" >> /build/log.txt
