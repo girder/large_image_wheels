@@ -28,8 +28,8 @@ RUN \
     mesa-libGL-devel \
     mesa-libGLU-devel \
     SDL-devel \
-    # for javabridge \
-    java-1.8.0-openjdk-devel \
+    # # for javabridge \
+    # java-1.8.0-openjdk-devel \
     # For glib2 \
     libtool \
     libxml2-devel \
@@ -753,7 +753,7 @@ cd /build && \
 # RUN \
     echo "`date` bison" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.8.1.tar.xz -L -o bison.tar.xz && \
+    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.8.2.tar.xz -L -o bison.tar.xz && \
     unxz bison.tar.xz && \
     mkdir bison && \
     tar -xf bison.tar -C bison --strip-components 1 && \

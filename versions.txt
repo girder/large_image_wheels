@@ -1,6 +1,6 @@
 advancecomp 2.1
 armadillo 10.6.2
-bison 3.8.1
+bison 3.8.2
 boost 1.77.0
 cairo 1.16.0
 charls 25160a42fb62e71e4b0ce081f5cb3f8bb73938b5
@@ -16,7 +16,7 @@ freetype 2.11.0
 freexl 97c9f43cea
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
-gdal 1c9c664885ec51fc9471a452b165e02d6ddf4789
+gdal 8af67b64371c275a3770e75da1bd0d4bb7329295
 gdal-pypi 3.3.2
 gdal-release 3.3.2
 gdk-pixbuf 2.42.6
@@ -63,8 +63,8 @@ libxcrypt 4.4.26
 libxml2 2.9.12
 lz4 1.9.3
 m4 1.4.19
-manylinux2010 28624b51e91bee8dacd5ad3d84054c5e0e8ef3dfccdc0c29492c54068fd3ba97
-manylinux2014 b63d4e8036c2477c15ea99af12c4fbde749c94807a89c37b28398a2fb10329d6
+manylinux2010 b5092ac0f8232b3eaac36a8b71cef4562152c40ebdd36449b56ffd7c1c58ed69
+manylinux2014 ee4666fd4b060ac2b89d3437f5c507397a5b70badf49815325400e5108b09a12
 mapnik 1ccbbf95b5e7bf254ab5b4dc21bdc373978c36a1
 mapnik-release 3.1.0
 minizip 3.0.3
@@ -92,7 +92,7 @@ pnetcdf 1.12.2
 poppler 21.09.0
 postgresql 13.4
 proj-datumgrid 1.8
-proj.4 a9ac32ed3ae8ae53e54635c017f530311ab19758
+proj.4 ac1963352d3118b2ecc702f23df1f42f883d6f0c
 proj.4-release 8.1.1
 psutil 5.8.0
 pylibmc 1.6.1
