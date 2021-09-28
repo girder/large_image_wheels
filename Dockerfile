@@ -1,4 +1,4 @@
-FROM quay.io/pypa/manylinux2010_x86_64
+FROM quay.io/pypa/manylinux2014_x86_64
 
 RUN mkdir /build
 WORKDIR /build
@@ -17,7 +17,7 @@ RUN \
     yum install -y \
     zip \
     # for curl \
-    openldap-devel \
+    # openldap-devel \
     libidn2-devel \
     # for openjpeg \
     lcms2-devel \
@@ -28,13 +28,11 @@ RUN \
     mesa-libGL-devel \
     mesa-libGLU-devel \
     SDL-devel \
-    # # for javabridge \
-    # java-1.8.0-openjdk-devel \
+    # for javabridge \
+    java-1.8.0-openjdk-devel \
     # For glib2 \
     libtool \
     libxml2-devel \
-    # For util-linux \
-    gettext \
     # We need flex to build a newer version of flex \
     flex \
     help2man \
@@ -54,7 +52,7 @@ RUN \
     # for epsilon \
     bzip2-devel \
     popt-devel \
-    # for MrSID
+    # for MrSID \
     tbb-devel \
     # For ImageMagick \
     fftw3-devel \
@@ -64,6 +62,7 @@ RUN \
     # for easier development \
     man \
     vim-enhanced && \
+    yum clean all && \
     echo "`date` yum install" >> /build/log.txt
 
 # Patch autoreconf to better use GETTEXT
@@ -77,7 +76,9 @@ RUN \
 ARG SOURCE_DATE_EPOCH
 ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-1567045200} \
     CFLAGS="-g0 -O2 -DNDEBUG" \
-    LDFLAGS="-Wl,--strip-debug,--strip-discarded,--discard-locals"
+    LDFLAGS="-Wl,--strip-debug,--strip-discarded,--discard-locals" \
+    PIP_USE_FEATURE="in-tree-build" \
+    PYTHONDONTWRITEBYTECODE=1
 
 # Without this, libvips doesn't bind to the correct libraries.  The paths in
 # ld.so.conf.d are searched before LD_LIBRARY_PATH, and a change in the
@@ -147,6 +148,21 @@ cd /build && \
     echo "`date` zlib" >> /build/log.txt && \
 cd /build && \
 #
+# RUN \
+    echo "`date` krb5" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    curl --retry 5 --silent https://kerberos.org/dist/krb5/1.19/krb5-1.19.2.tar.gz -L -o krb5.tar.gz && \
+    mkdir krb5 && \
+    tar -zxf krb5.tar.gz -C krb5 --strip-components 1 && \
+    rm -f krb5.tar.gz && \
+    cd krb5/src && \
+    ./configure --prefix=/usr/local && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` krb5" >> /build/log.txt && \
+cd /build && \
+#
 # # Make our own openssl so we don't depend on system libraries
 # # There are newer versions of this, but version 1.1.1 doesn't work with some
 # # other libraries
@@ -187,26 +203,11 @@ cd /build && \
     tar -zxf curl.tar.gz -C curl --strip-components 1 && \
     rm -f curl.tar.gz && \
     cd curl && \
-    ./configure --silent --prefix=/usr/local --disable-static --with-openssl && \
+    ./configure --silent --prefix=/usr/local --disable-static --with-openssl --disable-ldap --disable-ldaps && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
-    echo "`date` curl" >> /build/log.txt && \
-cd /build && \
-#
-# RUN \
-    echo "`date` xz" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    curl --retry 5 --silent https://downloads.sourceforge.net/project/lzmautils/xz-5.2.5.tar.gz -L -o xz.tar.gz && \
-    mkdir xz && \
-    tar -zxf xz.tar.gz -C xz --strip-components 1 && \
-    rm -f xz.tar.gz && \
-    cd xz && \
-    ./configure --silent --prefix=/usr/local --disable-static && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` xz" >> /build/log.txt
+    echo "`date` curl" >> /build/log.txt
 
 # Perl - building from source seems to have less issues
 RUN \
@@ -221,33 +222,22 @@ RUN \
     ./Configure -des -Dprefix=/usr/localperl && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install.perl && \
-    echo "`date` perl" >> /build/log.txt && \
-cd /build && \
-#
-# RUN \
+    echo "`date` perl" >> /build/log.txt
+
+RUN \
     echo "`date` strip-nondeterminism" >> /build/log.txt && \
     export PERL_MM_USE_DEFAULT=1 && \
     export PERL_EXTUTILS_AUTOINSTALL="--defaultdeps" && \
-    /usr/localperl/bin/cpan -T ExtUtils::MakeMaker Archive::Cpio Archive::Zip && \
+    cpan -T ExtUtils::MakeMaker Archive::Cpio Archive::Zip && \
     git clone --depth=1 --single-branch -b 0.042 https://github.com/esoule/strip-nondeterminism.git && \
     cd strip-nondeterminism && \
-    /usr/localperl/bin/perl Makefile.PL && \
+    perl Makefile.PL && \
     make && \
     make install && \
     echo "`date` strip-nondeterminism" >> /build/log.txt
 
-# CMake - use a precompiled binary
+# Install a utility to recompress wheel (zip) files to make them smaller
 RUN \
-    echo "`date` cmake" >> /build/log.txt && \
-    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.21.3/cmake-3.21.3-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
-    mkdir cmake && \
-    tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
-    rm -f cmake.tar.gz && \
-    echo "`date` cmake" >> /build/log.txt && \
-cd /build && \
-#
-# # Install a utility to recompress wheel (zip) files to make them smaller
-# RUN \
     echo "`date` advancecomp" >> /build/log.txt && \
     export JOBS=`nproc` && \
     curl --retry 5 --silent https://github.com/amadvance/advancecomp/releases/download/v2.1/advancecomp-2.1.tar.gz -L -o advancecomp.tar.gz && \
@@ -266,16 +256,58 @@ cd /build && \
     sed -i 's/ZIP_DEFLATED/ZIP_STORED/g' /opt/_internal/pipx/venvs/auditwheel/lib/python3.9/site-packages/auditwheel/tools.py && \
     echo "`date` advancecomp" >> /build/log.txt
 
-# vips doesn't work with auditwheel 3.2 since the copylib doesn't adjust
-# rpaths the same as 3.1.1.  Revert that aspect of the behavior.
 RUN \
     echo "`date` auditwheel" >> /build/log.txt && \
+    # vips doesn't work with auditwheel 3.2 since the copylib doesn't adjust \
+    # rpaths the same as 3.1.1.  Revert that aspect of the behavior. \
     sed -i 's/patcher.set_rpath(dest_path, dest_dir)/new_rpath = os.path.relpath(dest_dir, os.path.dirname(dest_path))\n        new_rpath = os.path.join('\''$ORIGIN'\'', new_rpath)\n        patcher.set_rpath(dest_path, new_rpath)/g' /opt/_internal/pipx/venvs/auditwheel/lib/python3.9/site-packages/auditwheel/repair.py && \
+    # Tell auditwheel not to include libz.so, libjvm.so, etc. \
+    python -c $'# \n\
+import os \n\
+path = os.popen("find /opt/_internal -name manylinux-policy.json").read().strip() \n\
+data = open(path).read().replace( \n\
+    "libz.so.1", "Xlibz.so.1").replace( \n\
+    "ZLIB", "XXZLIB").replace( \n\
+    "libXext.so.6", "XlibXext.so.6").replace( \n\
+    "libXrender.so.1", "XlibXrender.so.1").replace( \n\
+    "libX11.so.6", "XlibX11.so.6").replace( \n\
+    "libSM.so.6", "XlibSM.so.6").replace( \n\
+    "libICE.so.6", "XlibICE.so.6").replace( \n\
+    "XlibXext.so.6", "libjvm.so") \n\
+open(path, "w").write(data)' && \
+    # Also change auditwheel so it doesn't check for a higher priority \
+    # platform; that process is slow \
+    sed -i 's/analyzed_tag = /analyzed_tag = reqd_tag  #/g' /opt/_internal/pipx/venvs/auditwheel/lib/python3.9/site-packages/auditwheel/main_repair.py && \
+    sed -i 's/if reqd_tag < get_priority_by_name(analyzed_tag):/if False:  #/g' /opt/_internal/pipx/venvs/auditwheel/lib/python3.9/site-packages/auditwheel/main_repair.py && \
     echo "`date` auditwheel" >> /build/log.txt
+
+# Use an older version of numpy -- we can work with newer versions, but have to
+# have at least this version to use our wheels.
+RUN \
+    echo "`date` numpy" >> /build/log.txt && \
+    for PYBIN in /opt/python/*/bin/; do \
+      echo "${PYBIN}" && \
+      # earliest numpy wheel for pypy 3.7 is 1.20.0 \
+      if [[ "${PYBIN}" =~ "pp37" ]]; then \
+        export NUMPY_VERSION="1.20"; \
+      # earliest numpy wheel for 3.9 is 1.19.3 \
+      elif [[ "${PYBIN}" =~ "39" ]]; then \
+        export NUMPY_VERSION="1.19"; \
+      # 3.8 can work with numpy 1.15, but numpy only started publishing 3.8 \
+      # wheels at 1.17.1 \
+      elif [[ "${PYBIN}" =~ "38" ]]; then \
+        export NUMPY_VERSION="1.17"; \
+      elif [[ "${PYBIN}" =~ "37" ]]; then \
+        export NUMPY_VERSION="1.14"; \
+      else \
+        export NUMPY_VERSION="1.11"; \
+      fi && \
+      "${PYBIN}/pip" install --no-cache-dir "numpy==${NUMPY_VERSION}.*"; \
+    done && \
+    echo "`date` numpy" >> /build/log.txt
 
 # Packages used by large_image that don't have published wheels for all the
 # versions of Python we are using.
-
 # RUN \
 #     echo "`date` psutil" >> /build/log.txt && \
 #     export JOBS=`nproc` && \
@@ -285,7 +317,7 @@ RUN \
 #     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
 #     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
 #     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
-#     find /io/wheelhouse/ -name 'psutil*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
+#     find /io/wheelhouse/ -name 'psutil*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2014_x86_64 -w /io/wheelhouse && \
 #     find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
 #     find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
 #     ls -l /io/wheelhouse && \
@@ -293,7 +325,6 @@ RUN \
 #     echo "`date` psutil" >> /build/log.txt
 
 # We had built ultrajson, but it now supplies its own wheels.
-# # Reenable this as we want the pypy wheels, too.
 # RUN echo "`date` ultrajson" >> /build/log.txt && \
 #     export JOBS=`nproc` && \
 #     git clone -b 4.0.2 https://github.com/esnme/ultrajson.git && \
@@ -303,13 +334,36 @@ RUN \
 #     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" install --no-cache-dir setuptools-scm' && \
 #     # Just python >= 3.5 \
 #     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
-#     find /io/wheelhouse/ -name 'ujson*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux1_x86_64 -w /io/wheelhouse && \
+#     find /io/wheelhouse/ -name 'ujson*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2014_x86_64 -w /io/wheelhouse && \
 #     find /io/wheelhouse/ -name 'ujson*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
 #     find /io/wheelhouse/ -name 'ujson*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
 #     ls -l /io/wheelhouse && \
 #     echo "`date` ultrajson" >> /build/log.txt
 
-# OpenJPEG
+RUN \
+    echo "`date` openjpeg" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    curl --retry 5 --silent https://github.com/uclouvain/openjpeg/archive/v2.4.0.tar.gz -L -o openjpeg.tar.gz && \
+    mkdir openjpeg && \
+    tar -zxf openjpeg.tar.gz -C openjpeg --strip-components 1 && \
+    rm -f openjpeg.tar.gz && \
+    cd openjpeg && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` openjpeg" >> /build/log.txt
+
+# CMake - use a precompiled binary
+RUN \
+    echo "`date` cmake" >> /build/log.txt && \
+    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.21.3/cmake-3.21.3-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+    mkdir cmake && \
+    tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
+    rm -f cmake.tar.gz && \
+    echo "`date` cmake" >> /build/log.txt
 
 RUN \
     echo "`date` libpng" >> /build/log.txt && \
@@ -327,23 +381,6 @@ RUN \
     make --silent -j ${JOBS} install && \
     ldconfig && \
     echo "`date` libpng" >> /build/log.txt && \
-cd /build && \
-#
-# RUN \
-    echo "`date` openjpeg" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/uclouvain/openjpeg/archive/v2.4.0.tar.gz -L -o openjpeg.tar.gz && \
-    mkdir openjpeg && \
-    tar -zxf openjpeg.tar.gz -C openjpeg --strip-components 1 && \
-    rm -f openjpeg.tar.gz && \
-    cd openjpeg && \
-    mkdir _build && \
-    cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` openjpeg" >> /build/log.txt && \
 cd /build && \
 #
 # RUN \
@@ -432,11 +469,11 @@ cd /build && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
     echo "`date` libdeflate" >> /build/log.txt
-
+##
 RUN \
     echo "`date` libtiff" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.osgeo.org/libtiff/tiff-4.2.0.tar.gz -L -o tiff.tar.gz && \
+    curl --retry 5 --silent https://download.osgeo.org/libtiff/tiff-4.3.0.tar.gz -L -o tiff.tar.gz && \
     mkdir tiff && \
     tar -zxf tiff.tar.gz -C tiff --strip-components 1 && \
     rm -f tiff.tar.gz && \
@@ -458,35 +495,10 @@ RUN \
     ldconfig && \
     echo "`date` openjpeg again" >> /build/log.txt
 
-# Use an older version of numpy -- we can work with newer versions, but have to
-# have at least this version to use our wheels.
-RUN \
-    echo "`date` numpy" >> /build/log.txt && \
-    for PYBIN in /opt/python/*/bin/; do \
-      echo "${PYBIN}" && \
-      # earliest numpy wheel for pypy 3.7 is 1.20.0 \
-      if [[ "${PYBIN}" =~ "pp37" ]]; then \
-        export NUMPY_VERSION="1.20"; \
-      # earliest numpy wheel for 3.9 is 1.19.3 \
-      elif [[ "${PYBIN}" =~ "39" ]]; then \
-        export NUMPY_VERSION="1.19"; \
-      # 3.8 can work with numpy 1.15, but numpy only started publishing 3.8 \
-      # wheels at 1.17.1 \
-      elif [[ "${PYBIN}" =~ "38" ]]; then \
-        export NUMPY_VERSION="1.17"; \
-      elif [[ "${PYBIN}" =~ "37" ]]; then \
-        export NUMPY_VERSION="1.14"; \
-      else \
-        export NUMPY_VERSION="1.11"; \
-      fi && \
-      "${PYBIN}/pip" install --no-cache-dir "numpy==${NUMPY_VERSION}.*"; \
-    done && \
-    echo "`date` numpy" >> /build/log.txt
-
 RUN \
     echo "`date` pylibtiff" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b wheel-support https://github.com/manthey/pylibtiff.git && \
+    git clone --depth=1 --single-branch -b wheel-support-0.4.4 https://github.com/manthey/pylibtiff.git && \
     cd pylibtiff && \
     mkdir libtiff/bin && \
     find /build/tiff/tools/.libs/ -executable -type f -exec cp {} libtiff/bin/. \; && \
@@ -526,24 +538,12 @@ open(path, "w").write(s)' && \
       "${PYBIN}/python" -c 'import libtiff' || true && \
       "${PYBIN}/pip" wheel --no-deps . -w /io/wheelhouse; \
     done && \
-    find /io/wheelhouse/ -name 'libtiff*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'libtiff*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'libtiff*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'libtiff*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
     rm -rf ~/.cache && \
     echo "`date` pylibtiff" >> /build/log.txt
-
-# Tell auditwheel not to include libz.so
-RUN \
-    echo "`date` auditwheel policy 3" >> /build/log.txt && \
-    python -c $'# \n\
-import os \n\
-path = os.popen("find /opt/_internal -name manylinux-policy.json").read().strip() \n\
-data = open(path).read().replace( \n\
-    "libz.so.1", "Xlibz.so.1").replace( \n\
-    "ZLIB", "XXZLIB") \n\
-open(path, "w").write(data)' && \
-    echo "`date` auditwheel policy 3" >> /build/log.txt
 
 RUN \
     echo "`date` glymur" >> /build/log.txt && \
@@ -599,12 +599,28 @@ open(path, "w").write(s)' && \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     find /opt/python -mindepth 1 -not -name '*cp36*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
-    find /io/wheelhouse/ -name 'Glymur*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'Glymur*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'Glymur*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'Glymur*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
     rm -rf ~/.cache && \
     echo "`date` glymur" >> /build/log.txt
+
+## cd /build && \
+## #
+## # RUN \
+##     echo "`date` xz" >> /build/log.txt && \
+##     export JOBS=`nproc` && \
+##     curl --retry 5 --silent https://downloads.sourceforge.net/project/lzmautils/xz-5.2.5.tar.gz -L -o xz.tar.gz && \
+##     mkdir xz && \
+##     tar -zxf xz.tar.gz -C xz --strip-components 1 && \
+##     rm -f xz.tar.gz && \
+##     cd xz && \
+##     ./configure --silent --prefix=/usr/local --disable-static && \
+##     make --silent -j ${JOBS} && \
+##     make --silent -j ${JOBS} install && \
+##     ldconfig && \
+##     echo "`date` xz" >> /build/log.txt
 
 RUN \
     echo "`date` pcre" >> /build/log.txt && \
@@ -637,6 +653,20 @@ cd /build && \
     echo "`date` ninja" >> /build/log.txt
 
 RUN \
+    echo "`date` gettext" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    curl --retry 5 --silent https://ftp.gnu.org/pub/gnu/gettext/gettext-0.21.tar.gz -L -o gettext.tar.gz && \
+    mkdir gettext && \
+    tar -zxf gettext.tar.gz -C gettext --strip-components 1 && \
+    rm -f gettext.tar.gz && \
+    cd gettext && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` gettext" >> /build/log.txt
+
+RUN \
     echo "`date` libffi" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
@@ -667,24 +697,6 @@ cd /build && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
     echo "`date` util-linux" >> /build/log.txt
-
-RUN \
-    echo "`date` auditwheel policy" >> /build/log.txt && \
-    python -c $'# \n\
-import os \n\
-path = os.popen("find /opt/_internal -name manylinux-policy.json").read().strip() \n\
-data = open(path).read().replace( \n\
-    "libXext.so.6", "XlibXext.so.6").replace( \n\
-    "libXrender.so.1", "XlibXrender.so.1").replace( \n\
-    "libX11.so.6", "XlibX11.so.6").replace( \n\
-    "libSM.so.6", "XlibSM.so.6").replace( \n\
-    "libICE.so.6", "XlibICE.so.6") \n\
-open(path, "w").write(data)' && \
-    # Also change auditwheel so it doesn't check for a higher priority \
-    # platform; that process is slow \
-    sed -i 's/analyzed_tag = /analyzed_tag = reqd_tag  #/g' /opt/_internal/pipx/venvs/auditwheel/lib/python3.9/site-packages/auditwheel/main_repair.py && \
-    sed -i 's/if reqd_tag < get_priority_by_name(analyzed_tag):/if False:  #/g' /opt/_internal/pipx/venvs/auditwheel/lib/python3.9/site-packages/auditwheel/main_repair.py && \
-    echo "`date` auditwheel policy" >> /build/log.txt
 
 RUN \
     echo "`date` glib" >> /build/log.txt && \
@@ -721,20 +733,6 @@ open(path, "w").write(s)' && \
     ninja -j ${JOBS} install && \
     ldconfig && \
     echo "`date` glib" >> /build/log.txt
-
-RUN \
-    echo "`date` gettext" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.gnu.org/pub/gnu/gettext/gettext-0.21.tar.gz -L -o gettext.tar.gz && \
-    mkdir gettext && \
-    tar -zxf gettext.tar.gz -C gettext --strip-components 1 && \
-    rm -f gettext.tar.gz && \
-    cd gettext && \
-    ./configure --silent --prefix=/usr/local --disable-static && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` gettext" >> /build/log.txt
 
 RUN \
     echo "`date` flex" >> /build/log.txt && \
@@ -992,7 +990,7 @@ RUN \
 RUN \
     echo "`date` freexl" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    fossil --user=root clone https://www.gaia-gis.it/fossil/freexl freexl.fossil && \
+    printf 'yes\nyes\n' | fossil --user=root clone https://www.gaia-gis.it/fossil/freexl freexl.fossil && \
     mkdir freexl && \
     cd freexl && \
     fossil open ../freexl.fossil && \
@@ -1267,10 +1265,7 @@ RUN \
 # ogdi doesn't build with parallelism
 RUN \
     echo "`date` ogdi" >> /build/log.txt && \
-    curl --retry 5 --silent https://downloads.sourceforge.net/project/ogdi/ogdi/4.1.0/ogdi-4.1.0.tar.gz -L -o ogdi.tar.gz && \
-    mkdir ogdi && \
-    tar -zxf ogdi.tar.gz -C ogdi --strip-components 1 && \
-    rm -f ogdi.tar.gz && \
+    git clone --depth=1 --single-branch -b ogdi_4_1_0 https://github.com/libogdi/ogdi.git && \
     cd ogdi && \
     export TOPDIR=`pwd` && \
     ./configure --silent --prefix=/usr/local --with-zlib --with-expat && \
@@ -1300,7 +1295,7 @@ RUN \
 RUN \
     echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-21.09.0.tar.xz -L -o poppler.tar.xz && \
+    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-21.10.0.tar.xz -L -o poppler.tar.xz && \
     unxz poppler.tar.xz && \
     mkdir poppler && \
     tar -xf poppler.tar -C poppler --strip-components 1 && \
@@ -1424,7 +1419,7 @@ RUN \
 # RUN \
 #     echo "`date` openblas" >> /build/log.txt && \
 #     export JOBS=`nproc` && \
-#     git clone --depth=1 --single-branch -b v0.3.16 https://github.com/xianyi/OpenBLAS.git && \
+#     git clone --depth=1 --single-branch -b v0.3.18 https://github.com/xianyi/OpenBLAS.git && \
 #     cd OpenBLAS && \
 #     mkdir _build && \
 #     cd _build && \
@@ -1437,7 +1432,7 @@ RUN \
 # RUN \
 #     echo "`date` superlu" >> /build/log.txt && \
 #     export JOBS=`nproc` && \
-#     git clone --depth=1 --single-branch -b v5.2.2 https://github.com/xiaoyeli/superlu.git && \
+#     git clone --depth=1 --single-branch -b v5.3.0 https://github.com/xiaoyeli/superlu.git && \
 #     cd superlu && \
 #     mkdir _build && \
 #     cd _build && \
@@ -1463,7 +1458,7 @@ RUN \
 RUN \
     echo "`date` armadillo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://sourceforge.net/projects/arma/files/armadillo-10.6.1.tar.xz -L -o armadillo.tar.xz && \
+    curl --retry 5 --silent https://sourceforge.net/projects/arma/files/armadillo-10.7.0.tar.xz -L -o armadillo.tar.xz && \
     unxz armadillo.tar.xz && \
     mkdir armadillo && \
     tar -xf armadillo.tar -C armadillo --strip-components 1 && \
@@ -1516,7 +1511,7 @@ RUN \
 # Unused for other reasons:
 #  DDS - uses crunch library which is for Windows
 #  userfaultfd - linux support for this dates from 2015, so it probably can't
-#    be added using manylinux2010.
+#    be added using manylinux2014.
 # --with-dods-root is where libdap is installed
 RUN \
     echo "`date` gdal" >> /build/log.txt && \
@@ -1640,7 +1635,7 @@ open(path, "w").write(s)' && \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse; git clean -fxd build GDAL.egg-info' && \
-    find /io/wheelhouse/ -name 'GDAL*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'GDAL*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'GDAL*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'GDAL*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
@@ -1673,7 +1668,7 @@ RUN \
     tar -zxf libxml2.tar.gz -C libxml2 --strip-components 1 && \
     rm -f libxml2.tar.gz && \
     cd libxml2 && \
-    ./configure --prefix=/usr/local --disable-static && \
+    ./configure --prefix=/usr/local --disable-static --without-python && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig && \
@@ -1797,7 +1792,7 @@ open(path, "w").write(s)' && \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c 'export WORKDIR=/tmp/python-mapnik-`basename ${0}`; mkdir -p $WORKDIR; cp -r . $WORKDIR/.; pushd $WORKDIR; BOOST_PYTHON_LIB=`"${0}/bin/python" -c "import sys;sys.stdout.write('\''boost_python'\''+str(sys.version_info.major)+str(sys.version_info.minor))"` "${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && popd && rm -rf $WORKDIR' && \
-    find /io/wheelhouse/ -name 'mapnik*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'mapnik*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'mapnik*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'mapnik*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
@@ -1894,7 +1889,7 @@ open(path, "w").write(s)' && \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
-    find /io/wheelhouse/ -name 'openslide*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'openslide*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
@@ -2052,7 +2047,7 @@ RUN \
 RUN \
     echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.1.0-8 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.1.0-9 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
@@ -2139,7 +2134,7 @@ open(path, "w").write(s)' && \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse; git clean -fxd -e pyvips/bin' && \
-    find /io/wheelhouse/ -name 'pyvips*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'pyvips*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'pyvips*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'pyvips*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
@@ -2201,7 +2196,7 @@ open(path, "w").write(data)' && \
     find /opt/python -mindepth 1 -not -name '*cp36*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     # Make sure all binaries have the execute flag \
     find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 bash -c 'mkdir /tmp/ptmp; pushd /tmp/ptmp; unzip ${0}; chmod a+x pyproj/bin/*; chmod a-x pyproj/bin/*.py; zip -r ${0} *; popd; rm -rf /tmp/ptmp' && \
-    find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'pyproj*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'pyproj*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
@@ -2234,119 +2229,109 @@ RUN \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
-    find /io/wheelhouse/ -name 'pylibmc*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux1_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'pylibmc*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'pylibmc*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'pylibmc*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
     rm -rf ~/.cache && \
     echo "`date` pylibmc" >> /build/log.txt
-##
-## # Tell auditwheel not to include libjvm.so
-## RUN \
-##     echo "`date` auditwheel policy 2" >> /build/log.txt && \
-##     python -c $'# \n\
-## import os \n\
-## path = os.popen("find /opt/_internal -name manylinux-policy.json").read().strip() \n\
-## data = open(path).read().replace( \n\
-##     "XlibXext.so.6", "libjvm.so") \n\
-## open(path, "w").write(data)' && \
-##     echo "`date` auditwheel policy 2" >> /build/log.txt
-##
-## RUN \
-##     echo "`date` javabridge" >> /build/log.txt && \
-##     export JOBS=`nproc` && \
-##     git clone --depth=1 --single-branch -b v4.0.3 https://github.com/CellProfiler/python-javabridge.git && \
-##     cd python-javabridge && \
-##     # Include java libraries \
-##     mkdir javabridge/jvm && \
-##     cp -r -L /usr/lib/jvm/java/* javabridge/jvm/. && \
-##     # use a placeholder for the jar files to reduce the docker file size; \
-##     # they'll be restored later && \
-##     find javabridge/jvm -name '*.jar' -exec bash -c "echo placeholder > {}" \; && \
-##     # libsaproc.so is only used for debugging \
-##     rm javabridge/jvm/jre/lib/amd64/libsaproc.so && \
-##     # allow installing binaries \
-##     python -c $'# \n\
-## path = "javabridge/jvm/bin/__init__.py" \n\
-## s = """import os \n\
-## import sys \n\
-## \n\
-## def program(): \n\
-##     path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0])) \n\
-##     os.execv(path, sys.argv) \n\
-## """ \n\
-## open(path, "w").write(s)' && \
-##     python -c $'# \n\
-## import re \n\
-## path = "setup.py" \n\
-## s = open(path).read() \n\
-## s = s.replace("""packages=[\'javabridge\',""", """packages=[\'javabridge\', \'javabridge.jvm.bin\',""") \n\
-## s = s.replace("entry_points={", \n\
-## """entry_points={\'console_scripts\': [\'%s=javabridge.jvm.bin:program\' % name for name in os.listdir(\'javabridge/jvm/bin\') if not name.endswith(\'.py\')], """) \n\
-## s = s.replace("""package_data={"javabridge": [""", \n\
-## """package_data={"javabridge": [\'jvm/*\', \'jvm/*/*\', \'jvm/*/*/*\', \'jvm/*/*/*/*\', \'jvm/*/*/*/*/*\', """) \n\
-## s = re.sub(r"(numpy)[>=.0-9]*", "numpy", s) \n\
-## open(path, "w").write(s)' && \
-##     python -c $'# \n\
-## path = "javabridge/__init__.py" \n\
-## s = open(path).read() \n\
-## s = s.replace("if sys.platform.startswith(\'linux\'):", \n\
-## """if os.path.split(sys.argv[0])[-1] == \'java\': \n\
-##     pass \n\
-## elif sys.platform.startswith(\'linux\'):""") \n\
-## open(path, "w").write(s)' && \
-##     # use the java libraries we included \
-##     python -c $'# \n\
-## path = "javabridge/jutil.py" \n\
-## s = open(path).read() \n\
-## s = s.replace("import javabridge._javabridge as _javabridge", \n\
-## """libjvm_path = os.path.join(os.path.dirname(__file__), "jvm", "jre", "lib", "amd64", "server", "libjvm.so") \n\
-## if os.path.exists(libjvm_path): \n\
-##     import ctypes \n\
-##     ctypes.CDLL(libjvm_path) \n\
-## import javabridge._javabridge as _javabridge""") \n\
-## open(path, "w").write(s)' && \
-##     python -c $'# \n\
-## path = "javabridge/locate.py" \n\
-## s = open(path).read() \n\
-## s = s.replace("jdk_dir = os.path.abspath(jdk_dir)", \n\
-## """jvm_path = os.path.join(os.path.dirname(__file__), "jvm") \n\
-##         if os.path.exists(jvm_path): \n\
-##             jdk_dir = jvm_path \n\
-##         jdk_dir = os.path.abspath(jdk_dir)""") \n\
-## open(path, "w").write(s)' && \
-##     # export library paths so that auditwheel doesn't complain \
-##     export LD_LIBRARY_PATH="/usr/lib/jvm/jre/lib/amd64/:/usr/lib/jvm/jre/lib/amd64/jli:/usr/lib/jvm/jre/lib/amd64/client:/usr/lib/jvm/jre/lib/amd64/server:$LD_LIBRARY_PATH" && \
-##     # Strip libraries before building any wheels \
-##     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
-##     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-##     # Only build for Python >=3.5 \
-##     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse' && \
-##     find /io/wheelhouse/ -name 'python_javabridge*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2010_x86_64 -w /io/wheelhouse && \
-##     # auditwheel modifies the java libraries, but some of those have \
-##     # hard-coded relative paths, which doesn't work.  Replace them with the \
-##     # unmodified versions.  See https://stackoverflow.com/questions/55904261 \
-##     python -c $'# \n\
-## path = "/build/fix_record.py" \n\
-## s = """import base64 \n\
-## import hashlib \n\
-## import os \n\
-## \n\
-## record_path = os.path.join(next(dir for dir in os.listdir(".") if dir.endswith(".dist-info")), "RECORD") \n\
-## newrecord = [] \n\
-## for line in open(record_path): \n\
-##     parts = line.rsplit(",", 2) \n\
-##     if len(parts) == 3 and os.path.exists(parts[0]) and parts[1]: \n\
-##         hashval = base64.urlsafe_b64encode(hashlib.sha256(open(parts[0], "rb").read()).digest()).decode("latin1").rstrip("=") \n\
-##         filelen = os.path.getsize(parts[0]) \n\
-##         line = ",".join([parts[0], "sha256=" + hashval, str(filelen)]) + "\\\\n" \n\
-##     newrecord.append(line) \n\
-## open(record_path, "w").write("".join(newrecord)) \n\
-## """ \n\
-## open(path, "w").write(s)' && \
-##     find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 bash -c 'mkdir /tmp/ptmp; pushd /tmp/ptmp; unzip ${0}; cp -r -L /usr/lib/jvm/java/* javabridge/jvm/.; /opt/python/cp37-cp37m/bin/python /build/fix_record.py; zip -r ${0} *; popd; rm -rf /tmp/ptmp' && \
-##     find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
-##     find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
-##     ls -l /io/wheelhouse && \
-##     rm -rf ~/.cache && \
-##     echo "`date` javabridge" >> /build/log.txt
+
+RUN \
+    echo "`date` javabridge" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b v4.0.3 https://github.com/CellProfiler/python-javabridge.git && \
+    cd python-javabridge && \
+    # Include java libraries \
+    mkdir javabridge/jvm && \
+    cp -r -L /usr/lib/jvm/java/* javabridge/jvm/. && \
+    # use a placeholder for the jar files to reduce the docker file size; \
+    # they'll be restored later && \
+    find javabridge/jvm -name '*.jar' -exec bash -c "echo placeholder > {}" \; && \
+    # libsaproc.so is only used for debugging \
+    rm javabridge/jvm/jre/lib/amd64/libsaproc.so && \
+    # allow installing binaries \
+    python -c $'# \n\
+path = "javabridge/jvm/bin/__init__.py" \n\
+s = """import os \n\
+import sys \n\
+\n\
+def program(): \n\
+    path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0])) \n\
+    os.execv(path, sys.argv) \n\
+""" \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
+import re \n\
+path = "setup.py" \n\
+s = open(path).read() \n\
+s = s.replace("""packages=[\'javabridge\',""", """packages=[\'javabridge\', \'javabridge.jvm.bin\',""") \n\
+s = s.replace("entry_points={", \n\
+"""entry_points={\'console_scripts\': [\'%s=javabridge.jvm.bin:program\' % name for name in os.listdir(\'javabridge/jvm/bin\') if not name.endswith(\'.py\')], """) \n\
+s = s.replace("""package_data={"javabridge": [""", \n\
+"""package_data={"javabridge": [\'jvm/*\', \'jvm/*/*\', \'jvm/*/*/*\', \'jvm/*/*/*/*\', \'jvm/*/*/*/*/*\', """) \n\
+s = re.sub(r"(numpy)[>=.0-9]*", "numpy", s) \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
+path = "javabridge/__init__.py" \n\
+s = open(path).read() \n\
+s = s.replace("if sys.platform.startswith(\'linux\'):", \n\
+"""if os.path.split(sys.argv[0])[-1] == \'java\': \n\
+    pass \n\
+elif sys.platform.startswith(\'linux\'):""") \n\
+open(path, "w").write(s)' && \
+    # use the java libraries we included \
+    python -c $'# \n\
+path = "javabridge/jutil.py" \n\
+s = open(path).read() \n\
+s = s.replace("import javabridge._javabridge as _javabridge", \n\
+"""libjvm_path = os.path.join(os.path.dirname(__file__), "jvm", "jre", "lib", "amd64", "server", "libjvm.so") \n\
+if os.path.exists(libjvm_path): \n\
+    import ctypes \n\
+    ctypes.CDLL(libjvm_path) \n\
+import javabridge._javabridge as _javabridge""") \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
+path = "javabridge/locate.py" \n\
+s = open(path).read() \n\
+s = s.replace("jdk_dir = os.path.abspath(jdk_dir)", \n\
+"""jvm_path = os.path.join(os.path.dirname(__file__), "jvm") \n\
+        if os.path.exists(jvm_path): \n\
+            jdk_dir = jvm_path \n\
+        jdk_dir = os.path.abspath(jdk_dir)""") \n\
+open(path, "w").write(s)' && \
+    # export library paths so that auditwheel doesn't complain \
+    export LD_LIBRARY_PATH="/usr/lib/jvm/jre/lib/amd64/:/usr/lib/jvm/jre/lib/amd64/jli:/usr/lib/jvm/jre/lib/amd64/client:/usr/lib/jvm/jre/lib/amd64/server:$LD_LIBRARY_PATH" && \
+    # Strip libraries before building any wheels \
+    # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
+    find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
+    # Only build for Python >=3.5 \
+    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse' && \
+    rm -rf .eggs build && \
+    find /io/wheelhouse/ -name 'python_javabridge*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+    # auditwheel modifies the java libraries, but some of those have \
+    # hard-coded relative paths, which doesn't work.  Replace them with the \
+    # unmodified versions.  See https://stackoverflow.com/questions/55904261 \
+    python -c $'# \n\
+path = "/build/fix_record.py" \n\
+s = """import base64 \n\
+import hashlib \n\
+import os \n\
+\n\
+record_path = os.path.join(next(dir for dir in os.listdir(".") if dir.endswith(".dist-info")), "RECORD") \n\
+newrecord = [] \n\
+for line in open(record_path): \n\
+    parts = line.rsplit(",", 2) \n\
+    if len(parts) == 3 and os.path.exists(parts[0]) and parts[1]: \n\
+        hashval = base64.urlsafe_b64encode(hashlib.sha256(open(parts[0], "rb").read()).digest()).decode("latin1").rstrip("=") \n\
+        filelen = os.path.getsize(parts[0]) \n\
+        line = ",".join([parts[0], "sha256=" + hashval, str(filelen)]) + "\\\\n" \n\
+    newrecord.append(line) \n\
+open(record_path, "w").write("".join(newrecord)) \n\
+""" \n\
+open(path, "w").write(s)' && \
+    find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 bash -c 'mkdir /tmp/ptmp; pushd /tmp/ptmp; unzip ${0}; cp -r -L /usr/lib/jvm/java/* javabridge/jvm/.; /opt/python/cp37-cp37m/bin/python /build/fix_record.py; zip -r ${0} *; popd; rm -rf /tmp/ptmp' && \
+    find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
+    find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
+    ls -l /io/wheelhouse && \
+    rm -rf ~/.cache && \
+    echo "`date` javabridge" >> /build/log.txt
