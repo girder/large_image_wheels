@@ -178,6 +178,10 @@ Packages = {
         'filelist': 'https://www.cl.cam.ac.uk/~mgk25/jbigkit/download/',
         're': r'jbigkit-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
+    'krb5': {
+        'filelist': 'https://kerberos.org/dist/',
+        're': r'krb5-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+    },
     'lapack': {
         'git': 'https://github.com/Reference-LAPACK/lapack',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
@@ -293,12 +297,12 @@ Packages = {
         'filelist': 'https://ftp.gnu.org/gnu/m4/',
         're': r'm4-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
-    'manylinux2010': {
-        # See also https://github.com/pypa/manylinux
-        'json': 'https://quay.io/api/v1/repository/pypa/manylinux2010_x86_64?includeTags=true',
-        'keys': lambda data: [data['tags']['latest']['manifest_digest']],
-        're': r':([0-9a-fA-F]+)$'
-    },
+    # 'manylinux2010': {
+    #     # See also https://github.com/pypa/manylinux
+    #     'json': 'https://quay.io/api/v1/repository/pypa/manylinux2010_x86_64?includeTags=true',
+    #     'keys': lambda data: [data['tags']['latest']['manifest_digest']],
+    #     're': r':([0-9a-fA-F]+)$'
+    # },
     'manylinux2014': {
         # See also https://github.com/pypa/manylinux
         'json': 'https://quay.io/api/v1/repository/pypa/manylinux2014_x86_64?includeTags=true',
@@ -340,8 +344,8 @@ Packages = {
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'ogdi': {
-        'filelist': 'https://sourceforge.net/projects/ogdi/files/ogdi/',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))\/$'
+        'git': 'https://github.com/libogdi/ogdi.git',
+        're': r'ogdi_([0-9]+_[0-9]+(|_[0-9]+))$'
     },
     'openblas': {
         'git': 'https://github.com/xianyi/OpenBLAS.git',
