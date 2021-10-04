@@ -28,11 +28,13 @@ Packages = {
         'filelist': 'https://ftp.gnu.org/pub/gnu/bison/',
         're': r'bison-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
+    'blosc': {
+        'git': 'https://github.com/Blosc/c-blosc.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
     'boost': {
         'git': 'https://github.com/boostorg/boost.git',
         're': r'boost-([0-9]+\.[0-9]+(|\.[0-9]+))$'
-        # 'filelist': 'https://sourceforge.net/projects/boost/files/boost/',
-        # 're': r'([0-9]+\.[0-9]+(|\.[0-9]+))\/$'
     },
     'cairo': {
         'filelist': 'https://www.cairographics.org/releases/',
@@ -53,10 +55,6 @@ Packages = {
     'curl': {
         'git': 'https://github.com/curl/curl.git',
         're': r'curl-([0-9]+_[0-9]+(|_[0-9]+))$'
-    },
-    'epsilon': {
-        'filelist': 'https://sourceforge.net/projects/epsilon-project/files/epsilon/',
-        're': r'\/([0-9]+\.[0-9]+(|\.[0-9]+))\/$'
     },
     'fitsio': {
         'filelist': 'https://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/',
@@ -156,8 +154,6 @@ Packages = {
     'icu4c': {
         'git': 'https://github.com/unicode-org/icu.git',
         're': r'release-([0-9]+-[0-9]+(|-[0-9]+))$',
-        # 'filelist': 'http://download.icu-project.org/files/icu4c/',
-        # 're': r'([0-9]+\.[0-9]+(|\.[0-9]+))\/$'
     },
     'imagemagick': {
         'git': 'https://github.com/ImageMagick/ImageMagick.git',
@@ -178,12 +174,24 @@ Packages = {
         'filelist': 'https://www.cl.cam.ac.uk/~mgk25/jbigkit/download/',
         're': r'jbigkit-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
+    'jpeg-xl': {
+        'git': 'https://gitlab.com/wg1/jpeg-xl.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
     'krb5': {
         'filelist': 'https://kerberos.org/dist/',
         're': r'krb5-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
     'lapack': {
-        'git': 'https://github.com/Reference-LAPACK/lapack',
+        'git': 'https://github.com/Reference-LAPACK/lapack.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
+    'lerc': {
+        'git': 'https://github.com/Esri/lerc.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
+    'libbrotli': {
+        'git': 'https://github.com/google/brotli.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'libcroco': {
@@ -194,8 +202,6 @@ Packages = {
     'libdap': {
         'git': 'https://github.com/OPENDAP/libdap4.git',
         're': r'version-([0-9]+\.[0-9]+(|\.[0-9]+))$',
-        # 'filelist': 'https://www.opendap.org/pub/source/',
-        # 're': r'libdap-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
     'libde265': {
         'git': 'https://github.com/strukturag/libde265.git',
@@ -229,6 +235,10 @@ Packages = {
     'libheif': {
         'git': 'https://github.com/strukturag/libheif.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
+    'libhwy': {
+        'git': 'https://github.com/google/highway.git',
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'libiconv': {
         'filelist': 'https://ftp.gnu.org/pub/gnu/libiconv/',
@@ -297,12 +307,6 @@ Packages = {
         'filelist': 'https://ftp.gnu.org/gnu/m4/',
         're': r'm4-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
-    # 'manylinux2010': {
-    #     # See also https://github.com/pypa/manylinux
-    #     'json': 'https://quay.io/api/v1/repository/pypa/manylinux2010_x86_64?includeTags=true',
-    #     'keys': lambda data: [data['tags']['latest']['manifest_digest']],
-    #     're': r':([0-9a-fA-F]+)$'
-    # },
     'manylinux2014': {
         # See also https://github.com/pypa/manylinux
         'json': 'https://quay.io/api/v1/repository/pypa/manylinux2014_x86_64?includeTags=true',
@@ -327,7 +331,6 @@ Packages = {
     #     're': r'MrSID_DSDK-([0-9]+\.[0-9]+(|\.[0-9]+(|\.[0-9]+)))-rhel6.x86-64.gcc531.tar.gz$'
     # },
     'mysql': {
-        # 'filelist': 'https://dev.mysql.com/downloads/mysql/5.7.html?tpl=version&os=src',
         'filelist': 'https://dev.mysql.com/downloads/mysql/?tpl=version&os=src',
         're': r'mysql-boost-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)(&|$)'
     },
@@ -351,9 +354,17 @@ Packages = {
         'git': 'https://github.com/xianyi/OpenBLAS.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
+    'openexr': {
+        'git': 'https://github.com/AcademySoftwareFoundation/openexr.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
     'openjpeg': {
         'git': 'https://github.com/uclouvain/openjpeg.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
+    'openldap': {
+        'git': 'https://git.openldap.org/openldap/openldap.git',
+        're': r'OPENLDAP_REL_ENG_([0-9]+_[0-9]+(|_[0-9]+))$'
     },
     'openmpi': {
         'filelist': 'https://www.open-mpi.org/software/ompi/v4.0/',
@@ -372,15 +383,13 @@ Packages = {
     'openslide-python-pypi': {
         'pypi': 'openslide-python',
     },
-    # other libraries don't work with openssl 1.1.1
-    'openssl': {
-        # 'filelist': 'https://www.openssl.org/source/',
-        # 're': r'openssl-(1\.0(|\.[0-9]+)(|[a-z])).tar.(gz|xz)$'
-        # 'filelist': 'https://www.openssl.org/source/old/1.1.1/',
-        'filelist': 'https://www.openssl.org/source/old/1.0.2/',
-        # The packaging.version parser does poor things with 1.0.2r and other
-        # values, so include the ".tar" as part of the version
-        're': r'openssl-([0-9]+\.[0-9]+(|\.[0-9]+)(|[a-z])\.tar)\.(gz|xz)$'
+    'openssl-1.0': {
+        'git': 'https://github.com/openssl/openssl.git',
+        're': r'OpenSSL_(1_0_[0-9]+[a-z])$',
+    },
+    'openssl-1.x': {
+        'git': 'https://github.com/openssl/openssl.git',
+        're': r'OpenSSL_(1_[0-9]+_[0-9]+[a-z])$',
     },
     'orc': {
         'git': 'https://github.com/GStreamer/orc.git',
@@ -508,10 +517,10 @@ Packages = {
         'filelist': 'http://xerces.apache.org/xerces-c/download.cgi',
         're': r'xerces-c-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
-    'xz': {
-        'filelist': 'https://sourceforge.net/projects/lzmautils/files/',
-        're': r'xz-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.gz\/download'
-    },
+    # 'xz': {
+    #     'filelist': 'https://sourceforge.net/projects/lzmautils/files/',
+    #     're': r'xz-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.gz\/download'
+    # },
     'zlib': {
         'filelist': 'https://zlib.net/',
         're': r'zlib-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
