@@ -2,8 +2,8 @@
 
 import multiprocessing.pool
 import os
-import sys
 import subprocess
+import sys
 import threading
 
 containers = [
@@ -11,6 +11,7 @@ containers = [
     'python:3.7',
     'python:3.8',
     'python:3.9',
+    'python:3.10',
     # The latest pyproj needs a newer version of python 3.5 than included in
     # the centos/python-35-centos7 docker image.
     # 'centos/python-35-centos7',

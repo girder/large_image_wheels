@@ -8,7 +8,7 @@ RUN \
     echo "`date` rm python versions" >> /build/log.txt && \
     rm -rf /opt/python/cp35* && \
     # Enable 3.10 in boost as well \
-    rm -rf /opt/python/cp310* && \
+    # rm -rf /opt/python/cp310* && \
     rm -rf /opt/python/pp37* && \
     echo "`date` rm python versions" >> /build/log.txt
 
@@ -312,6 +312,9 @@ RUN \
       # earliest numpy wheel for pypy 3.7 is 1.20.0 \
       if [[ "${PYBIN}" =~ "pp37" ]]; then \
         export NUMPY_VERSION="1.20"; \
+      # earliest numpy wheel for 3.10 is 1.21.2 \
+      elif [[ "${PYBIN}" =~ "310" ]]; then \
+        export NUMPY_VERSION="1.21"; \
       # earliest numpy wheel for 3.9 is 1.19.3 \
       elif [[ "${PYBIN}" =~ "39" ]]; then \
         export NUMPY_VERSION="1.19"; \
@@ -972,9 +975,9 @@ RUN \
     echo "using python : 3.7 : /opt/python/cp37-cp37m/bin/python : /opt/python/cp37-cp37m/include/python3.7m : /opt/python/cp37-cp37m/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.8 : /opt/python/cp38-cp38/bin/python : /opt/python/cp38-cp38/include/python3.8 : /opt/python/cp38-cp38/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.9 : /opt/python/cp39-cp39/bin/python : /opt/python/cp39-cp39/include/python3.9 : /opt/python/cp39-cp39/lib ;" >> tools/build/src/user-config.jam && \
-    # echo "using python : 3.10 : /opt/python/cp310-cp310/bin/python : /opt/python/cp310-cp319/include/python3.10 : /opt/python/cp310-cp310/lib ;" >> tools/build/src/user-config.jam && \
+    echo "using python : 3.10 : /opt/python/cp310-cp310/bin/python : /opt/python/cp310-cp310/include/python3.10 : /opt/python/cp310-cp310/lib ;" >> tools/build/src/user-config.jam && \
     ./bootstrap.sh --prefix=/usr/local --with-toolset=gcc variant=release && \
-    ./b2 -d1 -j ${JOBS} toolset=gcc variant=release link=shared --build-type=minimal python=3.6,3.7,3.8,3.9 cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable -Wno-parentheses -Wno-maybe-uninitialized -Wno-attributes" install && \
+    ./b2 -d1 -j ${JOBS} toolset=gcc variant=release link=shared --build-type=minimal python=3.6,3.7,3.8,3.9,3.10 cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable -Wno-parentheses -Wno-maybe-uninitialized -Wno-attributes" install && \
     # pypy \
     # This conflicts with the non-pypy version \
     # echo "" > tools/build/src/user-config.jam && \
@@ -1548,7 +1551,7 @@ RUN \
 RUN \
     echo "`date` armadillo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://sourceforge.net/projects/arma/files/armadillo-10.7.0.tar.xz -L -o armadillo.tar.xz && \
+    curl --retry 5 --silent https://sourceforge.net/projects/arma/files/armadillo-10.7.1.tar.xz -L -o armadillo.tar.xz && \
     unxz armadillo.tar.xz && \
     mkdir armadillo && \
     tar -xf armadillo.tar -C armadillo --strip-components 1 && \
