@@ -24,10 +24,6 @@ Packages = {
         're': r'armadillo-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)/download$',
         'session': False,
     },
-    'bison': {
-        'filelist': 'https://ftp.gnu.org/pub/gnu/bison/',
-        're': r'bison-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
-    },
     'blosc': {
         'git': 'https://github.com/Blosc/c-blosc.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
@@ -37,8 +33,8 @@ Packages = {
         're': r'boost-([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'cairo': {
-        'filelist': 'https://www.cairographics.org/releases/',
-        're': r'^cairo-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+        'git': 'https://gitlab.freedesktop.org/cairo/cairo.git',
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'charls': {
         'gitsha': 'https://github.com/team-charls/charls.git',
@@ -62,13 +58,9 @@ Packages = {
         'session': False,
         'insecure': True,
     },
-    'flex': {
-        'git': 'https://github.com/westes/flex.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
-    },
     'fontconfig': {
-        'filelist': 'https://www.freedesktop.org/software/fontconfig/release/',
-        're': r'fontconfig-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+        'git': 'https://gitlab.freedesktop.org/fontconfig/fontconfig.git',
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'fossil': {
         'json': 'https://www.fossil-scm.org/index.html/juvlist',
@@ -136,20 +128,16 @@ Packages = {
         're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$'
     },
     'harfbuzz': {
-        'filelist': 'https://www.freedesktop.org/software/harfbuzz/release/',
-        're': r'harfbuzz-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+        'git': 'https://github.com/harfbuzz/harfbuzz.git',
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'hdf4': {
-        'filelist': 'https://support.hdfgroup.org/ftp/HDF/releases/',
-        're': r'HDF([0-9]+\.[0-9]+(|\.[0-9]+))\/$',
-        'sub': lambda v: 'HDF' + v + '/src',
-        'subre': r'hdf-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+        'git': 'https://github.com/HDFGroup/hdf4.git',
+        're': r'hdf-([0-9]+_[0-9]+(|_[0-9]+))$',
     },
     'hdf5': {
-        'filelist': 'https://support.hdfgroup.org/ftp/HDF5/releases/',
-        're': r'hdf5-([0-9]+\.[0-9]+(|\.[0-9]+))\/$',
-        'sub': lambda v: 'hdf5-' + v,
-        'subre': r'hdf5-([0-9]+\.[0-9]+(|\.[0-9]+))\/'
+        'git': 'https://github.com/HDFGroup/hdf5.git',
+        're': r'hdf5-([0-9]+_[0-9]+(|_[0-9]+))$',
     },
     'icu4c': {
         'git': 'https://github.com/unicode-org/icu.git',
@@ -299,6 +287,10 @@ Packages = {
         'filelist': 'http://xmlsoft.org/sources/',
         're': r'libxml2-([0-9]+\.[0-9]+(|\.[0-9]+)(|[a-z])).tar.(gz|xz)$'
     },
+    'libzip': {
+        'git': 'https://github.com/nih-at/libzip.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
     'lz4': {
         'git': 'https://github.com/lz4/lz4.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
@@ -342,10 +334,6 @@ Packages = {
         'filelist': 'https://sourceforge.net/projects/niftilib/files/nifticlib/',
         're': r'nifticlib_([0-9]+_[0-9]+(|_[0-9]+))\/$'
     },
-    'ninja': {
-        'git': 'https://github.com/ninja-build/ninja.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
-    },
     'ogdi': {
         'git': 'https://github.com/libogdi/ogdi.git',
         're': r'ogdi_([0-9]+_[0-9]+(|_[0-9]+))$'
@@ -367,7 +355,7 @@ Packages = {
         're': r'OPENLDAP_REL_ENG_([0-9]+_[0-9]+(|_[0-9]+))$'
     },
     'openmpi': {
-        'filelist': 'https://www.open-mpi.org/software/ompi/v4.0/',
+        'filelist': 'https://www.open-mpi.org/software/ompi/v4.1/',
         're': r'openmpi-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
     'openslide': {
@@ -408,25 +396,21 @@ Packages = {
         'filelist': 'https://ftp.pcre.org/pub/pcre/',
         're': r'pcre-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
-    'perl': {
-        'filelist': 'https://www.cpan.org/src/5.0/',
-        're': r'perl-([0-9]+\.[0-9]*[02468](|\.[0-9]+)).tar.(gz|xz)$'
-    },
     'pixman': {
-        'filelist': 'https://www.cairographics.org/releases/',
-        're': r'pixman-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+        'git': 'https://gitlab.freedesktop.org/pixman/pixman.git',
+        're': r'pixman-([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'pkgconfig': {
-        'filelist': 'https://pkg-config.freedesktop.org/releases/',
-        're': r'pkg-config-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+        'git': 'https://gitlab.freedesktop.org/pkg-config/pkg-config.git',
+        're': r'pkg-config-([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'pnetcdf': {
         'git': 'https://github.com/Parallel-NetCDF/PnetCDF.git',
         're': r'checkpoint\.([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'poppler': {
-        'filelist': 'https://poppler.freedesktop.org/',
-        're': r'poppler-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+        'git': 'https://gitlab.freedesktop.org/poppler/poppler.git',
+        're': r'poppler-([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'postgresql': {
         'filelist': 'https://ftp.postgresql.org/pub/source/',
@@ -486,18 +470,6 @@ Packages = {
     'superlu': {
         'git': 'https://github.com/xiaoyeli/superlu.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
-    },
-    'tcl': {
-        'filelist': 'https://sourceforge.net/projects/tcl/files/Tcl/',
-        're': r'\/Tcl\/([0-9]+\.[0-9]+(|\.[0-9]+))\/$',
-        'sub': lambda v: v,
-        'subre': r'tcl([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))-src.tar.(gz|xz)'
-    },
-    'tk': {
-        'filelist': 'https://sourceforge.net/projects/tcl/files/Tcl/',
-        're': r'\/Tcl\/([0-9]+\.[0-9]+(|\.[0-9]+))\/$',
-        'sub': lambda v: v,
-        'subre': r'tk([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))-src.tar.(gz|xz)'
     },
     'ultrajson': {
         'gitsha': 'https://github.com/esnme/ultrajson.git',

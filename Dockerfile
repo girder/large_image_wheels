@@ -15,28 +15,28 @@ RUN \
 RUN \
     echo "`date` yum install" >> /build/log.txt && \
     yum install -y \
-    zip \
+    # for strip-nondeterminism \
+    cpanminus \
     # for curl \
-    # openldap-devel \
     libidn2-devel \
     # for openjpeg \
     lcms2-devel \
     # needed for libtiff \
     freeglut-devel \
-    libjpeg-devel \
     libXi-devel \
     mesa-libGL-devel \
     mesa-libGLU-devel \
     SDL-devel \
     # for javabridge \
     java-1.8.0-openjdk-devel \
+    zip \
     # for glib2 \
     libtool \
     libxml2-devel \
+    # for gobject-introspection \
+    flex \
     # for several packages \
     ninja-build \
-    # We need flex to build a newer version of flex \
-    flex \
     help2man \
     texinfo \
     # For expat \
@@ -45,7 +45,6 @@ RUN \
     # for libdap \
     libuuid-devel \
     # more support for GDAL \
-    hdf-devel \
     json-c12-devel \
     # for mysql \
     ncurses-devel \
@@ -56,26 +55,22 @@ RUN \
     popt-devel \
     # for MrSID \
     tbb-devel \
+    # for netcdf \
+    hdf-devel \
     # For ImageMagick \
     fftw3-devel \
     libexif-devel \
     matio-devel \
     # for easier development \
     man \
+    gtk-doc \
     vim-enhanced && \
     yum clean all && \
     echo "`date` yum install" >> /build/log.txt
 
-# Patch autoreconf to better use GETTEXT
-# See https://lists.gnu.org/archive/html/autoconf-patches/2015-10/msg00001.html
-# for the patch logic
-RUN \
-    echo "`date` sed gettext" >> /build/log.txt && \
-    sed -i 's/\^AM_GNU_GETTEXT_VERSION/\^AM_GNU_GETTEXT_\(REQUIRE_\)\?VERSION/g' /usr/local/bin/autoreconf && \
-    echo "`date` sed gettext" >> /build/log.txt
-
 ARG SOURCE_DATE_EPOCH
 ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-1567045200} \
+    HOSTNAME=large_image_wheels \
     CFLAGS="-g0 -O2 -DNDEBUG" \
     LDFLAGS="-Wl,--strip-debug,--strip-discarded,--discard-locals" \
     PIP_USE_FEATURE="in-tree-build" \
@@ -99,17 +94,16 @@ RUN \
     virtualenv -p python3.8 /venv && \
     echo "`date` virtualenv" >> /build/log.txt
 
-# Update autotools, perl, m4, pkg-config
+# Update pkg-config, m4
 
 # Newer version of pkg-config than available in manylinux2014
 RUN \
     echo "`date` pkg-config" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent http://pkgconfig.freedesktop.org/releases/pkg-config-0.29.2.tar.gz -L -o pkg-config.tar.gz && \
-    mkdir pkg-config && \
-    tar -zxf pkg-config.tar.gz -C pkg-config --strip-components 1 && \
-    rm -f pkg-config.tar.gz && \
+    export AUTOMAKE_JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b pkg-config-0.29.2 https://gitlab.freedesktop.org/pkg-config/pkg-config.git && \
     cd pkg-config && \
+    ./autogen.sh && \
     ./configure --silent --prefix=/usr/local --with-internal-glib --disable-host-tool --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -118,7 +112,7 @@ RUN \
 # Some of these paths are added later
 ENV PKG_CONFIG=/usr/local/bin/pkg-config \
     PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:/usr/lib64/pkgconfig:/usr/share/pkgconfig \
-    PATH="/venv/bin:/usr/localperl/bin:$PATH"
+    PATH="/venv/bin:$PATH"
 
 # Newer version of m4 than available in manylinux2014
 RUN \
@@ -132,11 +126,10 @@ RUN \
     ./configure --silent --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
-    echo "`date` m4" >> /build/log.txt && \
-cd /build && \
-# \
-# # Make our own zlib so we don't depend on system libraries \
-# RUN \
+    echo "`date` m4" >> /build/log.txt
+
+# Make our own zlib so we don't depend on system libraries \
+RUN \
     echo "`date` zlib" >> /build/log.txt && \
     export JOBS=`nproc` && \
     curl --retry 5 --silent https://zlib.net/zlib-1.2.11.tar.gz -L -o zlib.tar.gz && \
@@ -173,6 +166,8 @@ cd /build && \
     echo "`date` openssl 1.0" >> /build/log.txt && \
     git clone --depth=1 --single-branch -b OpenSSL_1_0_2u https://github.com/openssl/openssl.git openssl_1_0 && \
     cd openssl_1_0 && \
+    # Don't build tests -- they are slow to build. \
+    sed -i 's/ test tools/ tools/g' Makefile.org && \
     ./config --prefix=/usr/local --openssldir=/usr/local/ssl shared zlib && \
     make --silent && \
     # using "all install_sw" rather than "install" to avoid installing docs \
@@ -186,18 +181,20 @@ cd /build && \
     git clone --depth=1 --single-branch -b OpenSSL_1_1_1l https://github.com/openssl/openssl.git openssl_1_1 && \
     cd openssl_1_1 && \
     ./config --prefix=/usr/local --openssldir=/usr/local/ssl shared zlib && \
-    make --silent && \
+    make --silent -j ${JOBS} && \
     # using "all install_sw" rather than "install" to avoid installing docs \
-    make --silent all install_sw && \
+    make --silent -j ${JOBS} all install_sw && \
     ldconfig && \
     echo "`date` openssl 1.1" >> /build/log.txt && \
 cd /build && \
 # \
 # RUN \
     echo "`date` openldap" >> /build/log.txt && \
-    git clone --depth=1 --single-branch -b OPENLDAP_REL_ENG_2_6 https://git.openldap.org/openldap/openldap.git && \
+    git clone --depth=1 --single-branch -b OPENLDAP_REL_ENG_2_5_8 https://git.openldap.org/openldap/openldap.git && \
     cd openldap && \
-    ./configure --silent --prefix=/usr/local && \
+    # Don't build tests or docs \
+    sed -i 's/ tests doc//g' Makefile.in && \
+    ./configure --silent --prefix=/usr/local --disable-slapd && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -231,26 +228,9 @@ cd /build && \
     ldconfig && \
     echo "`date` curl" >> /build/log.txt
 
-# Perl - building from source seems to have less issues
-RUN \
-    echo "`date` perl" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    curl --retry 5 --silent https://www.cpan.org/src/5.0/perl-5.34.0.tar.xz -L -o perl.tar.xz && \
-    unxz perl.tar.xz && \
-    mkdir perl && \
-    tar -xf perl.tar -C perl --strip-components 1 && \
-    rm -f perl.tar && \
-    cd perl && \
-    ./Configure -des -Dprefix=/usr/localperl && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install.perl && \
-    echo "`date` perl" >> /build/log.txt
-
 RUN \
     echo "`date` strip-nondeterminism" >> /build/log.txt && \
-    export PERL_MM_USE_DEFAULT=1 && \
-    export PERL_EXTUTILS_AUTOINSTALL="--defaultdeps" && \
-    cpan -T ExtUtils::MakeMaker Archive::Cpio Archive::Zip && \
+    cpanm -T Archive::Cpio && \
     git clone --depth=1 --single-branch -b 0.042 https://github.com/esoule/strip-nondeterminism.git && \
     cd strip-nondeterminism && \
     perl Makefile.PL && \
@@ -297,10 +277,6 @@ data = open(path).read().replace( \n\
     "libICE.so.6", "XlibICE.so.6").replace( \n\
     "XlibXext.so.6", "libjvm.so") \n\
 open(path, "w").write(data)' && \
-    # Also change auditwheel so it doesn't check for a higher priority \
-    # platform; that process is slow \
-    sed -i 's/analyzed_tag = /analyzed_tag = reqd_tag  #/g' /opt/_internal/pipx/venvs/auditwheel/lib/python3.9/site-packages/auditwheel/main_repair.py && \
-    sed -i 's/if reqd_tag < get_priority_by_name(analyzed_tag):/if False:  #/g' /opt/_internal/pipx/venvs/auditwheel/lib/python3.9/site-packages/auditwheel/main_repair.py && \
     echo "`date` auditwheel" >> /build/log.txt
 
 # Use an older version of numpy -- we can work with newer versions, but have to
@@ -342,7 +318,7 @@ RUN \
 #     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
 #     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
 #     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
-#     find /io/wheelhouse/ -name 'psutil*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+#     find /io/wheelhouse/ -name 'psutil*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
 #     find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
 #     find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
 #     ls -l /io/wheelhouse && \
@@ -359,11 +335,24 @@ RUN \
 #     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" install --no-cache-dir setuptools-scm' && \
 #     # Just python >= 3.5 \
 #     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
-#     find /io/wheelhouse/ -name 'ujson*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+#     find /io/wheelhouse/ -name 'ujson*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
 #     find /io/wheelhouse/ -name 'ujson*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
 #     find /io/wheelhouse/ -name 'ujson*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
 #     ls -l /io/wheelhouse && \
 #     echo "`date` ultrajson" >> /build/log.txt
+
+RUN \
+    echo "`date` libzip" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b v1.8.0 https://github.com/nih-at/libzip.git && \
+    cd libzip && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` libzip" >> /build/log.txt
 
 RUN \
     echo "`date` openjpeg" >> /build/log.txt && \
@@ -467,7 +456,7 @@ cd /build && \
     echo "`date` libwebp" >> /build/log.txt && \
 cd /build && \
 # \
-# # For 12-bit jpeg \
+# # For 8 and 12-bit jpeg \
 # RUN \
     echo "`date` libjpeg-turbo" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -481,6 +470,7 @@ cd /build && \
     cd _build8 && \
     cmake -DWITH_12BIT=0 -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local .. && \
     make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     cd .. && \
     # build 12-bit in place \
     cmake -DWITH_12BIT=1 -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local . && \
@@ -513,9 +503,10 @@ RUN \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
-    echo "`date` lerc" >> /build/log.txt
-
-RUN \
+    echo "`date` lerc" >> /build/log.txt && \
+cd /build && \
+# \
+# RUN \
     echo "`date` libhwy" >> /build/log.txt && \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b 0.14.2 https://github.com/google/highway.git && \
@@ -565,7 +556,7 @@ cd /build && \
     find . -name '.git' -exec rm -rf {} \+ && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DCMAKE_CXX_FLAGS='-fpermissive' && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DCMAKE_CXX_FLAGS='-fpermissive' -DJPEGXL_ENABLE_EXAMPLES=OFF -DJPEGXL_ENABLE_MANPAGES=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF  && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -644,7 +635,7 @@ open(path, "w").write(s)' && \
       "${PYBIN}/python" -c 'import libtiff' || true && \
       "${PYBIN}/pip" wheel --no-deps . -w /io/wheelhouse; \
     done && \
-    find /io/wheelhouse/ -name 'libtiff*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'libtiff*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'libtiff*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'libtiff*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
@@ -683,6 +674,7 @@ s = s.replace("from setuptools import setup", \n\
 """from setuptools import setup \n\
 import os \n\
 from distutils.core import Extension""") \n\
+s = s.replace(", \'tests\'", "") \n\
 s = s.replace("\'test_suite\': \'glymur.test\'", \n\
 """\'test_suite\': \'glymur.test\', \n\
 \'ext_modules\': [Extension(\'glymur.openjpeg\', [], libraries=[\'openjp2\'])]""") \n\
@@ -707,7 +699,7 @@ open(path, "w").write(s)' && \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     find /opt/python -mindepth 1 -not -name '*cp36*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
-    find /io/wheelhouse/ -name 'Glymur*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'Glymur*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'Glymur*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'Glymur*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
@@ -740,22 +732,12 @@ RUN \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
-    echo "`date` pcre" >> /build/log.txt && \
-cd /build && \
-# \
-# RUN \
+    echo "`date` pcre" >> /build/log.txt
+
+RUN \
     echo "`date` meson" >> /build/log.txt && \
     pip install --no-cache-dir meson && \
     echo "`date` meson" >> /build/log.txt
-
-# # Ninja >= 1.9 has to be built locally \
-# RUN \
-#     echo "`date` ninja" >> /build/log.txt && \
-#     git clone --depth=1 --single-branch -b v1.10.2 https://github.com/ninja-build/ninja.git && \
-#     cd ninja && \
-#     ./configure.py --bootstrap && \
-#     mv ninja /usr/local/bin/. && \
-#     echo "`date` ninja" >> /build/log.txt
 
 RUN \
     echo "`date` gettext" >> /build/log.txt && \
@@ -786,10 +768,9 @@ open(path, "w").write(s)' && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
-    echo "`date` libffi" >> /build/log.txt && \
-cd /build && \
-# \
-# RUN \
+    echo "`date` libffi" >> /build/log.txt
+
+RUN \
     echo "`date` util-linux" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
@@ -838,35 +819,6 @@ open(path, "w").write(s)' && \
     ninja -j ${JOBS} install && \
     ldconfig && \
     echo "`date` glib" >> /build/log.txt
-
-RUN \
-    echo "`date` flex" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v2.6.4 https://github.com/westes/flex.git && \
-    cd flex && \
-    autoreconf -ifv && \
-    ./configure --silent --prefix=/usr/local --disable-static && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` flex" >> /build/log.txt && \
-cd /build && \
-# \
-# RUN \
-    echo "`date` bison" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.gnu.org/gnu/bison/bison-3.8.2.tar.xz -L -o bison.tar.xz && \
-    unxz bison.tar.xz && \
-    mkdir bison && \
-    tar -xf bison.tar -C bison --strip-components 1 && \
-    rm -f bison.tar && \
-    cd bison && \
-    ./configure --silent --prefix=/usr/local && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` bison" >> /build/log.txt
 
 RUN \
     echo "`date` gobject-introspection" >> /build/log.txt && \
@@ -935,10 +887,11 @@ RUN \
     ldconfig && \
     echo "`date` icu4c" >> /build/log.txt
 
+# We can't add --disable-mpi-fortran, or parallel-netcdf doesn't build
 RUN \
     echo "`date` openmpi" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.6.tar.gz -L -o openmpi.tar.gz && \
+    curl --retry 5 --silent https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.1.tar.gz -L -o openmpi.tar.gz && \
     mkdir openmpi && \
     tar -zxf openmpi.tar.gz -C openmpi --strip-components 1 && \
     rm -f openmpi.tar.gz && \
@@ -993,7 +946,7 @@ RUN \
 # binaries fail because they can't find any of a list of versions of GLIBC.
 RUN \
     echo "`date` fossil" >> /build/log.txt && \
-    curl --retry 5 --silent -L https://fossil-scm.org/home/tarball/7aedd5675883d4412cf20917d340b6985e3ecb842e88a39f135df034b2d5f4d3/fossil-src-2.16.tar.gz -o fossil.tar.gz && \
+    curl --retry 5 --silent -L https://fossil-scm.org/home/tarball/f48180f2ff3169651a725396d4f7d667c99a92873b9c3df7eee2f144be7a0721/fossil-src-2.17.tar.gz -o fossil.tar.gz && \
     mkdir fossil && \
     tar -zxf fossil.tar.gz -C fossil --strip-components 1 && \
     rm -f fossil.tar.gz && \
@@ -1003,34 +956,6 @@ RUN \
     make --silent -j ${JOBS} install && \
     ldconfig && \
     echo "`date` fossil" >> /build/log.txt
-
-RUN \
-    echo "`date` tcl" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    curl --retry 5 --silent https://prdownloads.sourceforge.net/tcl/tcl8.6.11-src.tar.gz -L -o tcl.tar.gz && \
-    mkdir tcl && \
-    tar -zxf tcl.tar.gz -C tcl --strip-components 1 && \
-    rm -f tcl.tar.gz && \
-    cd tcl/unix && \
-    ./configure --silent --prefix=/usr/local && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` tcl" >> /build/log.txt
-
-RUN \
-    echo "`date` tk" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    curl --retry 5 --silent https://prdownloads.sourceforge.net/tcl/tk8.6.11.1-src.tar.gz -L -o tk.tar.gz && \
-    mkdir tk && \
-    tar -zxf tk.tar.gz -C tk --strip-components 1 && \
-    rm -f tk.tar.gz && \
-    cd tk/unix && \
-    ./configure --silent --prefix=/usr/local --disable-static && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` tk" >> /build/log.txt
 
 RUN \
     echo "`date` sqlite" >> /build/log.txt && \
@@ -1151,14 +1076,12 @@ RUN \
 RUN \
     echo "`date` pixman" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://www.cairographics.org/releases/pixman-0.40.0.tar.gz -L -o pixman.tar.gz && \
-    mkdir pixman && \
-    tar -zxf pixman.tar.gz -C pixman --strip-components 1 && \
-    rm -f pixman.tar.gz && \
+    git clone --depth=1 --single-branch -b pixman-0.40.0 https://gitlab.freedesktop.org/pixman/pixman.git && \
     cd pixman && \
-    ./configure --silent --prefix=/usr/local --disable-static && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
+    meson --prefix=/usr/local --buildtype=release -Ddoc=disabled -Dtests=disabled _build && \
+    cd _build && \
+    ninja -j ${JOBS} && \
+    ninja -j ${JOBS} install && \
     ldconfig && \
     echo "`date` pixman" >> /build/log.txt
 
@@ -1179,10 +1102,7 @@ RUN \
 RUN \
     echo "`date` fontconfig" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.13.94.tar.gz -L -o fontconfig.tar.gz && \
-    mkdir fontconfig && \
-    tar -zxf fontconfig.tar.gz -C fontconfig --strip-components 1 && \
-    rm -f fontconfig.tar.gz && \
+    git clone --depth=1 --single-branch -b 2.13.94 https://gitlab.freedesktop.org/fontconfig/fontconfig.git && \
     cd fontconfig && \
     meson --prefix=/usr/local --buildtype=release -Ddoc=disabled -Dtests=disabled _build && \
     cd _build && \
@@ -1194,15 +1114,12 @@ RUN \
 RUN \
     echo "`date` cairo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://www.cairographics.org/releases/cairo-1.16.0.tar.xz -L -o cairo.tar.xz && \
-    unxz cairo.tar.xz && \
-    mkdir cairo && \
-    tar -xf cairo.tar -C cairo --strip-components 1 && \
-    rm -f cairo.tar && \
+    git clone --depth=1 --single-branch -b 1.17.4 https://gitlab.freedesktop.org/cairo/cairo.git && \
     cd cairo && \
-    CXXFLAGS='-Wno-implicit-fallthrough -Wno-cast-function-type' CFLAGS="$CFLAGS -Wl,--allow-multiple-definition" ./configure --silent --prefix=/usr/local --disable-static && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
+    meson --prefix=/usr/local --buildtype=release -Ddoc=disabled -Dtests=disabled _build && \
+    cd _build && \
+    ninja -j ${JOBS} && \
+    ninja -j ${JOBS} install && \
     ldconfig && \
     echo "`date` cairo" >> /build/log.txt
 
@@ -1232,6 +1149,7 @@ RUN \
 RUN \
     echo "`date` libdap" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b version-3.20.6 https://github.com/OPENDAP/libdap4.git && \
     cd libdap4 && \
     autoreconf -ifv && \
@@ -1284,10 +1202,7 @@ open(path, "wb").write(data)' && \
 RUN \
     echo "`date` hdf4" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://support.hdfgroup.org/ftp/HDF/releases/HDF4.2.15/src/hdf-4.2.15.tar.gz -L -o hdf4.tar.gz && \
-    mkdir hdf4 && \
-    tar -zxf hdf4.tar.gz -C hdf4 --strip-components 1 && \
-    rm -f hdf4.tar.gz && \
+    git clone --depth=1 --single-branch -b hdf-4_2_15 https://github.com/HDFGroup/hdf4.git && \
     cd hdf4 && \
     mkdir _build && \
     cd _build && \
@@ -1297,15 +1212,11 @@ RUN \
     ldconfig && \
     echo "`date` hdf4" >> /build/log.txt
 
-# netcdf-c doesn't work with 1.12.1
 RUN \
     echo "`date` hdf5" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    curl --retry 5 --silent https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.12/hdf5-1.12.1/src/hdf5-1.12.1.tar.gz -L -o hdf5.tar.gz && \
-    mkdir hdf5 && \
-    tar -zxf hdf5.tar.gz -C hdf5 --strip-components 1 && \
-    rm -f hdf5.tar.gz && \
+    git clone --depth=1 --single-branch -b hdf5-1_12_1 https://github.com/HDFGroup/hdf5.git && \
     cd hdf5 && \
     mkdir _build && \
     cd _build && \
@@ -1400,11 +1311,7 @@ RUN \
 RUN \
     echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://poppler.freedesktop.org/poppler-21.10.0.tar.xz -L -o poppler.tar.xz && \
-    unxz poppler.tar.xz && \
-    mkdir poppler && \
-    tar -xf poppler.tar -C poppler --strip-components 1 && \
-    rm -f poppler.tar && \
+    git clone --depth=1 --single-branch -b poppler-21.10.0 https://gitlab.freedesktop.org/poppler/poppler.git && \
     cd poppler && \
     mkdir _build && \
     cd _build && \
@@ -1607,7 +1514,7 @@ RUN \
     git clone --depth=1 --single-branch -b v1.12.0 https://github.com/strukturag/libheif.git && \
     cd libheif && \
     ./autogen.sh && \
-    ./configure --silent --prefix=/usr/local --disable-static && \
+    ./configure --silent --prefix=/usr/local --disable-static --disable-examples --disable-go && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1635,6 +1542,7 @@ RUN \
 RUN \
     echo "`date` gdal" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
     # Specific branch \
     # git clone --depth=1 --single-branch -b v3.3.2 https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
@@ -1754,7 +1662,7 @@ open(path, "w").write(s)' && \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse; git clean -fxd build GDAL.egg-info' && \
-    find /io/wheelhouse/ -name 'GDAL*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'GDAL*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'GDAL*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'GDAL*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
@@ -1766,15 +1674,12 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` harfbuzz" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://www.freedesktop.org/software/harfbuzz/release/harfbuzz-2.6.7.tar.xz -L -o harfbuzz.tar.xz && \
-    unxz harfbuzz.tar.xz && \
-    mkdir harfbuzz && \
-    tar -xf harfbuzz.tar -C harfbuzz --strip-components 1 && \
-    rm -f harfbuzz.tar && \
+    git clone --depth=1 --single-branch -b 3.0.0 https://github.com/harfbuzz/harfbuzz.git && \
     cd harfbuzz && \
-    ./configure --silent --prefix=/usr/local --disable-static && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
+    meson --prefix=/usr/local --buildtype=release -Ddoc=disabled -Dtests=disabled _build && \
+    cd _build && \
+    ninja -j ${JOBS} && \
+    ninja -j ${JOBS} install && \
     ldconfig && \
     echo "`date` harfbuzz" >> /build/log.txt
 
@@ -1796,6 +1701,7 @@ RUN \
 RUN \
     echo "`date` mapnik" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    export HEAVY_JOBS=`nproc` && \
     # Master \
     # git clone --depth=1 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
     # cd mapnik && \
@@ -1806,6 +1712,8 @@ RUN \
     git checkout fb2e45c57981f8a3b071f37a0b27f211bf233081 && \
     # Common \
     find . -name '.git' -exec rm -rf {} \+ && \
+    # Keeps the docker smaller \
+    rm -rf demo test && mkdir test && mkdir demo && touch test/build.py && touch demo/build.py && \
     # Scons build process \
     python scons/scons.py configure JOBS=`nproc` \
     BOOST_INCLUDES=/usr/local/include BOOST_LIBS=/usr/local/lib \
@@ -1911,7 +1819,7 @@ open(path, "w").write(s)' && \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c 'export WORKDIR=/tmp/python-mapnik-`basename ${0}`; mkdir -p $WORKDIR; cp -r . $WORKDIR/.; pushd $WORKDIR; BOOST_PYTHON_LIB=`"${0}/bin/python" -c "import sys;sys.stdout.write('\''boost_python'\''+str(sys.version_info.major)+str(sys.version_info.minor))"` "${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && popd && rm -rf $WORKDIR' && \
-    find /io/wheelhouse/ -name 'mapnik*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'mapnik*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'mapnik*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'mapnik*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
@@ -2008,7 +1916,7 @@ open(path, "w").write(s)' && \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
-    find /io/wheelhouse/ -name 'openslide*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'openslide*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
@@ -2153,11 +2061,11 @@ RUN \
 RUN \
     echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.1.0-9 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.1.0-10 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
-    ./configure --prefix=/usr/local --with-modules --with-rsvg LIBS="-lrt `pkg-config --libs zlib`" --disable-static && \
+    ./configure --prefix=/usr/local --with-modules --with-rsvg --with-fftw --with-jxl LIBS="-lrt `pkg-config --libs zlib`" --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -2167,6 +2075,7 @@ RUN \
 RUN \
     echo "`date` vips" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
     # Use these lines for a release \
     curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.11.4/vips-8.11.4.tar.gz -L -o vips.tar.gz && \
     mkdir vips && \
@@ -2174,7 +2083,6 @@ RUN \
     rm -f vips.tar.gz && \
     cd vips && \
     # Use these lines for master \
-    # yum install -y gtk-doc && \
     # git clone --depth=1 https://github.com/libvips/libvips.git vips && \
     # cd vips && \
     # ./autogen.sh && \
@@ -2240,7 +2148,7 @@ open(path, "w").write(s)' && \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse; git clean -fxd -e pyvips/bin' && \
-    find /io/wheelhouse/ -name 'pyvips*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'pyvips*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'pyvips*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'pyvips*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
@@ -2302,7 +2210,7 @@ open(path, "w").write(data)' && \
     find /opt/python -mindepth 1 -not -name '*cp36*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     # Make sure all binaries have the execute flag \
     find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 bash -c 'mkdir /tmp/ptmp; pushd /tmp/ptmp; unzip ${0}; chmod a+x pyproj/bin/*; chmod a-x pyproj/bin/*.py; zip -r ${0} *; popd; rm -rf /tmp/ptmp' && \
-    find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'pyproj*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'pyproj*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
@@ -2335,7 +2243,7 @@ RUN \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
-    find /io/wheelhouse/ -name 'pylibmc*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'pylibmc*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'pylibmc*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'pylibmc*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
@@ -2413,7 +2321,7 @@ open(path, "w").write(s)' && \
     # Only build for Python >=3.5 \
     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse' && \
     rm -rf .eggs build && \
-    find /io/wheelhouse/ -name 'python_javabridge*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'python_javabridge*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     # auditwheel modifies the java libraries, but some of those have \
     # hard-coded relative paths, which doesn't work.  Replace them with the \
     # unmodified versions.  See https://stackoverflow.com/questions/55904261 \
@@ -2435,7 +2343,7 @@ for line in open(record_path): \n\
 open(record_path, "w").write("".join(newrecord)) \n\
 """ \n\
 open(path, "w").write(s)' && \
-    find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 bash -c 'mkdir /tmp/ptmp; pushd /tmp/ptmp; unzip ${0}; cp -r -L /usr/lib/jvm/java/* javabridge/jvm/.; /opt/python/cp37-cp37m/bin/python /build/fix_record.py; zip -r ${0} *; popd; rm -rf /tmp/ptmp' && \
+    find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} bash -c 'mkdir /tmp/ptmp${0}; pushd /tmp/ptmp${0}; unzip ${0}; cp -r -L /usr/lib/jvm/java/* javabridge/jvm/.; /opt/python/cp37-cp37m/bin/python /build/fix_record.py; zip -r ${0} *; popd; rm -rf /tmp/ptmp${0}' && \
     find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
