@@ -747,7 +747,7 @@ RUN \
     tar -zxf gettext.tar.gz -C gettext --strip-components 1 && \
     rm -f gettext.tar.gz && \
     cd gettext && \
-    ./configure --silent --prefix=/usr/local --disable-static && \
+    ./configure --silent --cache-file=/dev/shm/gettext.config.cache --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -813,7 +813,7 @@ open(path, "w").write(s)' && \
 path = "gthread/meson.build" \n\
 s = open(path).read().replace("library(\'gthread-2.0\',", "library(\'gthread-2.0-liw\',") \n\
 open(path, "w").write(s)' && \
-    meson --prefix=/usr/local --buildtype=release _build && \
+    meson --prefix=/usr/local --buildtype=release -Dtests=False -Dglib_debug=disabled _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -851,7 +851,7 @@ RUN \
     tar -xf gdk-pixbuf.tar -C gdk-pixbuf --strip-components 1 && \
     rm -f gdk-pixbuf.tar && \
     cd gdk-pixbuf && \
-    meson --prefix=/usr/local --buildtype=release -D gir=False -D x11=False -D builtin_loaders=all -D man=False _build && \
+    meson --prefix=/usr/local --buildtype=release -Dgir=False -Dx11=False -Dbuiltin_loaders=all -Dman=False -Dinstalled_tests=False _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -896,7 +896,7 @@ RUN \
     tar -zxf openmpi.tar.gz -C openmpi --strip-components 1 && \
     rm -f openmpi.tar.gz && \
     cd openmpi && \
-    ./configure --silent --prefix=/usr/local --disable-dependency-tracking --enable-silent-rules --disable-dlopen --disable-libompitrace --disable-opal-btl-usnic-unit-tests --disable-picky --disable-debug --disable-mem-profile --disable-mem-debug --disable-static --disable-mpi-java && \
+    ./configure --silent --prefix=/usr/local --disable-dependency-tracking --enable-silent-rules --disable-dlopen --disable-libompitrace --disable-opal-btl-usnic-unit-tests --disable-picky --disable-debug --disable-mem-profile --disable-mem-debug --disable-static --disable-mpi-java -disable-oshmem-profile && \
     # make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -930,7 +930,18 @@ RUN \
     echo "using python : 3.9 : /opt/python/cp39-cp39/bin/python : /opt/python/cp39-cp39/include/python3.9 : /opt/python/cp39-cp39/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.10 : /opt/python/cp310-cp310/bin/python : /opt/python/cp310-cp310/include/python3.10 : /opt/python/cp310-cp310/lib ;" >> tools/build/src/user-config.jam && \
     ./bootstrap.sh --prefix=/usr/local --with-toolset=gcc variant=release && \
-    ./b2 -d1 -j ${JOBS} toolset=gcc variant=release link=shared --build-type=minimal python=3.6,3.7,3.8,3.9,3.10 cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable -Wno-parentheses -Wno-maybe-uninitialized -Wno-attributes" install && \
+    # Only build the libraries we need; building boost is slow \
+    ./b2 -d1 -j ${JOBS} toolset=gcc variant=release link=shared --build-type=minimal \
+    --with-filesystem \
+    --with-thread \
+    --with-regex \
+    --with-atomic \
+    --with-system \
+    --with-python \
+    --with-program_options \
+    python=3.6,3.7,3.8,3.9,3.10 \
+    cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable -Wno-parentheses -Wno-maybe-uninitialized -Wno-attributes" \
+    install && \
     # pypy \
     # This conflicts with the non-pypy version \
     # echo "" > tools/build/src/user-config.jam && \
@@ -942,19 +953,26 @@ RUN \
     ldconfig && \
     echo "`date` boost" >> /build/log.txt
 
-# We have to build fossil to allow it to work in our environment.  The prebuilt
-# binaries fail because they can't find any of a list of versions of GLIBC.
 RUN \
     echo "`date` fossil" >> /build/log.txt && \
-    curl --retry 5 --silent -L https://fossil-scm.org/home/tarball/f48180f2ff3169651a725396d4f7d667c99a92873b9c3df7eee2f144be7a0721/fossil-src-2.17.tar.gz -o fossil.tar.gz && \
-    mkdir fossil && \
-    tar -zxf fossil.tar.gz -C fossil --strip-components 1 && \
+    # fossil executable \
+    curl --retry 5 --silent -L https://fossil-scm.org/home/uv/fossil-linux-x64-2.17.tar.gz -o fossil.tar.gz && \
+    tar -zxf fossil.tar.gz && \
+    mv fossil /usr/local/bin/. && \
     rm -f fossil.tar.gz && \
-    cd fossil && \
-    ./configure --prefix=/usr/local --disable-static && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
+    # # fossil from source \
+    # # Previously, we had to build fossil to allow it to work in our
+    # # environment.  The prebuilt binaries fail because they can't find any of
+    # # a list of versions of GLIBC.
+    # curl --retry 5 --silent -L https://fossil-scm.org/home/tarball/f48180f2ff3169651a725396d4f7d667c99a92873b9c3df7eee2f144be7a0721/fossil-src-2.17.tar.gz -o fossil.tar.gz && \
+    # mkdir fossil && \
+    # tar -zxf fossil.tar.gz -C fossil --strip-components 1 && \
+    # rm -f fossil.tar.gz && \
+    # cd fossil && \
+    # ./configure --prefix=/usr/local --disable-static && \
+    # make --silent -j ${JOBS} && \
+    # make --silent -j ${JOBS} install && \
+    # ldconfig && \
     echo "`date` fossil" >> /build/log.txt
 
 RUN \
@@ -1933,7 +1951,7 @@ RUN \
     tar -zxf orc.tar.gz -C orc --strip-components 1 && \
     rm -f orc.tar.gz && \
     cd orc && \
-    meson --prefix=/usr/local --buildtype=release _build && \
+    meson --prefix=/usr/local --buildtype=release -Dgtk_doc=disabled -Dtests=disabled -Dexamples=disabled -Dbenchmarks=disabled  _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -1979,7 +1997,7 @@ RUN \
     tar -xf pango.tar -C pango --strip-components 1 && \
     rm -f pango.tar && \
     cd pango && \
-    meson --prefix=/usr/local --buildtype=release -D introspection=disabled _build && \
+    meson --prefix=/usr/local --buildtype=release -Dintrospection=disabled _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -2024,14 +2042,14 @@ RUN \
     echo "`date` librsvg" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.52/librsvg-2.52.1.tar.xz -L -o librsvg.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.52/librsvg-2.52.2.tar.xz -L -o librsvg.tar.xz && \
     unxz librsvg.tar.xz && \
     mkdir librsvg && \
     tar -xf librsvg.tar -C librsvg --strip-components 1 && \
     rm -f librsvg.tar && \
     cd librsvg && \
     export RUSTFLAGS="$RUSTFLAGS -O -C link_args=-Wl,--strip-debug,--strip-discarded,--discard-local" && \
-    ./configure --silent --prefix=/usr/local --disable-introspection --disable-debug --disable-static && \
+    ./configure --silent --prefix=/usr/local --disable-introspection --disable-debug --disable-static --disable-gtk-doc-html && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig && \

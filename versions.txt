@@ -14,7 +14,7 @@ freetype 2.11.0
 freexl 97c9f43cea
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
-gdal 765051d649377c4001c4a48cb7d6513a07f56921
+gdal ed03372732878b73c2d7043c0bd8f0a3cc01ca8d
 gdal-pypi 3.3.2
 gdal-release 3.3.2
 gdk-pixbuf 2.42.6
@@ -56,7 +56,7 @@ libjpeg-turbo 2.1.1
 libmemcached 1.0.18
 libpng 1.6.37
 librasterlite2 b8b8a8b099
-librsvg 2.52.1
+librsvg 2.52.2
 libspatialite e4e91a281a
 libssh2 1.10.0
 libtiff 4.3.0
@@ -68,7 +68,7 @@ libzip 1.8.0
 lz4 1.9.3
 m4 1.4.19
 manylinux2014 30855d9fe4bf1e35d6db7fb78f2078d173086dd9cb99a8b1dc01379fe6c46681
-mapnik 0edb018465790cd156d6849557fa7fd568755ebb
+mapnik 28378b81e80ce9ced7bcd3d1ff453822b6cb599b
 mapnik-release 3.1.0
 minizip 3.0.3
 mysql 8.0.26
@@ -96,7 +96,7 @@ pnetcdf 1.12.2
 poppler 21.10.0
 postgresql 14.0
 proj-datumgrid 1.8
-proj.4 6a877010114b7ccc12d017989500fa5f12f9e39c
+proj.4 8671b8e7ff07197167b666bd490f42411274bd81
 proj.4-release 8.1.1
 psutil 5.8.0
 pylibmc 1.6.1
