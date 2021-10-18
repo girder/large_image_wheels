@@ -6,9 +6,8 @@ WORKDIR /build
 # Don't build some versions of python.
 RUN \
     echo "`date` rm python versions" >> /build/log.txt && \
+    # Enable in boost as well \
     rm -rf /opt/python/cp35* && \
-    # Enable 3.10 in boost as well \
-    # rm -rf /opt/python/cp310* && \
     rm -rf /opt/python/pp37* && \
     echo "`date` rm python versions" >> /build/log.txt
 
@@ -39,7 +38,7 @@ RUN \
     ninja-build \
     help2man \
     texinfo \
-    # For expat \
+    # for expat \
     docbook2X \
     gperf \
     # for libdap \
@@ -57,7 +56,7 @@ RUN \
     tbb-devel \
     # for netcdf \
     hdf-devel \
-    # For ImageMagick \
+    # for ImageMagick \
     fftw3-devel \
     libexif-devel \
     matio-devel \
@@ -263,7 +262,8 @@ RUN \
     # vips doesn't work with auditwheel 3.2 since the copylib doesn't adjust \
     # rpaths the same as 3.1.1.  Revert that aspect of the behavior. \
     sed -i 's/patcher.set_rpath(dest_path, dest_dir)/new_rpath = os.path.relpath(dest_dir, os.path.dirname(dest_path))\n        new_rpath = os.path.join('\''$ORIGIN'\'', new_rpath)\n        patcher.set_rpath(dest_path, new_rpath)/g' /opt/_internal/pipx/venvs/auditwheel/lib/python3.9/site-packages/auditwheel/repair.py && \
-    # Tell auditwheel not to include libz.so, libjvm.so, etc. \
+    # Tell auditwheel not to whitelist libz.so, libiXext.so, etc. \
+    # Do whitelist libjvm.so \
     python -c $'# \n\
 import os \n\
 path = os.popen("find /opt/_internal -name manylinux-policy.json").read().strip() \n\
@@ -275,6 +275,7 @@ data = open(path).read().replace( \n\
     "libX11.so.6", "XlibX11.so.6").replace( \n\
     "libSM.so.6", "XlibSM.so.6").replace( \n\
     "libICE.so.6", "XlibICE.so.6").replace( \n\
+    "libexpat.so.1", "Xlibexpat.so.1").replace( \n\
     "XlibXext.so.6", "libjvm.so") \n\
 open(path, "w").write(data)' && \
     echo "`date` auditwheel" >> /build/log.txt
@@ -911,7 +912,7 @@ RUN \
 RUN \
     echo "`date` boost" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b boost-1.76.0 --quiet --recurse-submodules -j ${JOBS} https://github.com/boostorg/boost.git && \
+    git clone --depth=1 --single-branch -b boost-1.77.0 --quiet --recurse-submodules -j ${JOBS} https://github.com/boostorg/boost.git && \
     cd boost && \
     # pushd libs/spirit && \
     # # switch to a version of spirit that fixes a bug in 1.70 and 1.71 \
@@ -1052,7 +1053,7 @@ RUN \
 RUN \
     echo "`date` libgeos" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 3.9.1 https://github.com/libgeos/geos.git && \
+    git clone --depth=1 --single-branch -b 3.10.0 https://github.com/libgeos/geos.git && \
     cd geos && \
     mkdir _build && \
     cd _build && \
@@ -1276,7 +1277,7 @@ RUN \
 RUN \
     echo "`date` mysql" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://cdn.mysql.com/Downloads/MySQL-8.0/mysql-boost-8.0.26.tar.gz -L -o mysql.tar.gz && \
+    curl --retry 5 --silent https://cdn.mysql.com/Downloads/MySQL-8.0/mysql-boost-8.0.27.tar.gz -L -o mysql.tar.gz && \
     mkdir mysql && \
     tar -zxf mysql.tar.gz -C mysql --strip-components 1 && \
     rm -f mysql.tar.gz && \
@@ -1721,48 +1722,51 @@ RUN \
     export JOBS=`nproc` && \
     export HEAVY_JOBS=`nproc` && \
     # Master \
-    # git clone --depth=1 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
-    # cd mapnik && \
-    # Specific checkout \
-    git clone --depth=1000 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
+    git clone --depth=1 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
     cd mapnik && \
-    # Apr 28 2021 \
-    git checkout fb2e45c57981f8a3b071f37a0b27f211bf233081 && \
+    # Specific checkout \
+    # git clone --depth=1000 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
+    # cd mapnik && \
+    # # Apr 28 2021 \
+    # git checkout fb2e45c57981f8a3b071f37a0b27f211bf233081 && \
     # Common \
     find . -name '.git' -exec rm -rf {} \+ && \
-    # Keeps the docker smaller \
-    rm -rf demo test && mkdir test && mkdir demo && touch test/build.py && touch demo/build.py && \
     # Scons build process \
-    python scons/scons.py configure JOBS=`nproc` \
-    BOOST_INCLUDES=/usr/local/include BOOST_LIBS=/usr/local/lib \
-    ICU_INCLUDES=/usr/local/include ICU_LIBS=/usr/local/lib \
-    HB_INCLUDES=/usr/local/include HB_LIBS=/usr/local/lib \
-    PNG_INCLUDES=/usr/local/include PNG_LIBS=/usr/local/lib \
-    JPEG_INCLUDES=/usr/local/include JPEG_LIBS=/usr/local/lib \
-    TIFF_INCLUDES=/usr/local/include TIFF_LIBS=/usr/local/lib \
-    WEBP_INCLUDES=/usr/local/include WEBP_LIBS=/usr/local/lib \
-    PROJ_INCLUDES=/usr/local/include PROJ_LIBS=/usr/local/lib \
-    SQLITE_INCLUDES=/usr/local/include SQLITE_LIBS=/usr/local/lib \
-    RASTERLITE_INCLUDES=/usr/local/include RASTERLITE_LIBS=/usr/local/lib \
-    WARNING_CXXFLAGS="-Wno-unused-variable -Wno-unused-but-set-variable -Wno-attributes -Wno-unknown-pragmas -Wno-maybe-uninitialized -Wno-parentheses" \
-    QUIET=true \
-    CPP_TESTS=false \
-    DEBUG=false \
-    DEMO=false \
-    && \
+    # # Keeps the docker smaller \
+    # rm -rf demo test && mkdir test && mkdir demo && touch test/build.py && touch demo/build.py && \
+    # python scons/scons.py configure JOBS=`nproc` \
+    # BOOST_INCLUDES=/usr/local/include BOOST_LIBS=/usr/local/lib \
+    # ICU_INCLUDES=/usr/local/include ICU_LIBS=/usr/local/lib \
+    # HB_INCLUDES=/usr/local/include HB_LIBS=/usr/local/lib \
+    # PNG_INCLUDES=/usr/local/include PNG_LIBS=/usr/local/lib \
+    # JPEG_INCLUDES=/usr/local/include JPEG_LIBS=/usr/local/lib \
+    # TIFF_INCLUDES=/usr/local/include TIFF_LIBS=/usr/local/lib \
+    # WEBP_INCLUDES=/usr/local/include WEBP_LIBS=/usr/local/lib \
+    # PROJ_INCLUDES=/usr/local/include PROJ_LIBS=/usr/local/lib \
+    # SQLITE_INCLUDES=/usr/local/include SQLITE_LIBS=/usr/local/lib \
+    # RASTERLITE_INCLUDES=/usr/local/include RASTERLITE_LIBS=/usr/local/lib \
+    # WARNING_CXXFLAGS="-Wno-unused-variable -Wno-unused-but-set-variable -Wno-attributes -Wno-unknown-pragmas -Wno-maybe-uninitialized -Wno-parentheses" \
+    # QUIET=true \
+    # CPP_TESTS=false \
+    # DEBUG=false \
+    # DEMO=false \
+    # && \
     # CMake build process -- doesn't build mapnik-config as of 9/6/21 \
-    # mkdir _build && \
-    # cd _build && \
-    # CXXFLAGS="-Wno-unused-variable -Wno-unused-but-set-variable -Wno-attributes -Wno-unknown-pragmas -Wno-maybe-uninitialized -Wno-parentheses" \
-    # cmake -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release \
-    # -DBUILD_BENCHMARK=OFF \
-    # -DBUILD_DEMO_CPP=OFF \
-    # -DBUILD_DEMO_VIEWER=OFF \
-    # -DBUILD_TEST=OFF \
-    # -DJPEG_INCLUDE_DIR=/usr/local/include \
-    # -DJPEG_LIBRARY_RELEASE=/usr/local/lib/libopenjp2.so \
-    # -DCMAKE_INSTALL_LIBDIR=lib \
-    # .. && \
+    # Keeps the docker smaller \
+    rm -rf demo test && mkdir test && mkdir demo && touch test/CMakeLists.txt && touch demo/CMakeLists.txt && \
+    mkdir _build && \
+    cd _build && \
+    CXXFLAGS="-Wno-unused-variable -Wno-unused-but-set-variable -Wno-attributes -Wno-unknown-pragmas -Wno-maybe-uninitialized -Wno-parentheses" \
+    cmake -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_BENCHMARK=OFF \
+    -DBUILD_DEMO_CPP=OFF \
+    -DBUILD_DEMO_VIEWER=OFF \
+    -DBUILD_TEST=OFF \
+    -DJPEG_INCLUDE_DIR=/usr/local/include \
+    -DJPEG_LIBRARY_RELEASE=/usr/local/lib/libopenjp2.so \
+    -DCMAKE_INSTALL_LIBDIR=lib \
+    -DFONTS_INSTALL_DIR=/usr/local/lib/mapnik/fonts \
+    .. && \
     # Common build process \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -1770,6 +1774,8 @@ RUN \
     echo "`date` mapnik" >> /build/log.txt
 
 COPY mapnik_proj_transform.cpp.patch .
+
+COPY mapnik_setup.py.patch .
 
 RUN \
     echo "`date` python-mapnik" >> /build/log.txt && \
@@ -1783,9 +1789,7 @@ RUN \
     cp -r /usr/local/lib/mapnik/* mapnik/. && \
     cp -r /usr/local/share/{proj,gdal} mapnik/. && \
     mkdir mapnik/bin && \
-    cp /build/mapnik/utils/mapnik-render/mapnik-render mapnik/bin/. && \
-    cp /build/mapnik/utils/mapnik-index/mapnik-index mapnik/bin/. && \
-    cp /build/mapnik/utils/shapeindex/shapeindex mapnik/bin/. && \
+    cp /usr/local/bin/{mapnik-render,mapnik-index,shapeindex} mapnik/bin/. && \
     strip mapnik/bin/* --strip-unneeded -p -D && \
     python -c $'# \n\
 path = "mapnik/bin/__init__.py" \n\
@@ -1802,25 +1806,25 @@ def program(): \n\
     os.execve(path, sys.argv, environ) \n\
 """ \n\
 open(path, "w").write(s)' && \
-    python -c $'# \n\
-path = "setup.py" \n\
-s = open(path).read().replace( \n\
-    "\'share/*/*\'", \n\
-    """\'share/*/*\', \'input/*\', \'fonts/*\', \'proj/*\', \'gdal/*\', \'bin/*\'""").replace( \n\
-    "path=font_path))", """path=font_path)) \n\
-    f_paths.write("localpath = os.path.dirname(os.path.abspath( __file__ ))\\\\n") \n\
-    f_paths.write("mapniklibpath = os.path.join(localpath, \'mapnik.libs\')\\\\n") \n\
-    f_paths.write("mapniklibpath = os.path.normpath(mapniklibpath)\\\\n") \n\
-    f_paths.write("inputpluginspath = os.path.join(localpath, \'input\')\\\\n") \n\
-    f_paths.write("fontscollectionpath = os.path.join(localpath, \'fonts\')\\\\n") \n\
-""") \n\
-s = s.replace("test_suite=\'nose.collector\',", \n\
-"""test_suite=\'nose.collector\', \n\
-    entry_points={\'console_scripts\': [\'%s=mapnik.bin:program\' % name for name in os.listdir(\'mapnik/bin\') if not name.endswith(\'.py\')]},""") \n\
-p1 = s.index("cflags =") \n\
-p2 = s.index("os.environ", p1) \n\
-s = s[:p1] + "try:\\n    " + s[p1:p2].replace("\\n", "\\n    ") + "\\nexcept Exception:\\n    pass\\n" + s[p2:] \n\
-open(path, "w").write(s)' && \
+    #     python -c $'# \n\
+    # path = "setup.py" \n\
+    # s = open(path).read().replace( \n\
+    #     "\'share/*/*\'", \n\
+    #     """\'share/*/*\', \'input/*\', \'fonts/*\', \'proj/*\', \'gdal/*\', \'bin/*\'""").replace( \n\
+    #     "path=font_path))", """path=font_path)) \n\
+    #     f_paths.write("localpath = os.path.dirname(os.path.abspath( __file__ ))\\\\n") \n\
+    #     f_paths.write("mapniklibpath = os.path.join(localpath, \'mapnik.libs\')\\\\n") \n\
+    #     f_paths.write("mapniklibpath = os.path.normpath(mapniklibpath)\\\\n") \n\
+    #     f_paths.write("inputpluginspath = os.path.join(localpath, \'input\')\\\\n") \n\
+    #     f_paths.write("fontscollectionpath = os.path.join(localpath, \'fonts\')\\\\n") \n\
+    # """) \n\
+    # s = s.replace("test_suite=\'nose.collector\',", \n\
+    # """test_suite=\'nose.collector\', \n\
+    #     entry_points={\'console_scripts\': [\'%s=mapnik.bin:program\' % name for name in os.listdir(\'mapnik/bin\') if not name.endswith(\'.py\')]},""") \n\
+    # p1 = s.index("cflags =") \n\
+    # p2 = s.index("os.environ", p1) \n\
+    # s = s[:p1] + "try:\\n    " + s[p1:p2].replace("\\n", "\\n    ") + "\\nexcept Exception:\\n    pass\\n" + s[p2:] \n\
+    # open(path, "w").write(s)' && \
     python -c $'# \n\
 path = "mapnik/__init__.py" \n\
 s = open(path).read().replace( \n\
@@ -1833,6 +1837,10 @@ os.environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal")) \n\
 def bootstrap_env():""") \n\
 open(path, "w").write(s)' && \
     git apply ../mapnik_proj_transform.cpp.patch && \
+    # Apply a patch and set variables to work with the cmake build of mapnik \
+    git apply ../mapnik_setup.py.patch && \
+    export CC=c++ && \
+    export CXX=c++ && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \

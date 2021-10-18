@@ -156,7 +156,7 @@ Packages = {
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'javabridge-pypi': {
-        'pypi': 'javabridge',
+        'pypi': 'python-javabridge',
     },
     'jbigkit': {
         'filelist': 'https://www.cl.cam.ac.uk/~mgk25/jbigkit/download/',
@@ -476,7 +476,7 @@ Packages = {
     },
     'ultrajson-release': {
         'git': 'https://github.com/esnme/ultrajson.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'ultrajson-pypi': {
         'pypi': 'ujson',
