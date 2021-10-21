@@ -371,10 +371,6 @@ Packages = {
     'openslide-python-pypi': {
         'pypi': 'openslide-python',
     },
-    'openssl-1.0': {
-        'git': 'https://github.com/openssl/openssl.git',
-        're': r'OpenSSL_(1_0_[0-9]+[a-z])$',
-    },
     'openssl-1.x': {
         'git': 'https://github.com/openssl/openssl.git',
         're': r'OpenSSL_(1_[0-9]+_[0-9]+[a-z])$',

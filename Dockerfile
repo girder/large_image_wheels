@@ -158,23 +158,7 @@ cd /build && \
     echo "`date` krb5" >> /build/log.txt && \
 cd /build && \
 # \
-# # Make our own openssl so we don't depend on system libraries.  Version \
-# # 1.1.x doesn't work with some other libraries, so make both of them. \
-# # We can't use make parallelism here \
-# RUN \
-    echo "`date` openssl 1.0" >> /build/log.txt && \
-    git clone --depth=1 --single-branch -b OpenSSL_1_0_2u https://github.com/openssl/openssl.git openssl_1_0 && \
-    cd openssl_1_0 && \
-    # Don't build tests -- they are slow to build. \
-    sed -i 's/ test tools/ tools/g' Makefile.org && \
-    ./config --prefix=/usr/local --openssldir=/usr/local/ssl shared zlib && \
-    make --silent && \
-    # using "all install_sw" rather than "install" to avoid installing docs \
-    make --silent all install_sw && \
-    ldconfig && \
-    echo "`date` openssl 1.0" >> /build/log.txt && \
-cd /build && \
-# \
+# # Make our own openssl so we don't depend on system libraries. \
 # RUN \
     echo "`date` openssl 1.1" >> /build/log.txt && \
     git clone --depth=1 --single-branch -b OpenSSL_1_1_1l https://github.com/openssl/openssl.git openssl_1_1 && \

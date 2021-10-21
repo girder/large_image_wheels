@@ -68,6 +68,8 @@ if __name__ == '__main__':
     pool = multiprocessing.pool.ThreadPool(processes=count)
     results = []
     for container in containers:
+        if len(sys.argv) > 1 and sys.argv[1] not in container:
+            continue
         entry = {'out': [], 'lock': threading.Lock(), 'status': 'queued', 'container': container}
         result = pool.apply_async(test_container, (container, entry))
         entry['result'] = result

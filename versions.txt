@@ -14,7 +14,7 @@ freetype 2.11.0
 freexl 97c9f43cea
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
-gdal a11353256f3fbd4fcf7c9d26b5b7e059f344f205
+gdal bd92303bd75700fe61b4ca337d408eb6f1015388
 gdal-pypi 3.3.2
 gdal-release 3.3.2
 gdk-pixbuf 2.42.6
@@ -84,7 +84,6 @@ openslide 99c4f7f20bb19ad58f93e3b453624af449bbc589
 openslide-python 57e2822d86f3085fcbf1384f050449776b638829
 openslide-python-pypi 1.1.2
 openslide-release 3.4.1
-openssl-1.0 1_0_2u
 openssl-1.x 1_1_1l
 orc 0.4.32
 pango 1.49.1
@@ -96,7 +95,7 @@ pnetcdf 1.12.2
 poppler 21.10.0
 postgresql 14.0
 proj-datumgrid 1.8
-proj.4 8671b8e7ff07197167b666bd490f42411274bd81
+proj.4 01d503cb23b4cffe4435c1e915c4d0661bb16d74
 proj.4-release 8.1.1
 psutil 5.8.0
 pylibmc 1.6.1

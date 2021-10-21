@@ -231,6 +231,7 @@ fi
 openslide-show-properties --version
 `python -c 'import os,sys,osgeo;sys.stdout.write(os.path.dirname(osgeo.__file__))'`/bin/gdalinfo --version
 gdalinfo --version
+gdalinfo --formats
 gdal-config --formats
 `python -c 'import os,sys,mapnik;sys.stdout.write(os.path.dirname(mapnik.__file__))'`/bin/mapnik-render --version 2>&1 | grep version
 mapnik-render --version 2>&1 | grep version
