@@ -93,8 +93,6 @@ RUN \
     virtualenv -p python3.8 /venv && \
     echo "`date` virtualenv" >> /build/log.txt
 
-# Update pkg-config, m4
-
 # Newer version of pkg-config than available in manylinux2014
 RUN \
     echo "`date` pkg-config" >> /build/log.txt && \
@@ -112,20 +110,6 @@ RUN \
 ENV PKG_CONFIG=/usr/local/bin/pkg-config \
     PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:/usr/lib64/pkgconfig:/usr/share/pkgconfig \
     PATH="/venv/bin:$PATH"
-
-# Newer version of m4 than available in manylinux2014
-RUN \
-    echo "`date` m4" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.gnu.org/gnu/m4/m4-1.4.19.tar.gz -L -o m4.tar.gz && \
-    mkdir m4 && \
-    tar -zxf m4.tar.gz -C m4 --strip-components 1 && \
-    rm -f m4.tar.gz && \
-    cd m4 && \
-    ./configure --silent --prefix=/usr/local && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    echo "`date` m4" >> /build/log.txt
 
 # Make our own zlib so we don't depend on system libraries \
 RUN \
@@ -2071,7 +2055,7 @@ RUN \
 RUN \
     echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.1.0-10 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.1.0-11 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so \
     sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \

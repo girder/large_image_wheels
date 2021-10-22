@@ -295,10 +295,6 @@ Packages = {
         'git': 'https://github.com/lz4/lz4.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
-    'm4': {
-        'filelist': 'https://ftp.gnu.org/gnu/m4/',
-        're': r'm4-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
-    },
     'manylinux2014': {
         # See also https://github.com/pypa/manylinux
         'json': 'https://quay.io/api/v1/repository/pypa/manylinux2014_x86_64?includeTags=true',

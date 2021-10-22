@@ -14,7 +14,7 @@ freetype 2.11.0
 freexl 97c9f43cea
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
-gdal bd92303bd75700fe61b4ca337d408eb6f1015388
+gdal d2f9067ffb15e593e9b826ca939dbd183636c780
 gdal-pypi 3.3.2
 gdal-release 3.3.2
 gdk-pixbuf 2.42.6
@@ -29,7 +29,7 @@ harfbuzz 3.0.0
 hdf4 4_2_15
 hdf5 1_12_1
 icu4c 69-1
-imagemagick 7.1.0-10
+imagemagick 7.1.0-11
 jasper 2.0.33
 javabridge 4.0.3
 javabridge-pypi 4.0.3
@@ -66,9 +66,8 @@ libxcrypt 4.4.26
 libxml2 2.9.12
 libzip 1.8.0
 lz4 1.9.3
-m4 1.4.19
 manylinux2014 30855d9fe4bf1e35d6db7fb78f2078d173086dd9cb99a8b1dc01379fe6c46681
-mapnik f2ab25cf98734831281ecf8ba1d681dab9d9704e
+mapnik 4eb38c1051c05740904ea94aecdde6db170ba65f
 mapnik-release 3.1.0
 minizip 3.0.3
 mysql 8.0.27
@@ -80,8 +79,8 @@ openexr 3.1.2
 openjpeg 2.4.0
 openldap 2_5_8
 openmpi 4.1.1
-openslide 99c4f7f20bb19ad58f93e3b453624af449bbc589
-openslide-python 57e2822d86f3085fcbf1384f050449776b638829
+openslide 2d5b9aa5d87ad8a6f9e6c47e5423c5e421a39e9c
+openslide-python fc14e86577a6f1be3d6b1118d839f1e2d70a0197
 openslide-python-pypi 1.1.2
 openslide-release 3.4.1
 openssl-1.x 1_1_1l
@@ -95,7 +94,7 @@ pnetcdf 1.12.2
 poppler 21.10.0
 postgresql 14.0
 proj-datumgrid 1.8
-proj.4 01d503cb23b4cffe4435c1e915c4d0661bb16d74
+proj.4 9817fe7db31d5a0716876e1f8f7f1a9ba4b91be0
 proj.4-release 8.1.1
 psutil 5.8.0
 pylibmc 1.6.1
