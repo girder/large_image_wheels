@@ -102,10 +102,6 @@ Packages = {
         'git': 'https://github.com/libgeos/geos.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
-    'gettext': {
-        'filelist': 'https://ftp.gnu.org/pub/gnu/gettext/',
-        're': r'gettext-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
-    },
     'giflib': {
         'filelist': 'https://sourceforge.net/projects/giflib/files/',
         're': r'giflib-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.gz\/download'
@@ -181,11 +177,6 @@ Packages = {
     'libbrotli': {
         'git': 'https://github.com/google/brotli.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
-    },
-    'libcroco': {
-        'json': 'https://download.gnome.org/sources/libcroco/cache.json',
-        'keys': lambda data: list(data[1]['libcroco']),
-        're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$'
     },
     'libdap': {
         'git': 'https://github.com/OPENDAP/libdap4.git',
@@ -307,6 +298,9 @@ Packages = {
     'mapnik-release': {
         'git': 'https://github.com/mapnik/mapnik.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
+    'meson': {
+        'pypi': 'meson',
     },
     'minizip': {
         'git': 'https://github.com/nmoinvaz/minizip.git',

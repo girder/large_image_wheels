@@ -69,6 +69,7 @@ lz4 1.9.3
 manylinux2014 30855d9fe4bf1e35d6db7fb78f2078d173086dd9cb99a8b1dc01379fe6c46681
 mapnik 4eb38c1051c05740904ea94aecdde6db170ba65f
 mapnik-release 3.1.0
+meson 0.60.0
 minizip 3.0.3
 mysql 8.0.27
 netcdf 4.8.1
@@ -94,7 +95,7 @@ pnetcdf 1.12.2
 poppler 21.10.0
 postgresql 14.0
 proj-datumgrid 1.8
-proj.4 9817fe7db31d5a0716876e1f8f7f1a9ba4b91be0
+proj.4 0fe32d249fd3801429fa08a057639128d99c5e45
 proj.4-release 8.1.1
 psutil 5.8.0
 pylibmc 1.6.1
