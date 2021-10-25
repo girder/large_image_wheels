@@ -232,7 +232,13 @@ openslide-show-properties --version
 `python -c 'import os,sys,osgeo;sys.stdout.write(os.path.dirname(osgeo.__file__))'`/bin/gdalinfo --version
 gdalinfo --version
 gdalinfo --formats
+# wc yielded "158 1046 7965" on 2021-10-26
+gdalinfo --formats | wc
 gdal-config --formats
+# wc yielded "1 103 601" on 2021-10-26
+gdal-config --formats | wc
+# Fail if we end up with fewer formats in GDAL than we once had.
+if (( $(gdal-config --formats | wc -w) < 103 )); then false; fi
 `python -c 'import os,sys,mapnik;sys.stdout.write(os.path.dirname(mapnik.__file__))'`/bin/mapnik-render --version 2>&1 | grep version
 mapnik-render --version 2>&1 | grep version
 `python -c 'import os,sys,pyvips;sys.stdout.write(os.path.dirname(pyvips.__file__))'`/bin/vips --version

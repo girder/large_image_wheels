@@ -48,7 +48,7 @@ def test_container(container, entry):
         '-v', '%s/wheels:/wheels' % os.path.dirname(os.path.realpath(__file__)),
         '-v', '%s/test:/test' % os.path.dirname(os.path.realpath(__file__)),
         '--rm', container, 'bash', '-e', '/test/test_script.sh']
-    cmd += sys.argv[1:]
+    # cmd += sys.argv[1:]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     while True:
         line = proc.stdout.readline()
