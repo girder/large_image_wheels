@@ -281,23 +281,23 @@ RUN \
     done && \
     echo "`date` numpy" >> /build/log.txt
 
-# Packages used by large_image that don't have published wheels for all the
-# versions of Python we are using.
-# RUN \
-#     echo "`date` psutil" >> /build/log.txt && \
-#     export JOBS=`nproc` && \
-#     git clone --depth=1 --single-branch -b release-5.8.0 https://github.com/giampaolo/psutil.git && \
-#     cd psutil && \
-#     # Strip libraries before building any wheels \
-#     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
-#     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-#     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
-#     find /io/wheelhouse/ -name 'psutil*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
-#     find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
-#     find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
-#     ls -l /io/wheelhouse && \
-#     rm -rf ~/.cache && \
-#     echo "`date` psutil" >> /build/log.txt
+# Build psutils for Python 3.10
+RUN \
+    echo "`date` psutil" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b release-5.8.0 https://github.com/giampaolo/psutil.git && \
+    cd psutil && \
+    # Strip libraries before building any wheels \
+    # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
+    find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
+    # only build for python 3.10 \
+    find /opt/python -mindepth 1 -name '*cp310*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    find /io/wheelhouse/ -name 'psutil*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
+    find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
+    ls -l /io/wheelhouse && \
+    rm -rf ~/.cache && \
+    echo "`date` psutil" >> /build/log.txt
 
 # We had built ultrajson, but it now supplies its own wheels.
 # RUN echo "`date` ultrajson" >> /build/log.txt && \
@@ -347,7 +347,7 @@ RUN \
 # CMake - use a precompiled binary
 RUN \
     echo "`date` cmake" >> /build/log.txt && \
-    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.21.3/cmake-3.21.3-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.21.4/cmake-3.21.4-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
     mkdir cmake && \
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz && \
@@ -497,7 +497,7 @@ cd /build && \
 # RUN \
     echo "`date` openexr" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v3.1.2 https://github.com/AcademySoftwareFoundation/openexr.git && \
+    git clone --depth=1 --single-branch -b v3.1.3 https://github.com/AcademySoftwareFoundation/openexr.git && \
     cd openexr && \
     mkdir _build && \
     cd _build && \
@@ -837,7 +837,7 @@ RUN \
 RUN \
     echo "`date` icu4c" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b release-69-1 https://github.com/unicode-org/icu.git && \
+    git clone --depth=1 --single-branch -b release-70-1 https://github.com/unicode-org/icu.git && \
     cd icu/icu4c/source && \
     CFLAGS="$CFLAGS -DUNISTR_FROM_CHAR_EXPLICIT=explicit -DUNISTR_FROM_STRING_EXPLICIT=explicit -DU_CHARSET_IS_UTF8=1 -DU_NO_DEFAULT_INCLUDE_UTF_HEADERS=1 -DU_HIDE_OBSOLETE_UTF_OLD_H=1" ./configure --silent --prefix=/usr/local --disable-tests --disable-samples --with-data-packaging=library --disable-static && \
     make --silent -j ${JOBS} && \

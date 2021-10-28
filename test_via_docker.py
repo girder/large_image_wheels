@@ -7,11 +7,11 @@ import sys
 import threading
 
 containers = [
-    'python:3.6',
-    'python:3.7',
-    'python:3.8',
-    'python:3.9',
-    'python:3.10',
+    'python:3.6-slim',
+    'python:3.7-slim',
+    'python:3.8-slim',
+    'python:3.9-slim',
+    'python:3.10-slim',
     # The latest pyproj needs a newer version of python 3.5 than included in
     # the centos/python-35-centos7 docker image.
     # 'centos/python-35-centos7',

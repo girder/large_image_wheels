@@ -4,6 +4,11 @@ set -e
 export CPL_DEBUG=ON
 export OGR_CT_DEBUG=ON
 
+if curl --version; then true; else 
+  apt-get update
+  apt-get install -y curl
+fi
+
 # python -m venv venv
 # . venv/bin/activate
 
