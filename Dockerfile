@@ -76,8 +76,8 @@ ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-1567045200} \
     HOSTNAME=large_image_wheels \
     CFLAGS="-g0 -O2 -DNDEBUG" \
     LDFLAGS="-Wl,--strip-debug,--strip-discarded,--discard-locals" \
-    PIP_USE_FEATURE="in-tree-build" \
     PYTHONDONTWRITEBYTECODE=1
+#   PIP_USE_FEATURE="in-tree-build" \
 
 # Without this, libvips doesn't bind to the correct libraries.  The paths in
 # ld.so.conf.d are searched before LD_LIBRARY_PATH, and a change in the
@@ -1528,14 +1528,14 @@ RUN \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
     # Specific branch \
-    # git clone --depth=1 --single-branch -b v3.3.2 https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch -b v3.3.3 https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
-    git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
     # Common \
-    cd gdal && \
+    cd gdal/gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
     # export CFLAGS="$CFLAGS -DDEBUG_VERBOSE=ON" && \
-    ./autogen.sh && \
+    # ./autogen.sh && \
     ./configure --prefix=/usr/local --disable-static --disable-rpath --with-cpp14 --without-libtool \
     --with-armadillo \
     --with-cfitsio=/usr/local \
@@ -1566,10 +1566,10 @@ RUN \
 RUN \
     echo "`date` gdal python" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    cd gdal/swig/python && \
+    cd gdal/gdal/swig/python && \
     cp -r /usr/local/share/{proj,gdal} osgeo/. && \
     mkdir osgeo/bin && \
-    find /build/gdal/apps/ -executable -type f ! -name '*.cpp' -exec cp {} osgeo/bin/. \; && \
+    find /build/gdal/gdal/apps/ -executable -type f ! -name '*.cpp' -exec cp {} osgeo/bin/. \; && \
     find /build/libgeotiff/libgeotiff/bin/.libs -executable -type f -exec cp {} osgeo/bin/. \; && \
     (strip osgeo/bin/* --strip-unneeded || true) && \
     python -c $'# \n\
