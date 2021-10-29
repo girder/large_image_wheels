@@ -214,17 +214,35 @@ pprint.pprint({
   })
 pprint.pprint(d.GetMetadata()['NITF_BLOCKA_FRFC_LOC_01'])
 EOF
+
 if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 7)))'; then
-echo 'Test import order with shapely'
+echo 'Test import order with shapely, mapnik, and pyproj'
 if pip install shapely; then (
-python -c 'import shapely;import mapnik;import pyproj;print(pyproj.Proj("+init=epsg:4326 +type=crs"))'
-python -c 'import pyproj;import shapely;import mapnik;print(pyproj.Proj("+init=epsg:4326 +type=crs"))'
-python -c 'import mapnik;import pyproj;import shapely;print(pyproj.Proj("+init=epsg:4326 +type=crs"))'
-python -c 'import shapely;import pyproj;import mapnik;print(pyproj.Proj("+init=epsg:4326 +type=crs"))'
-python -c 'import mapnik;import shapely;import pyproj;print(pyproj.Proj("+init=epsg:4326 +type=crs"))'
-python -c 'import pyproj;import mapnik;import shapely;print(pyproj.Proj("+init=epsg:4326 +type=crs"))'
+python -c 'import shapely;import mapnik;import pyproj;print(pyproj.Proj("epsg:4326"))'
+python -c 'import pyproj;import shapely;import mapnik;print(pyproj.Proj("epsg:4326"))'
+python -c 'import mapnik;import pyproj;import shapely;print(pyproj.Proj("epsg:4326"))'
+python -c 'import shapely;import pyproj;import mapnik;print(pyproj.Proj("epsg:4326"))'
+python -c 'import mapnik;import shapely;import pyproj;print(pyproj.Proj("epsg:4326"))'
+python -c 'import pyproj;import mapnik;import shapely;print(pyproj.Proj("epsg:4326"))'
 ); else echo 'no shapely available'; fi
 fi
+
+# pytorch 1.10 has issues with import order.  Specifically, if torch_cuda.so is
+# imported before gdal, gdal fails with the error:
+#   ImportError: /usr/lib/x86_64-linux-gnu/libstdc++.so.6: cannot allocate
+#   memory in static TLS block
+if false; then
+echo 'Test import order with pytorch, gdal, and pyproj'
+if pip install torch; then (
+python -c 'import osgeo.gdal;import torch;import pyproj;print(pyproj.Proj("epsg:4326"))'
+python -c 'import pyproj;import osgeo.gdal;import torch;print(pyproj.Proj("epsg:4326"))'
+python -c 'import torch;import osgeo.gdal;import pyproj;print(pyproj.Proj("epsg:4326"))'
+python -c 'import pyproj;import torch;import osgeo.gdal;print(pyproj.Proj("epsg:4326"))'
+python -c 'import osgeo.gdal;import pyproj;import torch;print(pyproj.Proj("epsg:4326"))'
+python -c 'import torch;import pyproj;import osgeo.gdal;print(pyproj.Proj("epsg:4326"))'
+); else echo 'no pytorch available'; fi
+fi
+
 echo 'Test running executables'
 `python -c 'import os,sys,libtiff;sys.stdout.write(os.path.dirname(libtiff.__file__))'`/bin/tiffinfo landcover.tif
 tiffinfo landcover.tif
@@ -243,7 +261,7 @@ gdal-config --formats
 # wc yielded "1 103 601" on 2021-10-26
 gdal-config --formats | wc
 # Fail if we end up with fewer formats in GDAL than we once had.
-if (( $(gdal-config --formats | wc -w) < 101 )); then false; fi
+if (( $(gdal-config --formats | wc -w) < 103 )); then false; fi
 `python -c 'import os,sys,mapnik;sys.stdout.write(os.path.dirname(mapnik.__file__))'`/bin/mapnik-render --version 2>&1 | grep version
 mapnik-render --version 2>&1 | grep version
 `python -c 'import os,sys,pyvips;sys.stdout.write(os.path.dirname(pyvips.__file__))'`/bin/vips --version

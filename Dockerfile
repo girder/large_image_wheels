@@ -525,7 +525,7 @@ cd /build && \
 # RUN \
     echo "`date` jpeg-xl" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v0.6 --recurse-submodules -j ${JOBS} https://gitlab.com/wg1/jpeg-xl.git && \
+    git clone --depth=1 --single-branch -b v0.6.1 --recurse-submodules -j ${JOBS} https://gitlab.com/wg1/jpeg-xl.git && \
     cd jpeg-xl && \
     find . -name '.git' -exec rm -rf {} \+ && \
     mkdir _build && \
@@ -619,7 +619,7 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` glymur" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone -b v0.9.4 https://github.com/quintusdias/glymur.git && \
+    git clone -b v0.9.5 https://github.com/quintusdias/glymur.git && \
     # git clone https://github.com/quintusdias/glymur.git && \
     cd glymur && \
     # version 0.9.3's commit \
@@ -640,7 +640,6 @@ def program(): \n\
 """ \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
-import re \n\
 path = "setup.py" \n\
 s = open(path).read() \n\
 s = s.replace("\'numpy>=1.7.1\', ", "") \n\
@@ -655,6 +654,21 @@ s = s.replace("\'test_suite\': \'glymur.test\'", \n\
 s = s.replace("\'data/*.jpx\'", "\'data/*.jpx\', \'bin/*\'") \n\
 s = s.replace("\'console_scripts\': [", \n\
 """\'console_scripts\': [\'%s=glymur.bin:program\' % name for name in os.listdir(\'glymur/bin\') if not name.endswith(\'.py\')] + [""") \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
+path = "glymur/lib/tiff.py" \n\
+s = open(path).read() \n\
+s = s.replace("class LibTIFFError", \n\
+""" \n\
+if \'None\' in repr(_LIBTIFF): \n\
+    libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname( \n\
+        os.path.realpath(__file__)))), \'Glymur.libs\')) \n\
+    if os.path.exists(libpath): \n\
+        path = [lib for lib in os.listdir(libpath) if lib.startswith(\'libtiff\')][0] \n\
+        path = os.path.join(libpath, path) \n\
+        _LIBTIFF = loader(path) \n\
+\n\
+class LibTIFFError""") \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
 import re \n\
@@ -953,7 +967,7 @@ RUN \
     echo "`date` proj4" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 8.1.1 https://github.com/OSGeo/proj.4.git && \
+    git clone --depth=1 --single-branch -b 8.2.0 https://github.com/OSGeo/proj.4.git && \
     cd proj.4 && \
     curl --retry 5 --silent http://download.osgeo.org/proj/proj-datumgrid-1.8.zip -L -o proj-datumgrid.zip && \
     cd data && \
@@ -1012,7 +1026,7 @@ RUN \
 RUN \
     echo "`date` libgeos" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 3.10.0 https://github.com/libgeos/geos.git && \
+    git clone --depth=1 --single-branch -b 3.10.1 https://github.com/libgeos/geos.git && \
     cd geos && \
     mkdir _build && \
     cd _build && \
@@ -1289,7 +1303,7 @@ RUN \
 RUN \
     echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b poppler-21.10.0 https://gitlab.freedesktop.org/poppler/poppler.git && \
+    git clone --depth=1 --single-branch -b poppler-21.11.0 https://gitlab.freedesktop.org/poppler/poppler.git && \
     cd poppler && \
     mkdir _build && \
     cd _build && \
@@ -1442,7 +1456,7 @@ RUN \
 RUN \
     echo "`date` armadillo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://sourceforge.net/projects/arma/files/armadillo-10.7.1.tar.xz -L -o armadillo.tar.xz && \
+    curl --retry 5 --silent https://sourceforge.net/projects/arma/files/armadillo-10.7.3.tar.xz -L -o armadillo.tar.xz && \
     unxz armadillo.tar.xz && \
     mkdir armadillo && \
     tar -xf armadillo.tar -C armadillo --strip-components 1 && \
@@ -1528,14 +1542,14 @@ RUN \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
     # Specific branch \
-    git clone --depth=1 --single-branch -b v3.3.3 https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch -b v3.3.3 https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
-    # git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
     # Common \
-    cd gdal/gdal && \
+    cd gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
     # export CFLAGS="$CFLAGS -DDEBUG_VERBOSE=ON" && \
-    # ./autogen.sh && \
+    ./autogen.sh && \
     ./configure --prefix=/usr/local --disable-static --disable-rpath --with-cpp14 --without-libtool \
     --with-armadillo \
     --with-cfitsio=/usr/local \
@@ -1566,10 +1580,10 @@ RUN \
 RUN \
     echo "`date` gdal python" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    cd gdal/gdal/swig/python && \
+    cd gdal/swig/python && \
     cp -r /usr/local/share/{proj,gdal} osgeo/. && \
     mkdir osgeo/bin && \
-    find /build/gdal/gdal/apps/ -executable -type f ! -name '*.cpp' -exec cp {} osgeo/bin/. \; && \
+    find /build/gdal/apps/ -executable -type f ! -name '*.cpp' -exec cp {} osgeo/bin/. \; && \
     find /build/libgeotiff/libgeotiff/bin/.libs -executable -type f -exec cp {} osgeo/bin/. \; && \
     (strip osgeo/bin/* --strip-unneeded || true) && \
     python -c $'# \n\
@@ -1658,7 +1672,7 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` harfbuzz" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 3.0.0 https://github.com/harfbuzz/harfbuzz.git && \
+    git clone --depth=1 --single-branch -b 3.1.0 https://github.com/harfbuzz/harfbuzz.git && \
     cd harfbuzz && \
     meson --prefix=/usr/local --buildtype=release -Dtests=disabled _build && \
     cd _build && \
@@ -1964,7 +1978,7 @@ RUN \
 RUN \
     echo "`date` pango" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.49/pango-1.49.0.tar.xz -L -o pango.tar.xz && \
+    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.49/pango-1.49.2.tar.xz -L -o pango.tar.xz && \
     unxz pango.tar.xz && \
     mkdir pango && \
     tar -xf pango.tar -C pango --strip-components 1 && \
@@ -2037,14 +2051,14 @@ RUN \
     echo "`date` libgsf" >> /build/log.txt
 
 # We could install more packages for better ImageMagick support:
-#  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz JXL LQR RAQM RAW WMF
+#  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz LQR RAQM RAW WMF
 RUN \
     echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.1.0-12 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b 7.1.0-13 https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
-    # Needed since 7.0.9-7 or so \
-    sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
+    # Needed since 7.0.9-7 or so for manylinux2010 \
+    # sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
     ./configure --prefix=/usr/local --with-modules --with-rsvg --with-fftw --with-jxl LIBS="-lrt `pkg-config --libs zlib`" --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
