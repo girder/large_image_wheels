@@ -37,12 +37,12 @@ Packages = {
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'charls': {
-        'gitsha': 'https://github.com/team-charls/charls.git',
-        'branch': '1.x-master'
-    },
-    'charls-release': {
         'git': 'https://github.com/team-charls/charls.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
+    'charls-sha': {
+        'gitsha': 'https://github.com/team-charls/charls.git',
+        'branch': '1.x-master'
     },
     'cmake': {
         'git': 'https://github.com/Kitware/CMake.git',
@@ -84,23 +84,19 @@ Packages = {
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'gdal': {
-        'gitsha': 'https://github.com/OSGeo/gdal.git',
+        'git': 'https://github.com/OSGeo/gdal.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'gdal-pypi': {
         'pypi': 'GDAL',
     },
-    'gdal-release': {
-        'git': 'https://github.com/OSGeo/gdal.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    'gdal-sha': {
+        'gitsha': 'https://github.com/OSGeo/gdal.git',
     },
     'gdk-pixbuf': {
         'json': 'https://download.gnome.org/sources/gdk-pixbuf/cache.json',
         'keys': lambda data: list(data[1]['gdk-pixbuf']),
         're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$'
-    },
-    'geos': {
-        'git': 'https://github.com/libgeos/geos.git',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'giflib': {
         'filelist': 'https://sourceforge.net/projects/giflib/files/',
@@ -147,13 +143,6 @@ Packages = {
         'git': 'https://github.com/mdadams/jasper.git',
         're': r'version-([0-9]+\.[0-9]+(|\.[0-9]+)(|-[0-9]+))$'
     },
-    'javabridge': {
-        'git': 'https://github.com/CellProfiler/python-javabridge.git',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
-    },
-    'javabridge-pypi': {
-        'pypi': 'python-javabridge',
-    },
     'jbigkit': {
         'filelist': 'https://www.cl.cam.ac.uk/~mgk25/jbigkit/download/',
         're': r'jbigkit-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
@@ -197,6 +186,10 @@ Packages = {
     'libffi': {
         'git': 'https://github.com/libffi/libffi.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
+    'libgeos': {
+        'git': 'https://github.com/libgeos/geos.git',
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'libgeotiff': {
         'git': 'https://github.com/OSGeo/libgeotiff.git',
@@ -349,17 +342,21 @@ Packages = {
         're': r'openmpi-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
     'openslide': {
-        'gitsha': 'https://github.com/openslide/openslide.git',
-    },
-    'openslide-release': {
         'git': 'https://github.com/openslide/openslide.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'openslide-python': {
+        'git': 'https://github.com/openslide/openslide-python.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
+    'openslide-python-sha': {
         'gitsha': 'https://github.com/openslide/openslide-python.git',
     },
     'openslide-python-pypi': {
         'pypi': 'openslide-python',
+    },
+    'openslide-sha': {
+        'gitsha': 'https://github.com/openslide/openslide.git',
     },
     'openssl-1.x': {
         'git': 'https://github.com/openssl/openssl.git',
@@ -378,19 +375,22 @@ Packages = {
         'git': 'https://github.com/NixOS/patchelf.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
-    'pcre': {
-        'filelist': 'https://ftp.pcre.org/pub/pcre/',
-        're': r'pcre-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
-    },
+    # pcre has moved; it has also not changed in decades -- we may want to
+    # switch to pcre2 when glib does.
+    # 'pcre': {
+    #     # 'filelist': 'https://ftp.pcre.org/pub/pcre/',
+    #     'filelist': 'https://sourceforge.net/projects/pcre/files/pcre/',
+    #     're': r'pcre-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+    # },
     'pixman': {
         'git': 'https://gitlab.freedesktop.org/pixman/pixman.git',
         're': r'pixman-([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
-    'pkgconfig': {
+    'pkg-config': {
         'git': 'https://gitlab.freedesktop.org/pkg-config/pkg-config.git',
         're': r'pkg-config-([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
-    'pnetcdf': {
+    'parallel-netcdf': {
         'git': 'https://github.com/Parallel-NetCDF/PnetCDF.git',
         're': r'checkpoint\.([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
@@ -400,14 +400,14 @@ Packages = {
     },
     'postgresql': {
         'filelist': 'https://ftp.postgresql.org/pub/source/',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))\/$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))\/$',
     },
-    'proj.4': {
-        'gitsha': 'https://github.com/OSGeo/proj.4.git',
-    },
-    'proj.4-release': {
+    'proj4': {
         'git': 'https://github.com/OSGeo/proj.4.git',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
+    'proj4-sha': {
+        'gitsha': 'https://github.com/OSGeo/proj.4.git',
     },
     'proj-datumgrid': {
         'filelist': 'http://download.osgeo.org/proj/',
@@ -415,24 +415,28 @@ Packages = {
     },
     'psutil': {
         'git': 'https://github.com/giampaolo/psutil.git',
-        're': r'release-([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'release-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'pylibmc': {
         'git': 'https://github.com/lericson/pylibmc.git',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'pylibtiff': {
+        'git': 'https://github.com/pearu/pylibtiff.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
+    'pylibtiff-sha': {
         'gitsha': 'https://github.com/pearu/pylibtiff.git',
     },
     'pylibtiff-pypi': {
         'pypi': 'libtiff',
     },
-    # 'pyproj4': {
-    #     'gitsha': 'https://github.com/pyproj4/pyproj.git',
-    # },
-    'pyproj4-release': {
+    'pyproj4': {
         'git': 'https://github.com/pyproj4/pyproj.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))rel$'
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
+    'pyproj4-sha': {
+        'gitsha': 'https://github.com/pyproj4/pyproj.git',
     },
     'pyproj4-pypi': {
         'pypi': 'pyproj',
@@ -443,7 +447,18 @@ Packages = {
     'python-mapnik-pypi': {
         'pypi': 'mapnik',
     },
+    'python-javabridge': {
+        'git': 'https://github.com/CellProfiler/python-javabridge.git',
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
+    'python-javabridge-pypi': {
+        'pypi': 'python-javabridge',
+    },
     'pyvips': {
+        'git': 'https://github.com/libvips/pyvips.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
+    'pyvips-sha': {
         'gitsha': 'https://github.com/libvips/pyvips.git',
     },
     'pyvips-pypi': {
@@ -453,16 +468,20 @@ Packages = {
         'text': 'https://www.sqlite.org/download.html',
         'keys': lambda data: [re.search(r'sqlite-autoconf-([0-9]+).tar.(gz|xz)', data).group(1)]
     },
+    'strip-nondeterminism': {
+        'git': 'https://github.com/esoule/strip-nondeterminism.git',
+        're': r'(0\.[0-9]+(|\.[0-9]+))$',
+    },
     'superlu': {
         'git': 'https://github.com/xiaoyeli/superlu.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
     'ultrajson': {
-        'gitsha': 'https://github.com/esnme/ultrajson.git',
-    },
-    'ultrajson-release': {
         'git': 'https://github.com/esnme/ultrajson.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
+    },
+    'ultrajson-sha': {
+        'gitsha': 'https://github.com/esnme/ultrajson.git',
     },
     'ultrajson-pypi': {
         'pypi': 'ujson',
@@ -475,10 +494,10 @@ Packages = {
         'filelist': 'http://xerces.apache.org/xerces-c/download.cgi',
         're': r'xerces-c-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
     },
-    # 'xz': {
-    #     'filelist': 'https://sourceforge.net/projects/lzmautils/files/',
-    #     're': r'xz-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.gz\/download'
-    # },
+    'xz': {
+        'filelist': 'https://sourceforge.net/projects/lzmautils/files/',
+        're': r'xz-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.gz\/download'
+    },
     'zlib': {
         'filelist': 'https://zlib.net/',
         're': r'zlib-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
@@ -504,7 +523,12 @@ retries = urllib3.util.retry.Retry(
 session.mount('http://', requests.adapters.HTTPAdapter(max_retries=retries))
 session.mount('https://', requests.adapters.HTTPAdapter(max_retries=retries))
 
+failures = False
 for pkg in sorted(Packages):  # noqa
+    if any(val for val in sys.argv[1:] if not val.startswith('-')):
+        check = any(val in pkg for val in sys.argv[1:] if not val.startswith('-'))
+        if not check:
+            continue
     try:
         pkginfo = Packages[pkg]
         entries = None
@@ -600,3 +624,6 @@ for pkg in sorted(Packages):  # noqa
         import traceback
 
         print('Exception getting %s\n%s' % (pkg, traceback.format_exc()))
+        failures = True
+if failures:
+    sys.exit(1)

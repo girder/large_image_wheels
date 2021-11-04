@@ -32,7 +32,7 @@ jobs:
           path: ~/project/wheels
       - run:
           name: Show build times
-          command: export TERM=xterm && docker run --rm --entrypoint bash girder/large_image_wheels -c 'cat log.txt'
+          command: export TERM=xterm && ./duration_summary.py recent
       - run:
           name: Install pv
           command: |

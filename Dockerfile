@@ -97,12 +97,16 @@ RUN \
     virtualenv -p python3.8 /venv && \
     echo "`date` virtualenv" >> /build/log.txt
 
+COPY getver.py /usr/local/bin/.
+
+COPY versions.txt .
+
 # Newer version of pkg-config than available in manylinux2014
 RUN \
     echo "`date` pkg-config" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b pkg-config-0.29.2 https://gitlab.freedesktop.org/pkg-config/pkg-config.git && \
+    git clone --depth=1 --single-branch -b pkg-config-`getver.py pkg-config` https://gitlab.freedesktop.org/pkg-config/pkg-config.git && \
     cd pkg-config && \
     ./autogen.sh && \
     ./configure --silent --prefix=/usr/local --with-internal-glib --disable-host-tool --disable-static && \
@@ -112,14 +116,18 @@ RUN \
 
 # Some of these paths are added later
 ENV PKG_CONFIG=/usr/local/bin/pkg-config \
-    PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:/usr/lib64/pkgconfig:/usr/share/pkgconfig \
+    PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:/usr/share/pkgconfig \
     PATH="/venv/bin:$PATH"
+# We had been doing:
+#     PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:/usr/lib64/pkgconfig:/usr/share/pkgconfig \
+# but we don't want to find the built-in libraries, as if we bind to them, we
+# may not be portable.  Now, we copy a few selected pc files over
 
 # Make our own zlib so we don't depend on system libraries \
 RUN \
     echo "`date` zlib" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://zlib.net/zlib-1.2.11.tar.gz -L -o zlib.tar.gz && \
+    curl --retry 5 --silent https://zlib.net/zlib-`getver.py zlib`.tar.gz -L -o zlib.tar.gz && \
     mkdir zlib && \
     tar -zxf zlib.tar.gz -C zlib --strip-components 1 && \
     rm -f zlib.tar.gz && \
@@ -134,7 +142,7 @@ cd /build && \
 # RUN \
     echo "`date` krb5" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://kerberos.org/dist/krb5/1.19/krb5-1.19.2.tar.gz -L -o krb5.tar.gz && \
+    curl --retry 5 --silent https://kerberos.org/dist/krb5/`getver.py krb5 2`/krb5-`getver.py krb5`.tar.gz -L -o krb5.tar.gz && \
     mkdir krb5 && \
     tar -zxf krb5.tar.gz -C krb5 --strip-components 1 && \
     rm -f krb5.tar.gz && \
@@ -149,7 +157,7 @@ cd /build && \
 # # Make our own openssl so we don't depend on system libraries. \
 # RUN \
     echo "`date` openssl 1.1" >> /build/log.txt && \
-    git clone --depth=1 --single-branch -b OpenSSL_1_1_1l https://github.com/openssl/openssl.git openssl_1_1 && \
+    git clone --depth=1 --single-branch -b OpenSSL_`getver.py openssl-1.x` https://github.com/openssl/openssl.git openssl_1_1 && \
     cd openssl_1_1 && \
     ./config --prefix=/usr/local --openssldir=/usr/local/ssl shared zlib && \
     make --silent -j ${JOBS} && \
@@ -161,7 +169,7 @@ cd /build && \
 # \
 # RUN \
     echo "`date` openldap" >> /build/log.txt && \
-    git clone --depth=1 --single-branch -b OPENLDAP_REL_ENG_2_6_0 https://git.openldap.org/openldap/openldap.git && \
+    git clone --depth=1 --single-branch -b OPENLDAP_REL_ENG_`getver.py openldap` https://git.openldap.org/openldap/openldap.git && \
     cd openldap && \
     # Don't build tests or docs \
     sed -i 's/ tests doc//g' Makefile.in && \
@@ -175,7 +183,7 @@ cd /build && \
 # RUN \
     echo "`date` libssh2" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b libssh2-1.10.0 https://github.com/libssh2/libssh2.git && \
+    git clone --depth=1 --single-branch -b libssh2-`getver.py libssh2` https://github.com/libssh2/libssh2.git && \
     cd libssh2 && \
     ./buildconf || (sed -i 's/m4_undefine/# m4_undefine/g' configure.ac && ./buildconf) && \
     ./configure --silent --prefix=/usr/local --disable-static && \
@@ -189,7 +197,7 @@ cd /build && \
 # RUN \
     echo "`date` curl" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-7_79_1/curl-7.79.1.tar.gz -L -o curl.tar.gz && \
+    curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-`getver.py curl`/curl-`getver.py curl 3 _ .`.tar.gz -L -o curl.tar.gz && \
     mkdir curl && \
     tar -zxf curl.tar.gz -C curl --strip-components 1 && \
     rm -f curl.tar.gz && \
@@ -203,7 +211,7 @@ cd /build && \
 RUN \
     echo "`date` strip-nondeterminism" >> /build/log.txt && \
     cpanm -T Archive::Cpio && \
-    git clone --depth=1 --single-branch -b 0.042 https://github.com/esoule/strip-nondeterminism.git && \
+    git clone --depth=1 --single-branch -b `getver.py strip-nondeterminism` https://github.com/esoule/strip-nondeterminism.git && \
     cd strip-nondeterminism && \
     perl Makefile.PL && \
     make && \
@@ -214,7 +222,7 @@ RUN \
 RUN \
     echo "`date` advancecomp" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/amadvance/advancecomp/releases/download/v2.1/advancecomp-2.1.tar.gz -L -o advancecomp.tar.gz && \
+    curl --retry 5 --silent https://github.com/amadvance/advancecomp/releases/download/v`getver.py advancecomp`/advancecomp-`getver.py advancecomp`.tar.gz -L -o advancecomp.tar.gz && \
     mkdir advancecomp && \
     tar -zxf advancecomp.tar.gz -C advancecomp --strip-components 1 && \
     rm -f advancecomp.tar.gz && \
@@ -285,7 +293,7 @@ RUN \
 RUN \
     echo "`date` psutil" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b release-5.8.0 https://github.com/giampaolo/psutil.git && \
+    git clone --depth=1 --single-branch -b release-`getver.py psutil` https://github.com/giampaolo/psutil.git && \
     cd psutil && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
@@ -302,7 +310,7 @@ RUN \
 # We had built ultrajson, but it now supplies its own wheels.
 # RUN echo "`date` ultrajson" >> /build/log.txt && \
 #     export JOBS=`nproc` && \
-#     git clone -b 4.0.2 https://github.com/esnme/ultrajson.git && \
+#     git clone -b `getver.py ultrajson` https://github.com/esnme/ultrajson.git && \
 #     cd ultrajson && \
 #     # Strip libraries before building any wheels \
 #     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
@@ -318,7 +326,7 @@ RUN \
 RUN \
     echo "`date` libzip" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v1.8.0 https://github.com/nih-at/libzip.git && \
+    git clone --depth=1 --single-branch -b v`getver.py libzip` https://github.com/nih-at/libzip.git && \
     cd libzip && \
     mkdir _build && \
     cd _build && \
@@ -331,7 +339,7 @@ RUN \
 RUN \
     echo "`date` openjpeg" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/uclouvain/openjpeg/archive/v2.4.0.tar.gz -L -o openjpeg.tar.gz && \
+    curl --retry 5 --silent https://github.com/uclouvain/openjpeg/archive/v`getver.py openjpeg`.tar.gz -L -o openjpeg.tar.gz && \
     mkdir openjpeg && \
     tar -zxf openjpeg.tar.gz -C openjpeg --strip-components 1 && \
     rm -f openjpeg.tar.gz && \
@@ -347,7 +355,7 @@ RUN \
 # CMake - use a precompiled binary
 RUN \
     echo "`date` cmake" >> /build/log.txt && \
-    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v3.21.4/cmake-3.21.4-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v`getver.py cmake`/cmake-`getver.py cmake`-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
     mkdir cmake && \
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz && \
@@ -357,7 +365,7 @@ RUN \
     echo "`date` libpng" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    curl --retry 5 --silent https://downloads.sourceforge.net/libpng/libpng-1.6.37.tar.xz -L -o libpng.tar.xz && \
+    curl --retry 5 --silent https://downloads.sourceforge.net/libpng/libpng-`getver.py libpng`.tar.xz -L -o libpng.tar.xz && \
     unxz libpng.tar.xz && \
     mkdir libpng && \
     tar -xf libpng.tar -C libpng --strip-components 1 && \
@@ -374,7 +382,7 @@ cd /build && \
 # RUN \
     echo "`date` giflib" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://sourceforge.net/projects/giflib/files/giflib-5.2.1.tar.gz/download -L -o giflib.tar.gz && \
+    curl --retry 5 --silent https://sourceforge.net/projects/giflib/files/giflib-`getver.py giflib`.tar.gz/download -L -o giflib.tar.gz && \
     mkdir giflib && \
     tar -zxf giflib.tar.gz -C giflib --strip-components 1 && \
     rm -f giflib.tar.gz && \
@@ -388,7 +396,7 @@ cd /build && \
 # RUN \
     echo "`date` zstd" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v1.5.0 https://github.com/facebook/zstd && \
+    git clone --depth=1 --single-branch -b v`getver.py zstd` https://github.com/facebook/zstd && \
     cd zstd && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -399,7 +407,7 @@ cd /build && \
 # RUN \
     echo "`date` jbigkit" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://www.cl.cam.ac.uk/~mgk25/jbigkit/download/jbigkit-2.1.tar.gz -L -o jbigkit.tar.gz && \
+    curl --retry 5 --silent https://www.cl.cam.ac.uk/~mgk25/jbigkit/download/jbigkit-`getver.py jbigkit`.tar.gz -L -o jbigkit.tar.gz && \
     mkdir jbigkit && \
     tar -zxf jbigkit.tar.gz -C jbigkit --strip-components 1 && \
     rm -f jbigkit.tar.gz && \
@@ -418,7 +426,7 @@ cd /build && \
 # RUN \
     echo "`date` libwebp" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent http://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.2.1.tar.gz -L -o libwebp.tar.gz && \
+    curl --retry 5 --silent http://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-`getver.py libwebp`.tar.gz -L -o libwebp.tar.gz && \
     mkdir libwebp && \
     tar -zxf libwebp.tar.gz -C libwebp --strip-components 1 && \
     rm -f libwebp.tar.gz && \
@@ -434,7 +442,7 @@ cd /build && \
 # RUN \
     echo "`date` libjpeg-turbo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/libjpeg-turbo/libjpeg-turbo/archive/2.1.1.tar.gz -L -o libjpeg-turbo.tar.gz && \
+    curl --retry 5 --silent https://github.com/libjpeg-turbo/libjpeg-turbo/archive/`getver.py libjpeg-turbo`.tar.gz -L -o libjpeg-turbo.tar.gz && \
     mkdir libjpeg-turbo && \
     tar -zxf libjpeg-turbo.tar.gz -C libjpeg-turbo --strip-components 1 && \
     rm -f libjpeg-turbo.tar.gz && \
@@ -459,7 +467,7 @@ cd /build && \
     echo "`date` libdeflate" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v1.8 https://github.com/ebiggers/libdeflate.git && \
+    git clone --depth=1 --single-branch -b v`getver.py libdeflate` https://github.com/ebiggers/libdeflate.git && \
     cd libdeflate && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -469,7 +477,7 @@ cd /build && \
 RUN \
     echo "`date` lerc" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v3.0 https://github.com/Esri/lerc.git && \
+    git clone --depth=1 --single-branch -b v`getver.py lerc` https://github.com/Esri/lerc.git && \
     cd lerc && \
     mkdir _build && \
     cd _build && \
@@ -483,7 +491,7 @@ cd /build && \
 # RUN \
     echo "`date` libhwy" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 0.14.2 https://github.com/google/highway.git && \
+    git clone --depth=1 --single-branch -b `getver.py libhwy` https://github.com/google/highway.git && \
     cd highway && \
     mkdir _build && \
     cd _build && \
@@ -497,7 +505,7 @@ cd /build && \
 # RUN \
     echo "`date` openexr" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v3.1.3 https://github.com/AcademySoftwareFoundation/openexr.git && \
+    git clone --depth=1 --single-branch -b v`getver.py openexr` https://github.com/AcademySoftwareFoundation/openexr.git && \
     cd openexr && \
     mkdir _build && \
     cd _build && \
@@ -511,7 +519,7 @@ cd /build && \
 # RUN \
     echo "`date` libbrotli" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v1.0.9 https://github.com/google/brotli.git && \
+    git clone --depth=1 --single-branch -b v`getver.py libbrotli` https://github.com/google/brotli.git && \
     cd brotli && \
     mkdir _build && \
     cd _build && \
@@ -525,7 +533,7 @@ cd /build && \
 # RUN \
     echo "`date` jpeg-xl" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v0.6.1 --recurse-submodules -j ${JOBS} https://gitlab.com/wg1/jpeg-xl.git && \
+    git clone --depth=1 --single-branch -b v`getver.py jpeg-xl` --recurse-submodules -j ${JOBS} https://gitlab.com/wg1/jpeg-xl.git && \
     cd jpeg-xl && \
     find . -name '.git' -exec rm -rf {} \+ && \
     mkdir _build && \
@@ -537,9 +545,23 @@ cd /build && \
     echo "`date` jpeg-xl" >> /build/log.txt
 
 RUN \
+    echo "`date` xz" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    curl --retry 5 --silent https://downloads.sourceforge.net/project/lzmautils/xz-`getver.py xz`.tar.gz -L -o xz.tar.gz && \
+    mkdir xz && \
+    tar -zxf xz.tar.gz -C xz --strip-components 1 && \
+    rm -f xz.tar.gz && \
+    cd xz && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` xz" >> /build/log.txt
+
+RUN \
     echo "`date` libtiff" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.osgeo.org/libtiff/tiff-4.3.0.tar.gz -L -o tiff.tar.gz && \
+    curl --retry 5 --silent https://download.osgeo.org/libtiff/tiff-`getver.py libtiff`.tar.gz -L -o tiff.tar.gz && \
     mkdir tiff && \
     tar -zxf tiff.tar.gz -C tiff --strip-components 1 && \
     rm -f tiff.tar.gz && \
@@ -569,7 +591,7 @@ RUN \
 RUN \
     echo "`date` pylibtiff" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b wheel-support-0.4.4 https://github.com/manthey/pylibtiff.git && \
+    git clone --depth=1 --single-branch -b wheel-support-`getver.py pylibtiff` https://github.com/manthey/pylibtiff.git && \
     cd pylibtiff && \
     mkdir libtiff/bin && \
     find /build/tiff/tools/.libs/ -executable -type f -exec cp {} libtiff/bin/. \; && \
@@ -619,7 +641,7 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` glymur" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone -b v0.9.5 https://github.com/quintusdias/glymur.git && \
+    git clone -b v`getver.py glymur` https://github.com/quintusdias/glymur.git && \
     # git clone https://github.com/quintusdias/glymur.git && \
     cd glymur && \
     # version 0.9.3's commit \
@@ -656,22 +678,6 @@ s = s.replace("\'console_scripts\': [", \n\
 """\'console_scripts\': [\'%s=glymur.bin:program\' % name for name in os.listdir(\'glymur/bin\') if not name.endswith(\'.py\')] + [""") \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
-path = "glymur/lib/tiff.py" \n\
-s = open(path).read() \n\
-s = s.replace("class LibTIFFError", \n\
-""" \n\
-if \'None\' in repr(_LIBTIFF): \n\
-    libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname( \n\
-        os.path.realpath(__file__)))), \'Glymur.libs\')) \n\
-    if os.path.exists(libpath): \n\
-        path = [lib for lib in os.listdir(libpath) if lib.startswith(\'libtiff\')][0] \n\
-        path = os.path.join(libpath, path) \n\
-        _LIBTIFF = loader(path) \n\
-\n\
-class LibTIFFError""") \n\
-open(path, "w").write(s)' && \
-    python -c $'# \n\
-import re \n\
 path = "glymur/config.py" \n\
 s = open(path).read() \n\
 s = s.replace("    path = find_library(libname)", \n\
@@ -680,7 +686,7 @@ s = s.replace("    path = find_library(libname)", \n\
         __file__))), \'Glymur.libs\')) \n\
     if path is None and os.path.exists(libpath): \n\
         libs = os.listdir(libpath) \n\
-        path = [lib for lib in libs if lib.startswith(\'libopenjp2\')][0] \n\
+        path = [lib for lib in libs if libname in lib][0] \n\
         path = os.path.join(libpath, path)""") \n\
 open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
@@ -694,24 +700,11 @@ open(path, "w").write(s)' && \
     rm -rf ~/.cache && \
     echo "`date` glymur" >> /build/log.txt
 
-## RUN \
-##     echo "`date` xz" >> /build/log.txt && \
-##     export JOBS=`nproc` && \
-##     curl --retry 5 --silent https://downloads.sourceforge.net/project/lzmautils/xz-5.2.5.tar.gz -L -o xz.tar.gz && \
-##     mkdir xz && \
-##     tar -zxf xz.tar.gz -C xz --strip-components 1 && \
-##     rm -f xz.tar.gz && \
-##     cd xz && \
-##     ./configure --silent --prefix=/usr/local --disable-static && \
-##     make --silent -j ${JOBS} && \
-##     make --silent -j ${JOBS} install && \
-##     ldconfig && \
-##     echo "`date` xz" >> /build/log.txt
-
+# PINNED VERSION - last of its line
 RUN \
     echo "`date` pcre" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.pcre.org/pub/pcre/pcre-8.45.tar.gz -L -o pcre.tar.gz && \
+    curl --retry 5 --silent https://downloads.sourceforge.net/project/pcre/pcre/8.45/pcre-8.45.tar.gz -L -o pcre.tar.gz && \
     mkdir pcre && \
     tar -zxf pcre.tar.gz -C pcre --strip-components 1 && \
     rm -f pcre.tar.gz && \
@@ -731,7 +724,7 @@ RUN \
     echo "`date` libffi" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v3.4.2 https://github.com/libffi/libffi.git && \
+    git clone --depth=1 --single-branch -b v`getver.py libffi` https://github.com/libffi/libffi.git && \
     cd libffi && \
     python -c $'# \n\
 path = "Makefile.am" \n\
@@ -748,7 +741,7 @@ RUN \
     echo "`date` util-linux" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v2.37.1 https://github.com/karelzak/util-linux.git && \
+    git clone --depth=1 --single-branch -b v`getver.py util-linux` https://github.com/karelzak/util-linux.git && \
     cd util-linux && \
     sed -i 's/#ifndef UMOUNT_UNUSED/#ifndef O_PATH\n# define O_PATH 010000000\n#endif\n\n#ifndef UMOUNT_UNUSED/g' libmount/src/context_umount.c && \
     ./autogen.sh && \
@@ -761,7 +754,7 @@ RUN \
 RUN \
     echo "`date` glib" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.gnome.org/sources/glib/2.70/glib-2.70.0.tar.xz -L -o glib-2.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/glib/`getver.py glib 2`/glib-`getver.py glib`.tar.xz -L -o glib-2.tar.xz && \
     unxz glib-2.tar.xz && \
     mkdir glib-2 && \
     tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
@@ -797,7 +790,7 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` gobject-introspection" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.gnome.org/sources/gobject-introspection/1.70/gobject-introspection-1.70.0.tar.xz -L -o gobject-introspection.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/gobject-introspection/`getver.py gobject-introspection 2`/gobject-introspection-`getver.py gobject-introspection`.tar.xz -L -o gobject-introspection.tar.xz && \
     unxz gobject-introspection.tar.xz && \
     mkdir gobject-introspection && \
     tar -xf gobject-introspection.tar -C gobject-introspection --strip-components 1 && \
@@ -819,7 +812,7 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` gdk-pixbuf" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.gnome.org/sources/gdk-pixbuf/2.42/gdk-pixbuf-2.42.6.tar.xz -L -o gdk-pixbuf.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/gdk-pixbuf/`getver.py gdk-pixbuf 2`/gdk-pixbuf-`getver.py gdk-pixbuf`.tar.xz -L -o gdk-pixbuf.tar.xz && \
     unxz gdk-pixbuf.tar.xz && \
     mkdir gdk-pixbuf && \
     tar -xf gdk-pixbuf.tar -C gdk-pixbuf --strip-components 1 && \
@@ -837,7 +830,7 @@ RUN \
 RUN \
     echo "`date` libiconv" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.16.tar.gz -L -o libiconv.tar.gz && \
+    curl --retry 5 --silent https://ftp.gnu.org/pub/gnu/libiconv/libiconv-`getver.py libiconv`.tar.gz -L -o libiconv.tar.gz && \
     mkdir libiconv && \
     tar -zxf libiconv.tar.gz -C libiconv --strip-components 1 && \
     rm -f libiconv.tar.gz && \
@@ -851,7 +844,7 @@ RUN \
 RUN \
     echo "`date` icu4c" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b release-70-1 https://github.com/unicode-org/icu.git && \
+    git clone --depth=1 --single-branch -b release-`getver.py icu4c` https://github.com/unicode-org/icu.git && \
     cd icu/icu4c/source && \
     CFLAGS="$CFLAGS -DUNISTR_FROM_CHAR_EXPLICIT=explicit -DUNISTR_FROM_STRING_EXPLICIT=explicit -DU_CHARSET_IS_UTF8=1 -DU_NO_DEFAULT_INCLUDE_UTF_HEADERS=1 -DU_HIDE_OBSOLETE_UTF_OLD_H=1" ./configure --silent --prefix=/usr/local --disable-tests --disable-samples --with-data-packaging=library --disable-static && \
     make --silent -j ${JOBS} && \
@@ -865,7 +858,7 @@ RUN \
 RUN \
     echo "`date` openmpi" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.1.tar.gz -L -o openmpi.tar.gz && \
+    curl --retry 5 --silent https://download.open-mpi.org/release/open-mpi/v`getver.py openmpi 2`/openmpi-`getver.py openmpi`.tar.gz -L -o openmpi.tar.gz && \
     mkdir openmpi && \
     tar -zxf openmpi.tar.gz -C openmpi --strip-components 1 && \
     rm -f openmpi.tar.gz && \
@@ -885,7 +878,7 @@ RUN \
 RUN \
     echo "`date` boost" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b boost-1.77.0 --quiet --recurse-submodules -j ${JOBS} https://github.com/boostorg/boost.git && \
+    git clone --depth=1 --single-branch -b boost-`getver.py boost` --quiet --recurse-submodules -j ${JOBS} https://github.com/boostorg/boost.git && \
     cd boost && \
     # pushd libs/spirit && \
     # # switch to a version of spirit that fixes a bug in 1.70 and 1.71 \
@@ -930,7 +923,7 @@ RUN \
 RUN \
     echo "`date` fossil" >> /build/log.txt && \
     # fossil executable \
-    curl --retry 5 --silent -L https://fossil-scm.org/home/uv/fossil-linux-x64-2.17.tar.gz -o fossil.tar.gz && \
+    curl --retry 5 --silent -L https://fossil-scm.org/home/uv/fossil-linux-x64-`getver.py fossil`.tar.gz -o fossil.tar.gz && \
     tar -zxf fossil.tar.gz && \
     mv fossil /usr/local/bin/. && \
     rm -f fossil.tar.gz && \
@@ -952,7 +945,7 @@ RUN \
 RUN \
     echo "`date` sqlite" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://sqlite.org/2021/sqlite-autoconf-3360000.tar.gz -L -o sqlite.tar.gz && \
+    curl --retry 5 --silent https://sqlite.org/2021/sqlite-autoconf-`getver.py sqlite`.tar.gz -L -o sqlite.tar.gz && \
     mkdir sqlite && \
     tar -zxf sqlite.tar.gz -C sqlite --strip-components 1 && \
     rm -f sqlite.tar.gz && \
@@ -967,7 +960,7 @@ RUN \
     echo "`date` proj4" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 8.2.0 https://github.com/OSGeo/proj.4.git && \
+    git clone --depth=1 --single-branch -b `getver.py proj4` https://github.com/OSGeo/proj.4.git && \
     cd proj.4 && \
     curl --retry 5 --silent http://download.osgeo.org/proj/proj-datumgrid-1.8.zip -L -o proj-datumgrid.zip && \
     cd data && \
@@ -983,7 +976,7 @@ RUN \
 RUN \
     echo "`date` minizip" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 3.0.3 https://github.com/nmoinvaz/minizip.git && \
+    git clone --depth=1 --single-branch -b `getver.py minizip` https://github.com/nmoinvaz/minizip.git && \
     cd minizip && \
     mkdir _build && \
     cd _build && \
@@ -997,7 +990,7 @@ RUN \
     echo "`date` libexpat" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/libexpat/libexpat/archive/R_2_4_1.tar.gz -L -o libexpat.tar.gz && \
+    curl --retry 5 --silent https://github.com/libexpat/libexpat/archive/R_`getver.py libexpat`.tar.gz -L -o libexpat.tar.gz && \
     mkdir libexpat && \
     tar -zxf libexpat.tar.gz -C libexpat --strip-components 1 && \
     rm -f libexpat.tar.gz && \
@@ -1026,7 +1019,7 @@ RUN \
 RUN \
     echo "`date` libgeos" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 3.10.1 https://github.com/libgeos/geos.git && \
+    git clone --depth=1 --single-branch -b `getver.py libgeos` https://github.com/libgeos/geos.git && \
     cd geos && \
     mkdir _build && \
     cd _build && \
@@ -1035,6 +1028,21 @@ RUN \
     make --silent -j ${JOBS} install && \
     ldconfig && \
     echo "`date` libgeos" >> /build/log.txt
+
+RUN \
+    echo "`date` libxml" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    rm -rf libxml2* && \
+    curl --retry 5 --silent http://xmlsoft.org/sources/libxml2-`getver.py libxml2`.tar.gz -L -o libxml2.tar.gz && \
+    mkdir libxml2 && \
+    tar -zxf libxml2.tar.gz -C libxml2 --strip-components 1 && \
+    rm -f libxml2.tar.gz && \
+    cd libxml2 && \
+    ./configure --prefix=/usr/local --disable-static --without-python && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` libxml" >> /build/log.txt
 
 RUN \
     echo "`date` libspatialite" >> /build/log.txt && \
@@ -1056,7 +1064,7 @@ RUN \
     echo "`date` libgeotiff" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 1.7.0 https://github.com/OSGeo/libgeotiff.git && \
+    git clone --depth=1 --single-branch -b `getver.py libgeotiff` https://github.com/OSGeo/libgeotiff.git && \
     cd libgeotiff/libgeotiff && \
     autoreconf -ifv && \
     ./configure --silent --prefix=/usr/local --with-zlib=yes --with-jpeg=yes --disable-static && \
@@ -1068,7 +1076,7 @@ RUN \
 RUN \
     echo "`date` pixman" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b pixman-0.40.0 https://gitlab.freedesktop.org/pixman/pixman.git && \
+    git clone --depth=1 --single-branch -b pixman-`getver.py pixman` https://gitlab.freedesktop.org/pixman/pixman.git && \
     cd pixman && \
     meson --prefix=/usr/local --buildtype=release _build && \
     cd _build && \
@@ -1080,7 +1088,7 @@ RUN \
 RUN \
     echo "`date` freetype" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.savannah.gnu.org/releases/freetype/freetype-2.11.0.tar.gz -L -o freetype.tar.gz && \
+    curl --retry 5 --silent https://download.savannah.gnu.org/releases/freetype/freetype-`getver.py freetype`.tar.gz -L -o freetype.tar.gz && \
     mkdir freetype && \
     tar -zxf freetype.tar.gz -C freetype --strip-components 1 && \
     rm -f freetype.tar.gz && \
@@ -1094,7 +1102,7 @@ RUN \
 RUN \
     echo "`date` fontconfig" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 2.13.94 https://gitlab.freedesktop.org/fontconfig/fontconfig.git && \
+    git clone --depth=1 --single-branch -b `getver.py fontconfig` https://gitlab.freedesktop.org/fontconfig/fontconfig.git && \
     cd fontconfig && \
     meson --prefix=/usr/local --buildtype=release -Ddoc=disabled -Dtests=disabled _build && \
     cd _build && \
@@ -1106,7 +1114,7 @@ RUN \
 RUN \
     echo "`date` cairo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 1.17.4 https://gitlab.freedesktop.org/cairo/cairo.git && \
+    git clone --depth=1 --single-branch -b `getver.py cairo` https://gitlab.freedesktop.org/cairo/cairo.git && \
     cd cairo && \
     meson --prefix=/usr/local --buildtype=release -Dtests=disabled _build && \
     cd _build && \
@@ -1115,9 +1123,11 @@ RUN \
     ldconfig && \
     echo "`date` cairo" >> /build/log.txt
 
+# PINNED VERSION - GDAL fails on 2.2.0
 RUN \
     echo "`date` charls" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    # git clone --depth=1 --single-branch -b `getver.py charls` https://github.com/team-charls/charls.git && \
     git clone --depth=1 --single-branch -b 2.1.0 https://github.com/team-charls/charls.git && \
     cd charls && \
     mkdir _build && \
@@ -1131,7 +1141,7 @@ RUN \
 RUN \
     echo "`date` lz4" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v1.9.3 https://github.com/lz4/lz4.git && \
+    git clone --depth=1 --single-branch -b v`getver.py lz4` https://github.com/lz4/lz4.git && \
     cd lz4 && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -1142,7 +1152,7 @@ RUN \
     echo "`date` libdap" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b version-3.20.6 https://github.com/OPENDAP/libdap4.git && \
+    git clone --depth=1 --single-branch -b version-`getver.py libdap` https://github.com/OPENDAP/libdap4.git && \
     cd libdap4 && \
     autoreconf -ifv && \
     ./configure --silent --prefix=/usr/local --enable-threads=posix --disable-static && \
@@ -1165,6 +1175,7 @@ RUN \
     ldconfig && \
     echo "`date` librasterlite2" >> /build/log.txt
 
+# PINNED VERSION - use master
 # fyba won't compile with GCC 8.2.x, so apply fix in issue #21
 RUN \
     echo "`date` fyba" >> /build/log.txt && \
@@ -1194,7 +1205,7 @@ open(path, "wb").write(data)' && \
 RUN \
     echo "`date` hdf4" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b hdf-4_2_15 https://github.com/HDFGroup/hdf4.git && \
+    git clone --depth=1 --single-branch -b hdf-`getver.py hdf4` https://github.com/HDFGroup/hdf4.git && \
     cd hdf4 && \
     mkdir _build && \
     cd _build && \
@@ -1208,7 +1219,7 @@ RUN \
     echo "`date` hdf5" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b hdf5-1_12_1 https://github.com/HDFGroup/hdf5.git && \
+    git clone --depth=1 --single-branch -b hdf5-`getver.py hdf5` https://github.com/HDFGroup/hdf5.git && \
     cd hdf5 && \
     mkdir _build && \
     cd _build && \
@@ -1224,7 +1235,7 @@ RUN \
     echo "`date` parallel-netcdf" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b checkpoint.1.12.2 https://github.com/Parallel-NetCDF/PnetCDF && \
+    git clone --depth=1 --single-branch -b checkpoint.`getver.py parallel-netcdf` https://github.com/Parallel-NetCDF/PnetCDF && \
     cd PnetCDF && \
     autoreconf -ifv && \
     ./configure --silent --prefix=/usr/local --enable-shared --disable-fortran --enable-thread-safe --disable-static && \
@@ -1237,7 +1248,7 @@ RUN \
     echo "`date` netcdf" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v4.8.1 https://github.com/Unidata/netcdf-c && \
+    git clone --depth=1 --single-branch -b v`getver.py netcdf` https://github.com/Unidata/netcdf-c && \
     cd netcdf-c && \
     mkdir _build && \
     cd _build && \
@@ -1250,7 +1261,7 @@ RUN \
 RUN \
     echo "`date` mysql" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://cdn.mysql.com/Downloads/MySQL-8.0/mysql-boost-8.0.27.tar.gz -L -o mysql.tar.gz && \
+    curl --retry 5 --silent https://cdn.mysql.com/Downloads/MySQL-8.0/mysql-boost-`getver.py mysql`.tar.gz -L -o mysql.tar.gz && \
     mkdir mysql && \
     tar -zxf mysql.tar.gz -C mysql --strip-components 1 && \
     rm -f mysql.tar.gz && \
@@ -1273,7 +1284,7 @@ RUN \
 # ogdi doesn't build with parallelism
 RUN \
     echo "`date` ogdi" >> /build/log.txt && \
-    git clone --depth=1 --single-branch -b ogdi_4_1_0 https://github.com/libogdi/ogdi.git && \
+    git clone --depth=1 --single-branch -b ogdi_`getver.py ogdi` https://github.com/libogdi/ogdi.git && \
     cd ogdi && \
     export TOPDIR=`pwd` && \
     ./configure --silent --prefix=/usr/local --with-zlib --with-expat && \
@@ -1284,26 +1295,26 @@ RUN \
     echo "`date` ogdi" >> /build/log.txt
 
 RUN \
-    echo "`date` postgres" >> /build/log.txt && \
+    echo "`date` postgresql" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftp.postgresql.org/pub/source/v13.4/postgresql-13.4.tar.gz -L -o postgresql.tar.gz && \
+    curl --retry 5 --silent https://ftp.postgresql.org/pub/source/v`getver.py postgresql`/postgresql-`getver.py postgresql`.tar.gz -L -o postgresql.tar.gz && \
     mkdir postgresql && \
     tar -zxf postgresql.tar.gz -C postgresql --strip-components 1 && \
     rm -f postgresql.tar.gz && \
     cd postgresql && \
-    sed -i 's/2\.69/2.71/g' configure.in && \
-    autoreconf -ifv && \
+    # sed -i 's/2\.69/2.71/g' configure.in && \
+    # autoreconf -ifv && \
     ./configure --silent --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
-    echo "`date` postgres" >> /build/log.txt
+    echo "`date` postgresql" >> /build/log.txt
 
 RUN \
     echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b poppler-21.11.0 https://gitlab.freedesktop.org/poppler/poppler.git && \
+    git clone --depth=1 --single-branch -b poppler-`getver.py poppler` https://gitlab.freedesktop.org/poppler/poppler.git && \
     cd poppler && \
     mkdir _build && \
     cd _build && \
@@ -1316,7 +1327,7 @@ RUN \
 RUN \
     echo "`date` fitsio" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent -k https://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/cfitsio3450.tar.gz -L -o cfitsio.tar.gz && \
+    curl --retry 5 --silent -k https://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/cfitsio`getver.py fitsio`.tar.gz -L -o cfitsio.tar.gz && \
     mkdir cfitsio && \
     tar -zxf cfitsio.tar.gz -C cfitsio --strip-components 1 && \
     rm -f cfitsio.tar.gz && \
@@ -1332,7 +1343,7 @@ RUN \
 RUN \
     echo "`date` jasper" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b version-2.0.33 https://github.com/mdadams/jasper.git && \
+    git clone --depth=1 --single-branch -b version-`getver.py jasper` https://github.com/mdadams/jasper.git && \
     cd jasper && \
     # git apply ../jasper-jp2_cod.c.patch && \
     mkdir _build && \
@@ -1351,7 +1362,7 @@ RUN \
     echo "`date` libxcrypt" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v4.4.26 https://github.com/besser82/libxcrypt.git && \
+    git clone --depth=1 --single-branch -b v`getver.py libxcrypt` https://github.com/besser82/libxcrypt.git && \
     cd libxcrypt && \
     # autoreconf -ifv && \
     ./autogen.sh && \
@@ -1369,7 +1380,7 @@ RUN \
     echo "`date` libgta" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b libgta-1.2.1 https://github.com/marlam/gta-mirror.git && \
+    git clone --depth=1 --single-branch -b libgta-`getver.py libgta` https://github.com/marlam/gta-mirror.git && \
     cd gta-mirror/libgta && \
     # autoreconf -ifv && \
     # ./configure --silent --prefix=/usr/local --disable-static && \
@@ -1397,9 +1408,9 @@ RUN \
 #     echo "`date` libecw" >> /build/log.txt
 
 RUN \
-    echo "`date` xerces" >> /build/log.txt && \
+    echo "`date` xerces-c" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://www.apache.org/dist/xerces/c/3/sources/xerces-c-3.2.3.tar.gz -L -o xerces-c.tar.gz && \
+    curl --retry 5 --silent https://www.apache.org/dist/xerces/c/3/sources/xerces-c-`getver.py xerces-c`.tar.gz -L -o xerces-c.tar.gz && \
     mkdir xerces-c && \
     tar -zxf xerces-c.tar.gz -C xerces-c --strip-components 1 && \
     rm -f xerces-c.tar.gz && \
@@ -1410,14 +1421,14 @@ RUN \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
-    echo "`date` xerces" >> /build/log.txt
+    echo "`date` xerces-c" >> /build/log.txt
 
 # OpenBLAS and SuperLu make GDAL start very slowly
 
 # RUN \
 #     echo "`date` openblas" >> /build/log.txt && \
 #     export JOBS=`nproc` && \
-#     git clone --depth=1 --single-branch -b v0.3.18 https://github.com/xianyi/OpenBLAS.git && \
+#     git clone --depth=1 --single-branch -b v`getver.py openblas` https://github.com/xianyi/OpenBLAS.git && \
 #     cd OpenBLAS && \
 #     mkdir _build && \
 #     cd _build && \
@@ -1430,7 +1441,7 @@ RUN \
 # RUN \
 #     echo "`date` superlu" >> /build/log.txt && \
 #     export JOBS=`nproc` && \
-#     git clone --depth=1 --single-branch -b v5.3.0 https://github.com/xiaoyeli/superlu.git && \
+#     git clone --depth=1 --single-branch -b v`getver.py superlu` https://github.com/xiaoyeli/superlu.git && \
 #     cd superlu && \
 #     mkdir _build && \
 #     cd _build && \
@@ -1443,7 +1454,7 @@ RUN \
 RUN \
     echo "`date` lapack" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v3.10.0 https://github.com/Reference-LAPACK/lapack && \
+    git clone --depth=1 --single-branch -b v`getver.py lapack` https://github.com/Reference-LAPACK/lapack && \
     cd lapack && \
     mkdir _build && \
     cd _build && \
@@ -1456,7 +1467,7 @@ RUN \
 RUN \
     echo "`date` armadillo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://sourceforge.net/projects/arma/files/armadillo-10.7.3.tar.xz -L -o armadillo.tar.xz && \
+    curl --retry 5 --silent https://sourceforge.net/projects/arma/files/armadillo-`getver.py armadillo`.tar.xz -L -o armadillo.tar.xz && \
     unxz armadillo.tar.xz && \
     mkdir armadillo && \
     tar -xf armadillo.tar -C armadillo --strip-components 1 && \
@@ -1470,6 +1481,7 @@ RUN \
     ldconfig && \
     echo "`date` armadillo" >> /build/log.txt
 
+# PINNED VERSION - can't easily check the version
 # MrSID only works with gcc 4 or 5 unless we change it.
 RUN \
     echo "`date` mrsid" >> /build/log.txt && \
@@ -1484,7 +1496,7 @@ RUN \
 
 RUN \
     echo "`date` patchelf" >> /build/log.txt && \
-    git clone --depth=1 --single-branch -b 0.11 https://github.com/NixOS/patchelf.git && \
+    git clone --depth=1 --single-branch -b `getver.py patchelf` https://github.com/NixOS/patchelf.git && \
     cd patchelf && \
     ./bootstrap.sh && \
     ./configure && \
@@ -1495,7 +1507,7 @@ RUN \
 RUN \
     echo "`date` blosc" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v1.21.0 https://github.com/Blosc/c-blosc.git && \
+    git clone --depth=1 --single-branch -b v`getver.py blosc` https://github.com/Blosc/c-blosc.git && \
     cd c-blosc && \
     mkdir _build && \
     cd _build && \
@@ -1509,7 +1521,7 @@ RUN \
     echo "`date` libheif" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v1.12.0 https://github.com/strukturag/libheif.git && \
+    git clone --depth=1 --single-branch -b v`getver.py libheif` https://github.com/strukturag/libheif.git && \
     cd libheif && \
     ./autogen.sh && \
     ./configure --silent --prefix=/usr/local --disable-static --disable-examples --disable-go && \
@@ -1518,6 +1530,7 @@ RUN \
     ldconfig && \
     echo "`date` libheif" >> /build/log.txt
 
+# PINNED VERSION - use master
 # This build doesn't support everything.
 # Unsupported without more work or investigation:
 #  GRASS Kea Ingres Google-libkml ODBC FGDB MDB OCI GEORASTER SDE Rasdaman
@@ -1542,7 +1555,7 @@ RUN \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
     # Specific branch \
-    # git clone --depth=1 --single-branch -b v3.3.3 https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch -b v`getver.py gdal` https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
     git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
     # Common \
@@ -1672,7 +1685,7 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` harfbuzz" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 3.1.0 https://github.com/harfbuzz/harfbuzz.git && \
+    git clone --depth=1 --single-branch -b `getver.py harfbuzz` https://github.com/harfbuzz/harfbuzz.git && \
     cd harfbuzz && \
     meson --prefix=/usr/local --buildtype=release -Dtests=disabled _build && \
     cd _build && \
@@ -1681,21 +1694,7 @@ RUN \
     ldconfig && \
     echo "`date` harfbuzz" >> /build/log.txt
 
-RUN \
-    echo "`date` libxml" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    rm -rf libxml2* && \
-    curl --retry 5 --silent http://xmlsoft.org/sources/libxml2-2.9.12.tar.gz -L -o libxml2.tar.gz && \
-    mkdir libxml2 && \
-    tar -zxf libxml2.tar.gz -C libxml2 --strip-components 1 && \
-    rm -f libxml2.tar.gz && \
-    cd libxml2 && \
-    ./configure --prefix=/usr/local --disable-static --without-python && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` libxml" >> /build/log.txt
-
+# PINNED VERSION  - use master since last version is stale
 RUN \
     echo "`date` mapnik" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1843,7 +1842,7 @@ RUN \
     echo "`date` openslide" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/openslide/openslide/archive/v3.4.1.tar.gz -L -o openslide.tar.gz && \
+    curl --retry 5 --silent https://github.com/openslide/openslide/archive/v`getver.py openslide`.tar.gz -L -o openslide.tar.gz && \
     mkdir openslide && \
     tar -zxf openslide.tar.gz -C openslide --strip-components 1 && \
     rm -f openslide.tar.gz && \
@@ -1860,7 +1859,7 @@ RUN \
 RUN \
     echo "`date` openslide-python" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v1.1.2 https://github.com/openslide/openslide-python.git && \
+    git clone --depth=1 --single-branch -b v`getver.py openslide-python` https://github.com/openslide/openslide-python.git && \
     cd openslide-python && \
     python -c $'# \n\
 path = "setup.py" \n\
@@ -1933,7 +1932,7 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` orc" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/GStreamer/orc/archive/0.4.31.tar.gz -L -o orc.tar.gz && \
+    curl --retry 5 --silent https://github.com/GStreamer/orc/archive/`getver.py orc`.tar.gz -L -o orc.tar.gz && \
     mkdir orc && \
     tar -zxf orc.tar.gz -C orc --strip-components 1 && \
     rm -f orc.tar.gz && \
@@ -1948,7 +1947,7 @@ RUN \
 RUN \
     echo "`date` nifti" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://downloads.sourceforge.net/project/niftilib/nifticlib/nifticlib_2_0_0/nifticlib-2.0.0.tar.gz -L -o nifti.tar.gz && \
+    curl --retry 5 --silent https://downloads.sourceforge.net/project/niftilib/nifticlib/nifticlib_`getver.py nifti`/nifticlib-`getver.py nifti 3 _ .`.tar.gz -L -o nifti.tar.gz && \
     mkdir nifti && \
     tar -zxf nifti.tar.gz -C nifti --strip-components 1 && \
     rm -f nifti.tar.gz && \
@@ -1962,9 +1961,9 @@ RUN \
     echo "`date` nifti" >> /build/log.txt
 
 RUN \
-    echo "`date` imagequant" >> /build/log.txt && \
+    echo "`date` libimagequant" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/ImageOptim/libimagequant/archive/2.16.0.tar.gz -L -o imagequant.tar.gz && \
+    curl --retry 5 --silent https://github.com/ImageOptim/libimagequant/archive/`getver.py libimagequant`.tar.gz -L -o imagequant.tar.gz && \
     mkdir imagequant && \
     tar -zxf imagequant.tar.gz -C imagequant --strip-components 1 && \
     rm -f imagequant.tar.gz && \
@@ -1973,12 +1972,12 @@ RUN \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
-    echo "`date` imagequant" >> /build/log.txt
+    echo "`date` libimagequant" >> /build/log.txt
 
 RUN \
     echo "`date` pango" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.49/pango-1.49.2.tar.xz -L -o pango.tar.xz && \
+    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.49/pango-`getver.py pango`.tar.xz -L -o pango.tar.xz && \
     unxz pango.tar.xz && \
     mkdir pango && \
     tar -xf pango.tar -C pango --strip-components 1 && \
@@ -1991,10 +1990,12 @@ RUN \
     ldconfig && \
     echo "`date` pango" >> /build/log.txt
 
+# PINNED VERSION - 1.0.8 doesn't build with these commands
 RUN \
     echo "`date` libde265" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
+    # git clone --depth=1 --single-branch -b v`getver.py libde265` https://github.com/strukturag/libde265.git && \
     git clone --depth=1 --single-branch -b v1.0.7 https://github.com/strukturag/libde265.git && \
     cd libde265 && \
     # ./autogen.sh && \
@@ -2018,7 +2019,7 @@ RUN \
     echo "`date` librsvg" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/2.52/librsvg-2.52.3.tar.xz -L -o librsvg.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/`getver.py librsvg 2`/librsvg-`getver.py librsvg`.tar.xz -L -o librsvg.tar.xz && \
     unxz librsvg.tar.xz && \
     mkdir librsvg && \
     tar -xf librsvg.tar -C librsvg --strip-components 1 && \
@@ -2038,7 +2039,7 @@ RUN \
     echo "`date` libgsf" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/libgsf/1.14/libgsf-1.14.47.tar.xz -L -o libgsf.tar.xz && \
+    curl --retry 5 --silent https://download.gnome.org/sources/libgsf/`getver.py libgsf 2`/libgsf-`getver.py libgsf`.tar.xz -L -o libgsf.tar.xz && \
     unxz libgsf.tar.xz && \
     mkdir libgsf && \
     tar -xf libgsf.tar -C libgsf --strip-components 1 && \
@@ -2055,7 +2056,7 @@ RUN \
 RUN \
     echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 7.1.0-13 https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b `getver.py imagemagick` https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so for manylinux2010 \
     # sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
@@ -2067,11 +2068,11 @@ RUN \
 
 # vips doesn't have PDFium (it uses poppler instead)
 RUN \
-    echo "`date` vips" >> /build/log.txt && \
+    echo "`date` libvips" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
     # Use these lines for a release \
-    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.11.4/vips-8.11.4.tar.gz -L -o vips.tar.gz && \
+    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v`getver.py libvips`/vips-`getver.py libvips`.tar.gz -L -o vips.tar.gz && \
     mkdir vips && \
     tar -zxf vips.tar.gz -C vips --strip-components 1 && \
     rm -f vips.tar.gz && \
@@ -2085,12 +2086,12 @@ RUN \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
-    echo "`date` vips" >> /build/log.txt
+    echo "`date` libvips" >> /build/log.txt
 
 RUN \
     echo "`date` pyvips" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v2.1.15 https://github.com/libvips/pyvips.git && \
+    git clone --depth=1 --single-branch -b v`getver.py pyvips` https://github.com/libvips/pyvips.git && \
     cd pyvips && \
     python -c $'# \n\
 path = "pyvips/__init__.py" \n\
@@ -2152,7 +2153,7 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` pyproj4" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --single-branch -b 3.2.1 https://github.com/pyproj4/pyproj.git && \
+    git clone --single-branch -b `getver.py pyproj4` https://github.com/pyproj4/pyproj.git && \
     cd pyproj && \
     mkdir pyproj/bin && \
     find /build/proj.4/src/.libs/ -executable -type f ! -name '*.so.*' -exec cp {} pyproj/bin/. \; && \
@@ -2214,7 +2215,7 @@ open(path, "w").write(data)' && \
 RUN \
     echo "`date` libmemcached" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://launchpad.net/libmemcached/1.0/1.0.18/+download/libmemcached-1.0.18.tar.gz -L -o libmemcached.tar.gz && \
+    curl --retry 5 --silent https://launchpad.net/libmemcached/`getver.py libmemcached 2`/`getver.py libmemcached`/+download/libmemcached-`getver.py libmemcached`.tar.gz -L -o libmemcached.tar.gz && \
     mkdir libmemcached && \
     tar -zxf libmemcached.tar.gz -C libmemcached --strip-components 1 && \
     rm -f libmemcached.tar.gz && \
@@ -2231,7 +2232,7 @@ RUN \
 RUN \
     echo "`date` pylibmc" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b 1.6.1 https://github.com/lericson/pylibmc.git && \
+    git clone --depth=1 --single-branch -b `getver.py pylibmc` https://github.com/lericson/pylibmc.git && \
     cd pylibmc && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
@@ -2247,7 +2248,7 @@ RUN \
 RUN \
     echo "`date` javabridge" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v4.0.3 https://github.com/CellProfiler/python-javabridge.git && \
+    git clone --depth=1 --single-branch -b v`getver.py python-javabridge` https://github.com/CellProfiler/python-javabridge.git && \
     cd python-javabridge && \
     # Include java libraries \
     mkdir javabridge/jvm && \
