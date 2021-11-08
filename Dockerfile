@@ -106,7 +106,7 @@ RUN \
     echo "`date` pkg-config" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b pkg-config-`getver.py pkg-config` https://gitlab.freedesktop.org/pkg-config/pkg-config.git && \
+    git clone --depth=1 --single-branch -b pkg-config-`getver.py pkg-config` -c advice.detachedHead=false https://gitlab.freedesktop.org/pkg-config/pkg-config.git && \
     cd pkg-config && \
     ./autogen.sh && \
     ./configure --silent --prefix=/usr/local --with-internal-glib --disable-host-tool --disable-static && \
@@ -157,7 +157,7 @@ cd /build && \
 # # Make our own openssl so we don't depend on system libraries. \
 # RUN \
     echo "`date` openssl 1.1" >> /build/log.txt && \
-    git clone --depth=1 --single-branch -b OpenSSL_`getver.py openssl-1.x` https://github.com/openssl/openssl.git openssl_1_1 && \
+    git clone --depth=1 --single-branch -b OpenSSL_`getver.py openssl-1.x` -c advice.detachedHead=false https://github.com/openssl/openssl.git openssl_1_1 && \
     cd openssl_1_1 && \
     ./config --prefix=/usr/local --openssldir=/usr/local/ssl shared zlib && \
     make --silent -j ${JOBS} && \
@@ -169,7 +169,7 @@ cd /build && \
 # \
 # RUN \
     echo "`date` openldap" >> /build/log.txt && \
-    git clone --depth=1 --single-branch -b OPENLDAP_REL_ENG_`getver.py openldap` https://git.openldap.org/openldap/openldap.git && \
+    git clone --depth=1 --single-branch -b OPENLDAP_REL_ENG_`getver.py openldap` -c advice.detachedHead=false https://git.openldap.org/openldap/openldap.git && \
     cd openldap && \
     # Don't build tests or docs \
     sed -i 's/ tests doc//g' Makefile.in && \
@@ -183,7 +183,7 @@ cd /build && \
 # RUN \
     echo "`date` libssh2" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b libssh2-`getver.py libssh2` https://github.com/libssh2/libssh2.git && \
+    git clone --depth=1 --single-branch -b libssh2-`getver.py libssh2` -c advice.detachedHead=false https://github.com/libssh2/libssh2.git && \
     cd libssh2 && \
     ./buildconf || (sed -i 's/m4_undefine/# m4_undefine/g' configure.ac && ./buildconf) && \
     ./configure --silent --prefix=/usr/local --disable-static && \
@@ -211,7 +211,7 @@ cd /build && \
 RUN \
     echo "`date` strip-nondeterminism" >> /build/log.txt && \
     cpanm -T Archive::Cpio && \
-    git clone --depth=1 --single-branch -b `getver.py strip-nondeterminism` https://github.com/esoule/strip-nondeterminism.git && \
+    git clone --depth=1 --single-branch -b `getver.py strip-nondeterminism` -c advice.detachedHead=false https://github.com/esoule/strip-nondeterminism.git && \
     cd strip-nondeterminism && \
     perl Makefile.PL && \
     make && \
@@ -293,7 +293,7 @@ RUN \
 RUN \
     echo "`date` psutil" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b release-`getver.py psutil` https://github.com/giampaolo/psutil.git && \
+    git clone --depth=1 --single-branch -b release-`getver.py psutil` -c advice.detachedHead=false https://github.com/giampaolo/psutil.git && \
     cd psutil && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
@@ -310,7 +310,7 @@ RUN \
 # We had built ultrajson, but it now supplies its own wheels.
 # RUN echo "`date` ultrajson" >> /build/log.txt && \
 #     export JOBS=`nproc` && \
-#     git clone -b `getver.py ultrajson` https://github.com/esnme/ultrajson.git && \
+#     git clone --depth=1 --single-branch -b `getver.py ultrajson` -c advice.detachedHead=false https://github.com/esnme/ultrajson.git && \
 #     cd ultrajson && \
 #     # Strip libraries before building any wheels \
 #     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
@@ -326,7 +326,7 @@ RUN \
 RUN \
     echo "`date` libzip" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py libzip` https://github.com/nih-at/libzip.git && \
+    git clone --depth=1 --single-branch -b v`getver.py libzip` -c advice.detachedHead=false https://github.com/nih-at/libzip.git && \
     cd libzip && \
     mkdir _build && \
     cd _build && \
@@ -396,7 +396,7 @@ cd /build && \
 # RUN \
     echo "`date` zstd" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py zstd` https://github.com/facebook/zstd && \
+    git clone --depth=1 --single-branch -b v`getver.py zstd` -c advice.detachedHead=false https://github.com/facebook/zstd && \
     cd zstd && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -467,7 +467,7 @@ cd /build && \
     echo "`date` libdeflate" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py libdeflate` https://github.com/ebiggers/libdeflate.git && \
+    git clone --depth=1 --single-branch -b v`getver.py libdeflate` -c advice.detachedHead=false https://github.com/ebiggers/libdeflate.git && \
     cd libdeflate && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -477,7 +477,7 @@ cd /build && \
 RUN \
     echo "`date` lerc" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py lerc` https://github.com/Esri/lerc.git && \
+    git clone --depth=1 --single-branch -b v`getver.py lerc` -c advice.detachedHead=false https://github.com/Esri/lerc.git && \
     cd lerc && \
     mkdir _build && \
     cd _build && \
@@ -491,7 +491,7 @@ cd /build && \
 # RUN \
     echo "`date` libhwy" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b `getver.py libhwy` https://github.com/google/highway.git && \
+    git clone --depth=1 --single-branch -b `getver.py libhwy` -c advice.detachedHead=false https://github.com/google/highway.git && \
     cd highway && \
     mkdir _build && \
     cd _build && \
@@ -505,7 +505,7 @@ cd /build && \
 # RUN \
     echo "`date` openexr" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py openexr` https://github.com/AcademySoftwareFoundation/openexr.git && \
+    git clone --depth=1 --single-branch -b v`getver.py openexr` -c advice.detachedHead=false https://github.com/AcademySoftwareFoundation/openexr.git && \
     cd openexr && \
     mkdir _build && \
     cd _build && \
@@ -519,7 +519,7 @@ cd /build && \
 # RUN \
     echo "`date` libbrotli" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py libbrotli` https://github.com/google/brotli.git && \
+    git clone --depth=1 --single-branch -b v`getver.py libbrotli` -c advice.detachedHead=false https://github.com/google/brotli.git && \
     cd brotli && \
     mkdir _build && \
     cd _build && \
@@ -533,7 +533,7 @@ cd /build && \
 # RUN \
     echo "`date` jpeg-xl" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py jpeg-xl` --recurse-submodules -j ${JOBS} https://gitlab.com/wg1/jpeg-xl.git && \
+    git clone --depth=1 --single-branch -b v`getver.py jpeg-xl` -c advice.detachedHead=false --recurse-submodules -j ${JOBS} https://gitlab.com/wg1/jpeg-xl.git && \
     cd jpeg-xl && \
     find . -name '.git' -exec rm -rf {} \+ && \
     mkdir _build && \
@@ -591,7 +591,7 @@ RUN \
 RUN \
     echo "`date` pylibtiff" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b wheel-support-`getver.py pylibtiff` https://github.com/manthey/pylibtiff.git && \
+    git clone --depth=1 --single-branch -b wheel-support-`getver.py pylibtiff` -c advice.detachedHead=false https://github.com/manthey/pylibtiff.git && \
     cd pylibtiff && \
     mkdir libtiff/bin && \
     find /build/tiff/tools/.libs/ -executable -type f -exec cp {} libtiff/bin/. \; && \
@@ -641,7 +641,7 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` glymur" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone -b v`getver.py glymur` https://github.com/quintusdias/glymur.git && \
+    git clone --depth=1 --single-branch -b v`getver.py glymur` -c advice.detachedHead=false https://github.com/quintusdias/glymur.git && \
     # git clone https://github.com/quintusdias/glymur.git && \
     cd glymur && \
     # version 0.9.3's commit \
@@ -724,7 +724,7 @@ RUN \
     echo "`date` libffi" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py libffi` https://github.com/libffi/libffi.git && \
+    git clone --depth=1 --single-branch -b v`getver.py libffi` -c advice.detachedHead=false https://github.com/libffi/libffi.git && \
     cd libffi && \
     python -c $'# \n\
 path = "Makefile.am" \n\
@@ -741,7 +741,7 @@ RUN \
     echo "`date` util-linux" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py util-linux` https://github.com/karelzak/util-linux.git && \
+    git clone --depth=1 --single-branch -b v`getver.py util-linux` -c advice.detachedHead=false https://github.com/karelzak/util-linux.git && \
     cd util-linux && \
     sed -i 's/#ifndef UMOUNT_UNUSED/#ifndef O_PATH\n# define O_PATH 010000000\n#endif\n\n#ifndef UMOUNT_UNUSED/g' libmount/src/context_umount.c && \
     ./autogen.sh && \
@@ -844,7 +844,7 @@ RUN \
 RUN \
     echo "`date` icu4c" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b release-`getver.py icu4c` https://github.com/unicode-org/icu.git && \
+    git clone --depth=1 --single-branch -b release-`getver.py icu4c` -c advice.detachedHead=false https://github.com/unicode-org/icu.git && \
     cd icu/icu4c/source && \
     CFLAGS="$CFLAGS -DUNISTR_FROM_CHAR_EXPLICIT=explicit -DUNISTR_FROM_STRING_EXPLICIT=explicit -DU_CHARSET_IS_UTF8=1 -DU_NO_DEFAULT_INCLUDE_UTF_HEADERS=1 -DU_HIDE_OBSOLETE_UTF_OLD_H=1" ./configure --silent --prefix=/usr/local --disable-tests --disable-samples --with-data-packaging=library --disable-static && \
     make --silent -j ${JOBS} && \
@@ -878,7 +878,7 @@ RUN \
 RUN \
     echo "`date` boost" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b boost-`getver.py boost` --quiet --recurse-submodules -j ${JOBS} https://github.com/boostorg/boost.git && \
+    git clone --depth=1 --single-branch -b boost-`getver.py boost` -c advice.detachedHead=false --quiet --recurse-submodules -j ${JOBS} https://github.com/boostorg/boost.git && \
     cd boost && \
     # pushd libs/spirit && \
     # # switch to a version of spirit that fixes a bug in 1.70 and 1.71 \
@@ -960,7 +960,7 @@ RUN \
     echo "`date` proj4" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b `getver.py proj4` https://github.com/OSGeo/proj.4.git && \
+    git clone --depth=1 --single-branch -b `getver.py proj4` -c advice.detachedHead=false https://github.com/OSGeo/proj.4.git && \
     cd proj.4 && \
     curl --retry 5 --silent http://download.osgeo.org/proj/proj-datumgrid-1.8.zip -L -o proj-datumgrid.zip && \
     cd data && \
@@ -976,7 +976,7 @@ RUN \
 RUN \
     echo "`date` minizip" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b `getver.py minizip` https://github.com/nmoinvaz/minizip.git && \
+    git clone --depth=1 --single-branch -b `getver.py minizip` -c advice.detachedHead=false https://github.com/nmoinvaz/minizip.git && \
     cd minizip && \
     mkdir _build && \
     cd _build && \
@@ -1019,7 +1019,7 @@ RUN \
 RUN \
     echo "`date` libgeos" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b `getver.py libgeos` https://github.com/libgeos/geos.git && \
+    git clone --depth=1 --single-branch -b `getver.py libgeos` -c advice.detachedHead=false https://github.com/libgeos/geos.git && \
     cd geos && \
     mkdir _build && \
     cd _build && \
@@ -1064,7 +1064,7 @@ RUN \
     echo "`date` libgeotiff" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b `getver.py libgeotiff` https://github.com/OSGeo/libgeotiff.git && \
+    git clone --depth=1 --single-branch -b `getver.py libgeotiff` -c advice.detachedHead=false https://github.com/OSGeo/libgeotiff.git && \
     cd libgeotiff/libgeotiff && \
     autoreconf -ifv && \
     ./configure --silent --prefix=/usr/local --with-zlib=yes --with-jpeg=yes --disable-static && \
@@ -1076,7 +1076,7 @@ RUN \
 RUN \
     echo "`date` pixman" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b pixman-`getver.py pixman` https://gitlab.freedesktop.org/pixman/pixman.git && \
+    git clone --depth=1 --single-branch -b pixman-`getver.py pixman` -c advice.detachedHead=false https://gitlab.freedesktop.org/pixman/pixman.git && \
     cd pixman && \
     meson --prefix=/usr/local --buildtype=release _build && \
     cd _build && \
@@ -1102,7 +1102,7 @@ RUN \
 RUN \
     echo "`date` fontconfig" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b `getver.py fontconfig` https://gitlab.freedesktop.org/fontconfig/fontconfig.git && \
+    git clone --depth=1 --single-branch -b `getver.py fontconfig` -c advice.detachedHead=false https://gitlab.freedesktop.org/fontconfig/fontconfig.git && \
     cd fontconfig && \
     meson --prefix=/usr/local --buildtype=release -Ddoc=disabled -Dtests=disabled _build && \
     cd _build && \
@@ -1114,7 +1114,7 @@ RUN \
 RUN \
     echo "`date` cairo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b `getver.py cairo` https://gitlab.freedesktop.org/cairo/cairo.git && \
+    git clone --depth=1 --single-branch -b `getver.py cairo` -c advice.detachedHead=false https://gitlab.freedesktop.org/cairo/cairo.git && \
     cd cairo && \
     meson --prefix=/usr/local --buildtype=release -Dtests=disabled _build && \
     cd _build && \
@@ -1127,8 +1127,8 @@ RUN \
 RUN \
     echo "`date` charls" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    # git clone --depth=1 --single-branch -b `getver.py charls` https://github.com/team-charls/charls.git && \
-    git clone --depth=1 --single-branch -b 2.1.0 https://github.com/team-charls/charls.git && \
+    # git clone --depth=1 --single-branch -b `getver.py charls` -c advice.detachedHead=false https://github.com/team-charls/charls.git && \
+    git clone --depth=1 --single-branch -b 2.1.0 -c advice.detachedHead=false https://github.com/team-charls/charls.git && \
     cd charls && \
     mkdir _build && \
     cd _build && \
@@ -1141,7 +1141,7 @@ RUN \
 RUN \
     echo "`date` lz4" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py lz4` https://github.com/lz4/lz4.git && \
+    git clone --depth=1 --single-branch -b v`getver.py lz4` -c advice.detachedHead=false https://github.com/lz4/lz4.git && \
     cd lz4 && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -1152,7 +1152,7 @@ RUN \
     echo "`date` libdap" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b version-`getver.py libdap` https://github.com/OPENDAP/libdap4.git && \
+    git clone --depth=1 --single-branch -b version-`getver.py libdap` -c advice.detachedHead=false https://github.com/OPENDAP/libdap4.git && \
     cd libdap4 && \
     autoreconf -ifv && \
     ./configure --silent --prefix=/usr/local --enable-threads=posix --disable-static && \
@@ -1181,7 +1181,7 @@ RUN \
     echo "`date` fyba" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch https://github.com/kartverket/fyba.git && \
+    git clone --depth=1 --single-branch -c advice.detachedHead=false https://github.com/kartverket/fyba.git && \
     cd fyba && \
     python -c $'# \n\
 import os \n\
@@ -1205,7 +1205,7 @@ open(path, "wb").write(data)' && \
 RUN \
     echo "`date` hdf4" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b hdf-`getver.py hdf4` https://github.com/HDFGroup/hdf4.git && \
+    git clone --depth=1 --single-branch -b hdf-`getver.py hdf4` -c advice.detachedHead=false https://github.com/HDFGroup/hdf4.git && \
     cd hdf4 && \
     mkdir _build && \
     cd _build && \
@@ -1219,7 +1219,7 @@ RUN \
     echo "`date` hdf5" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b hdf5-`getver.py hdf5` https://github.com/HDFGroup/hdf5.git && \
+    git clone --depth=1 --single-branch -b hdf5-`getver.py hdf5` -c advice.detachedHead=false https://github.com/HDFGroup/hdf5.git && \
     cd hdf5 && \
     mkdir _build && \
     cd _build && \
@@ -1235,7 +1235,7 @@ RUN \
     echo "`date` parallel-netcdf" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b checkpoint.`getver.py parallel-netcdf` https://github.com/Parallel-NetCDF/PnetCDF && \
+    git clone --depth=1 --single-branch -b checkpoint.`getver.py parallel-netcdf` -c advice.detachedHead=false https://github.com/Parallel-NetCDF/PnetCDF && \
     cd PnetCDF && \
     autoreconf -ifv && \
     ./configure --silent --prefix=/usr/local --enable-shared --disable-fortran --enable-thread-safe --disable-static && \
@@ -1248,7 +1248,7 @@ RUN \
     echo "`date` netcdf" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py netcdf` https://github.com/Unidata/netcdf-c && \
+    git clone --depth=1 --single-branch -b v`getver.py netcdf` -c advice.detachedHead=false https://github.com/Unidata/netcdf-c && \
     cd netcdf-c && \
     mkdir _build && \
     cd _build && \
@@ -1284,7 +1284,7 @@ RUN \
 # ogdi doesn't build with parallelism
 RUN \
     echo "`date` ogdi" >> /build/log.txt && \
-    git clone --depth=1 --single-branch -b ogdi_`getver.py ogdi` https://github.com/libogdi/ogdi.git && \
+    git clone --depth=1 --single-branch -b ogdi_`getver.py ogdi` -c advice.detachedHead=false https://github.com/libogdi/ogdi.git && \
     cd ogdi && \
     export TOPDIR=`pwd` && \
     ./configure --silent --prefix=/usr/local --with-zlib --with-expat && \
@@ -1314,7 +1314,7 @@ RUN \
 RUN \
     echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b poppler-`getver.py poppler` https://gitlab.freedesktop.org/poppler/poppler.git && \
+    git clone --depth=1 --single-branch -b poppler-`getver.py poppler` -c advice.detachedHead=false https://gitlab.freedesktop.org/poppler/poppler.git && \
     cd poppler && \
     mkdir _build && \
     cd _build && \
@@ -1343,7 +1343,7 @@ RUN \
 RUN \
     echo "`date` jasper" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b version-`getver.py jasper` https://github.com/mdadams/jasper.git && \
+    git clone --depth=1 --single-branch -b version-`getver.py jasper` -c advice.detachedHead=false https://github.com/mdadams/jasper.git && \
     cd jasper && \
     # git apply ../jasper-jp2_cod.c.patch && \
     mkdir _build && \
@@ -1362,7 +1362,7 @@ RUN \
     echo "`date` libxcrypt" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py libxcrypt` https://github.com/besser82/libxcrypt.git && \
+    git clone --depth=1 --single-branch -b v`getver.py libxcrypt` -c advice.detachedHead=false https://github.com/besser82/libxcrypt.git && \
     cd libxcrypt && \
     # autoreconf -ifv && \
     ./autogen.sh && \
@@ -1380,7 +1380,7 @@ RUN \
     echo "`date` libgta" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b libgta-`getver.py libgta` https://github.com/marlam/gta-mirror.git && \
+    git clone --depth=1 --single-branch -b libgta-`getver.py libgta` -c advice.detachedHead=false https://github.com/marlam/gta-mirror.git && \
     cd gta-mirror/libgta && \
     # autoreconf -ifv && \
     # ./configure --silent --prefix=/usr/local --disable-static && \
@@ -1428,7 +1428,7 @@ RUN \
 # RUN \
 #     echo "`date` openblas" >> /build/log.txt && \
 #     export JOBS=`nproc` && \
-#     git clone --depth=1 --single-branch -b v`getver.py openblas` https://github.com/xianyi/OpenBLAS.git && \
+#     git clone --depth=1 --single-branch -b v`getver.py openblas` -c advice.detachedHead=false https://github.com/xianyi/OpenBLAS.git && \
 #     cd OpenBLAS && \
 #     mkdir _build && \
 #     cd _build && \
@@ -1441,7 +1441,7 @@ RUN \
 # RUN \
 #     echo "`date` superlu" >> /build/log.txt && \
 #     export JOBS=`nproc` && \
-#     git clone --depth=1 --single-branch -b v`getver.py superlu` https://github.com/xiaoyeli/superlu.git && \
+#     git clone --depth=1 --single-branch -b v`getver.py superlu` -c advice.detachedHead=false https://github.com/xiaoyeli/superlu.git && \
 #     cd superlu && \
 #     mkdir _build && \
 #     cd _build && \
@@ -1454,7 +1454,7 @@ RUN \
 RUN \
     echo "`date` lapack" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py lapack` https://github.com/Reference-LAPACK/lapack && \
+    git clone --depth=1 --single-branch -b v`getver.py lapack` -c advice.detachedHead=false https://github.com/Reference-LAPACK/lapack && \
     cd lapack && \
     mkdir _build && \
     cd _build && \
@@ -1496,7 +1496,7 @@ RUN \
 
 RUN \
     echo "`date` patchelf" >> /build/log.txt && \
-    git clone --depth=1 --single-branch -b `getver.py patchelf` https://github.com/NixOS/patchelf.git && \
+    git clone --depth=1 --single-branch -b `getver.py patchelf` -c advice.detachedHead=false https://github.com/NixOS/patchelf.git && \
     cd patchelf && \
     ./bootstrap.sh && \
     ./configure && \
@@ -1507,7 +1507,7 @@ RUN \
 RUN \
     echo "`date` blosc" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py blosc` https://github.com/Blosc/c-blosc.git && \
+    git clone --depth=1 --single-branch -b v`getver.py blosc` -c advice.detachedHead=false https://github.com/Blosc/c-blosc.git && \
     cd c-blosc && \
     mkdir _build && \
     cd _build && \
@@ -1521,7 +1521,7 @@ RUN \
     echo "`date` libheif" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py libheif` https://github.com/strukturag/libheif.git && \
+    git clone --depth=1 --single-branch -b v`getver.py libheif` -c advice.detachedHead=false https://github.com/strukturag/libheif.git && \
     cd libheif && \
     ./autogen.sh && \
     ./configure --silent --prefix=/usr/local --disable-static --disable-examples --disable-go && \
@@ -1555,9 +1555,9 @@ RUN \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
     # Specific branch \
-    # git clone --depth=1 --single-branch -b v`getver.py gdal` https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
-    git clone --depth=1 --single-branch https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     # Common \
     cd gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
@@ -1685,7 +1685,7 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` harfbuzz" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b `getver.py harfbuzz` https://github.com/harfbuzz/harfbuzz.git && \
+    git clone --depth=1 --single-branch -b `getver.py harfbuzz` -c advice.detachedHead=false https://github.com/harfbuzz/harfbuzz.git && \
     cd harfbuzz && \
     meson --prefix=/usr/local --buildtype=release -Dtests=disabled _build && \
     cd _build && \
@@ -1700,10 +1700,10 @@ RUN \
     export JOBS=`nproc` && \
     export HEAVY_JOBS=`nproc` && \
     # Master \
-    git clone --depth=1 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
+    git clone --depth=1 --single-branch -c advice.detachedHead=false --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
     cd mapnik && \
     # Specific checkout \
-    # git clone --depth=1000 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
+    # git clone --depth=1000 --single-branch -c advice.detachedHead=false --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
     # cd mapnik && \
     # # Apr 28 2021 \
     # git checkout fb2e45c57981f8a3b071f37a0b27f211bf233081 && \
@@ -1758,7 +1758,7 @@ COPY mapnik_setup.py.patch .
 RUN \
     echo "`date` python-mapnik" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/python-mapnik.git && \
+    git clone --depth=1 --single-branch -c advice.detachedHead=false --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/python-mapnik.git && \
     cd python-mapnik && \
     find . -name '.git' -exec rm -rf {} \+ && \
     # Copy the mapnik input sources and fonts to the python path and add them \
@@ -1859,7 +1859,7 @@ RUN \
 RUN \
     echo "`date` openslide-python" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py openslide-python` https://github.com/openslide/openslide-python.git && \
+    git clone --depth=1 --single-branch -b v`getver.py openslide-python` -c advice.detachedHead=false https://github.com/openslide/openslide-python.git && \
     cd openslide-python && \
     python -c $'# \n\
 path = "setup.py" \n\
@@ -1990,20 +1990,14 @@ RUN \
     ldconfig && \
     echo "`date` pango" >> /build/log.txt
 
-# PINNED VERSION - 1.0.8 doesn't build with these commands
 RUN \
     echo "`date` libde265" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    # git clone --depth=1 --single-branch -b v`getver.py libde265` https://github.com/strukturag/libde265.git && \
-    git clone --depth=1 --single-branch -b v1.0.7 https://github.com/strukturag/libde265.git && \
+    git clone --depth=1 --single-branch -b v`getver.py libde265` -c advice.detachedHead=false https://github.com/strukturag/libde265.git && \
     cd libde265 && \
-    # ./autogen.sh && \
-    # ./configure --silent --prefix=/usr/local --disable-static && \
-    # cmake is faster than autogen and configure \
-    mkdir _build && \
-    cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED=ON -DBUILD_STATIC=OFF && \
+    ./autogen.sh && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -2056,7 +2050,7 @@ RUN \
 RUN \
     echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b `getver.py imagemagick` https://github.com/ImageMagick/ImageMagick.git && \
+    git clone --depth=1 --single-branch -b `getver.py imagemagick` -c advice.detachedHead=false https://github.com/ImageMagick/ImageMagick.git && \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so for manylinux2010 \
     # sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
@@ -2078,7 +2072,7 @@ RUN \
     rm -f vips.tar.gz && \
     cd vips && \
     # Use these lines for master \
-    # git clone --depth=1 https://github.com/libvips/libvips.git vips && \
+    # git clone --depth=1 https://github.com/libvips/libvips.git -c advice.detachedHead=false vips && \
     # cd vips && \
     # ./autogen.sh && \
     # Common \
@@ -2091,7 +2085,7 @@ RUN \
 RUN \
     echo "`date` pyvips" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py pyvips` https://github.com/libvips/pyvips.git && \
+    git clone --depth=1 --single-branch -b v`getver.py pyvips` -c advice.detachedHead=false https://github.com/libvips/pyvips.git && \
     cd pyvips && \
     python -c $'# \n\
 path = "pyvips/__init__.py" \n\
@@ -2153,7 +2147,7 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` pyproj4" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --single-branch -b `getver.py pyproj4` https://github.com/pyproj4/pyproj.git && \
+    git clone --single-branch -b `getver.py pyproj4` -c advice.detachedHead=false https://github.com/pyproj4/pyproj.git && \
     cd pyproj && \
     mkdir pyproj/bin && \
     find /build/proj.4/src/.libs/ -executable -type f ! -name '*.so.*' -exec cp {} pyproj/bin/. \; && \
@@ -2232,7 +2226,7 @@ RUN \
 RUN \
     echo "`date` pylibmc" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b `getver.py pylibmc` https://github.com/lericson/pylibmc.git && \
+    git clone --depth=1 --single-branch -b `getver.py pylibmc` -c advice.detachedHead=false https://github.com/lericson/pylibmc.git && \
     cd pylibmc && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
@@ -2248,7 +2242,7 @@ RUN \
 RUN \
     echo "`date` javabridge" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py python-javabridge` https://github.com/CellProfiler/python-javabridge.git && \
+    git clone --depth=1 --single-branch -b v`getver.py python-javabridge` -c advice.detachedHead=false https://github.com/CellProfiler/python-javabridge.git && \
     cd python-javabridge && \
     # Include java libraries \
     mkdir javabridge/jvm && \
