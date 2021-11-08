@@ -5,7 +5,7 @@ jobs:
     # In order to use mount commands with docker, we need to use the machine
     # executor rather than use setup_remote_docker
     machine:
-      image: ubuntu-2004:202010-01
+      image: ubuntu-2004:202107-02
     # docker:
     #   - image: circleci/python:3.7
     #   - image: docker:18.06.0-ce-git

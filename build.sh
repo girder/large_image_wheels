@@ -16,6 +16,6 @@ cp --preserve=timestamps wheels/*.whl gh-pages/.
 python3 make_index.py
 python3 make_index.py wheels
 ls -al wheels
-python3 check_versions.py > versions.txt
+# python3 check_versions.py > versions.txt
 git diff versions.txt | cat
 
