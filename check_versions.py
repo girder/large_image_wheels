@@ -406,9 +406,9 @@ Packages = {
         'git': 'https://github.com/OSGeo/proj.4.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
-    'proj4-sha': {
-        'gitsha': 'https://github.com/OSGeo/proj.4.git',
-    },
+    # 'proj4-sha': {
+    #     'gitsha': 'https://github.com/OSGeo/proj.4.git',
+    # },
     'proj-datumgrid': {
         'filelist': 'http://download.osgeo.org/proj/',
         're': r'proj-datumgrid-([0-9]+\.[0-9]+(|\.[0-9]+)).(tgz|zip)$'
@@ -435,9 +435,9 @@ Packages = {
         'git': 'https://github.com/pyproj4/pyproj.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
-    'pyproj4-sha': {
-        'gitsha': 'https://github.com/pyproj4/pyproj.git',
-    },
+    # 'pyproj4-sha': {
+    #     'gitsha': 'https://github.com/pyproj4/pyproj.git',
+    # },
     'pyproj4-pypi': {
         'pypi': 'pyproj',
     },
@@ -458,9 +458,9 @@ Packages = {
         'git': 'https://github.com/libvips/pyvips.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
-    'pyvips-sha': {
-        'gitsha': 'https://github.com/libvips/pyvips.git',
-    },
+    # 'pyvips-sha': {
+    #     'gitsha': 'https://github.com/libvips/pyvips.git',
+    # },
     'pyvips-pypi': {
         'pypi': 'pyvips',
     },
@@ -480,9 +480,9 @@ Packages = {
         'git': 'https://github.com/esnme/ultrajson.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
     },
-    'ultrajson-sha': {
-        'gitsha': 'https://github.com/esnme/ultrajson.git',
-    },
+    # 'ultrajson-sha': {
+    #     'gitsha': 'https://github.com/esnme/ultrajson.git',
+    # },
     'ultrajson-pypi': {
         'pypi': 'ujson',
     },

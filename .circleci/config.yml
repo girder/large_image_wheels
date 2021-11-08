@@ -16,7 +16,7 @@ jobs:
           command: sudo apt-get update && sudo apt-get install -y ca-certificates
       - run:
           name: Install dependencies
-          command: pip3 install packaging requests
+          command: pip3 install packaging requests python-dateutil
       - run:
           name: Check versions
           command: export TERM=xterm && python3 check_versions.py > versions.txt && git diff versions.txt | cat && git checkout versions.txt

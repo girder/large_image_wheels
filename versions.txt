@@ -16,7 +16,7 @@ fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
 gdal 3.4.0
 gdal-pypi 3.4.0
-gdal-sha ba4982ebaa733c7d41510e2d975e14285e678609
+gdal-sha 05e88abce145f63839b1fa67cce86eae222d1772
 gdk-pixbuf 2.42.6
 giflib 5.2.1
 glib 2.70.1
@@ -83,7 +83,7 @@ openslide-python-sha fc14e86577a6f1be3d6b1118d839f1e2d70a0197
 openslide-sha 2d5b9aa5d87ad8a6f9e6c47e5423c5e421a39e9c
 openssl-1.x 1_1_1l
 orc 0.4.32
-pango 1.49.2
+pango 1.49.3
 parallel-netcdf 1.12.2
 patchelf 0.13
 pixman 0.40.0
@@ -92,7 +92,6 @@ poppler 21.11.0
 postgresql 14.0
 proj-datumgrid 1.8
 proj4 8.2.0
-proj4-sha 01afa55e56148a668eabeb271a15352f920b3bca
 psutil 5.8.0
 pylibmc 1.6.1
 pylibtiff 0.4.4
@@ -100,20 +99,17 @@ pylibtiff-pypi 0.4.2
 pylibtiff-sha a9769ec5d9533b14915d65b3e776dd95564b8d11
 pyproj4 3.2.1
 pyproj4-pypi 3.2.1
-pyproj4-sha ec110b8025d0651b5042fb7164b7029ce5b53a8d
 python-javabridge 4.0.3
 python-javabridge-pypi 4.0.3
 python-mapnik a2c2a86eec954b42d7f00093da03807d0834b1b4
 python-mapnik-pypi 0.1
 pyvips 2.1.15
 pyvips-pypi 2.1.15
-pyvips-sha f7f724cd993a172b6848c88756e9bea810bcb631
 sqlite 3360000
 strip-nondeterminism 0.042
 superlu 5.3.0
 ultrajson 4.2.0
 ultrajson-pypi 4.2.0
-ultrajson-sha 6a75b7059a1fb74e0cbf1850a29a9fd8a2020c7a
 util-linux 2.37.2
 xerces-c 3.2.3
 xz 5.2.5
