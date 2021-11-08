@@ -12,6 +12,9 @@ jobs:
     steps:
       - checkout
       - run:
+          name: Update certificates
+          command: sudo apt-get update && sudo apt-get install -y ca-certificates
+      - run:
           name: Install dependencies
           command: pip3 install packaging requests
       - run:
