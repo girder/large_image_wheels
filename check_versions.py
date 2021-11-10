@@ -17,7 +17,7 @@ verbose = len([arg for arg in sys.argv[1:] if arg == '-v'])
 Packages = {
     'advancecomp': {
         'git': 'https://github.com/amadvance/advancecomp.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'armadillo': {
         'filelist': 'https://sourceforge.net/projects/arma/files/',
@@ -26,31 +26,35 @@ Packages = {
     },
     'blosc': {
         'git': 'https://github.com/Blosc/c-blosc.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'boost': {
         'git': 'https://github.com/boostorg/boost.git',
-        're': r'boost-([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'boost-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'cairo': {
         'git': 'https://gitlab.freedesktop.org/cairo/cairo.git',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'charls': {
         'git': 'https://github.com/team-charls/charls.git',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'charls-sha': {
         'gitsha': 'https://github.com/team-charls/charls.git',
-        'branch': '1.x-master'
+        'branch': '1.x-master',
     },
     'cmake': {
         'git': 'https://github.com/Kitware/CMake.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'curl': {
         'git': 'https://github.com/curl/curl.git',
-        're': r'curl-([0-9]+_[0-9]+(|_[0-9]+))$'
+        're': r'curl-([0-9]+_[0-9]+(|_[0-9]+))$',
+    },
+    'cyrus-sasl': {
+        'git': 'https://github.com/cyrusimap/cyrus-sasl.git',
+        're': r'cyrus-sasl-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'fitsio': {
         'filelist': 'https://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/',
@@ -60,32 +64,32 @@ Packages = {
     },
     'fontconfig': {
         'git': 'https://gitlab.freedesktop.org/fontconfig/fontconfig.git',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'fossil': {
         'json': 'https://www.fossil-scm.org/index.html/juvlist',
         'keys': lambda data: [entry['name'] for entry in data],
-        're': r'fossil-linux-x64-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+        're': r'fossil-linux-x64-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
     },
     'freetype': {
         'filelist': 'https://download.savannah.gnu.org/releases/freetype',
-        're': r'freetype-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+        're': r'freetype-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
     },
     'freexl': {
         'fossil': 'https://www.gaia-gis.it/fossil/freexl/timeline?n=10&r=trunk&ss=x',
         # 'filelist': 'https://www.gaia-gis.it/fossil/freexl/',
-        # 're': r'freexl-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+        # 're': r'freexl-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
     },
     'fyba': {
         'gitsha': 'https://github.com/kartverket/fyba.git',
     },
     'fyba-release': {
         'git': 'https://github.com/kartverket/fyba.git',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'gdal': {
         'git': 'https://github.com/OSGeo/gdal.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'gdal-pypi': {
         'pypi': 'GDAL',
@@ -96,32 +100,32 @@ Packages = {
     'gdk-pixbuf': {
         'json': 'https://download.gnome.org/sources/gdk-pixbuf/cache.json',
         'keys': lambda data: list(data[1]['gdk-pixbuf']),
-        're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$'
+        're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$',
     },
     'giflib': {
         'filelist': 'https://sourceforge.net/projects/giflib/files/',
-        're': r'giflib-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.gz\/download'
+        're': r'giflib-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.gz\/download',
     },
     'glib': {
         'json': 'https://download.gnome.org/sources/glib/cache.json',
         'keys': lambda data: list(data[1]['glib']),
-        're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$'
+        're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$',
     },
     'glymur': {
         'git': 'https://github.com/quintusdias/glymur.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+)(|-[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+)(|-[0-9]+))$',
     },
     'glymur-pypi': {
-        'pypi': 'glymur'
+        'pypi': 'glymur',
     },
     'gobject-introspection': {
         'json': 'https://download.gnome.org/sources/gobject-introspection/cache.json',
         'keys': lambda data: list(data[1]['gobject-introspection']),
-        're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$'
+        're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$',
     },
     'harfbuzz': {
         'git': 'https://github.com/harfbuzz/harfbuzz.git',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'hdf4': {
         'git': 'https://github.com/HDFGroup/hdf4.git',
@@ -137,35 +141,35 @@ Packages = {
     },
     'imagemagick': {
         'git': 'https://github.com/ImageMagick/ImageMagick.git',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+)(|-[0-9]+))$'
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+)(|-[0-9]+))$',
     },
     'jasper': {
         'git': 'https://github.com/mdadams/jasper.git',
-        're': r'version-([0-9]+\.[0-9]+(|\.[0-9]+)(|-[0-9]+))$'
+        're': r'version-([0-9]+\.[0-9]+(|\.[0-9]+)(|-[0-9]+))$',
     },
     'jbigkit': {
         'filelist': 'https://www.cl.cam.ac.uk/~mgk25/jbigkit/download/',
-        're': r'jbigkit-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+        're': r'jbigkit-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
     },
     'jpeg-xl': {
         'git': 'https://gitlab.com/wg1/jpeg-xl.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'krb5': {
         'filelist': 'https://kerberos.org/dist/',
-        're': r'krb5-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+        're': r'krb5-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
     },
     'lapack': {
         'git': 'https://github.com/Reference-LAPACK/lapack.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'lerc': {
         'git': 'https://github.com/Esri/lerc.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libbrotli': {
         'git': 'https://github.com/google/brotli.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libdap': {
         'git': 'https://github.com/OPENDAP/libdap4.git',
@@ -173,103 +177,103 @@ Packages = {
     },
     'libde265': {
         'git': 'https://github.com/strukturag/libde265.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libdeflate': {
         'git': 'https://github.com/ebiggers/libdeflate.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libexpat': {
         'git': 'https://github.com/libexpat/libexpat.git',
-        're': r'R_([0-9]+_[0-9]+(|_[0-9]+))$'
+        're': r'R_([0-9]+_[0-9]+(|_[0-9]+))$',
     },
     'libffi': {
         'git': 'https://github.com/libffi/libffi.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libgeos': {
         'git': 'https://github.com/libgeos/geos.git',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libgeotiff': {
         'git': 'https://github.com/OSGeo/libgeotiff.git',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libgsf': {
         'json': 'https://download.gnome.org/sources/libgsf/cache.json',
         'keys': lambda data: list(data[1]['libgsf']),
-        're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$'
+        're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$',
     },
     'libgta': {
         'git': 'https://github.com/marlam/gta-mirror.git',
-        're': r'libgta-([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'libgta-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libheif': {
         'git': 'https://github.com/strukturag/libheif.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libhwy': {
         'git': 'https://github.com/google/highway.git',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libiconv': {
         'filelist': 'https://ftp.gnu.org/pub/gnu/libiconv/',
-        're': r'libiconv-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+        're': r'libiconv-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
     },
     'libimagequant': {
         'git': 'https://github.com/ImageOptim/libimagequant.git',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$'
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$',
     },
     'libjpeg-turbo': {
         'git': 'https://github.com/libjpeg-turbo/libjpeg-turbo.git',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libmemcached': {
         'filelist': 'https://launchpad.net/libmemcached/+download',
-        're': r'libmemcached-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+        're': r'libmemcached-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
     },
     'libpng': {
         'filelist': 'https://sourceforge.net/projects/libpng/files/libpng16/',
-        're': r'libpng16\/([0-9]+\.[0-9]+(|\.[0-9]+))\/$'
+        're': r'libpng16\/([0-9]+\.[0-9]+(|\.[0-9]+))\/$',
     },
     'librasterlite2': {
         'fossil': 'https://www.gaia-gis.it/fossil/librasterlite2/timeline?n=10&r=trunk&ss=x',
         # 'filelist': 'https://www.gaia-gis.it/fossil/librasterlite2/',
-        # 're': r'librasterlite2-([0-9]+\.[0-9]+(|\.[0-9]+)(|-beta[0-9]+)).tar.(gz|xz)$'
+        # 're': r'librasterlite2-([0-9]+\.[0-9]+(|\.[0-9]+)(|-beta[0-9]+)).tar.(gz|xz)$',
     },
     'librsvg': {
         'json': 'https://download.gnome.org/sources/librsvg/cache.json',
         'keys': lambda data: list(data[1]['librsvg']),
-        're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$'
+        're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$',
     },
     'libspatialite': {
         'fossil': 'https://www.gaia-gis.it/fossil/libspatialite/timeline?n=10&r=trunk&ss=x',
         # 'filelist': 'https://www.gaia-gis.it/fossil/libspatialite/',
-        # 're': r'libspatialite-([0-9]+\.[0-9]+(|\.[0-9]+)(|[a-z])).tar.(gz|xz)$'
+        # 're': r'libspatialite-([0-9]+\.[0-9]+(|\.[0-9]+)(|[a-z])).tar.(gz|xz)$',
     },
     'libssh2': {
         'git': 'https://github.com/libssh2/libssh2.git',
-        're': r'libssh2-([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'libssh2-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libtiff': {
         'filelist': 'https://download.osgeo.org/libtiff/',
-        're': r'tiff-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+        're': r'tiff-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
     },
     'libvips': {
         'git': 'https://github.com/libvips/libvips.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libwebp': {
         'git': 'https://github.com/webmproject/libwebp.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libxcrypt': {
         'git': 'https://github.com/besser82/libxcrypt.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libxml2': {
         'filelist': 'http://xmlsoft.org/sources/',
-        're': r'libxml2-([0-9]+\.[0-9]+(|\.[0-9]+)(|[a-z])).tar.(gz|xz)$'
+        're': r'libxml2-([0-9]+\.[0-9]+(|\.[0-9]+)(|[a-z])).tar.(gz|xz)$',
     },
     'libzip': {
         'git': 'https://github.com/nih-at/libzip.git',
@@ -277,77 +281,77 @@ Packages = {
     },
     'lz4': {
         'git': 'https://github.com/lz4/lz4.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'manylinux2014': {
         # See also https://github.com/pypa/manylinux
         'json': 'https://quay.io/api/v1/repository/pypa/manylinux2014_x86_64?includeTags=true',
         'keys': lambda data: [data['tags']['latest']['manifest_digest']],
-        're': r':([0-9a-fA-F]+)$'
+        're': r':([0-9a-fA-F]+)$',
     },
     'mapnik': {
         'gitsha': 'https://github.com/mapnik/mapnik.git',
     },
     'mapnik-release': {
         'git': 'https://github.com/mapnik/mapnik.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'meson': {
         'pypi': 'meson',
     },
     'minizip': {
         'git': 'https://github.com/nmoinvaz/minizip.git',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     # MrSID's listing of versions is behind an agreement page, which prevents
     # easily checking the version.
     # 'mrsid': {
     #     'filelist': 'https://www.extensis.com/support/developers',
-    #     're': r'MrSID_DSDK-([0-9]+\.[0-9]+(|\.[0-9]+(|\.[0-9]+)))-rhel6.x86-64.gcc531.tar.gz$'
+    #     're': r'MrSID_DSDK-([0-9]+\.[0-9]+(|\.[0-9]+(|\.[0-9]+)))-rhel6.x86-64.gcc531.tar.gz$',
     # },
     'mysql': {
         'filelist': 'https://dev.mysql.com/downloads/mysql/?tpl=version&os=src',
-        're': r'mysql-boost-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)(&|$)'
+        're': r'mysql-boost-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)(&|$)',
     },
     'netcdf': {
         'git': 'https://github.com/Unidata/netcdf-c.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'nifti': {
         'filelist': 'https://sourceforge.net/projects/niftilib/files/nifticlib/',
-        're': r'nifticlib_([0-9]+_[0-9]+(|_[0-9]+))\/$'
+        're': r'nifticlib_([0-9]+_[0-9]+(|_[0-9]+))\/$',
     },
     'ogdi': {
         'git': 'https://github.com/libogdi/ogdi.git',
-        're': r'ogdi_([0-9]+_[0-9]+(|_[0-9]+))$'
+        're': r'ogdi_([0-9]+_[0-9]+(|_[0-9]+))$',
     },
     'openblas': {
         'git': 'https://github.com/xianyi/OpenBLAS.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'openexr': {
         'git': 'https://github.com/AcademySoftwareFoundation/openexr.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'openjpeg': {
         'git': 'https://github.com/uclouvain/openjpeg.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'openldap': {
         'git': 'https://git.openldap.org/openldap/openldap.git',
-        're': r'OPENLDAP_REL_ENG_([0-9]+_[0-9]+(|_[0-9]+))$'
+        're': r'OPENLDAP_REL_ENG_([0-9]+_[0-9]+(|_[0-9]+))$',
     },
     'openmpi': {
         'filelist': 'https://www.open-mpi.org/software/ompi/v4.1/',
-        're': r'openmpi-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+        're': r'openmpi-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
     },
     'openslide': {
         'git': 'https://github.com/openslide/openslide.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'openslide-python': {
         'git': 'https://github.com/openslide/openslide-python.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'openslide-python-sha': {
         'gitsha': 'https://github.com/openslide/openslide-python.git',
@@ -364,12 +368,12 @@ Packages = {
     },
     'orc': {
         'git': 'https://github.com/GStreamer/orc.git',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'pango': {
         'json': 'https://download.gnome.org/sources/pango/cache.json',
         'keys': lambda data: list(data[1]['pango']),
-        're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$'
+        're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$',
     },
     'patchelf': {
         'git': 'https://github.com/NixOS/patchelf.git',
@@ -380,23 +384,23 @@ Packages = {
     # 'pcre': {
     #     # 'filelist': 'https://ftp.pcre.org/pub/pcre/',
     #     'filelist': 'https://sourceforge.net/projects/pcre/files/pcre/',
-    #     're': r'pcre-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+    #     're': r'pcre-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
     # },
     'pixman': {
         'git': 'https://gitlab.freedesktop.org/pixman/pixman.git',
-        're': r'pixman-([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'pixman-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'pkg-config': {
         'git': 'https://gitlab.freedesktop.org/pkg-config/pkg-config.git',
-        're': r'pkg-config-([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'pkg-config-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'parallel-netcdf': {
         'git': 'https://github.com/Parallel-NetCDF/PnetCDF.git',
-        're': r'checkpoint\.([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'checkpoint\.([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'poppler': {
         'git': 'https://gitlab.freedesktop.org/poppler/poppler.git',
-        're': r'poppler-([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'poppler-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'postgresql': {
         'filelist': 'https://ftp.postgresql.org/pub/source/',
@@ -411,7 +415,7 @@ Packages = {
     # },
     'proj-datumgrid': {
         'filelist': 'http://download.osgeo.org/proj/',
-        're': r'proj-datumgrid-([0-9]+\.[0-9]+(|\.[0-9]+)).(tgz|zip)$'
+        're': r'proj-datumgrid-([0-9]+\.[0-9]+(|\.[0-9]+)).(tgz|zip)$',
     },
     'psutil': {
         'git': 'https://github.com/giampaolo/psutil.git',
@@ -456,7 +460,7 @@ Packages = {
     },
     'pyvips': {
         'git': 'https://github.com/libvips/pyvips.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     # 'pyvips-sha': {
     #     'gitsha': 'https://github.com/libvips/pyvips.git',
@@ -474,11 +478,11 @@ Packages = {
     },
     'superlu': {
         'git': 'https://github.com/xiaoyeli/superlu.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'ultrajson': {
         'git': 'https://github.com/esnme/ultrajson.git',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     # 'ultrajson-sha': {
     #     'gitsha': 'https://github.com/esnme/ultrajson.git',
@@ -488,23 +492,23 @@ Packages = {
     },
     'util-linux': {
         'git': 'https://github.com/karelzak/util-linux.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'xerces-c': {
         'filelist': 'http://xerces.apache.org/xerces-c/download.cgi',
-        're': r'xerces-c-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+        're': r'xerces-c-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
     },
     'xz': {
         'filelist': 'https://sourceforge.net/projects/lzmautils/files/',
-        're': r'xz-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.gz\/download'
+        're': r'xz-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.gz\/download',
     },
     'zlib': {
         'filelist': 'https://zlib.net/',
-        're': r'zlib-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$'
+        're': r'zlib-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
     },
     'zstd': {
         'git': 'https://github.com/facebook/zstd.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$'
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
 }
 

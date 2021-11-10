@@ -193,6 +193,20 @@ cd /build && \
     echo "`date` libssh2" >> /build/log.txt && \
 cd /build && \
 # \
+# RUN \
+    echo "`date` cyrus-sasl" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b cyrus-sasl-2.1.27 -c advice.detachedHead=false https://github.com/cyrusimap/cyrus-sasl.git && \
+    cd cyrus-sasl && \
+    ./autogen.sh && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` cyrus-sasl" >> /build/log.txt && \
+cd /build && \
+# \
 # # Make our own curl so we don't depend on system libraries. \
 # RUN \
     echo "`date` curl" >> /build/log.txt && \
@@ -2215,7 +2229,7 @@ RUN \
     tar -zxf libmemcached.tar.gz -C libmemcached --strip-components 1 && \
     rm -f libmemcached.tar.gz && \
     cd libmemcached && \
-    CXXFLAGS='-fpermissive' ./configure --silent --prefix=/usr/local --disable-static && \
+    CXXFLAGS='-fpermissive' ./configure --prefix=/usr/local --disable-static && \
     # For some reason, this doesn't run jobs in parallel, with or without -j \
     # make --silent -j ${JOBS} && \
     # make --silent -j ${JOBS} install && \

@@ -6,7 +6,8 @@ cairo 1.17.4
 charls 2.2.0
 charls-sha 25160a42fb62e71e4b0ce081f5cb3f8bb73938b5
 cmake 3.21.4
-curl 7_79_1
+curl 7_80_0
+cyrus-sasl 2.1.27
 fitsio 3450
 fontconfig 2.13.94
 fossil 2.17
@@ -16,7 +17,7 @@ fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
 gdal 3.4.0
 gdal-pypi 3.4.0
-gdal-sha 05e88abce145f63839b1fa67cce86eae222d1772
+gdal-sha 02b57751977cfbde7c87e069e441ebca3b8b5cad
 gdk-pixbuf 2.42.6
 giflib 5.2.1
 glib 2.70.1
@@ -45,7 +46,7 @@ libgeotiff 1.7.0
 libgsf 1.14.47
 libgta 1.2.1
 libheif 1.12.0
-libhwy 0.14.2
+libhwy 0.15.0
 libiconv 1.16
 libimagequant 2.16.0
 libjpeg-turbo 2.1.1
@@ -89,7 +90,7 @@ patchelf 0.13
 pixman 0.40.0
 pkg-config 0.29.2
 poppler 21.11.0
-postgresql 14.0
+postgresql 14.1
 proj-datumgrid 1.8
 proj4 8.2.0
 psutil 5.8.0
