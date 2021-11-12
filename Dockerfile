@@ -193,20 +193,6 @@ cd /build && \
     echo "`date` libssh2" >> /build/log.txt && \
 cd /build && \
 # \
-# RUN \
-    echo "`date` cyrus-sasl" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b cyrus-sasl-2.1.27 -c advice.detachedHead=false https://github.com/cyrusimap/cyrus-sasl.git && \
-    cd cyrus-sasl && \
-    ./autogen.sh && \
-    ./configure --silent --prefix=/usr/local --disable-static && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` cyrus-sasl" >> /build/log.txt && \
-cd /build && \
-# \
 # # Make our own curl so we don't depend on system libraries. \
 # RUN \
     echo "`date` curl" >> /build/log.txt && \
@@ -2222,13 +2208,29 @@ open(path, "w").write(data)' && \
     echo "`date` pyproj4" >> /build/log.txt
 
 RUN \
+    echo "`date` cyrus-sasl" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b cyrus-sasl-`getver.py cyrus-sasl` -c advice.detachedHead=false https://github.com/cyrusimap/cyrus-sasl.git && \
+    cd cyrus-sasl && \
+    ./autogen.sh && \
+    ./configure --prefix=/usr/local --disable-static --disable-sample --enable-obsolete_cram_attr --enable-obsolete_digest_attr --enable-alwaystrue --enable-checkapop --enable-cram --enable-digest --enable-scram --enable-otp --enable-srp --enable-srp-setpass --enable-krb4 --enable-auth-sasldb --enable-httpform --enable-plain --enable-anon --enable-login --enable-ntlm --enable-passdss --enable-sql --enable-ldapdb --with-ldap && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` cyrus-sasl" >> /build/log.txt
+
+RUN \
     echo "`date` libmemcached" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://launchpad.net/libmemcached/`getver.py libmemcached 2`/`getver.py libmemcached`/+download/libmemcached-`getver.py libmemcached`.tar.gz -L -o libmemcached.tar.gz && \
-    mkdir libmemcached && \
-    tar -zxf libmemcached.tar.gz -C libmemcached --strip-components 1 && \
-    rm -f libmemcached.tar.gz && \
+    # curl --retry 5 --silent https://launchpad.net/libmemcached/`getver.py libmemcached 2`/`getver.py libmemcached`/+download/libmemcached-`getver.py libmemcached`.tar.gz -L -o libmemcached.tar.gz && \
+    # mkdir libmemcached && \
+    # tar -zxf libmemcached.tar.gz -C libmemcached --strip-components 1 && \
+    # rm -f libmemcached.tar.gz && \
+    git clone --single-branch -b `getver.py libmemcached` -c advice.detachedHead=false https://github.com/memcachier/libmemcached.git && \
     cd libmemcached && \
+    autoreconf -ifv && \
+    sed -i 's/install-man install/install/g' Makefile.in && \
     CXXFLAGS='-fpermissive' ./configure --prefix=/usr/local --disable-static && \
     # For some reason, this doesn't run jobs in parallel, with or without -j \
     # make --silent -j ${JOBS} && \
@@ -2246,6 +2248,22 @@ RUN \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
+    mkdir src/pylibmc/sasl2 && \
+    find /usr/local/lib/sasl2 -name '*.so' -exec cp {} src/pylibmc/sasl2/. \; && \
+    sed -i 's/"memcached"/"memcached","sasl2"/g' setup.py && \
+    sed -i 's/packages=/package_data={"pylibmc":["sasl2\/*"]},include_package_data=True,packages=/g' setup.py && \
+    python -c $'# \n\
+path = "src/pylibmc/__init__.py" \n\
+s = open(path).read().replace( \n\
+    "import _pylibmc", \n\
+""" \n\
+import os \n\
+_localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
+os.environ.setdefault("SASL_PATH", os.path.join(_localpath, "sasl2")) \n\
+\n\
+import _pylibmc \n\
+""") \n\
+open(path, "w").write(s)' && \
     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     find /io/wheelhouse/ -name 'pylibmc*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'pylibmc*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \

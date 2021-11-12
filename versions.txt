@@ -17,7 +17,7 @@ fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
 gdal 3.4.0
 gdal-pypi 3.4.0
-gdal-sha 02b57751977cfbde7c87e069e441ebca3b8b5cad
+gdal-sha c84cc555392061da800cac36d718fef7f311119d
 gdk-pixbuf 2.42.6
 giflib 5.2.1
 glib 2.70.1
@@ -28,7 +28,7 @@ harfbuzz 3.1.1
 hdf4 4_2_15
 hdf5 1_12_1
 icu4c 70-1
-imagemagick 7.1.0-13
+imagemagick 7.1.0-14
 jasper 2.0.33
 jbigkit 2.1
 jpeg-xl 0.6.1
@@ -48,12 +48,12 @@ libgta 1.2.1
 libheif 1.12.0
 libhwy 0.15.0
 libiconv 1.16
-libimagequant 2.16.0
+libimagequant 2.17.0
 libjpeg-turbo 2.1.1
-libmemcached 1.0.18
+libmemcached 1.0.19
 libpng 1.6.37
 librasterlite2 b8b8a8b099
-librsvg 2.52.3
+librsvg 2.52.4
 libspatialite e4e91a281a
 libssh2 1.10.0
 libtiff 4.3.0
@@ -63,8 +63,8 @@ libxcrypt 4.4.26
 libxml2 2.9.12
 libzip 1.8.0
 lz4 1.9.3
-manylinux2014 c21f6e658b49fb574bfe2071f8b82faab1f77da40cf92622b402999a3f98069e
-mapnik dc5f497495961185997bc490109239a0c3e8d6a9
+manylinux2014 eb179059c56a1593e0d5f6e75d9d28c31aaac881c425fd191a0a1e9f5534c4af
+mapnik 14f913d6ab3b0903dd36a1cb2d22f7d5493b8bb8
 mapnik-release 3.1.0
 meson 0.60.1
 minizip 3.0.3

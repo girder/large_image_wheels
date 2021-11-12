@@ -229,8 +229,10 @@ Packages = {
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libmemcached': {
-        'filelist': 'https://launchpad.net/libmemcached/+download',
-        're': r'libmemcached-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
+        # 'filelist': 'https://launchpad.net/libmemcached/+download',
+        # 're': r'libmemcached-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
+        'git': 'https://github.com/memcachier/libmemcached.git',
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libpng': {
         'filelist': 'https://sourceforge.net/projects/libpng/files/libpng16/',

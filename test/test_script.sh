@@ -41,6 +41,8 @@ echo 'Test basic import of pyvips'
 python -c 'import pyvips'
 echo 'Test basic import of javabridge'
 python -c 'import javabridge'
+echo 'Test basic import of pylibmc'
+python -c 'import pylibmc'
 echo 'Test basic imports of all wheels'
 if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 7)))'; then
 python -c 'import libtiff, openslide, pyproj, pyvips, osgeo, mapnik, glymur, javabridge'
