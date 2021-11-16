@@ -23,7 +23,7 @@ echo 'Test installing pyvips and other dependencies from wheels via large_image'
 # python-javabridge.  When it is updated, reenable its installation further in
 # this script.
 ## pip install python-bioformats -f ${1:-/wheels} -f https://girder.github.io/large_image_wheels
-pip install pyvips large_image[sources,memcached] -f ${1:-/wheels}
+pip install pyvips large_image[all] -f ${1:-/wheels}
 # Install the most recent python-javabridge so we can test it.
 ## pip install --upgrade python-javabridge -f ${1:-/wheels}
 
@@ -296,6 +296,18 @@ java -version
 # Disable this line if we need a specific version
 pip install python-bioformats
 python -c 'import javabridge, bioformats;javabridge.start_vm(class_path=bioformats.JARS, run_headless=True);javabridge.kill_vm()'
+curl --retry 5 -L -o sample.czi https://data.kitware.com/api/v1/file/5f048d599014a6d84e005dfc/download
+echo 'Use large_image to read a czi file'
+python <<EOF
+import large_image, pprint
+ts = large_image.getTileSource('sample.czi')
+pprint.pprint(ts.getMetadata())
+ti = ts.getSingleTile(tile_size=dict(width=1000, height=1000),
+                      scale=dict(magnification=20), tile_position=100)
+pprint.pprint(ti)
+print(ti['tile'].size)
+print(ti['tile'][:4,:4])
+EOF
 
 echo 'test with Django gis'
 pip install django

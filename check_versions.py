@@ -97,6 +97,14 @@ Packages = {
     'gdal-sha': {
         'gitsha': 'https://github.com/OSGeo/gdal.git',
     },
+    'gdal-source': {
+        'text': 'https://raw.githubusercontent.com/OSGeo/gdal/master/gcore/gdal_version.h.in',
+        'keys': lambda data: [
+            re.search(r'define GDAL_VERSION_MAJOR[ ]+([0-9]+)', data)[1] + '.' +
+            re.search(r'define GDAL_VERSION_MINOR[ ]+([0-9]+)', data)[1] + '.' +
+            re.search(r'define GDAL_VERSION_REV[ ]+([0-9]+)', data)[1]
+        ],
+    },
     'gdk-pixbuf': {
         'json': 'https://download.gnome.org/sources/gdk-pixbuf/cache.json',
         'keys': lambda data: list(data[1]['gdk-pixbuf']),
@@ -550,6 +558,14 @@ for pkg in sorted(Packages):  # noqa
                 entry.split('href="', 1)[-1].split('"')[0] for entry in data.split('<a ')[1:]]
             if verbose >= 1:
                 print(pkg, 'filelist entries', entries)
+        elif 'fossil' in pkginfo:
+            data = session.get(pkginfo['fossil']).text
+            if verbose >= 2:
+                print(pkg, 'fossil data', data)
+            entries = [entry.split(']<')[0]
+                       for entry in data.split('<span class="timelineHistDsp">[')[1:]]
+            if verbose >= 1:
+                print(pkg, 'fossil entries', entries)
         elif 'git' in pkginfo:
             cmd = ['git', 'ls-remote', '--refs', '--tags', pkginfo['git']]
             entries = [entry for entry in
@@ -584,14 +600,6 @@ for pkg in sorted(Packages):  # noqa
             entries = pkginfo['keys'](data)
             if verbose >= 1:
                 print(pkg, 'text entries', entries)
-        elif 'fossil' in pkginfo:
-            data = session.get(pkginfo['fossil']).text
-            if verbose >= 2:
-                print(pkg, 'fossil data', data)
-            entries = [entry.split(']<')[0]
-                       for entry in data.split('<span class="timelineHistDsp">[')[1:]]
-            if verbose >= 1:
-                print(pkg, 'fossil entries', entries)
         if 're' in pkginfo:
             entries = [entry for entry in entries if re.search(pkginfo['re'], entry)]
             if verbose >= 2:

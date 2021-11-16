@@ -2248,6 +2248,8 @@ RUN \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
+    # Copy sasl2 plugins to a local directory so they can be deployed with \
+    # the wheel \
     mkdir src/pylibmc/sasl2 && \
     find /usr/local/lib/sasl2 -name '*.so' -exec cp {} src/pylibmc/sasl2/. \; && \
     sed -i 's/"memcached"/"memcached","sasl2"/g' setup.py && \
@@ -2273,7 +2275,7 @@ open(path, "w").write(s)' && \
     echo "`date` pylibmc" >> /build/log.txt
 
 RUN \
-    echo "`date` javabridge" >> /build/log.txt && \
+    echo "`date` python-javabridge" >> /build/log.txt && \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b v`getver.py python-javabridge` -c advice.detachedHead=false https://github.com/CellProfiler/python-javabridge.git && \
     cd python-javabridge && \
@@ -2284,7 +2286,7 @@ RUN \
     # they'll be restored later && \
     find javabridge/jvm -name '*.jar' -exec bash -c "echo placeholder > {}" \; && \
     # libsaproc.so is only used for debugging \
-    rm javabridge/jvm/jre/lib/amd64/libsaproc.so && \
+    rm -f javabridge/jvm/jre/lib/amd64/libsaproc.so && \
     # allow installing binaries \
     python -c $'# \n\
 path = "javabridge/jvm/bin/__init__.py" \n\
@@ -2340,9 +2342,7 @@ open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    # Only build for Python >=3.5 \
-    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse' && \
-    rm -rf .eggs build && \
+    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf .eggs build' && \
     find /io/wheelhouse/ -name 'python_javabridge*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     # auditwheel modifies the java libraries, but some of those have \
     # hard-coded relative paths, which doesn't work.  Replace them with the \
@@ -2365,9 +2365,9 @@ for line in open(record_path): \n\
 open(record_path, "w").write("".join(newrecord)) \n\
 """ \n\
 open(path, "w").write(s)' && \
-    find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} bash -c 'mkdir /tmp/ptmp${0}; pushd /tmp/ptmp${0}; unzip ${0}; cp -r -L /usr/lib/jvm/java/* javabridge/jvm/.; /opt/python/cp37-cp37m/bin/python /build/fix_record.py; zip -r ${0} *; popd; rm -rf /tmp/ptmp${0}' && \
+    find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} bash -c 'mkdir /tmp/ptmp$(basename ${0}) && pushd /tmp/ptmp$(basename ${0}) && unzip ${0} && cp -f -r -L /usr/lib/jvm/java/* javabridge/jvm/. && python /build/fix_record.py && zip -r ${0} * && popd && rm -rf /tmp/ptmp$(basename ${0})' && \
     find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
     rm -rf ~/.cache && \
-    echo "`date` javabridge" >> /build/log.txt
+    echo "`date` python-javabridge" >> /build/log.txt

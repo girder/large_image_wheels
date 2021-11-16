@@ -17,7 +17,8 @@ fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
 gdal 3.4.0
 gdal-pypi 3.4.0
-gdal-sha c84cc555392061da800cac36d718fef7f311119d
+gdal-sha 5acdcc34cdb04f47a033c3aa2eb3d6a894b882fb
+gdal-source 3.4.0
 gdk-pixbuf 2.42.6
 giflib 5.2.1
 glib 2.70.1
