@@ -538,7 +538,7 @@ cd /build && \
     find . -name '.git' -exec rm -rf {} \+ && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DCMAKE_CXX_FLAGS='-fpermissive' -DJPEGXL_ENABLE_EXAMPLES=OFF -DJPEGXL_ENABLE_MANPAGES=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF  && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DCMAKE_CXX_FLAGS='-fpermissive' -DJPEGXL_ENABLE_EXAMPLES=OFF -DJPEGXL_ENABLE_MANPAGES=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1495,16 +1495,6 @@ RUN \
     echo "`date` mrsid" >> /build/log.txt
 
 RUN \
-    echo "`date` patchelf" >> /build/log.txt && \
-    git clone --depth=1 --single-branch -b `getver.py patchelf` -c advice.detachedHead=false https://github.com/NixOS/patchelf.git && \
-    cd patchelf && \
-    ./bootstrap.sh && \
-    ./configure && \
-    make && \
-    make install && \
-    echo "`date` patchelf" >> /build/log.txt
-
-RUN \
     echo "`date` blosc" >> /build/log.txt && \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b v`getver.py blosc` -c advice.detachedHead=false https://github.com/Blosc/c-blosc.git && \
@@ -1695,7 +1685,7 @@ RUN \
     ldconfig && \
     echo "`date` harfbuzz" >> /build/log.txt
 
-# PINNED VERSION  - use master since last version is stale
+# PINNED VERSION - use master since last version is stale
 RUN \
     echo "`date` mapnik" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1938,7 +1928,7 @@ RUN \
     tar -zxf orc.tar.gz -C orc --strip-components 1 && \
     rm -f orc.tar.gz && \
     cd orc && \
-    meson --prefix=/usr/local --buildtype=release -Dgtk_doc=disabled -Dtests=disabled -Dexamples=disabled -Dbenchmarks=disabled  _build && \
+    meson --prefix=/usr/local --buildtype=release -Dgtk_doc=disabled -Dtests=disabled -Dexamples=disabled -Dbenchmarks=disabled _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -2197,7 +2187,7 @@ data = data.replace("""version=get_version(),""", \n\
     entry_points={\'console_scripts\': [\'%s=pyproj.bin:program\' % name for name in os.listdir(\'pyproj/bin\') if not name.endswith(\'.py\')]},""") \n\
 open(path, "w").write(data)' && \
     # now rebuild anything that can work with master \
-    find /opt/python -mindepth 1 -not -name '*cp36*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    find /opt/python -mindepth 1 -not -name '*cp36*' -a -not -name '*cp37*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     # Make sure all binaries have the execute flag \
     find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 bash -c 'mkdir /tmp/ptmp; pushd /tmp/ptmp; unzip ${0}; chmod a+x pyproj/bin/*; chmod a-x pyproj/bin/*.py; zip -r ${0} *; popd; rm -rf /tmp/ptmp' && \
     find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \

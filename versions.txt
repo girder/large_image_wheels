@@ -17,7 +17,7 @@ fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
 gdal 3.4.0
 gdal-pypi 3.4.0
-gdal-sha 5acdcc34cdb04f47a033c3aa2eb3d6a894b882fb
+gdal-sha 380edbda33302f32dadb46ce46489e4d1cd140db
 gdal-source 3.4.0
 gdk-pixbuf 2.42.6
 giflib 5.2.1
@@ -87,7 +87,6 @@ openssl-1.x 1_1_1l
 orc 0.4.32
 pango 1.49.3
 parallel-netcdf 1.12.2
-patchelf 0.13
 pixman 0.40.0
 pkg-config 0.29.2
 poppler 21.11.0
@@ -99,8 +98,8 @@ pylibmc 1.6.1
 pylibtiff 0.4.4
 pylibtiff-pypi 0.4.2
 pylibtiff-sha a9769ec5d9533b14915d65b3e776dd95564b8d11
-pyproj4 3.2.1
-pyproj4-pypi 3.2.1
+pyproj4 3.3.0
+pyproj4-pypi 3.3.0
 python-javabridge 4.0.3
 python-javabridge-pypi 4.0.3
 python-mapnik a2c2a86eec954b42d7f00093da03807d0834b1b4

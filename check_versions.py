@@ -385,10 +385,6 @@ Packages = {
         'keys': lambda data: list(data[1]['pango']),
         're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$',
     },
-    'patchelf': {
-        'git': 'https://github.com/NixOS/patchelf.git',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
-    },
     # pcre has moved; it has also not changed in decades -- we may want to
     # switch to pcre2 when glib does.
     # 'pcre': {

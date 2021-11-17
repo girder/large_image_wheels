@@ -31,8 +31,6 @@ echo 'Test basic import of libtiff'
 python -c 'import libtiff'
 echo 'Test basic import of openslide'
 python -c 'import openslide'
-echo 'Test basic import of pyproj'
-python -c 'import pyproj'
 echo 'Test basic import of gdal'
 python -c 'from osgeo import gdal'
 echo 'Test basic import of mapnik'
@@ -44,14 +42,22 @@ python -c 'import javabridge'
 echo 'Test basic import of pylibmc'
 python -c 'import pylibmc'
 echo 'Test basic imports of all wheels'
-if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 7)))'; then
-python -c 'import libtiff, openslide, pyproj, pyvips, osgeo, mapnik, glymur, javabridge'
+if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 8)))'; then
+  echo 'Test basic import of pyproj'
+  python -c 'import pyproj'
+  echo 'Test basic import of glymur'
+  python -c 'import glymur'
+  python -c 'import libtiff, openslide, pyproj, pyvips, osgeo, mapnik, glymur, javabridge'
+elif python -c 'import sys;sys.exit(not (sys.version_info >= (3, 7)))'; then
+  echo 'Test basic import of glymur'
+  python -c 'import glymur'
+  python -c 'import libtiff, openslide, pyproj, pyvips, osgeo, mapnik, glymur, javabridge'
 else
-python -c 'import libtiff, openslide, pyvips, osgeo, mapnik, javabridge'
+  python -c 'import libtiff, openslide, pyvips, osgeo, mapnik, javabridge'
 fi
 echo 'Time import of gdal'
 python -c 'import sys,time;s = time.time();from osgeo import gdal;sys.exit(0 if time.time()-s < 1 else ("Slow GDAL import %5.3fs" % (time.time() - s)))'
-if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 7)))'; then
+if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 8)))'; then
 echo 'Test import of pyproj after mapnik'
 python <<EOF
 import mapnik
@@ -217,7 +223,7 @@ pprint.pprint({
 pprint.pprint(d.GetMetadata()['NITF_BLOCKA_FRFC_LOC_01'])
 EOF
 
-if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 7)))'; then
+if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 8)))'; then
 echo 'Test import order with shapely, mapnik, and pyproj'
 if pip install shapely; then (
 python -c 'import shapely;import mapnik;import pyproj;print(pyproj.Proj("epsg:4326"))'
@@ -268,7 +274,7 @@ if (( $(gdal-config --formats | wc -w) < 104 )); then false; fi
 mapnik-render --version 2>&1 | grep version
 `python -c 'import os,sys,pyvips;sys.stdout.write(os.path.dirname(pyvips.__file__))'`/bin/vips --version
 vips --version
-if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 7)))'; then
+if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 8)))'; then
 PROJ_LIB=`python -c 'import os,sys,pyproj;sys.stdout.write(os.path.dirname(pyproj.__file__))'`/proj `python -c 'import os,sys,pyproj;sys.stdout.write(os.path.dirname(pyproj.__file__))'`/bin/projinfo EPSG:4326
 projinfo EPSG:4326
 projinfo ESRI:102654
