@@ -57,6 +57,7 @@ else
 fi
 echo 'Time import of gdal'
 python -c 'import sys,time;s = time.time();from osgeo import gdal;sys.exit(0 if time.time()-s < 1 else ("Slow GDAL import %5.3fs" % (time.time() - s)))'
+
 if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 8)))'; then
 echo 'Test import of pyproj after mapnik'
 python <<EOF
@@ -65,6 +66,7 @@ import pyproj
 print(pyproj.Proj('+init=epsg:4326 +type=crs'))
 EOF
 fi
+
 echo 'Download an openslide file'
 curl --retry 5 -L -o sample.svs https://data.kitware.com/api/v1/file/5be43d9c8d777f217991e1c2/download
 echo 'Use large_image to read an openslide file'
@@ -239,7 +241,7 @@ fi
 # imported before gdal, gdal fails with the error:
 #   ImportError: /usr/lib/x86_64-linux-gnu/libstdc++.so.6: cannot allocate
 #   memory in static TLS block
-if false; then
+if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 8)))'; then
 echo 'Test import order with pytorch, gdal, and pyproj'
 if pip install torch; then (
 python -c 'import osgeo.gdal;import torch;import pyproj;print(pyproj.Proj("epsg:4326"))'
@@ -269,7 +271,7 @@ gdal-config --formats
 # wc yielded "1 104 605" on 2021-11-12
 gdal-config --formats | wc
 # Fail if we end up with fewer formats in GDAL than we once had.
-if (( $(gdal-config --formats | wc -w) < 104 )); then false; fi
+if (( $(gdal-config --formats | wc -w) < 103 )); then false; fi
 `python -c 'import os,sys,mapnik;sys.stdout.write(os.path.dirname(mapnik.__file__))'`/bin/mapnik-render --version 2>&1 | grep version
 mapnik-render --version 2>&1 | grep version
 `python -c 'import os,sys,pyvips;sys.stdout.write(os.path.dirname(pyvips.__file__))'`/bin/vips --version

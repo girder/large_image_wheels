@@ -3,6 +3,6 @@
 set -e
 
 python3 check_versions.py > versions.txt
-git diff versions.txt | cat
+git diff versions.txt | cat || true
 . build.sh
 

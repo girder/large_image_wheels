@@ -5,7 +5,7 @@ boost 1.77.0
 cairo 1.17.4
 charls 2.2.0
 charls-sha 25160a42fb62e71e4b0ce081f5cb3f8bb73938b5
-cmake 3.21.4
+cmake 3.22.0
 curl 7_80_0
 cyrus-sasl 2.1.27
 fitsio 3450

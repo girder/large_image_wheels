@@ -97,9 +97,13 @@ RUN \
     virtualenv -p python3.8 /venv && \
     echo "`date` virtualenv" >> /build/log.txt
 
-COPY getver.py /usr/local/bin/.
+COPY getver.py fix_record.py /usr/local/bin/
 
-COPY versions.txt .
+# The openslide-vendor-mirax.c.patch allows girder's file layout to work with
+# mirax files and does no harm otherwise.
+# The openslide-init.patch allows building vips from GitHub source
+# (see https://github.com/libvips/libvips/issues/874)
+COPY versions.txt mapnik_proj_transform.cpp.patch mapnik_setup.py.patch openslide-init.patch openslide-vendor-mirax.c.patch ./
 
 # Newer version of pkg-config than available in manylinux2014
 RUN \
@@ -1273,7 +1277,9 @@ RUN \
     touch storage/ndb/CMakeLists.txt && \
     mkdir _build && \
     cd _build && \
-    CXXFLAGS="-Wno-deprecated-declarations" cmake -DBUILD_CONFIG=mysql_release -DBUILD_SHARED_LIBS=ON -DWITH_BOOST=../boost/boost_1_73_0 -DWITH_ZLIB=system -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DCMAKE_BUILD_TYPE=Release -DWITHOUT_SERVER=ON -DREPRODUCIBLE_BUILD=ON -DINSTALL_MYSQLTESTDIR="" .. && \
+    CFLAGS="$CFLAGS -ftls-model=global-dynamic" \
+    CXXFLAGS="$CXXFLAGS -Wno-deprecated-declarations -ftls-model=global-dynamic" \
+    cmake -DBUILD_CONFIG=mysql_release -DBUILD_SHARED_LIBS=ON -DWITH_BOOST=../boost/boost_1_73_0 -DWITH_ZLIB=system -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DCMAKE_BUILD_TYPE=Release -DWITHOUT_SERVER=ON -DREPRODUCIBLE_BUILD=ON -DINSTALL_MYSQLTESTDIR="" .. && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     # reduce docker size \
@@ -1545,12 +1551,12 @@ RUN \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
     # Specific branch \
-    # git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
-    git clone --depth=1 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
-    sed -i 's/define GDAL_VERSION_MINOR    4/define GDAL_VERSION_MINOR    5/g' gdal/gcore/gdal_version.h.in && \
+    # git clone --depth=1 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    # sed -i 's/define GDAL_VERSION_MINOR    4/define GDAL_VERSION_MINOR    5/g' gdal/gcore/gdal_version.h.in && \
     # Common \
-    cd gdal && \
+    cd gdal/gdal || cd gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
     # export CFLAGS="$CFLAGS -DDEBUG_VERBOSE=ON" && \
     ./autogen.sh && \
@@ -1584,10 +1590,10 @@ RUN \
 RUN \
     echo "`date` gdal python" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    cd gdal/swig/python && \
+    cd gdal/gdal/swig/python || cd gdal/swig/python && \
     cp -r /usr/local/share/{proj,gdal} osgeo/. && \
     mkdir osgeo/bin && \
-    find /build/gdal/apps/ -executable -type f ! -name '*.cpp' -exec cp {} osgeo/bin/. \; && \
+    find ../../apps/ -executable -type f ! -name '*.cpp' -exec cp {} osgeo/bin/. \; && \
     find /build/libgeotiff/libgeotiff/bin/.libs -executable -type f -exec cp {} osgeo/bin/. \; && \
     (strip osgeo/bin/* --strip-unneeded || true) && \
     python -c $'# \n\
@@ -1742,10 +1748,6 @@ RUN \
     ldconfig && \
     echo "`date` mapnik" >> /build/log.txt
 
-COPY mapnik_proj_transform.cpp.patch .
-
-COPY mapnik_setup.py.patch .
-
 RUN \
     echo "`date` python-mapnik" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1820,14 +1822,6 @@ open(path, "w").write(s)' && \
     ls -l /io/wheelhouse && \
     rm -rf ~/.cache && \
     echo "`date` python-mapnik" >> /build/log.txt
-
-# This patch allows girder's file layout to work with mirax files and does no
-# harm otherwise.
-COPY openslide-vendor-mirax.c.patch .
-
-# This allows building vips from GitHub source
-# (see https://github.com/libvips/libvips/issues/874)
-COPY openslide-init.patch .
 
 RUN \
     echo "`date` openslide" >> /build/log.txt && \
@@ -2337,25 +2331,7 @@ open(path, "w").write(s)' && \
     # auditwheel modifies the java libraries, but some of those have \
     # hard-coded relative paths, which doesn't work.  Replace them with the \
     # unmodified versions.  See https://stackoverflow.com/questions/55904261 \
-    python -c $'# \n\
-path = "/build/fix_record.py" \n\
-s = """import base64 \n\
-import hashlib \n\
-import os \n\
-\n\
-record_path = os.path.join(next(dir for dir in os.listdir(".") if dir.endswith(".dist-info")), "RECORD") \n\
-newrecord = [] \n\
-for line in open(record_path): \n\
-    parts = line.rsplit(",", 2) \n\
-    if len(parts) == 3 and os.path.exists(parts[0]) and parts[1]: \n\
-        hashval = base64.urlsafe_b64encode(hashlib.sha256(open(parts[0], "rb").read()).digest()).decode("latin1").rstrip("=") \n\
-        filelen = os.path.getsize(parts[0]) \n\
-        line = ",".join([parts[0], "sha256=" + hashval, str(filelen)]) + "\\\\n" \n\
-    newrecord.append(line) \n\
-open(record_path, "w").write("".join(newrecord)) \n\
-""" \n\
-open(path, "w").write(s)' && \
-    find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} bash -c 'mkdir /tmp/ptmp$(basename ${0}) && pushd /tmp/ptmp$(basename ${0}) && unzip ${0} && cp -f -r -L /usr/lib/jvm/java/* javabridge/jvm/. && python /build/fix_record.py && zip -r ${0} * && popd && rm -rf /tmp/ptmp$(basename ${0})' && \
+    find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} bash -c 'mkdir /tmp/ptmp$(basename ${0}) && pushd /tmp/ptmp$(basename ${0}) && unzip ${0} && cp -f -r -L /usr/lib/jvm/java/* javabridge/jvm/. && fix_record.py && zip -r ${0} * && popd && rm -rf /tmp/ptmp$(basename ${0})' && \
     find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
