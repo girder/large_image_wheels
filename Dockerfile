@@ -103,7 +103,7 @@ COPY getver.py fix_record.py /usr/local/bin/
 # mirax files and does no harm otherwise.
 # The openslide-init.patch allows building vips from GitHub source
 # (see https://github.com/libvips/libvips/issues/874)
-COPY versions.txt mapnik_proj_transform.cpp.patch mapnik_setup.py.patch openslide-init.patch openslide-vendor-mirax.c.patch ./
+COPY versions.txt mapnik_proj_transform.cpp.patch mapnik_setup.py.patch openslide-init.patch openslide-vendor-mirax.c.patch glymur.setup.py ./
 
 # Newer version of pkg-config than available in manylinux2014
 RUN \
@@ -293,7 +293,7 @@ RUN \
     done && \
     echo "`date` numpy" >> /build/log.txt
 
-# Build psutils for Python 3.10
+# Build psutils for Python versions not published on pypi
 RUN \
     echo "`date` psutil" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -302,8 +302,8 @@ RUN \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    # only build for python 3.10 \
-    find /opt/python -mindepth 1 -name '*cp310*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    # only build for python 3.6 \
+    find /opt/python -mindepth 1 -name '*cp36*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     find /io/wheelhouse/ -name 'psutil*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
@@ -666,22 +666,6 @@ def program(): \n\
 """ \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
-path = "setup.py" \n\
-s = open(path).read() \n\
-s = s.replace("\'numpy>=1.7.1\', ", "") \n\
-s = s.replace("from setuptools import setup", \n\
-"""from setuptools import setup \n\
-import os \n\
-from distutils.core import Extension""") \n\
-s = s.replace(", \'tests\'", "") \n\
-s = s.replace("\'test_suite\': \'glymur.test\'", \n\
-"""\'test_suite\': \'glymur.test\', \n\
-\'ext_modules\': [Extension(\'glymur.openjpeg\', [], libraries=[\'openjp2\'])]""") \n\
-s = s.replace("\'data/*.jpx\'", "\'data/*.jpx\', \'bin/*\'") \n\
-s = s.replace("\'console_scripts\': [", \n\
-"""\'console_scripts\': [\'%s=glymur.bin:program\' % name for name in os.listdir(\'glymur/bin\') if not name.endswith(\'.py\')] + [""") \n\
-open(path, "w").write(s)' && \
-    python -c $'# \n\
 path = "glymur/config.py" \n\
 s = open(path).read() \n\
 s = s.replace("    path = find_library(libname)", \n\
@@ -693,6 +677,36 @@ s = s.replace("    path = find_library(libname)", \n\
         path = [lib for lib in libs if libname in lib][0] \n\
         path = os.path.join(libpath, path)""") \n\
 open(path, "w").write(s)' && \
+    # Import a premade setup.py \
+    cp ../glymur.setup.py ./setup.py && rm -f setup.cfg && rm -f pyproject.toml && \
+    # Don't convert the old one; it no longer exists \
+#     python -c $'# \n\
+# path = "setup.py" \n\
+# s = open(path).read() \n\
+# s = s.replace("\'numpy>=1.7.1\', ", "") \n\
+# s = s.replace("from setuptools import setup", \n\
+# """from setuptools import setup \n\
+# import os \n\
+# from distutils.core import Extension""") \n\
+# s = s.replace(", \'tests\'", "") \n\
+# s = s.replace("\'test_suite\': \'glymur.test\'", \n\
+# """\'test_suite\': \'glymur.test\', \n\
+# \'ext_modules\': [Extension(\'glymur.openjpeg\', [], libraries=[\'openjp2\'])]""") \n\
+# s = s.replace("\'data/*.jpx\'", "\'data/*.jpx\', \'bin/*\'") \n\
+# s = s.replace("\'console_scripts\': [", \n\
+# """\'console_scripts\': [\'%s=glymur.bin:program\' % name for name in os.listdir(\'glymur/bin\') if not name.endswith(\'.py\')] + [""") \n\
+# open(path, "w").write(s)' && \
+    # It would be better to use the setup.cfg, but the extensions seem to be an issue \
+#     python -c $'# \n\
+# import os \n\
+# path = "setup.cfg" \n\
+# s = open(path).read() \n\
+# s = s.replace("data/*.j2k", \n\
+# """data/*.j2k \n\
+#     bin/*""") \n\
+# s = s.replace("console_scripts =", \n\
+# "console_scripts =" + "".join("\\n\\t%s=glymur.bin:program" % name for name in os.listdir(\'glymur/bin\') if not name.endswith(\'.py\'))) \n\
+# open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
@@ -1219,15 +1233,17 @@ RUN \
     ldconfig && \
     echo "`date` hdf4" >> /build/log.txt
 
+# PINNED VERSION - netcdf-c doesn't build with 1_13_0
 RUN \
     echo "`date` hdf5" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b hdf5-`getver.py hdf5` -c advice.detachedHead=false https://github.com/HDFGroup/hdf5.git && \
+    # git clone --depth=1 --single-branch -b hdf5-`getver.py hdf5` -c advice.detachedHead=false https://github.com/HDFGroup/hdf5.git && \
+    git clone --depth=1 --single-branch -b hdf5-1_12_1 -c advice.detachedHead=false https://github.com/HDFGroup/hdf5.git && \
     cd hdf5 && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DDEFAULT_API_VERSION=v18 -DHDF5_BUILD_EXAMPLES=OFF -DHDF5_BUILD_FORTRAN=OFF -DHDF5_ENABLE_PARALLEL=ON -DHDF5_ENABLE_Z_LIB_SUPPORT=ON -DHDF5_BUILD_GENERATORS=ON -DHDF5_ENABLE_DIRECT_VFD=ON -DHDF5_BUILD_CPP_LIB=OFF -DHDF5_DISABLE_COMPILER_WARNINGS=ON -DBUILD_TESTING=OFF -DZLIB_DIR=/usr/local/lib -DMPI_C_COMPILER=/usr/local/bin/mpicc -DMPI_C_HEADER_DIR=/usr/local/include -DMPI_mpi_LIBRARY=/usr/local/lib/libmpi.so -DMPI_C_LIB_NAMES=mpi -DCMAKE_INSTALL_PREFIX=/usr/local && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DDEFAULT_API_VERSION=v18 -DHDF5_BUILD_EXAMPLES=OFF -DHDF5_BUILD_FORTRAN=OFF -DHDF5_ENABLE_PARALLEL=ON -DHDF5_ENABLE_Z_LIB_SUPPORT=ON -DHDF5_BUILD_GENERATORS=ON -DHDF5_ENABLE_DIRECT_VFD=ON -DHDF5_BUILD_CPP_LIB=OFF -DHDF5_DISABLE_COMPILER_WARNINGS=ON -DBUILD_TESTING=OFF -DZLIB_DIR=/usr/local/lib -DMPI_C_COMPILER=/usr/local/bin/mpicc -DMPI_C_HEADER_DIR=/usr/local/include -DMPI_mpi_LIBRARY=/usr/local/lib/libmpi.so -DMPI_C_LIB_NAMES=mpi -DHDF5_BUILD_DOC=OFF -DCMAKE_INSTALL_PREFIX=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1256,7 +1272,8 @@ RUN \
     cd netcdf-c && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DENABLE_EXAMPLES=OFF -DENABLE_PARALLEL4=ON -DUSE_PARALLEL=ON -DUSE_PARALLEL4=ON -DENABLE_HDF4=ON -DENABLE_PNETCDF=ON -DENABLE_BYTERANGE=ON -DENABLE_JNA=ON -DCMAKE_SHARED_LINKER_FLAGS=-ljpeg -DENABLE_TESTS=OFF && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DENABLE_EXAMPLES=OFF -DENABLE_PARALLEL4=ON -DUSE_PARALLEL=ON -DUSE_PARALLEL4=ON -DENABLE_HDF4=ON -DENABLE_PNETCDF=ON -DENABLE_BYTERANGE=ON -DENABLE_JNA=ON -DCMAKE_SHARED_LINKER_FLAGS=-ljpeg -DENABLE_TESTS=OFF -DENABLE_HDF4_FILE_TESTS=OFF && \
+    # for hdf5 1_13, we might need to add -DHDF5_DIR=/usr/local/share/cmake \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1736,7 +1753,7 @@ RUN \
     -DBUILD_BENCHMARK=OFF \
     -DBUILD_DEMO_CPP=OFF \
     -DBUILD_DEMO_VIEWER=OFF \
-    -DBUILD_TEST=OFF \
+    -DBUILD_TESTING=OFF \
     -DJPEG_INCLUDE_DIR=/usr/local/include \
     -DJPEG_LIBRARY_RELEASE=/usr/local/lib/libopenjp2.so \
     -DCMAKE_INSTALL_LIBDIR=lib \
@@ -1962,7 +1979,7 @@ RUN \
 RUN \
     echo "`date` pango" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/1.49/pango-`getver.py pango`.tar.xz -L -o pango.tar.xz && \
+    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/`getver.py pango 2`/pango-`getver.py pango`.tar.xz -L -o pango.tar.xz && \
     unxz pango.tar.xz && \
     mkdir pango && \
     tar -xf pango.tar -C pango --strip-components 1 && \
@@ -2159,7 +2176,7 @@ open(path, "w").write(s)' && \
 import re \n\
 path = "pyproj/__init__.py" \n\
 s = open(path).read() \n\
-s = re.sub(r"(__version__ = \\"[^\\"]*)\\"", "\\\\1.1\\"", s) \n\
+# s = re.sub(r"(__version__ = \\"[^\\"]*)\\"", "\\\\1.1\\"", s) \n\
 s = s.replace("2.4.rc0", "2.4") \n\
 s = s.replace("import warnings", \n\
 """import warnings \n\

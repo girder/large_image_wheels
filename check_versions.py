@@ -4,9 +4,9 @@ import functools
 import re
 import subprocess
 import sys
+import time
 
 import packaging.version
-import pkg_resources
 import requests
 import urllib3
 
@@ -22,7 +22,6 @@ Packages = {
     'armadillo': {
         'filelist': 'https://sourceforge.net/projects/arma/files/',
         're': r'armadillo-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)/download$',
-        'session': False,
     },
     'blosc': {
         'git': 'https://github.com/Blosc/c-blosc.git',
@@ -59,8 +58,7 @@ Packages = {
     'fitsio': {
         'filelist': 'https://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/',
         're': r'^cfitsio([0-9]+).tar.(gz|xz)$',
-        'session': False,
-        'insecure': True,
+        # 'insecure': True,
     },
     'fontconfig': {
         'git': 'https://gitlab.freedesktop.org/fontconfig/fontconfig.git',
@@ -520,6 +518,8 @@ Packages = {
 
 
 def compareVersions(a, b):
+    if packaging.version.parse(a).is_prerelease != packaging.version.parse(b).is_prerelease:
+        return -1 if packaging.version.parse(a).is_prerelease else 1
     if packaging.version.parse(a) < packaging.version.parse(b):
         return -1
     if packaging.version.parse(a) > packaging.version.parse(b):
@@ -527,11 +527,37 @@ def compareVersions(a, b):
     return 0
 
 
-session = requests.Session()
-retries = urllib3.util.retry.Retry(
-    total=10, backoff_factor=0.1, status_forcelist=[104, 500, 502, 503, 504])
-session.mount('http://', requests.adapters.HTTPAdapter(max_retries=retries))
-session.mount('https://', requests.adapters.HTTPAdapter(max_retries=retries))
+session = None
+
+
+def getSession(new=False):
+    global session
+
+    if new or not session:
+        session = requests.Session()
+        retries = urllib3.util.retry.Retry(
+            total=10, backoff_factor=0.1, status_forcelist=[104, 500, 502, 503, 504])
+        session.mount('http://', requests.adapters.HTTPAdapter(max_retries=retries))
+        session.mount('https://', requests.adapters.HTTPAdapter(max_retries=retries))
+    return session
+
+
+def getUrl(url, pkginfo):
+    """
+    Use a session to get a url.  If it fails, retry with a new session.  If
+    that fails, retry without a session.
+    """
+    param = {'verify': False} if pkginfo.get('insecure') else {}
+    try:
+        return getSession().get(url, **param)
+    except Exception:
+        pass
+    try:
+        return getSession(True).get(url, **param)
+    except Exception:
+        pass
+    return requests.get(url, **param)
+
 
 failures = False
 for pkg in sorted(Packages):  # noqa
@@ -544,9 +570,7 @@ for pkg in sorted(Packages):  # noqa
         entries = None
         versions = None
         if 'filelist' in pkginfo:
-            data = (session if pkginfo.get('session') is not False else requests).get(
-                pkginfo['filelist'],
-                **({'verify': False} if pkginfo.get('insecure') else {})).text
+            data = getUrl(pkginfo['filelist'], pkginfo).text
             if verbose >= 2:
                 print(pkg, 'filelist data', data)
             data = data.replace('<A ', '<a ').replace('HREF="', 'href="')
@@ -555,7 +579,7 @@ for pkg in sorted(Packages):  # noqa
             if verbose >= 1:
                 print(pkg, 'filelist entries', entries)
         elif 'fossil' in pkginfo:
-            data = session.get(pkginfo['fossil']).text
+            data = getUrl(pkginfo['fossil'], pkginfo).text
             if verbose >= 2:
                 print(pkg, 'fossil data', data)
             entries = [entry.split(']<')[0]
@@ -564,18 +588,34 @@ for pkg in sorted(Packages):  # noqa
                 print(pkg, 'fossil entries', entries)
         elif 'git' in pkginfo:
             cmd = ['git', 'ls-remote', '--refs', '--tags', pkginfo['git']]
-            entries = [entry for entry in
-                       subprocess.check_output(cmd).decode('utf8').split('\n')
-                       if '/' in entry]
+            for retries in range(10, -1, -1):
+                try:
+                    entries = [entry for entry in
+                               subprocess.check_output(cmd).decode('utf8').split('\n')
+                               if '/' in entry]
+                    break
+                except Exception:
+                    if retries:
+                        time.sleep(1)
+                    else:
+                        raise
             if verbose >= 1:
                 print(pkg, 'git entries', entries)
         elif 'gitsha' in pkginfo:
             cmd = ['git', 'ls-remote', pkginfo['gitsha'], pkginfo.get('branch', 'HEAD')]
-            versions = [subprocess.check_output(cmd).decode('utf8').split()[0]]
+            for retries in range(10, -1, -1):
+                try:
+                    versions = [subprocess.check_output(cmd).decode('utf8').split()[0]]
+                    break
+                except Exception:
+                    if retries:
+                        time.sleep(1)
+                    else:
+                        raise
             if verbose >= 1:
                 print(pkg, 'gitsha versions', versions)
         elif 'json' in pkginfo:
-            data = session.get(pkginfo['json']).json()
+            data = getUrl(pkginfo['json'], pkginfo).json()
             if verbose >= 2:
                 print(pkg, 'json data', data)
             entries = pkginfo['keys'](data)
@@ -583,14 +623,14 @@ for pkg in sorted(Packages):  # noqa
                 print(pkg, 'json entries', entries)
         elif 'pypi' in pkginfo:
             url = 'https://pypi.python.org/pypi/%s/json' % pkginfo['pypi']
-            releases = session.get(url).json()['releases']
+            releases = getUrl(url, pkginfo).json()['releases']
             if verbose >= 2:
-                print(pkg, 'pypi releases', entries)
-            versions = sorted(releases, key=pkg_resources.parse_version)
+                print(pkg, 'pypi releases', releases)
+            versions = sorted(releases, key=functools.cmp_to_key(compareVersions))
             if verbose >= 1:
                 print(pkg, 'pypi versions', versions)
         elif 'text' in pkginfo:
-            data = session.get(pkginfo['text']).content.decode('utf8')
+            data = getUrl(pkginfo['text'], pkginfo).content.decode('utf8')
             if verbose >= 2:
                 print(pkg, 'text data', data)
             entries = pkginfo['keys'](data)
@@ -607,7 +647,7 @@ for pkg in sorted(Packages):  # noqa
         if 'subre' in pkginfo:
             pversions = versions
             for pos in range(-1, -len(pversions) - 1, -1):
-                data = session.get(pkginfo['filelist'] + pkginfo['sub'](pversions[pos])).text
+                data = getUrl(pkginfo['filelist'] + pkginfo['sub'](pversions[pos]), pkginfo).text
                 if verbose >= 2:
                     print(pkg, 'subre data', data)
                 data = data.replace('<A ', '<a ').replace('HREF="', 'href="')
