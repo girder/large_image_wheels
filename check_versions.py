@@ -383,6 +383,10 @@ Packages = {
         'keys': lambda data: list(data[1]['pango']),
         're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$',
     },
+    'parallel-netcdf': {
+        'git': 'https://github.com/Parallel-NetCDF/PnetCDF.git',
+        're': r'checkpoint\.([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
     # pcre has moved; it has also not changed in decades -- we may want to
     # switch to pcre2 when glib does.
     # 'pcre': {
@@ -397,10 +401,6 @@ Packages = {
     'pkg-config': {
         'git': 'https://gitlab.freedesktop.org/pkg-config/pkg-config.git',
         're': r'pkg-config-([0-9]+\.[0-9]+(|\.[0-9]+))$',
-    },
-    'parallel-netcdf': {
-        'git': 'https://github.com/Parallel-NetCDF/PnetCDF.git',
-        're': r'checkpoint\.([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'poppler': {
         'git': 'https://gitlab.freedesktop.org/poppler/poppler.git',
