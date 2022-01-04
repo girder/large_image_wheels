@@ -110,7 +110,7 @@ RUN \
     echo "`date` pkg-config" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b pkg-config-`getver.py pkg-config` -c advice.detachedHead=false https://gitlab.freedesktop.org/pkg-config/pkg-config.git && \
+    until timeout 60 git clone --depth=1 --single-branch -b pkg-config-`getver.py pkg-config` -c advice.detachedHead=false https://gitlab.freedesktop.org/pkg-config/pkg-config.git; do sleep 5; echo "retrying"; done && \
     cd pkg-config && \
     ./autogen.sh && \
     ./configure --silent --prefix=/usr/local --with-internal-glib --disable-host-tool --disable-static && \
@@ -126,6 +126,15 @@ ENV PKG_CONFIG=/usr/local/bin/pkg-config \
 #     PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:/usr/lib64/pkgconfig:/usr/share/pkgconfig \
 # but we don't want to find the built-in libraries, as if we bind to them, we
 # may not be portable.  Now, we copy a few selected pc files over
+
+# CMake - use a precompiled binary
+RUN \
+    echo "`date` cmake" >> /build/log.txt && \
+    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v`getver.py cmake`/cmake-`getver.py cmake`-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+    mkdir cmake && \
+    tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
+    rm -f cmake.tar.gz && \
+    echo "`date` cmake" >> /build/log.txt
 
 # Make our own zlib so we don't depend on system libraries \
 RUN \
@@ -205,8 +214,8 @@ cd /build && \
     mkdir curl && \
     tar -zxf curl.tar.gz -C curl --strip-components 1 && \
     rm -f curl.tar.gz && \
-    cd curl && \
-    ./configure --silent --prefix=/usr/local --disable-static --with-openssl && \
+    cd  curl && \
+    ./configure --prefix=/usr/local --disable-static --with-openssl --with-ldap-lib=/usr/local/lib/libldap.so && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -355,15 +364,6 @@ RUN \
     make --silent -j ${JOBS} install && \
     ldconfig && \
     echo "`date` openjpeg" >> /build/log.txt
-
-# CMake - use a precompiled binary
-RUN \
-    echo "`date` cmake" >> /build/log.txt && \
-    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v`getver.py cmake`/cmake-`getver.py cmake`-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
-    mkdir cmake && \
-    tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
-    rm -f cmake.tar.gz && \
-    echo "`date` cmake" >> /build/log.txt
 
 RUN \
     echo "`date` libpng" >> /build/log.txt && \
@@ -820,6 +820,11 @@ s = open(path).read().replace( \n\
 """    lib%s""", \n\
 """    lib%s(-liw|)""") \n\
 open(path, "w").write(s)' && \
+    python -c $'# \n\
+path = "giscanner/meson.build" \n\
+s = open(path).read() \n\
+s = s[:s.index("install_subdir")] + s[s.index("flex"):] \n\
+open(path, "w").write(s)' && \
     meson --prefix=/usr/local --buildtype=release _build && \
     cd _build && \
     ninja -j ${JOBS} && \
@@ -963,7 +968,7 @@ RUN \
 RUN \
     echo "`date` sqlite" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://sqlite.org/2021/sqlite-autoconf-`getver.py sqlite`.tar.gz -L -o sqlite.tar.gz && \
+    curl --retry 5 --silent https://sqlite.org/`getver.py sqlite 1`/sqlite-autoconf-`getver.py sqlite 2 . . 1`.tar.gz -L -o sqlite.tar.gz && \
     mkdir sqlite && \
     tar -zxf sqlite.tar.gz -C sqlite --strip-components 1 && \
     rm -f sqlite.tar.gz && \
@@ -1094,7 +1099,7 @@ RUN \
 RUN \
     echo "`date` pixman" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b pixman-`getver.py pixman` -c advice.detachedHead=false https://gitlab.freedesktop.org/pixman/pixman.git && \
+    until timeout 60 git clone --depth=1 --single-branch -b pixman-`getver.py pixman` -c advice.detachedHead=false https://gitlab.freedesktop.org/pixman/pixman.git; do sleep 5; echo "retrying"; done && \
     cd pixman && \
     meson --prefix=/usr/local --buildtype=release _build && \
     cd _build && \
@@ -1120,7 +1125,7 @@ RUN \
 RUN \
     echo "`date` fontconfig" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b `getver.py fontconfig` -c advice.detachedHead=false https://gitlab.freedesktop.org/fontconfig/fontconfig.git && \
+    until timeout 60 git clone --depth=1 --single-branch -b `getver.py fontconfig` -c advice.detachedHead=false https://gitlab.freedesktop.org/fontconfig/fontconfig.git; do sleep 5; echo "retrying"; done && \
     cd fontconfig && \
     meson --prefix=/usr/local --buildtype=release -Ddoc=disabled -Dtests=disabled _build && \
     cd _build && \
@@ -1132,7 +1137,7 @@ RUN \
 RUN \
     echo "`date` cairo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b `getver.py cairo` -c advice.detachedHead=false https://gitlab.freedesktop.org/cairo/cairo.git && \
+    until timeout 60 git clone --depth=1 --single-branch -b `getver.py cairo` -c advice.detachedHead=false https://gitlab.freedesktop.org/cairo/cairo.git; do sleep 5; echo "retrying"; done && \
     cd cairo && \
     meson --prefix=/usr/local --buildtype=release -Dtests=disabled _build && \
     cd _build && \
@@ -1337,7 +1342,7 @@ RUN \
 RUN \
     echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b poppler-`getver.py poppler` -c advice.detachedHead=false https://gitlab.freedesktop.org/poppler/poppler.git && \
+    until timeout 60 git clone --depth=1 --single-branch -b poppler-`getver.py poppler` -c advice.detachedHead=false https://gitlab.freedesktop.org/poppler/poppler.git; do sleep 5; echo "retrying"; done && \
     cd poppler && \
     mkdir _build && \
     cd _build && \
@@ -1568,9 +1573,9 @@ RUN \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
     # Specific branch \
-    git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
-    # git clone --depth=1 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     # sed -i 's/define GDAL_VERSION_MINOR    4/define GDAL_VERSION_MINOR    5/g' gdal/gcore/gdal_version.h.in && \
     # Common \
     cd gdal/gdal || cd gdal && \
@@ -2021,8 +2026,12 @@ RUN \
     tar -xf librsvg.tar -C librsvg --strip-components 1 && \
     rm -f librsvg.tar && \
     cd librsvg && \
+    sed -i 's/ tests doc win32//g' Makefile.in && \
+    sed -i 's/install-man install/install/g' Makefile.in && \
     export RUSTFLAGS="$RUSTFLAGS -O -C link_args=-Wl,--strip-debug,--strip-discarded,--discard-local" && \
-    ./configure --silent --prefix=/usr/local --disable-introspection --disable-debug --disable-static --disable-gtk-doc-html && \
+    GI_DOCGEN=`which true` \
+    RST2MAN=`which true` \
+    ./configure --silent --prefix=/usr/local --disable-introspection --disable-debug --disable-static && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig && \

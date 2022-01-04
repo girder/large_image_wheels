@@ -119,7 +119,8 @@ Packages = {
     },
     'glymur': {
         'git': 'https://github.com/quintusdias/glymur.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+)(|-[0-9]+))$',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+)(|-[0-9]+)(|\.post[0-9]+))$',
+        # 're': r'v([0-9]+\.[0-9]+(|\.[0-9]+)(|-[0-9]+))$',
     },
     'glymur-pypi': {
         'pypi': 'glymur',
@@ -474,7 +475,8 @@ Packages = {
     },
     'sqlite': {
         'text': 'https://www.sqlite.org/download.html',
-        'keys': lambda data: [re.search(r'sqlite-autoconf-([0-9]+).tar.(gz|xz)', data).group(1)]
+        'keys': lambda data: ['.'.join(re.search(
+            r'([0-9]{4})\/sqlite-autoconf-([0-9]+).tar.(gz|xz)', data).groups()[:2])]
     },
     'strip-nondeterminism': {
         'git': 'https://github.com/esoule/strip-nondeterminism.git',
@@ -587,7 +589,7 @@ for pkg in sorted(Packages):  # noqa
             if verbose >= 1:
                 print(pkg, 'fossil entries', entries)
         elif 'git' in pkginfo:
-            cmd = ['git', 'ls-remote', '--refs', '--tags', pkginfo['git']]
+            cmd = ['timeout', '15', 'git', 'ls-remote', '--refs', '--tags', pkginfo['git']]
             for retries in range(10, -1, -1):
                 try:
                     entries = [entry for entry in
@@ -602,7 +604,8 @@ for pkg in sorted(Packages):  # noqa
             if verbose >= 1:
                 print(pkg, 'git entries', entries)
         elif 'gitsha' in pkginfo:
-            cmd = ['git', 'ls-remote', pkginfo['gitsha'], pkginfo.get('branch', 'HEAD')]
+            cmd = ['timeout', '15', 'git', 'ls-remote', pkginfo['gitsha'],
+                   pkginfo.get('branch', 'HEAD')]
             for retries in range(10, -1, -1):
                 try:
                     versions = [subprocess.check_output(cmd).decode('utf8').split()[0]]

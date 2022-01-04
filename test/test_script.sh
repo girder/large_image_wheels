@@ -26,6 +26,7 @@ echo 'Test installing pyvips and other dependencies from wheels via large_image'
 pip install pyvips large_image[all] -f ${1:-/wheels}
 # Install the most recent python-javabridge so we can test it.
 ## pip install --upgrade python-javabridge -f ${1:-/wheels}
+pip install scikit-image
 
 echo 'Test basic import of libtiff'
 python -c 'import libtiff'
@@ -335,4 +336,11 @@ poly2 = poly.transform(trans, clone=True)
 print(poly2)
 sys.exit(str(poly)[10:]==str(poly2)[10:])
 EOF
+
+# echo 'test pyvips and svg'
+# python <<EOF
+# import pyvips
+# svgImage = pyvips.Image.svgload_buffer('<svg viewBox="0 0 57578 56112" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" fill="black" d="M 58815,54197 L 58252,54478 L 57689.,54760 L 58346,55510 L 58815,54197 z"/></svg>'.encode())
+# svgImage.tiffsave("/tmp/junk.tiff", compression="lzw")
+# EOF
 

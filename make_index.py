@@ -7,7 +7,8 @@ import time
 
 path = 'gh-pages' if len(sys.argv) == 1 else sys.argv[1]
 indexName = 'index.html'
-template = """<html>
+template = """<!DOCTYPE html>
+<html>
 <head><title>large_image_wheels</title></head>
 <body>
 <h1>large_image_wheels</h1>
