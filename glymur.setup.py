@@ -25,7 +25,7 @@ kwargs = {
     'license': 'MIT',
     'test_suite': 'glymur.test',
 'ext_modules': [Extension('glymur.openjpeg', [], libraries=['openjp2'])],
-    'install_requires': ['lxml', 'numpy', 'setuptools'],
+    'install_requires': ['lxml', 'numpy', 'setuptools', 'packaging'],
 }
 
 kwargs['classifiers'] = [

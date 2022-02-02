@@ -3,15 +3,6 @@ FROM quay.io/pypa/manylinux2014_x86_64
 RUN mkdir /build
 WORKDIR /build
 
-# Don't build some versions of python.
-RUN \
-    echo "`date` rm python versions" >> /build/log.txt && \
-    # Enable in boost as well \
-    # rm -rf /opt/python/cp35* && \
-    rm -rf /opt/python/pp37* && \
-    rm -rf /opt/python/pp38* && \
-    echo "`date` rm python versions" >> /build/log.txt
-
 RUN \
     echo "`date` yum install" >> /build/log.txt && \
     yum install -y \
@@ -70,6 +61,29 @@ RUN \
     vim-enhanced && \
     yum clean all && \
     echo "`date` yum install" >> /build/log.txt
+
+ARG PYPY
+# Don't build some versions of python.
+RUN \
+    echo "`date` rm python versions" >> /build/log.txt && \
+    mkdir /opt/py && \
+    ln -s /opt/python/* /opt/py/. && \
+    # Enable all versions in boost as well \
+    # rm -rf /opt/py/cp35* && \
+    if [ "$PYPY" = true ]; then \
+    echo "Only building pypy versions" && \
+    rm -rf /opt/py/cp* && \
+    true; \
+    elif [ "$PYPY" = false ]; then \
+    echo "Only building cpython versions" && \
+    # rm -rf /opt/py/pp39* && \
+    rm -rf /opt/py/pp* && \
+    true; \
+    else \
+    echo "Building cpython and pypy versions" && \
+    true; \
+    fi && \
+    echo "`date` rm python versions" >> /build/log.txt
 
 ARG SOURCE_DATE_EPOCH
 ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-1567045200} \
@@ -278,25 +292,31 @@ open(path, "w").write(data)' && \
 # have at least this version to use our wheels.
 RUN \
     echo "`date` numpy" >> /build/log.txt && \
-    for PYBIN in /opt/python/*/bin/; do \
+    for PYBIN in /opt/py/*/bin/; do \
       echo "${PYBIN}" && \
-      # earliest numpy wheel for pypy 3.7 is 1.20.0 \
-      if [[ "${PYBIN}" =~ "pp37" ]]; then \
-        export NUMPY_VERSION="1.20"; \
       # earliest numpy wheel for 3.10 is 1.21.2 \
-      elif [[ "${PYBIN}" =~ "310" ]]; then \
+      if [[ "${PYBIN}" =~ "cp310" ]]; then \
         export NUMPY_VERSION="1.21"; \
       # earliest numpy wheel for 3.9 is 1.19.3 \
-      elif [[ "${PYBIN}" =~ "39" ]]; then \
+      elif [[ "${PYBIN}" =~ "cp39" ]]; then \
         export NUMPY_VERSION="1.19"; \
       # 3.8 can work with numpy 1.15, but numpy only started publishing 3.8 \
       # wheels at 1.17.1 \
-      elif [[ "${PYBIN}" =~ "38" ]]; then \
+      elif [[ "${PYBIN}" =~ "cp38" ]]; then \
         export NUMPY_VERSION="1.17"; \
-      elif [[ "${PYBIN}" =~ "37" ]]; then \
+      elif [[ "${PYBIN}" =~ "cp37" ]]; then \
         export NUMPY_VERSION="1.14"; \
-      else \
+      elif [[ "${PYBIN}" =~ "cp36" ]]; then \
         export NUMPY_VERSION="1.11"; \
+      # earliest numpy wheel for pypy 3.7 is 1.20.0 \
+      elif [[ "${PYBIN}" =~ "pp37" ]]; then \
+        export NUMPY_VERSION="1.20"; \
+      # earliest numpy wheel for pypy 3.8 is 1.22.0 \
+      elif [[ "${PYBIN}" =~ "pp38" ]]; then \
+        export NUMPY_VERSION="1.22"; \
+      # fallback for anything else \
+      else \
+        export NUMPY_VERSION="1"; \
       fi && \
       "${PYBIN}/pip" install --no-cache-dir "numpy==${NUMPY_VERSION}.*"; \
     done && \
@@ -311,12 +331,19 @@ RUN \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
+    if [ "$PYPY" = true ]; then \
+    # If only building for pypy, we don't need to do anything, since we don't \
+    # have pypy 3.6 \
+    true; \
+    else \
     # only build for python 3.6 \
-    find /opt/python -mindepth 1 -name '*cp36*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    find /opt/py -mindepth 1 -name '*p36-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     find /io/wheelhouse/ -name 'psutil*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
+    true; \
+    fi && \
     rm -rf ~/.cache && \
     echo "`date` psutil" >> /build/log.txt
 
@@ -327,9 +354,9 @@ RUN \
 #     cd ultrajson && \
 #     # Strip libraries before building any wheels \
 #     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
-#     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" install --no-cache-dir setuptools-scm' && \
+#     find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" install --no-cache-dir setuptools-scm' && \
 #     # Just python >= 3.5 \
-#     find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+#     find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
 #     find /io/wheelhouse/ -name 'ujson*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
 #     find /io/wheelhouse/ -name 'ujson*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
 #     find /io/wheelhouse/ -name 'ujson*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
@@ -499,7 +526,7 @@ cd /build && \
     cd highway && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DCMAKE_CXX_FLAGS='-DVQSORT_SECURE_SEED=0' && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -622,7 +649,7 @@ open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    for PYBIN in /opt/python/*/bin/; do \
+    for PYBIN in /opt/py/*/bin/; do \
       python -c $'# \n\
 import numpy \n\
 import re \n\
@@ -710,7 +737,7 @@ open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    find /opt/python -mindepth 1 -not -name '*cp36*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    find /opt/py -mindepth 1 -not -name '*p36-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     find /io/wheelhouse/ -name 'Glymur*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'Glymur*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'Glymur*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
@@ -914,11 +941,21 @@ RUN \
     echo "" > tools/build/src/user-config.jam && \
     echo "using mpi : /usr/local/lib ;" >> tools/build/src/user-config.jam && \
     # echo "using mpi ;" >> tools/build/src/user-config.jam && \
-    echo "using python : 3.6 : /opt/python/cp36-cp36m/bin/python : /opt/python/cp36-cp36m/include/python3.6m : /opt/python/cp36-cp36m/lib ;" >> tools/build/src/user-config.jam && \
-    echo "using python : 3.7 : /opt/python/cp37-cp37m/bin/python : /opt/python/cp37-cp37m/include/python3.7m : /opt/python/cp37-cp37m/lib ;" >> tools/build/src/user-config.jam && \
-    echo "using python : 3.8 : /opt/python/cp38-cp38/bin/python : /opt/python/cp38-cp38/include/python3.8 : /opt/python/cp38-cp38/lib ;" >> tools/build/src/user-config.jam && \
-    echo "using python : 3.9 : /opt/python/cp39-cp39/bin/python : /opt/python/cp39-cp39/include/python3.9 : /opt/python/cp39-cp39/lib ;" >> tools/build/src/user-config.jam && \
-    echo "using python : 3.10 : /opt/python/cp310-cp310/bin/python : /opt/python/cp310-cp310/include/python3.10 : /opt/python/cp310-cp310/lib ;" >> tools/build/src/user-config.jam && \
+    if [ "$PYPY" = true ]; then \
+    echo "using python : 3.7 : /opt/py/pp37-pypy37_pp73/bin/python : /opt/py/pp37-pypy37_pp73/include : /opt/py/pp37-pypy37_pp73/lib ;" >> tools/build/src/user-config.jam && \
+    echo "using python : 3.8 : /opt/py/pp38-pypy38_pp73/bin/python : /opt/py/pp38-pypy38_pp73/include/pypy3.8 : /opt/py/pp38-pypy38_pp73/lib/pypy3.8 ;" >> tools/build/src/user-config.jam && \
+    echo "using python : 3.9 : /opt/py/pp39-pypy39_pp73/bin/python : /opt/py/pp39-pypy39_pp73/include/pypy3.9 : /opt/py/pp39-pypy39_pp73/lib/pypy3.9 ;" >> tools/build/src/user-config.jam && \
+    export PYTHON_LIST="3.7,3.8,3.9" && \
+    true; \
+    else \
+    echo "using python : 3.6 : /opt/py/cp36-cp36m/bin/python : /opt/py/cp36-cp36m/include/python3.6m : /opt/py/cp36-cp36m/lib ;" >> tools/build/src/user-config.jam && \
+    echo "using python : 3.7 : /opt/py/cp37-cp37m/bin/python : /opt/py/cp37-cp37m/include/python3.7m : /opt/py/cp37-cp37m/lib ;" >> tools/build/src/user-config.jam && \
+    echo "using python : 3.8 : /opt/py/cp38-cp38/bin/python : /opt/py/cp38-cp38/include/python3.8 : /opt/py/cp38-cp38/lib ;" >> tools/build/src/user-config.jam && \
+    echo "using python : 3.9 : /opt/py/cp39-cp39/bin/python : /opt/py/cp39-cp39/include/python3.9 : /opt/py/cp39-cp39/lib ;" >> tools/build/src/user-config.jam && \
+    echo "using python : 3.10 : /opt/py/cp310-cp310/bin/python : /opt/py/cp310-cp310/include/python3.10 : /opt/py/cp310-cp310/lib ;" >> tools/build/src/user-config.jam && \
+    export PYTHON_LIST="3.6,3.7,3.8,3.9,3.10" && \
+    true; \
+    fi && \
     ./bootstrap.sh --prefix=/usr/local --with-toolset=gcc variant=release && \
     # Only build the libraries we need; building boost is slow \
     ./b2 -d1 -j ${JOBS} toolset=gcc variant=release link=shared --build-type=minimal \
@@ -929,14 +966,14 @@ RUN \
     --with-system \
     --with-python \
     --with-program_options \
-    python=3.6,3.7,3.8,3.9,3.10 \
+    python="$PYTHON_LIST" \
     cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable -Wno-parentheses -Wno-maybe-uninitialized -Wno-attributes" \
     install && \
     # pypy \
     # This conflicts with the non-pypy version \
     # echo "" > tools/build/src/user-config.jam && \
     # echo "using mpi ;" >> tools/build/src/user-config.jam && \
-    # echo "using python : 3.7 : /opt/python/pp37-pypy37_pp73/bin/python : /opt/python/pp37-pypy37_pp73/include : /opt/python/pp37-pypy37_pp73/lib ;" >> tools/build/src/user-config.jam && \
+    # echo "using python : 3.7 : /opt/py/pp37-pypy37_pp73/bin/python : /opt/py/pp37-pypy37_pp73/include : /opt/py/pp37-pypy37_pp73/lib ;" >> tools/build/src/user-config.jam && \
     # ./bootstrap.sh --prefix=/usr/local --with-toolset=gcc variant=release && \
     # ./b2 -d1 -j ${JOBS} toolset=gcc variant=release link=shared --build-type=minimal python=3.7 cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable -Wno-parentheses -Wno-maybe-uninitialized" install && \
     # common \
@@ -1368,10 +1405,12 @@ RUN \
 
 # Jasper 2.0.18 is not compatible with GDAL as of 2020-7-20
 # Jasper 2.0.21 is compatible with GDAL 3.1.4 and above
+# PINNED - Jasper 3 changes its API
 RUN \
     echo "`date` jasper" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b version-`getver.py jasper` -c advice.detachedHead=false https://github.com/mdadams/jasper.git && \
+    # git clone --depth=1 --single-branch -b version-`getver.py jasper` -c advice.detachedHead=false https://github.com/mdadams/jasper.git && \
+    git clone --depth=1 --single-branch -b version-2.0.33 -c advice.detachedHead=false https://github.com/mdadams/jasper.git && \
     cd jasper && \
     # git apply ../jasper-jp2_cod.c.patch && \
     mkdir _build && \
@@ -1580,6 +1619,9 @@ RUN \
     # Common \
     cd gdal/gdal || cd gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
+    # cmake will soon work fully \
+    # This doesn't include mrsid_lidar, maybe others \
+    # cmake .. -DCharLS_LIBRARY=/usr/local/lib64/libcharls.so -DMRSID_LIBRARY=/build/mrsid/Raster_DSDK/lib/libltidsdk.so -DMRSID_INCLUDE_DIR=/build/mrsid/Raster_DSDK/include -DGDAL_USE_LERC=ON && \
     # export CFLAGS="$CFLAGS -DDEBUG_VERBOSE=ON" && \
     ./autogen.sh && \
     ./configure --prefix=/usr/local --disable-static --disable-rpath --with-cpp14 --without-libtool \
@@ -1691,7 +1733,7 @@ open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse; git clean -fxd build GDAL.egg-info' && \
+    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse; git clean -fxd build GDAL.egg-info' && \
     find /io/wheelhouse/ -name 'GDAL*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'GDAL*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'GDAL*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
@@ -1837,7 +1879,14 @@ open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c 'export WORKDIR=/tmp/python-mapnik-`basename ${0}`; mkdir -p $WORKDIR; cp -r . $WORKDIR/.; pushd $WORKDIR; BOOST_PYTHON_LIB=`"${0}/bin/python" -c "import sys;sys.stdout.write('\''boost_python'\''+str(sys.version_info.major)+str(sys.version_info.minor))"` "${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && popd && rm -rf $WORKDIR' && \
+    if [ "$PYPY" = true ]; then \
+    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c 'export WORKDIR=/tmp/python-mapnik-`basename ${0}`; mkdir -p $WORKDIR; cp -r . $WORKDIR/.; pushd $WORKDIR; BOOST_PYTHON_LIB=`"${0}/bin/python" -c "import sys;sys.stdout.write('\''boost_python'\''+str(sys.version_info.major)+str(sys.version_info.minor))"` "${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && popd && rm -rf $WORKDIR' && \
+    true; \
+    else \
+    # Exclude pypy, since boost-python isn't using it \
+    find /opt/py -mindepth 1 -not -name '*pp*' -print0 | xargs -n 1 -0 -P ${JOBS} bash -c 'export WORKDIR=/tmp/python-mapnik-`basename ${0}`; mkdir -p $WORKDIR; cp -r . $WORKDIR/.; pushd $WORKDIR; BOOST_PYTHON_LIB=`"${0}/bin/python" -c "import sys;sys.stdout.write('\''boost_python'\''+str(sys.version_info.major)+str(sys.version_info.minor))"` "${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && popd && rm -rf $WORKDIR' && \
+    true; \
+    fi && \
     find /io/wheelhouse/ -name 'mapnik*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'mapnik*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'mapnik*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
@@ -1926,7 +1975,7 @@ open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     find /io/wheelhouse/ -name 'openslide*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
@@ -1968,16 +2017,18 @@ RUN \
     echo "`date` nifti" >> /build/log.txt
 
 RUN \
+    echo "`date` rust" >> /build/log.txt && \
+    curl --retry 5 --silent https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal && \
+    echo "`date` rust" >> /build/log.txt
+
+RUN \
     echo "`date` libimagequant" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/ImageOptim/libimagequant/archive/`getver.py libimagequant`.tar.gz -L -o imagequant.tar.gz && \
-    mkdir imagequant && \
-    tar -zxf imagequant.tar.gz -C imagequant --strip-components 1 && \
-    rm -f imagequant.tar.gz && \
-    cd imagequant && \
-    ./configure --prefix=/usr/local && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
+    export PATH="$HOME/.cargo/bin:$PATH" && \
+    git clone --depth=1 --single-branch -b `getver.py libimagequant` -c advice.detachedHead=false https://github.com/ImageOptim/libimagequant.git && \
+    cd libimagequant/imagequant-sys && \
+    cargo install cargo-c && \
+    cargo cinstall --prefix=/usr/local --destdir=. && \
     ldconfig && \
     echo "`date` libimagequant" >> /build/log.txt
 
@@ -2010,11 +2061,6 @@ RUN \
     ldconfig && \
     find . -name '*.a' -delete && \
     echo "`date` libde265" >> /build/log.txt
-
-RUN \
-    echo "`date` rust" >> /build/log.txt && \
-    curl --retry 5 --silent https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal && \
-    echo "`date` rust" >> /build/log.txt
 
 RUN \
     echo "`date` librsvg" >> /build/log.txt && \
@@ -2147,7 +2193,7 @@ open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse; git clean -fxd -e pyvips/bin' && \
+    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse; git clean -fxd -e pyvips/bin' && \
     find /io/wheelhouse/ -name 'pyvips*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'pyvips*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'pyvips*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
@@ -2207,7 +2253,7 @@ data = data.replace("""version=get_version(),""", \n\
     entry_points={\'console_scripts\': [\'%s=pyproj.bin:program\' % name for name in os.listdir(\'pyproj/bin\') if not name.endswith(\'.py\')]},""") \n\
 open(path, "w").write(data)' && \
     # now rebuild anything that can work with master \
-    find /opt/python -mindepth 1 -not -name '*cp36*' -a -not -name '*cp37*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    find /opt/py -mindepth 1 -not -name '*p36-*' -a -not -name '*p37-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     # Make sure all binaries have the execute flag \
     find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 bash -c 'mkdir /tmp/ptmp; pushd /tmp/ptmp; unzip ${0}; chmod a+x pyproj/bin/*; chmod a-x pyproj/bin/*.py; zip -r ${0} *; popd; rm -rf /tmp/ptmp' && \
     find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
@@ -2276,7 +2322,7 @@ os.environ.setdefault("SASL_PATH", os.path.join(_localpath, "sasl2")) \n\
 import _pylibmc \n\
 """) \n\
 open(path, "w").write(s)' && \
-    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     find /io/wheelhouse/ -name 'pylibmc*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'pylibmc*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'pylibmc*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
@@ -2352,7 +2398,7 @@ open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    find /opt/python -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf .eggs build' && \
+    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf .eggs build' && \
     find /io/wheelhouse/ -name 'python_javabridge*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     # auditwheel modifies the java libraries, but some of those have \
     # hard-coded relative paths, which doesn't work.  Replace them with the \
