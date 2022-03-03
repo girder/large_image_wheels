@@ -55,6 +55,10 @@ Packages = {
         'git': 'https://github.com/cyrusimap/cyrus-sasl.git',
         're': r'cyrus-sasl-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
+    'fftw3': {
+        'filelist': 'https://fftw.org/pub/fftw/',
+        're': r'fftw-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
+    },
     'fitsio': {
         'filelist': 'https://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/',
         're': r'^cfitsio([0-9]+).tar.(gz|xz)$',
@@ -170,6 +174,10 @@ Packages = {
         'git': 'https://github.com/Reference-LAPACK/lapack.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
+    'lcms2': {
+        'git': 'https://github.com/mm2/Little-CMS.git',
+        're': r'lcms([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
     'lerc': {
         'git': 'https://github.com/Esri/lerc.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
@@ -188,6 +196,10 @@ Packages = {
     },
     'libdeflate': {
         'git': 'https://github.com/ebiggers/libdeflate.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
+    'libexif': {
+        'git': 'https://github.com/libexif/libexif.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libexpat': {
@@ -303,6 +315,10 @@ Packages = {
     },
     'mapnik-release': {
         'git': 'https://github.com/mapnik/mapnik.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
+    'matio': {
+        'git': 'https://github.com/tbeu/matio.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'meson': {

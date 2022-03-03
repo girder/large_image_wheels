@@ -10,8 +10,6 @@ RUN \
     cpanminus \
     # for curl \
     libidn2-devel \
-    # for openjpeg \
-    lcms2-devel \
     # needed for libtiff \
     freeglut-devel \
     libXi-devel \
@@ -51,10 +49,6 @@ RUN \
     tbb-devel \
     # for netcdf \
     hdf-devel \
-    # for ImageMagick \
-    fftw3-devel \
-    libexif-devel \
-    matio-devel \
     # for easier development \
     man \
     gtk-doc \
@@ -93,12 +87,12 @@ ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-1567045200} \
     PYTHONDONTWRITEBYTECODE=1
 #   PIP_USE_FEATURE="in-tree-build" \
 
-# Without this, libvips doesn't bind to the correct libraries.  The paths in
-# ld.so.conf.d are searched before LD_LIBRARY_PATH, and a change in the
-# manylinux build added /usr/local/lib to ldconfig which causes issues.
-# /usr/local/lib needs to be in LD_LIBRARY_PATH but not in ldconfig.
-ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/lib"
-RUN rm -rf /etc/ld.so.conf.d/* && \
+# The manylinux environment uses a combination of LD_LIBRARY_PATH and
+# ld.so.conf.d to specify library paths.  Values in ld.so.conf.d are added
+# first, but by default only /usr/local/lib is before some system-ish paths,
+# which causes issues in some builds.  This increases the priority of
+# /usr/local/lib64
+RUN echo "/usr/local/lib64" > /etc/ld.so.conf.d/01-manylinux.conf && \
     ldconfig
 
 # Several build steps need to be in a python 3 environment; set up a virtualenv
@@ -139,7 +133,7 @@ ENV PKG_CONFIG=/usr/local/bin/pkg-config \
 # We had been doing:
 #     PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:/usr/lib64/pkgconfig:/usr/share/pkgconfig \
 # but we don't want to find the built-in libraries, as if we bind to them, we
-# may not be portable.  Now, we copy a few selected pc files over
+# are probably not be portable.
 
 # CMake - use a precompiled binary
 RUN \
@@ -375,6 +369,18 @@ RUN \
     make --silent -j ${JOBS} install && \
     ldconfig && \
     echo "`date` libzip" >> /build/log.txt
+
+RUN \
+    echo "`date` lcms2" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b lcms`getver.py lcms2` -c advice.detachedHead=false https://github.com/mm2/Little-CMS.git && \
+    cd Little-CMS && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` lcms2" >> /build/log.txt
 
 RUN \
     echo "`date` openjpeg" >> /build/log.txt && \
@@ -904,6 +910,22 @@ RUN \
     ldconfig && \
     echo "`date` icu4c" >> /build/log.txt
 
+RUN \
+    echo "`date` fftw3" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    curl --retry 5 --silent https://fftw.org/pub/fftw/fftw-`getver.py fftw3`.tar.gz -L -o fftw3.tar.gz && \
+    mkdir fftw3 && \
+    tar -zxf fftw3.tar.gz -C fftw3 --strip-components 1 && \
+    rm -f fftw3.tar.gz && \
+    cd fftw3 && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DENABLE_AVX=ON -DENABLE_AVX2=ON -DENABLE_SSE=ON -DENABLE_SSE2=ON -DENABLE_THREADS=ON && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` fftw3" >> /build/log.txt
+
 # We can't add --disable-mpi-fortran, or parallel-netcdf doesn't build
 RUN \
     echo "`date` openmpi" >> /build/log.txt && \
@@ -1022,16 +1044,83 @@ RUN \
     export AUTOMAKE_JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b `getver.py proj4` -c advice.detachedHead=false https://github.com/OSGeo/proj.4.git && \
     cd proj.4 && \
-    curl --retry 5 --silent http://download.osgeo.org/proj/proj-datumgrid-1.8.zip -L -o proj-datumgrid.zip && \
+    curl --retry 5 --silent http://download.osgeo.org/proj/proj-datumgrid-`getver.py proj-datumgrid`.zip -L -o proj-datumgrid.zip && \
     cd data && \
     unzip -o ../proj-datumgrid.zip && \
     cd .. && \
-    ./autogen.sh && \
-    ./configure --silent --prefix=/usr/local --disable-static && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF && \
+    # these cmake commands appear to be identical to just running make, but \
+    # are the recommended build process \
+    cmake --build . -j ${JOBS} && \
+    cmake --build . -j ${JOBS} --target install && \
+    # make --silent -j ${JOBS} && \
+    # make --silent -j ${JOBS} install && \
     ldconfig && \
     echo "`date` proj4" >> /build/log.txt
+
+RUN \
+    echo "`date` pyproj4" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --single-branch -b `getver.py pyproj4` -c advice.detachedHead=false https://github.com/pyproj4/pyproj.git && \
+    cd pyproj && \
+    mkdir pyproj/bin && \
+    find /build/proj.4/_build/bin/ -executable -not -type d -exec bash -c 'cp --dereference /usr/local/bin/"$(basename {})" pyproj/bin/.' \; && \
+    strip pyproj/bin/* --strip-unneeded -p -D && \
+    python -c $'# \n\
+path = "pyproj/bin/__init__.py" \n\
+s = """import os \n\
+import sys \n\
+\n\
+def program(): \n\
+    environ = os.environ.copy() \n\
+    localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
+    environ.setdefault("PROJ_LIB", os.path.join(localpath, "..", "proj")) \n\
+\n\
+    path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0])) \n\
+    os.execve(path, sys.argv, environ) \n\
+""" \n\
+open(path, "w").write(s)' && \
+    cp -r /usr/local/share/proj pyproj/. && \
+    # Strip libraries before building any wheels \
+    # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
+    find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
+    python -c $'# \n\
+import re \n\
+path = "pyproj/__init__.py" \n\
+s = open(path).read() \n\
+# s = re.sub(r"(__version__ = \\"[^\\"]*)\\"", "\\\\1.1\\"", s) \n\
+s = s.replace("2.4.rc0", "2.4") \n\
+s = s.replace("import warnings", \n\
+"""import warnings \n\
+import os \n\
+localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
+os.environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj")) \n\
+""") \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
+import os \n\
+path = "setup.py" \n\
+data = open(path).read() \n\
+data = data.replace( \n\
+    "    return package_data", \n\
+"""    package_data["pyproj"].extend(["bin/*", "proj/*"]) \n\
+    return package_data""") \n\
+data = data.replace("""version=get_version(),""", \n\
+"""version=get_version(), \n\
+    entry_points={\'console_scripts\': [\'%s=pyproj.bin:program\' % name for name in os.listdir(\'pyproj/bin\') if not name.endswith(\'.py\')]},""") \n\
+open(path, "w").write(data)' && \
+    # now rebuild anything that can work with master \
+    find /opt/py -mindepth 1 -not -name '*p36-*' -a -not -name '*p37-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    # Make sure all binaries have the execute flag \
+    find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 bash -c 'mkdir /tmp/ptmp; pushd /tmp/ptmp; unzip ${0}; chmod a+x pyproj/bin/*; chmod a-x pyproj/bin/*.py; zip -r ${0} *; popd; rm -rf /tmp/ptmp' && \
+    find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'pyproj*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
+    find /io/wheelhouse/ -name 'pyproj*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
+    ls -l /io/wheelhouse && \
+    rm -rf ~/.cache && \
+    echo "`date` pyproj4" >> /build/log.txt
 
 RUN \
     echo "`date` minizip" >> /build/log.txt && \
@@ -2028,7 +2117,7 @@ RUN \
     git clone --depth=1 --single-branch -b `getver.py libimagequant` -c advice.detachedHead=false https://github.com/ImageOptim/libimagequant.git && \
     cd libimagequant/imagequant-sys && \
     cargo install cargo-c && \
-    cargo cinstall --prefix=/usr/local --destdir=. && \
+    cargo cinstall && \
     ldconfig && \
     echo "`date` libimagequant" >> /build/log.txt
 
@@ -2117,11 +2206,52 @@ RUN \
     ldconfig && \
     echo "`date` imagemagick" >> /build/log.txt
 
+RUN \
+    echo "`date` matio" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b v`getver.py matio` -c advice.detachedHead=false https://github.com/tbeu/matio.git && \
+    cd matio && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    python -c $'# \n\
+import os \n\
+path = "/usr/local/lib64/pkgconfig/matio.pc" \n\
+s = """Name: matio \n\
+Description: matio library \n\
+Version: """ + os.popen("getver.py matio").read() + """ \n\
+Cflags: -I/usr/local/include \n\
+Libs: -L/usr/local/lib64 -lmatio""" \n\
+open(path, "w").write(s)' && \
+    ldconfig && \
+    echo "`date` matio" >> /build/log.txt
+
+RUN \
+    echo "`date` libexif" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b v`getver.py libexif` -c advice.detachedHead=false https://github.com/libexif/libexif.git && \
+    cd libexif && \
+    autoreconf -ifv && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` libexif" >> /build/log.txt
+
 # vips doesn't have PDFium (it uses poppler instead)
 RUN \
     echo "`date` libvips" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
+    # Something about library path resolution breaks if the local library \
+    # paths are before the systemish paths.  Rearrange things to work around \
+    # this until it can be figured out properly \
+    export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/lib" && \
+    mv /etc/ld.so.conf.d/00-manylinux.conf /tmp/00-manylinux.conf && \
+    mv /etc/ld.so.conf.d/01-manylinux.conf /tmp/01-manylinux.conf && \
     # Use these lines for a release \
     curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v`getver.py libvips`/vips-`getver.py libvips`.tar.gz -L -o vips.tar.gz && \
     mkdir vips && \
@@ -2133,9 +2263,12 @@ RUN \
     # cd vips && \
     # ./autogen.sh && \
     # Common \
-    ./configure --prefix=/usr/local CFLAGS="$CFLAGS `pkg-config --cflags glib-2.0`" LIBS="`pkg-config --libs glib-2.0`" --disable-static && \
+    ./configure --prefix=/usr/local CFLAGS="$CFLAGS `pkg-config --cflags glib-2.0`" LIBS="`pkg-config --libs glib-2.0`" --disable-static --disable-modules && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
+    # Undo the library path workaround \
+    mv /tmp/00-manylinux.conf /etc/ld.so.conf.d/00-manylinux.conf && \
+    mv /tmp/01-manylinux.conf /etc/ld.so.conf.d/01-manylinux.conf && \
     ldconfig && \
     echo "`date` libvips" >> /build/log.txt
 
@@ -2200,68 +2333,6 @@ open(path, "w").write(s)' && \
     ls -l /io/wheelhouse && \
     rm -rf ~/.cache && \
     echo "`date` pyvips" >> /build/log.txt
-
-RUN \
-    echo "`date` pyproj4" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    git clone --single-branch -b `getver.py pyproj4` -c advice.detachedHead=false https://github.com/pyproj4/pyproj.git && \
-    cd pyproj && \
-    mkdir pyproj/bin && \
-    find /build/proj.4/src/.libs/ -executable -type f ! -name '*.so.*' -exec cp {} pyproj/bin/. \; && \
-    strip pyproj/bin/* --strip-unneeded -p -D && \
-    python -c $'# \n\
-path = "pyproj/bin/__init__.py" \n\
-s = """import os \n\
-import sys \n\
-\n\
-def program(): \n\
-    environ = os.environ.copy() \n\
-    localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
-    environ.setdefault("PROJ_LIB", os.path.join(localpath, "..", "proj")) \n\
-\n\
-    path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0])) \n\
-    os.execve(path, sys.argv, environ) \n\
-""" \n\
-open(path, "w").write(s)' && \
-    cp -r /usr/local/share/proj pyproj/. && \
-    # Strip libraries before building any wheels \
-    # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
-    find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    python -c $'# \n\
-import re \n\
-path = "pyproj/__init__.py" \n\
-s = open(path).read() \n\
-# s = re.sub(r"(__version__ = \\"[^\\"]*)\\"", "\\\\1.1\\"", s) \n\
-s = s.replace("2.4.rc0", "2.4") \n\
-s = s.replace("import warnings", \n\
-"""import warnings \n\
-import os \n\
-localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
-os.environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj")) \n\
-""") \n\
-open(path, "w").write(s)' && \
-    python -c $'# \n\
-import os \n\
-path = "setup.py" \n\
-data = open(path).read() \n\
-data = data.replace( \n\
-    "    return package_data", \n\
-"""    package_data["pyproj"].extend(["bin/*", "proj/*"]) \n\
-    return package_data""") \n\
-data = data.replace("""version=get_version(),""", \n\
-"""version=get_version(), \n\
-    entry_points={\'console_scripts\': [\'%s=pyproj.bin:program\' % name for name in os.listdir(\'pyproj/bin\') if not name.endswith(\'.py\')]},""") \n\
-open(path, "w").write(data)' && \
-    # now rebuild anything that can work with master \
-    find /opt/py -mindepth 1 -not -name '*p36-*' -a -not -name '*p37-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
-    # Make sure all binaries have the execute flag \
-    find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 bash -c 'mkdir /tmp/ptmp; pushd /tmp/ptmp; unzip ${0}; chmod a+x pyproj/bin/*; chmod a-x pyproj/bin/*.py; zip -r ${0} *; popd; rm -rf /tmp/ptmp' && \
-    find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
-    find /io/wheelhouse/ -name 'pyproj*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
-    find /io/wheelhouse/ -name 'pyproj*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
-    ls -l /io/wheelhouse && \
-    rm -rf ~/.cache && \
-    echo "`date` pyproj4" >> /build/log.txt
 
 RUN \
     echo "`date` cyrus-sasl" >> /build/log.txt && \
