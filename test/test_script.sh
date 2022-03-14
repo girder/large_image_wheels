@@ -23,7 +23,9 @@ echo 'Test installing pyvips and other dependencies from wheels via large_image'
 # python-javabridge.  When it is updated, reenable its installation further in
 # this script.
 ## pip install python-bioformats -f ${1:-/wheels} -f https://girder.github.io/large_image_wheels
-pip install pyvips large_image[all] -f ${1:-/wheels}
+pip install pyvips large_image[all] -f ${1:-/wheels} -f https://girder.github.io/large_image_wheels
+pip uninstall -y libtiff
+pip install pylibtiff -f ${1:-/wheels}
 # Install the most recent python-javabridge so we can test it.
 ## pip install --upgrade python-javabridge -f ${1:-/wheels}
 pip install scikit-image
