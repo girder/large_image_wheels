@@ -16,9 +16,9 @@ freetype 2.11.1
 freexl 97c9f43cea
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
-gdal 3.4.1
-gdal-pypi 3.4.1
-gdal-sha b5ca2ed3c79beaf46f36f8450673a8c4d05d943f
+gdal 3.4.2
+gdal-pypi 3.4.2
+gdal-sha 00e0ce2fbb2befaf4f13ec9bcb83d908743c2bba
 gdal-source 3.5.0
 gdk-pixbuf 2.42.6
 giflib 5.2.1
@@ -26,7 +26,7 @@ glib 2.71.3
 glymur 0.9.8
 glymur-pypi 0.9.8
 gobject-introspection 1.71.0
-harfbuzz 4.0.0
+harfbuzz 4.0.1
 hdf4 4_2_15
 hdf5 1_13_1
 icu4c 70-1
@@ -46,7 +46,7 @@ libexif 0.6.24
 libexpat 2_4_7
 libffi 3.4.2
 libgeos 3.10.2
-libgeotiff 1.7.0
+libgeotiff 1.7.1
 libgsf 1.14.48
 libgta 1.2.1
 libheif 1.12.0
@@ -57,7 +57,7 @@ libjpeg-turbo 2.1.3
 libmemcached 1.0.19
 libpng 1.6.37
 librasterlite2 b8b8a8b099
-librsvg 2.53.1
+librsvg 2.53.2
 libspatialite 5fda27f68f
 libssh2 1.10.0
 libtiff 4.3.0
@@ -67,7 +67,7 @@ libxcrypt 4.4.28
 libxml2 2.9.12
 libzip 1.8.0
 lz4 1.9.3
-manylinux2014 089ee30d85fa57430d7e300d170d80324bd8c6ceb6f37bb6c5d0a9e13917a2c6
+manylinux2014 514e43d6818da4a7589b527ee8447f11f0f7971a2ebd3068c22eb1b20a4ac9ec
 mapnik f3da900c355e1d15059c4a91b00203dcc9d9f0ef
 mapnik-release 3.1.0
 matio 1.5.21
@@ -110,7 +110,7 @@ python-mapnik a2c2a86eec954b42d7f00093da03807d0834b1b4
 python-mapnik-pypi 0.1
 pyvips 2.1.16
 pyvips-pypi 2.1.16
-sqlite 2022.3380000
+sqlite 2022.3380100
 strip-nondeterminism 0.042
 superlu 5.3.0
 ultrajson 5.1.0
