@@ -2368,11 +2368,18 @@ RUN \
     ldconfig && \
     echo "`date` libmemcached" >> /build/log.txt
 
+# PINNED VERSION - use master to get fixes for some bugs.  If a new release is
+# made, we can go back to the latest release.
 RUN \
     echo "`date` pylibmc" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b `getver.py pylibmc` -c advice.detachedHead=false https://github.com/lericson/pylibmc.git && \
+    # Use master branch \
+    git clone --depth=1 --single-branch -c advice.detachedHead=false https://github.com/lericson/pylibmc.git && \
+    # Use latest release branch \
+    # git clone --depth=1 --single-branch -b `getver.py pylibmc` -c advice.detachedHead=false https://github.com/lericson/pylibmc.git && \
+    # Common \
     cd pylibmc && \
+    sed -i 's/-dev//g' src/pylibmc-version.h && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \

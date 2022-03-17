@@ -1,6 +1,6 @@
 # large_image_wheels
 
-manylinux2010 wheel files for girder/large_image dependencies.
+manylinux wheel files for girder/large_image dependencies.
 
 ## Use
 
