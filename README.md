@@ -6,7 +6,7 @@ manylinux2010 wheel files for girder/large_image dependencies.
 
 You can install from the wheels in this repository using a command like:
 ```
-pip install libtiff openslide_python pyvips gdal mapnik pyproj glymur javabridge -f https://girder.github.io/large_image_wheels
+pip install pylibtiff openslide_python pyvips gdal mapnik pyproj glymur javabridge -f https://girder.github.io/large_image_wheels
 ```
 
 ## Building
@@ -28,7 +28,7 @@ docker run -v wheels:/opt/mount --rm --entrypoint bash girder/large_image_wheels
 
 This makes wheels for the main libraries:
 - GDAL
-- libtiff
+- pylibtiff
 - mapnik
 - openslide_python
 - pyvips
@@ -52,7 +52,7 @@ Various related executables are bundled with the Python packages.  These are add
 
 ## Issues
 
-In order to find the built libraries, this modifies how libtiff, openslide_python, and pyvips load those libraries.  The modification for libtiff is taken from a form of pylibtiff.  The other libraries are patched in place.  There is probably a better way to do this.
+In order to find the built libraries, this modifies how pylibtiff, openslide_python, and pyvips load those libraries.  The other libraries are patched in place.  There is probably a better way to do this.
 
 ## Example Use
 
@@ -125,7 +125,7 @@ Inside a Django application's `settings.py` file, this is somewhat simpler::
 
 - Automate version checks
 
-  When any dependent library changes, the wheels could be rebuilt.  Some of this could be more automated.  Some versions don't work together (Boost 1.70/1.71 with mapnik, for instance), so it can't be fully automatic.
+  This is done on a local build machine.  A periodic job on the `rebuild.sh` script.  It can fail if new versions are not compatible.  Occasionally, pinned versions are checked manually to see if they can be unpinned.
 
 - Automate releases
 
