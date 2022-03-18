@@ -4,7 +4,7 @@ set -e
 export CPL_DEBUG=ON
 export OGR_CT_DEBUG=ON
 
-if curl --version; then true; else 
+if curl --version; then true; else
   apt-get update
   apt-get install -y curl
 fi
@@ -19,16 +19,7 @@ pip install --upgrade setuptools
 # echo 'Test installing all libraries from wheels'
 # pip install libtiff openslide_python pyvips GDAL mapnik -f /wheels
 echo 'Test installing pyvips and other dependencies from wheels via large_image'
-# Install python-bioformats here; it requires an older version of
-# python-javabridge.  When it is updated, reenable its installation further in
-# this script.
-## pip install python-bioformats -f ${1:-/wheels} -f https://girder.github.io/large_image_wheels
-pip install pyvips large_image[all] -f ${1:-/wheels} -f https://girder.github.io/large_image_wheels
-pip uninstall -y libtiff
-pip install pylibtiff -f ${1:-/wheels}
-# Install the most recent python-javabridge so we can test it.
-## pip install --upgrade python-javabridge -f ${1:-/wheels}
-pip install scikit-image
+pip install large_image[all] -f ${1:-/wheels}
 
 echo 'Test basic import of libtiff'
 python -c 'import libtiff'
@@ -337,6 +328,26 @@ print(poly)
 poly2 = poly.transform(trans, clone=True)
 print(poly2)
 sys.exit(str(poly)[10:]==str(poly2)[10:])
+EOF
+
+echo 'test openslide and pyvips rejecting a fluorescent leica image'
+# Ideally we would eventually support these here
+curl --retry 5 -L -o leica.scn https://data.kitware.com/api/v1/file/5cb8ba728d777f072b4b2663/download
+python <<EOF
+import openslide
+import pyvips
+
+try:
+  openslide.OpenSlide('leica.scn')
+  raise Exception('Surprise success')
+except openslide.lowlevel.OpenSlideError:
+  pass
+
+try:
+  pyvips.Image.new_from_file('leica.scn')
+  raise Exception('Surprise success')
+except pyvips.error.Error:
+  pass
 EOF
 
 # echo 'test pyvips and svg'

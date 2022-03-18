@@ -190,7 +190,7 @@ cd /build && \
 # \
 # RUN \
     echo "`date` openldap" >> /build/log.txt && \
-    git clone --depth=1 --single-branch -b OPENLDAP_REL_ENG_`getver.py openldap` -c advice.detachedHead=false https://git.openldap.org/openldap/openldap.git && \
+    until timeout 60 git clone --depth=1 --single-branch -b OPENLDAP_REL_ENG_`getver.py openldap` -c advice.detachedHead=false https://git.openldap.org/openldap/openldap.git; do sleep 5; echo "retrying"; done && \
     cd openldap && \
     # Don't build tests or docs \
     sed -i 's/ tests doc//g' Makefile.in && \
@@ -1780,8 +1780,8 @@ data = data.replace( \n\
     "        except Exception:\\n" + \n\
     "            return True") \n\
 data = re.sub( \n\
-    r"gdal_version = \'\\d+.\\d+.\\d+\'", \n\
-    "gdal_version = \'" + os.popen("gdal-config --version").read().strip() + "\'", \n\
+    r"gdal_version = \'\\d+.\\d+.\\d+(dev|)\'", \n\
+    "gdal_version = \'" + os.popen("gdal-config --version").read().strip().split(\'.dev\')[0] + "\'", \n\
     data) \n\
 data = data.replace( \n\
     "scripts/*.py\'),", \n\
