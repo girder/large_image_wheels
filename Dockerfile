@@ -139,7 +139,6 @@ ENV PKG_CONFIG=/usr/local/bin/pkg-config \
 RUN \
     echo "`date` cmake" >> /build/log.txt && \
     curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v`getver.py cmake`/cmake-`getver.py cmake`-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
-    mkdir cmake && \
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz && \
     echo "`date` cmake" >> /build/log.txt
@@ -340,22 +339,6 @@ RUN \
     fi && \
     rm -rf ~/.cache && \
     echo "`date` psutil" >> /build/log.txt
-
-# We had built ultrajson, but it now supplies its own wheels.
-# RUN echo "`date` ultrajson" >> /build/log.txt && \
-#     export JOBS=`nproc` && \
-#     git clone --depth=1 --single-branch -b `getver.py ultrajson` -c advice.detachedHead=false https://github.com/esnme/ultrajson.git && \
-#     cd ultrajson && \
-#     # Strip libraries before building any wheels \
-#     strip --strip-unneeded /usr/local/lib{,64}/*.{so,a} && \
-#     find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c '"${0}/bin/pip" install --no-cache-dir setuptools-scm' && \
-#     # Just python >= 3.5 \
-#     find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
-#     find /io/wheelhouse/ -name 'ujson*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
-#     find /io/wheelhouse/ -name 'ujson*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} /usr/localperl/bin/strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
-#     find /io/wheelhouse/ -name 'ujson*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
-#     ls -l /io/wheelhouse && \
-#     echo "`date` ultrajson" >> /build/log.txt
 
 RUN \
     echo "`date` libzip" >> /build/log.txt && \
@@ -1493,24 +1476,6 @@ RUN \
     ldconfig && \
     echo "`date` fitsio" >> /build/log.txt
 
-# Jasper 2.0.18 is not compatible with GDAL as of 2020-7-20
-# Jasper 2.0.21 is compatible with GDAL 3.1.4 and above
-# PINNED - Jasper 3 changes its API
-RUN \
-    echo "`date` jasper" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    # git clone --depth=1 --single-branch -b version-`getver.py jasper` -c advice.detachedHead=false https://github.com/mdadams/jasper.git && \
-    git clone --depth=1 --single-branch -b version-2.0.33 -c advice.detachedHead=false https://github.com/mdadams/jasper.git && \
-    cd jasper && \
-    # git apply ../jasper-jp2_cod.c.patch && \
-    mkdir _build && \
-    cd _build && \
-    cmake -DCMAKE_C_FLAGS_RELEASE=-DJAS_DEC_DEFAULT_MAX_SAMPLES=1000000000000 -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF .. && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` jasper" >> /build/log.txt
-
 # We want the "obsolete-api" to be available for some packages (GDAL), but the
 # base docker image has the newer api version installed.  When we install the
 # older one, the install command complains about the extant version, but still
@@ -1680,7 +1645,7 @@ RUN \
 # PINNED VERSION - use master
 # This build doesn't support everything.
 # Unsupported without more work or investigation:
-#  GRASS Kea Ingres Google-libkml ODBC FGDB MDB OCI GEORASTER SDE Rasdaman
+#  GRASS Kea Google-libkml ODBC FGDB MDB OCI GEORASTER SDE Rasdaman
 #  SFCGAL OpenCL MongoDB MongoCXX HDFS TileDB
 # -- GRASS should be straightforward (see github.com/OSGeo/grass), but gdal
 #  has to be installed first, then grass, then spatialite and gdal recompiled
@@ -1710,8 +1675,7 @@ RUN \
     cd gdal/gdal || cd gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
     # cmake will soon work fully \
-    # This doesn't include mrsid_lidar, maybe others \
-    # cmake .. -DCharLS_LIBRARY=/usr/local/lib64/libcharls.so -DMRSID_LIBRARY=/build/mrsid/Raster_DSDK/lib/libltidsdk.so -DMRSID_INCLUDE_DIR=/build/mrsid/Raster_DSDK/include -DGDAL_USE_LERC=ON && \
+    # cmake .. -DMRSID_LIBRARY=/build/mrsid/Raster_DSDK/lib/libltidsdk.so -DMRSID_INCLUDE_DIR=/build/mrsid/Raster_DSDK/include -DGDAL_USE_LERC=ON && \
     # export CFLAGS="$CFLAGS -DDEBUG_VERBOSE=ON" && \
     ./autogen.sh && \
     ./configure --prefix=/usr/local --disable-static --disable-rpath --with-cpp14 --without-libtool \
@@ -1722,7 +1686,7 @@ RUN \
     --with-hdf5 \
     --with-jpeg12 \
     --with-liblzma \
-    --with-mrsid=/build/mrsid/Raster_DSDK --with-mrsid_lidar=/build/mrsid/Lidar_DSDK \
+    --with-mrsid=/build/mrsid/Raster_DSDK \
     --with-mysql \
     --with-pg \
     --with-poppler \
@@ -2192,8 +2156,20 @@ RUN \
     ldconfig && \
     echo "`date` libgsf" >> /build/log.txt
 
+RUN \
+    echo "`date` libraw" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b `getver.py libraw` -c advice.detachedHead=false https://github.com/LibRaw/LibRaw.git && \
+    cd LibRaw && \
+    autoreconf -ifv && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` libraw" >> /build/log.txt
+
 # We could install more packages for better ImageMagick support:
-#  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz LQR RAQM RAW WMF
+#  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz LQR RAQM WMF
 RUN \
     echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -2259,6 +2235,8 @@ RUN \
     tar -zxf vips.tar.gz -C vips --strip-components 1 && \
     rm -f vips.tar.gz && \
     cd vips && \
+    # Allow using VIPS_TMPDIR for the temp directory \
+    sed -i 's/tmpd;/tmpd;if ((tmpd=g_getenv("VIPS_TMPDIR"))) return(tmpd);/g' libvips/iofuncs/util.c && \
     # Use these lines for master \
     # git clone --depth=1 https://github.com/libvips/libvips.git -c advice.detachedHead=false vips && \
     # cd vips && \
@@ -2300,7 +2278,6 @@ s = open(path).read().replace( \n\
 open(path, "w").write(s)' && \
     mkdir pyvips/bin && \
     find /build/vips/tools/.libs/ -executable -type f -exec cp {} pyvips/bin/. \; && \
-    find /build/jasper/_build/src/appl/ -executable -type f -exec cp {} pyvips/bin/. \; && \
     cp /usr/local/bin/magick pyvips/bin/. && \
     strip pyvips/bin/* --strip-unneeded -p -D && \
     python -c $'# \n\

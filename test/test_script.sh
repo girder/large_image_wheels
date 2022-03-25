@@ -265,7 +265,16 @@ gdal-config --formats
 # wc yielded "1 104 605" on 2021-11-12
 gdal-config --formats | wc
 # Fail if we end up with fewer formats in GDAL than we once had.
-if (( $(gdal-config --formats | wc -w) < 103 )); then false; fi
+if (( $(gdal-config --formats | wc -w) < 99 )); then false; fi
+python <<EOF
+import os
+known = set('derived gtiff hfa mem vrt aaigrid adrg aigrid airsar arg blx bmp bsb cals ceos ceos2 coasp cosar ctg dimap dted elas envisat ers esric fit gff gsg gxf hf2 idrisi ilwis iris iso8211 jaxapalsar jdem kmlsuperoverlay l1b leveller map mrf msgn ngsgeoid nitf northwood pds prf r raw rmf rs2 safe saga sdts sentinel2 sgi sigdem srtmhgt stacit stacta terragen tga til tsx usgsdem xpm xyz zarr zmap rik ozi eeda plmosaic wcs wms wmts daas ogcapi rasterlite mbtiles grib pdf heif exr webp dods mrsid openjpeg netcdf hdf5 hdf4 gif gta png pcraster fits jpeg pcidsk postgisraster'.split())
+current = set(os.popen('gdal-config --formats').read().split())
+print('New formats: %s' % ' '.join(sorted(current - known)))
+print('Missing formats: %s' % ' '.join(sorted(known - current)))
+if len(known-current):
+    raise Exception('Missing previously known format')
+EOF
 `python -c 'import os,sys,mapnik;sys.stdout.write(os.path.dirname(mapnik.__file__))'`/bin/mapnik-render --version 2>&1 | grep version
 mapnik-render --version 2>&1 | grep version
 `python -c 'import os,sys,pyvips;sys.stdout.write(os.path.dirname(pyvips.__file__))'`/bin/vips --version

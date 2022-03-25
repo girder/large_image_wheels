@@ -28,23 +28,19 @@ docker run -v wheels:/opt/mount --rm --entrypoint bash girder/large_image_wheels
 
 This makes wheels for the main libraries:
 - GDAL
-- pylibtiff
+- Glymur
 - mapnik
 - openslide_python
-- pyvips
-- Glymur
-- javabridge
-
-Some wheels are built from master and therefore possibly newer than what is on pypi:
+- pylibmc
+- pylibtiff
+- python_javabridge
 - pyproj
+- pyvips
 
 This also makes some wheels which weren't published in all desired Python versions in pypi:
 - psutil
 
-This use to make some wheels but now defers to those published on pypi:
-- ujson
-
-Currently, wheels are built for Python 2.7, 3.5, 3.6, 3.7, 3.8, and 3.9.  Some libraries have older versions for older versions of Python as support for those versions is ended.
+Currently, wheels are built for Python 3.6, 3.7, 3.8, 3.9, and 3.10.  Some libraries have older versions for older versions of Python as support for those versions is ended.
 
 ## Extras
 

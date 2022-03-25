@@ -35,14 +35,6 @@ Packages = {
         'git': 'https://gitlab.freedesktop.org/cairo/cairo.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
-    'charls': {
-        'git': 'https://github.com/team-charls/charls.git',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
-    },
-    'charls-sha': {
-        'gitsha': 'https://github.com/team-charls/charls.git',
-        'branch': '1.x-master',
-    },
     'cmake': {
         'git': 'https://github.com/Kitware/CMake.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
@@ -154,10 +146,6 @@ Packages = {
         'git': 'https://github.com/ImageMagick/ImageMagick.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+)(|-[0-9]+))$',
     },
-    'jasper': {
-        'git': 'https://github.com/mdadams/jasper.git',
-        're': r'version-([0-9]+\.[0-9]+(|\.[0-9]+)(|-[0-9]+))$',
-    },
     'jbigkit': {
         'filelist': 'https://www.cl.cam.ac.uk/~mgk25/jbigkit/download/',
         're': r'jbigkit-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
@@ -261,6 +249,10 @@ Packages = {
         'fossil': 'https://www.gaia-gis.it/fossil/librasterlite2/timeline?n=10&r=trunk&ss=x',
         # 'filelist': 'https://www.gaia-gis.it/fossil/librasterlite2/',
         # 're': r'librasterlite2-([0-9]+\.[0-9]+(|\.[0-9]+)(|-beta[0-9]+)).tar.(gz|xz)$',
+    },
+    'libraw': {
+        'git': 'https://github.com/LibRaw/LibRaw.git',
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'librsvg': {
         'json': 'https://download.gnome.org/sources/librsvg/cache.json',
@@ -501,16 +493,6 @@ Packages = {
     'superlu': {
         'git': 'https://github.com/xiaoyeli/superlu.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
-    },
-    'ultrajson': {
-        'git': 'https://github.com/esnme/ultrajson.git',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
-    },
-    # 'ultrajson-sha': {
-    #     'gitsha': 'https://github.com/esnme/ultrajson.git',
-    # },
-    'ultrajson-pypi': {
-        'pypi': 'ujson',
     },
     'util-linux': {
         'git': 'https://github.com/karelzak/util-linux.git',
