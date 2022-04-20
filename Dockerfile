@@ -1074,7 +1074,8 @@ open(path, "w").write(s)' && \
 import re \n\
 path = "pyproj/__init__.py" \n\
 s = open(path).read() \n\
-# s = re.sub(r"(__version__ = \\"[^\\"]*)\\"", "\\\\1.1\\"", s) \n\
+# append .1 to version to make sure pip prefers this \n\
+s = re.sub(r"(__version__ = \\"[^\\"]*)\\"", "\\\\1.1\\"", s) \n\
 s = s.replace("2.4.rc0", "2.4") \n\
 s = s.replace("import warnings", \n\
 """import warnings \n\
