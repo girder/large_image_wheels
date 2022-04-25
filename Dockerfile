@@ -1412,7 +1412,7 @@ RUN \
     cd _build && \
     CFLAGS="$CFLAGS -ftls-model=global-dynamic" \
     CXXFLAGS="$CXXFLAGS -Wno-deprecated-declarations -ftls-model=global-dynamic" \
-    cmake -DBUILD_CONFIG=mysql_release -DBUILD_SHARED_LIBS=ON -DWITH_BOOST=../boost/boost_1_73_0 -DWITH_ZLIB=system -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DCMAKE_BUILD_TYPE=Release -DWITHOUT_SERVER=ON -DREPRODUCIBLE_BUILD=ON -DINSTALL_MYSQLTESTDIR="" .. && \
+    cmake -DBUILD_CONFIG=mysql_release -DBUILD_SHARED_LIBS=ON -DWITH_BOOST=`find ../boost/ -maxdepth 1 -name 'boost_*'` -DWITH_ZLIB=system -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DCMAKE_BUILD_TYPE=Release -DWITHOUT_SERVER=ON -DREPRODUCIBLE_BUILD=ON -DINSTALL_MYSQLTESTDIR="" .. && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     # reduce docker size \
@@ -1667,10 +1667,10 @@ RUN \
     echo "`date` gdal" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    # Specific branch \
-    # git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    # Specific version \
+    git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
-    git clone --depth=1 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     # sed -i 's/define GDAL_VERSION_MINOR    4/define GDAL_VERSION_MINOR    5/g' gdal/gcore/gdal_version.h.in && \
     # Common \
     cd gdal/gdal || cd gdal && \
@@ -2130,8 +2130,9 @@ RUN \
     sed -i 's/ tests doc win32//g' Makefile.in && \
     sed -i 's/install-man install/install/g' Makefile.in && \
     export RUSTFLAGS="$RUSTFLAGS -O -C link_args=-Wl,--strip-debug,--strip-discarded,--discard-local" && \
-    GI_DOCGEN=`which true` \
-    RST2MAN=`which true` \
+    # This was needed before librsvg 2.53.1 \
+    # GI_DOCGEN=`which true` \
+    # RST2MAN=`which true` \
     ./configure --silent --prefix=/usr/local --disable-introspection --disable-debug --disable-static && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \

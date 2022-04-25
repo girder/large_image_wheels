@@ -4,9 +4,17 @@ set -e
 export CPL_DEBUG=ON
 export OGR_CT_DEBUG=ON
 
+. /etc/profile || true
+
 if curl --version; then true; else
-  apt-get update
-  apt-get install -y curl
+  if apt-get --help; then
+    apt-get update
+    apt-get install -y curl
+  elif yum --help; then
+    yum install -y curl
+  elif zypper --help; then
+    zypper install -y curl
+  fi
 fi
 
 # python -m venv venv

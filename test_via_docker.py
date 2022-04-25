@@ -12,11 +12,15 @@ containers = [
     'python:3.8-slim',
     'python:3.9-slim',
     'python:3.10-slim',
-    # The latest pyproj needs a newer version of python 3.5 than included in
-    # the centos/python-35-centos7 docker image.
-    # 'centos/python-35-centos7',
+    # See https://github.com/molinav/docker-pyenv for some additional images
     'centos/python-36-centos7',
+    'molinav/pyenv:3.7-centos-7',
     'centos/python-38-centos7',
+    'molinav/pyenv:3.9-centos-7',
+    # 'molinav/pyenv:3.6-opensuse-15.3',
+    # 'molinav/pyenv:3.7-opensuse-15.3',
+    # 'molinav/pyenv:3.8-opensuse-15.3',
+    # 'molinav/pyenv:3.9-opensuse-15.3',
     # 'pypy:3.7',
 ]
 
