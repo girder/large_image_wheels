@@ -174,10 +174,6 @@ Packages = {
         'git': 'https://github.com/google/brotli.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
-    'libdap': {
-        'git': 'https://github.com/OPENDAP/libdap4.git',
-        're': r'version-([0-9]+\.[0-9]+(|\.[0-9]+))$',
-    },
     'libde265': {
         'git': 'https://github.com/strukturag/libde265.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',

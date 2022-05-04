@@ -272,17 +272,22 @@ gdalinfo --formats | wc
 gdal-config --formats
 # wc yielded "1 104 605" on 2021-11-12
 gdal-config --formats | wc
-# Fail if we end up with fewer formats in GDAL than we once had.
-if (( $(gdal-config --formats | wc -w) < 99 )); then false; fi
 python <<EOF
 import os
-known = set('derived gtiff hfa mem vrt aaigrid adrg aigrid airsar arg blx bmp bsb cals ceos ceos2 coasp cosar ctg dimap dted elas envisat ers esric fit gff gsg gxf hf2 idrisi ilwis iris iso8211 jaxapalsar jdem kmlsuperoverlay l1b leveller map mrf msgn ngsgeoid nitf northwood pds prf r raw rmf rs2 safe saga sdts sentinel2 sgi sigdem srtmhgt stacit stacta terragen tga til tsx usgsdem xpm xyz zarr zmap rik ozi eeda plmosaic wcs wms wmts daas ogcapi rasterlite mbtiles grib pdf heif exr webp dods mrsid openjpeg netcdf hdf5 hdf4 gif gta png pcraster fits jpeg pcidsk postgisraster'.split())
-current = set(os.popen('gdal-config --formats').read().split())
+# from autoconf gdal
+known = set('derived gtiff hfa mem vrt aaigrid adrg aigrid airsar arg blx bmp bsb cals ceos ceos2 coasp cosar ctg dimap dted elas envisat ers esric fit gff gsg gxf hf2 idrisi ilwis iris iso8211 jaxapalsar jdem kmlsuperoverlay l1b leveller map mrf msgn ngsgeoid nitf northwood pds prf r raw rmf rs2 safe saga sdts sentinel2 sgi sigdem srtmhgt stacit stacta terragen tga til tsx usgsdem xpm xyz zarr zmap rik ozi eeda plmosaic wcs wms wmts daas ogcapi rasterlite mbtiles grib pdf heif exr webp mrsid openjpeg netcdf hdf5 hdf4 gif gta png pcraster fits jpeg pcidsk postgisraster'.lower().split())
+# from cmake gdal
+known2 = set('JPEG raw iso8211 GTIFF MEM vrt Derived HFA SDTS NITF GXF AAIGrid CEOS SAR_CEOS XPM DTED JDEM Envisat ELAS FIT L1B RS2 ILWIS RMF Leveller SGI SRTMHGT IDRISI GSG ERS PALSARJaxa DIMAP GFF COSAR PDS ADRG COASP TSX Terragen BLX MSGN TIL R northwood SAGA XYZ HEIF ESRIC HF2 KMLSUPEROVERLAY CTG ZMap NGSGEOID IRIS MAP CALS SAFE SENTINEL2 PRF MRF WMTS GRIB BMP DAAS TGA STACTA OGCAPI BSB AIGrid ARG USGSDEM AirSAR OZI PCIDSK SIGDEM RIK STACIT PDF PNG GIF WCS HTTP netCDF Zarr EEDA FITS HDF5 PLMOSAIC WMS GTA WEBP HDF4 Rasterlite MBTiles PostGISRaster JP2OpenJPEG EXR PCRaster MrSID MEM geojson TAB Shape KML VRT AVC SDTS GML CSV DGN GMT NTF S57 Tiger Geoconcept GeoRSS DXF PGDump GPSBabel EDIGEO SXF OpenFileGDB WAsP Selafin JML VDV FlatGeobuf MapML GPX GMLAS SVG CSW NAS PLSCENES SOSI WFS NGW Elastic Idrisi PDS SQLite GeoPackage OSM VFK MVT AmigoCloud Carto ILI MySQL PG XLSX XLS CAD ODS LVBAG'.lower().split())
+current = set(os.popen('gdal-config --formats').read().lower().split())
+if len(known2 - current) < len(known - current):
+    known = known2
 print('New formats: %s' % ' '.join(sorted(current - known)))
 print('Missing formats: %s' % ' '.join(sorted(known - current)))
 if len(known-current):
     raise Exception('Missing previously known format')
 EOF
+# Fail if we end up with fewer formats in GDAL than we once had.
+if (( $(gdal-config --formats | wc -w) < 98 )); then false; fi
 `python -c 'import os,sys,mapnik;sys.stdout.write(os.path.dirname(mapnik.__file__))'`/bin/mapnik-render --version 2>&1 | grep version
 mapnik-render --version 2>&1 | grep version
 `python -c 'import os,sys,pyvips;sys.stdout.write(os.path.dirname(pyvips.__file__))'`/bin/vips --version

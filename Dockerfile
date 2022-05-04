@@ -1283,19 +1283,6 @@ RUN \
     echo "`date` lz4" >> /build/log.txt
 
 RUN \
-    echo "`date` libdap" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b version-`getver.py libdap` -c advice.detachedHead=false https://github.com/OPENDAP/libdap4.git && \
-    cd libdap4 && \
-    autoreconf -ifv && \
-    ./configure --silent --prefix=/usr/local --enable-threads=posix --disable-static && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` libdap" >> /build/log.txt
-
-RUN \
     echo "`date` librasterlite2" >> /build/log.txt && \
     export JOBS=`nproc` && \
     fossil --user=root clone https://www.gaia-gis.it/fossil/librasterlite2 librasterlite2.fossil && \
@@ -1355,11 +1342,14 @@ RUN \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
     # git clone --depth=1 --single-branch -b hdf5-`getver.py hdf5` -c advice.detachedHead=false https://github.com/HDFGroup/hdf5.git && \
-    git clone --depth=1 --single-branch -b hdf5-1_12_1 -c advice.detachedHead=false https://github.com/HDFGroup/hdf5.git && \
+    git clone --depth=1 --single-branch -b hdf5-1_12_2 -c advice.detachedHead=false https://github.com/HDFGroup/hdf5.git && \
     cd hdf5 && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DDEFAULT_API_VERSION=v18 -DHDF5_BUILD_EXAMPLES=OFF -DHDF5_BUILD_FORTRAN=OFF -DHDF5_ENABLE_PARALLEL=ON -DHDF5_ENABLE_Z_LIB_SUPPORT=ON -DHDF5_BUILD_GENERATORS=ON -DHDF5_ENABLE_DIRECT_VFD=ON -DHDF5_BUILD_CPP_LIB=OFF -DHDF5_DISABLE_COMPILER_WARNINGS=ON -DBUILD_TESTING=OFF -DZLIB_DIR=/usr/local/lib -DMPI_C_COMPILER=/usr/local/bin/mpicc -DMPI_C_HEADER_DIR=/usr/local/include -DMPI_mpi_LIBRARY=/usr/local/lib/libmpi.so -DMPI_C_LIB_NAMES=mpi -DHDF5_BUILD_DOC=OFF -DCMAKE_INSTALL_PREFIX=/usr/local && \
+    # We need HDF5_ENABLE_PARALLEL=ON for parallel netcdf and \
+    # HDF5_BUILD_CPP_LIB=ON for gdal, so we have to add ALLOW_UNSUPPORTED=ON \
+    # to get both \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DDEFAULT_API_VERSION=v18 -DHDF5_BUILD_EXAMPLES=OFF -DHDF5_BUILD_FORTRAN=OFF -DHDF5_ENABLE_PARALLEL=ON -DHDF5_ENABLE_Z_LIB_SUPPORT=ON -DHDF5_BUILD_GENERATORS=ON -DHDF5_ENABLE_DIRECT_VFD=ON -DHDF5_BUILD_CPP_LIB=ON -DHDF5_DISABLE_COMPILER_WARNINGS=ON -DBUILD_TESTING=OFF -DZLIB_DIR=/usr/local/lib -DMPI_C_COMPILER=/usr/local/bin/mpicc -DMPI_C_HEADER_DIR=/usr/local/include -DMPI_mpi_LIBRARY=/usr/local/lib/libmpi.so -DMPI_C_LIB_NAMES=mpi -DHDF5_BUILD_DOC=OFF -DALLOW_UNSUPPORTED=ON -DCMAKE_INSTALL_PREFIX=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1389,7 +1379,7 @@ RUN \
     mkdir _build && \
     cd _build && \
     cmake .. -DCMAKE_BUILD_TYPE=Release -DENABLE_EXAMPLES=OFF -DENABLE_PARALLEL4=ON -DUSE_PARALLEL=ON -DUSE_PARALLEL4=ON -DENABLE_HDF4=ON -DENABLE_PNETCDF=ON -DENABLE_BYTERANGE=ON -DENABLE_JNA=ON -DCMAKE_SHARED_LINKER_FLAGS=-ljpeg -DENABLE_TESTS=OFF -DENABLE_HDF4_FILE_TESTS=OFF && \
-    # for hdf5 1_13, we might need to add -DHDF5_DIR=/usr/local/share/cmake \
+    # for hdf5 1_13, we might need to add  \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1676,13 +1666,20 @@ RUN \
     cd gdal/gdal || cd gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
     # cmake will soon work fully \
-    # cmake .. -DMRSID_LIBRARY=/build/mrsid/Raster_DSDK/lib/libltidsdk.so -DMRSID_INCLUDE_DIR=/build/mrsid/Raster_DSDK/include -DGDAL_USE_LERC=ON && \
+    if true; then \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release \
+    -DMRSID_LIBRARY=/build/mrsid/Raster_DSDK/lib/libltidsdk.so \
+    -DMRSID_INCLUDE_DIR=/build/mrsid/Raster_DSDK/include \
+    -DGDAL_USE_LERC=ON \
+    && \
+    true; else \
     # export CFLAGS="$CFLAGS -DDEBUG_VERBOSE=ON" && \
     ./autogen.sh && \
     ./configure --prefix=/usr/local --disable-static --disable-rpath --with-cpp14 --without-libtool \
     --with-armadillo \
     --with-cfitsio=/usr/local \
-    --with-dods-root=/usr/local \
     --with-exr \
     --with-hdf5 \
     --with-jpeg12 \
@@ -1697,11 +1694,12 @@ RUN \
     --with-webp \
     # --with-debug \
     | tee configure.output && \
+    true; fi && \
     make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings -Wno-stringop-overflow -Wno-ignored-qualifiers" && \
     make -j ${JOBS} install && \
     ldconfig && \
     # This takes a lot of space in the Docker file, and we don't use it \
-    rm libgdal.a && \
+    rm -f libgdal.a && \
     # reduce docker size \
     rm -rf ogr/ogrsf_frmts/o/*.o frmts/o/*.o && \
     echo "`date` gdal" >> /build/log.txt
@@ -1713,6 +1711,8 @@ RUN \
     cp -r /usr/local/share/{proj,gdal} osgeo/. && \
     mkdir osgeo/bin && \
     find ../../apps/ -executable -type f ! -name '*.cpp' -exec cp {} osgeo/bin/. \; && \
+    find /build/gdal/_build/apps -executable -not -type d -exec bash -c 'cp --dereference /usr/local/bin/"$(basename {})" osgeo/bin/.' \; && \
+    cp --dereference /usr/local/bin/gdal-config osgeo/bin/. && \
     find /build/libgeotiff/libgeotiff/bin/.libs -executable -type f -exec cp {} osgeo/bin/. \; && \
     (strip osgeo/bin/* --strip-unneeded || true) && \
     python -c $'# \n\
@@ -1746,7 +1746,7 @@ data = data.replace( \n\
     "            return True") \n\
 data = re.sub( \n\
     r"gdal_version = \'\\d+.\\d+.\\d+(dev|)\'", \n\
-    "gdal_version = \'" + os.popen("gdal-config --version").read().strip().split(\'.dev\')[0] + "\'", \n\
+    "gdal_version = \'" + os.popen("gdal-config --version").read().strip().split(\'.dev\')[0].split(\'dev\')[0] + "\'", \n\
     data) \n\
 data = data.replace( \n\
     "scripts/*.py\'),", \n\
