@@ -36,6 +36,8 @@ RUN \
     gperf \
     # for libdap \
     libuuid-devel \
+    # for librasterlite2 \
+    fcgi-devel \
     # more support for GDAL \
     json-c12-devel \
     # for mysql \
@@ -64,6 +66,7 @@ RUN \
     ln -s /opt/python/* /opt/py/. && \
     # Enable all versions in boost as well \
     # rm -rf /opt/py/cp35* && \
+    rm -rf /opt/py/cp311* && \
     if [ "$PYPY" = true ]; then \
     echo "Only building pypy versions" && \
     rm -rf /opt/py/cp* && \
@@ -118,7 +121,7 @@ RUN \
     echo "`date` pkg-config" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    until timeout 60 git clone --depth=1 --single-branch -b pkg-config-`getver.py pkg-config` -c advice.detachedHead=false https://gitlab.freedesktop.org/pkg-config/pkg-config.git; do sleep 5; echo "retrying"; done && \
+    until timeout 60 git clone --depth=1 --single-branch -b pkg-config-`getver.py pkg-config` -c advice.detachedHead=false https://github.com/freedesktop/pkg-config.git; do sleep 5; echo "retrying"; done && \
     cd pkg-config && \
     ./autogen.sh && \
     ./configure --silent --prefix=/usr/local --with-internal-glib --disable-host-tool --disable-static && \
@@ -325,12 +328,14 @@ RUN \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     if [ "$PYPY" = true ]; then \
-    # If only building for pypy, we don't need to do anything, since we don't \
-    # have pypy 3.6 \
+    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     true; \
     else \
     # only build for python 3.6 \
-    find /opt/py -mindepth 1 -name '*p36-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    # find /opt/py -mindepth 1 -name '*p36-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    true; \
+    fi && \
+    if find /io/wheelhouse/ -name 'psutil*.whl'; then \
     find /io/wheelhouse/ -name 'psutil*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
@@ -1210,7 +1215,7 @@ RUN \
 RUN \
     echo "`date` pixman" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    until timeout 60 git clone --depth=1 --single-branch -b pixman-`getver.py pixman` -c advice.detachedHead=false https://gitlab.freedesktop.org/pixman/pixman.git; do sleep 5; echo "retrying"; done && \
+    until timeout 60 git clone --depth=1 --single-branch -b pixman-`getver.py pixman` -c advice.detachedHead=false https://github.com/freedesktop/pixman.git; do sleep 5; echo "retrying"; done && \
     cd pixman && \
     meson --prefix=/usr/local --buildtype=release _build && \
     cd _build && \
@@ -1236,7 +1241,7 @@ RUN \
 RUN \
     echo "`date` fontconfig" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    until timeout 60 git clone --depth=1 --single-branch -b `getver.py fontconfig` -c advice.detachedHead=false https://gitlab.freedesktop.org/fontconfig/fontconfig.git; do sleep 5; echo "retrying"; done && \
+    until timeout 60 git clone --depth=1 --single-branch -b `getver.py fontconfig` -c advice.detachedHead=false https://github.com/freedesktop/fontconfig.git; do sleep 5; echo "retrying"; done && \
     cd fontconfig && \
     meson --prefix=/usr/local --buildtype=release -Ddoc=disabled -Dtests=disabled _build && \
     cd _build && \
@@ -1248,7 +1253,7 @@ RUN \
 RUN \
     echo "`date` cairo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    until timeout 60 git clone --depth=1 --single-branch -b `getver.py cairo` -c advice.detachedHead=false https://gitlab.freedesktop.org/cairo/cairo.git; do sleep 5; echo "retrying"; done && \
+    until timeout 60 git clone --depth=1 --single-branch -b `getver.py cairo` -c advice.detachedHead=false https://anongit.freedesktop.org/git/cairo.git; do sleep 5; echo "retrying"; done && \
     cd cairo && \
     meson --prefix=/usr/local --buildtype=release -Dtests=disabled _build && \
     cd _build && \
@@ -1282,6 +1287,7 @@ RUN \
     ldconfig && \
     echo "`date` lz4" >> /build/log.txt
 
+# PINNED - rasterlite isn't working with GDAL
 RUN \
     echo "`date` librasterlite2" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1289,7 +1295,9 @@ RUN \
     mkdir librasterlite2 && \
     cd librasterlite2 && \
     fossil open ../librasterlite2.fossil && \
+    fossil checkout -f 9dd8217cb9 && \
     rm -f ../librasterlite2.fossil && \
+    # ./configure --silent --prefix=/usr/local --disable-static --disable-leptonica && \
     ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -1443,7 +1451,7 @@ RUN \
 RUN \
     echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    until timeout 60 git clone --depth=1 --single-branch -b poppler-`getver.py poppler` -c advice.detachedHead=false https://gitlab.freedesktop.org/poppler/poppler.git; do sleep 5; echo "retrying"; done && \
+    until timeout 60 git clone --depth=1 --single-branch -b poppler-`getver.py poppler` -c advice.detachedHead=false https://github.com/freedesktop/poppler.git; do sleep 5; echo "retrying"; done && \
     cd poppler && \
     mkdir _build && \
     cd _build && \
@@ -1658,15 +1666,13 @@ RUN \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
     # Specific version \
-    git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
-    # git clone --depth=1 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     # sed -i 's/define GDAL_VERSION_MINOR    4/define GDAL_VERSION_MINOR    5/g' gdal/gcore/gdal_version.h.in && \
     # Common \
-    cd gdal/gdal || cd gdal && \
+    cd gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
-    # cmake will soon work fully \
-    if true; then \
     mkdir _build && \
     cd _build && \
     cmake .. -DCMAKE_BUILD_TYPE=Release \
@@ -1674,27 +1680,6 @@ RUN \
     -DMRSID_INCLUDE_DIR=/build/mrsid/Raster_DSDK/include \
     -DGDAL_USE_LERC=ON \
     && \
-    true; else \
-    # export CFLAGS="$CFLAGS -DDEBUG_VERBOSE=ON" && \
-    ./autogen.sh && \
-    ./configure --prefix=/usr/local --disable-static --disable-rpath --with-cpp14 --without-libtool \
-    --with-armadillo \
-    --with-cfitsio=/usr/local \
-    --with-exr \
-    --with-hdf5 \
-    --with-jpeg12 \
-    --with-liblzma \
-    --with-mrsid=/build/mrsid/Raster_DSDK \
-    --with-mysql \
-    --with-pg \
-    --with-poppler \
-    --with-rasterlite2 \
-    --with-sosi \
-    --with-spatialite \
-    --with-webp \
-    # --with-debug \
-    | tee configure.output && \
-    true; fi && \
     make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings -Wno-stringop-overflow -Wno-ignored-qualifiers" && \
     make -j ${JOBS} install && \
     ldconfig && \
@@ -1707,7 +1692,7 @@ RUN \
 RUN \
     echo "`date` gdal python" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    cd gdal/gdal/swig/python || cd gdal/swig/python && \
+    cd gdal/swig/python && \
     cp -r /usr/local/share/{proj,gdal} osgeo/. && \
     mkdir osgeo/bin && \
     find ../../apps/ -executable -type f ! -name '*.cpp' -exec cp {} osgeo/bin/. \; && \
