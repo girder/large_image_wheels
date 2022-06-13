@@ -32,8 +32,9 @@ Packages = {
         're': r'boost-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'cairo': {
-        'git': 'https://anongit.freedesktop.org/git/cairo.git',
+        # The clone at github.com doesn't contain tags or releases.
         # 'git': 'https://github.com/freedesktop/cairo.git',
+        'git': 'https://anongit.freedesktop.org/git/cairo.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'cmake': {

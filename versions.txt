@@ -16,13 +16,13 @@ fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
 gdal 3.5.0
 gdal-pypi 3.5.0.3
-gdal-sha 1eef245dfd50820c815fe0c827d50feb16f0c6ee
+gdal-sha aeef5f546e0c6778cbcd4905a494ed29b2b02805
 gdal-source 3.6.0
 gdk-pixbuf 2.42.8
 giflib 5.2.1
 glib 2.73.0
-glymur 0.9.9
-glymur-pypi 0.9.9
+glymur 0.10.0
+glymur-pypi 0.10.0
 gobject-introspection 1.72.0
 harfbuzz 4.3.0
 hdf4 4_2_15
@@ -62,7 +62,7 @@ libvips 8.12.2
 libwebp 1.2.2
 libxcrypt 4.4.28
 libxml2 2.9.12
-libzip 1.8.0
+libzip 1.9.0
 lz4 1.9.3
 manylinux2014 c46615370b42a79a448fa20fc4697400d12fd2418a85a7071a3fed1a264e512e
 mapnik 1ba1278b4227ccd887a95880d1c75aa6446132fc
@@ -93,7 +93,7 @@ pkg-config 0.29.2
 poppler 22.06.0
 postgresql 14.3
 proj-datumgrid 1.8
-proj4 9.0.0
+proj4 9.0.1
 psutil 5.9.1
 pylibmc 1.6.1
 pylibtiff 0.4.4
