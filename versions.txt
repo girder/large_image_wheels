@@ -16,7 +16,7 @@ fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
 gdal 3.5.0
 gdal-pypi 3.5.0.3
-gdal-sha aeef5f546e0c6778cbcd4905a494ed29b2b02805
+gdal-sha c5ffcd7f0be12d9e919d71b85faacfdb37a9c183
 gdal-source 3.6.0
 gdk-pixbuf 2.42.8
 giflib 5.2.1
@@ -28,7 +28,7 @@ harfbuzz 4.3.0
 hdf4 4_2_15
 hdf5 1_13_1
 icu4c 71-1
-imagemagick 7.1.0-37
+imagemagick 7.1.0-38
 jbigkit 2.1
 jpeg-xl 0.6.1
 krb5 1.20
@@ -64,7 +64,7 @@ libxcrypt 4.4.28
 libxml2 2.9.12
 libzip 1.9.0
 lz4 1.9.3
-manylinux2014 c46615370b42a79a448fa20fc4697400d12fd2418a85a7071a3fed1a264e512e
+manylinux2014 ed7f829711cf10cd044279af0d8e354d20d8e7f6138db5b682b7820f60da59ed
 mapnik 1ba1278b4227ccd887a95880d1c75aa6446132fc
 mapnik-release 3.1.0
 matio 1.5.23
@@ -80,10 +80,10 @@ openjpeg 2.5.0
 openldap 2_6_2
 openmpi 4.1.4
 openslide 3.4.1
-openslide-python 1.1.2
-openslide-python-pypi 1.1.2
-openslide-python-sha 6dec7719aa4bd2188a8fdbc7ad35438b466be47d
-openslide-sha ed9fc33e08d0c63877c9ffd408fdbe5ce1eece71
+openslide-python 1.2.0
+openslide-python-pypi 1.2.0
+openslide-python-sha 3a329449b8923d3d1a8b8a761f312f3325d0e0e8
+openslide-sha 4033d2f9f207e661997457e0279a8a82685767fa
 openssl-1.x 1_1_1o
 orc 0.4.32
 pango 1.50.7
@@ -91,7 +91,7 @@ parallel-netcdf 1.12.3
 pixman 0.40.0
 pkg-config 0.29.2
 poppler 22.06.0
-postgresql 14.3
+postgresql 14.4
 proj-datumgrid 1.8
 proj4 9.0.1
 psutil 5.9.1

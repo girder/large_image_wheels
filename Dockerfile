@@ -2011,6 +2011,7 @@ s = open(path).read().replace( \n\
     include_package_data=True, \n\
     package_data={\'openslide\': [\'bin/*\']}, \n\
     entry_points={\'console_scripts\': [\'%s=openslide.bin:program\' % name for name in os.listdir(\'openslide/bin\') if not name.endswith(\'.py\')]},""") \n\
+s = s.replace(">=3.7", ">=3.6") \n\
 open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
