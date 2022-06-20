@@ -1262,21 +1262,6 @@ RUN \
     ldconfig && \
     echo "`date` cairo" >> /build/log.txt
 
-# PINNED VERSION - GDAL fails on 2.2.0
-RUN \
-    echo "`date` charls" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    # git clone --depth=1 --single-branch -b `getver.py charls` -c advice.detachedHead=false https://github.com/team-charls/charls.git && \
-    git clone --depth=1 --single-branch -b 2.1.0 -c advice.detachedHead=false https://github.com/team-charls/charls.git && \
-    cd charls && \
-    mkdir _build && \
-    cd _build && \
-    cmake -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCHARLS_BUILD_SAMPLES=OFF -DCHARLS_BUILD_TESTS=OFF .. && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` charls" >> /build/log.txt
-
 RUN \
     echo "`date` lz4" >> /build/log.txt && \
     export JOBS=`nproc` && \

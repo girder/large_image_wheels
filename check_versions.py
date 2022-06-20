@@ -388,7 +388,9 @@ Packages = {
     'pango': {
         'json': 'https://download.gnome.org/sources/pango/cache.json',
         'keys': lambda data: list(data[1]['pango']),
-        're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$',
+        # 're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$',
+        # Exclude 1.9x, as it is a prelude to 2.x
+        're': r'^([0-9]+\.[0-8][0-9]*(|\.[0-9]+)(|\.[0-9]+))$',
     },
     'parallel-netcdf': {
         'git': 'https://github.com/Parallel-NetCDF/PnetCDF.git',
