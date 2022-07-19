@@ -232,6 +232,20 @@ cd /build && \
     echo "`date` curl" >> /build/log.txt
 
 RUN \
+    echo "`date` zlib-ng" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b `getver.py zlib-ng` -c advice.detachedHead=false https://github.com/zlib-ng/zlib-ng.git zlib-ng && \
+    cd zlib-ng && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DZLIB_COMPAT=ON -DZLIB_ENABLE_TESTS=OFF -DINSTALL_GTEST=OFF -DBUILD_GMOCK=OFF && \
+    make --silent -j ${JOBS} && \
+    # make --silent -j ${JOBS} install && \
+    # ldconfig && \
+    /usr/bin/cp -f ./libz* /usr/local/lib/. && \
+    echo "`date` zlib-ng" >> /build/log.txt
+
+RUN \
     echo "`date` strip-nondeterminism" >> /build/log.txt && \
     cpanm Archive::Cpio && \
     git clone --depth=1 --single-branch -b `getver.py strip-nondeterminism` -c advice.detachedHead=false https://github.com/esoule/strip-nondeterminism.git && \

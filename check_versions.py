@@ -170,7 +170,7 @@ Packages = {
     },
     'lerc': {
         'git': 'https://github.com/Esri/lerc.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+        're': r'\/v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libbrotli': {
         'git': 'https://github.com/google/brotli.git',
@@ -509,6 +509,10 @@ Packages = {
     'zlib': {
         'filelist': 'https://zlib.net/',
         're': r'zlib-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
+    },
+    'zlib-ng': {
+        'git': 'https://github.com/zlib-ng/zlib-ng.git',
+        're': r'\/([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'zstd': {
         'git': 'https://github.com/facebook/zstd.git',
