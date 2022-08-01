@@ -111,6 +111,13 @@ pprint.pprint(ti)
 print(ti['tile'].size)
 print(ti['tile'][:4,:4])
 EOF
+echo 'Download a png file'
+curl --retry 5 -OJL https://github.com/girder/large_image/raw/master/test/test_files/yb10kx5ktrans.png
+echo 'Open a png with pyvips'
+python <<EOF
+import pyvips
+pyvips.Image.new_from_file('yb10kx5ktrans.png')
+EOF
 echo 'Download a geotiff file'
 curl --retry 5 -L -o landcover.tif https://data.kitware.com/api/v1/file/5be43e848d777f217991e270/download
 echo 'Use gdal to open a geotiff file'
@@ -372,10 +379,11 @@ except pyvips.error.Error:
   pass
 EOF
 
-# echo 'test pyvips and svg'
+# echo 'test pyvips and large svg'
 # python <<EOF
 # import pyvips
 # svgImage = pyvips.Image.svgload_buffer('<svg viewBox="0 0 57578 56112" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" fill="black" d="M 58815,54197 L 58252,54478 L 57689.,54760 L 58346,55510 L 58815,54197 z"/></svg>'.encode())
 # svgImage.tiffsave("/tmp/junk.tiff", compression="lzw")
 # EOF
 
+set +e

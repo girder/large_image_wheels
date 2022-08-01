@@ -231,19 +231,19 @@ cd /build && \
     ldconfig && \
     echo "`date` curl" >> /build/log.txt
 
-RUN \
-    echo "`date` zlib-ng" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b `getver.py zlib-ng` -c advice.detachedHead=false https://github.com/zlib-ng/zlib-ng.git zlib-ng && \
-    cd zlib-ng && \
-    mkdir _build && \
-    cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DZLIB_COMPAT=ON -DZLIB_ENABLE_TESTS=OFF -DINSTALL_GTEST=OFF -DBUILD_GMOCK=OFF && \
-    make --silent -j ${JOBS} && \
-    # make --silent -j ${JOBS} install && \
-    # ldconfig && \
-    /usr/bin/cp -f ./libz* /usr/local/lib/. && \
-    echo "`date` zlib-ng" >> /build/log.txt
+# RUN \
+#     echo "`date` zlib-ng" >> /build/log.txt && \
+#     export JOBS=`nproc` && \
+#     git clone --depth=1 --single-branch -b `getver.py zlib-ng` -c advice.detachedHead=false https://github.com/zlib-ng/zlib-ng.git zlib-ng && \
+#     cd zlib-ng && \
+#     mkdir _build && \
+#     cd _build && \
+#     cmake .. -DCMAKE_BUILD_TYPE=Release -DZLIB_COMPAT=ON -DZLIB_ENABLE_TESTS=OFF -DINSTALL_GTEST=OFF -DBUILD_GMOCK=OFF && \
+#     make --silent -j ${JOBS} && \
+#     make --silent -j ${JOBS} install && \
+#     ldconfig && \
+#     /usr/bin/cp -f ./libz* /usr/local/lib/. && \
+#     echo "`date` zlib-ng" >> /build/log.txt
 
 RUN \
     echo "`date` strip-nondeterminism" >> /build/log.txt && \
@@ -513,10 +513,12 @@ cd /build && \
     ldconfig && \
     echo "`date` libdeflate" >> /build/log.txt
 
+# PINNED - version 4.x causes segfaults in libvips in some manner on CircleCI
 RUN \
     echo "`date` lerc" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py lerc` -c advice.detachedHead=false https://github.com/Esri/lerc.git && \
+    # git clone --depth=1 --single-branch -b v`getver.py lerc` -c advice.detachedHead=false https://github.com/Esri/lerc.git && \
+    git clone --depth=1 --single-branch -b v3.0 -c advice.detachedHead=false https://github.com/Esri/lerc.git && \
     cd lerc && \
     mkdir _build && \
     cd _build && \
@@ -834,7 +836,7 @@ open(path, "w").write(s)' && \
 path = "gthread/meson.build" \n\
 s = open(path).read().replace("library(\'gthread-2.0\',", "library(\'gthread-2.0-liw\',") \n\
 open(path, "w").write(s)' && \
-    meson --prefix=/usr/local --buildtype=release -Dtests=False -Dglib_debug=disabled _build && \
+    meson --prefix=/usr/local --buildtype=release --optimization=3 -Dtests=False -Dglib_debug=disabled _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -861,7 +863,7 @@ path = "giscanner/meson.build" \n\
 s = open(path).read() \n\
 s = s[:s.index("install_subdir")] + s[s.index("flex"):] \n\
 open(path, "w").write(s)' && \
-    meson --prefix=/usr/local --buildtype=release _build && \
+    meson --prefix=/usr/local --buildtype=release --optimization=3 _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -877,7 +879,7 @@ RUN \
     tar -xf gdk-pixbuf.tar -C gdk-pixbuf --strip-components 1 && \
     rm -f gdk-pixbuf.tar && \
     cd gdk-pixbuf && \
-    meson --prefix=/usr/local --buildtype=release -Dbuiltin_loaders=all -Dman=False -Dinstalled_tests=False _build && \
+    meson --prefix=/usr/local --buildtype=release --optimization=3 -Dbuiltin_loaders=all -Dman=False -Dinstalled_tests=False _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -1231,7 +1233,7 @@ RUN \
     export JOBS=`nproc` && \
     until timeout 60 git clone --depth=1 --single-branch -b pixman-`getver.py pixman` -c advice.detachedHead=false https://github.com/freedesktop/pixman.git; do sleep 5; echo "retrying"; done && \
     cd pixman && \
-    meson --prefix=/usr/local --buildtype=release _build && \
+    meson --prefix=/usr/local --buildtype=release --optimization=3 _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -1257,7 +1259,7 @@ RUN \
     export JOBS=`nproc` && \
     until timeout 60 git clone --depth=1 --single-branch -b `getver.py fontconfig` -c advice.detachedHead=false https://github.com/freedesktop/fontconfig.git; do sleep 5; echo "retrying"; done && \
     cd fontconfig && \
-    meson --prefix=/usr/local --buildtype=release -Ddoc=disabled -Dtests=disabled _build && \
+    meson --prefix=/usr/local --buildtype=release --optimization=3 -Ddoc=disabled -Dtests=disabled _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -1269,7 +1271,7 @@ RUN \
     export JOBS=`nproc` && \
     until timeout 60 git clone --depth=1 --single-branch -b `getver.py cairo` -c advice.detachedHead=false https://anongit.freedesktop.org/git/cairo.git; do sleep 5; echo "retrying"; done && \
     cd cairo && \
-    meson --prefix=/usr/local --buildtype=release -Dtests=disabled _build && \
+    meson --prefix=/usr/local --buildtype=release --optimization=3 -Dtests=disabled _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -1787,7 +1789,7 @@ RUN \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b `getver.py harfbuzz` -c advice.detachedHead=false https://github.com/harfbuzz/harfbuzz.git && \
     cd harfbuzz && \
-    meson --prefix=/usr/local --buildtype=release -Dtests=disabled _build && \
+    meson --prefix=/usr/local --buildtype=release --optimization=3 -Dtests=disabled _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -2033,7 +2035,7 @@ RUN \
     tar -zxf orc.tar.gz -C orc --strip-components 1 && \
     rm -f orc.tar.gz && \
     cd orc && \
-    meson --prefix=/usr/local --buildtype=release -Dgtk_doc=disabled -Dtests=disabled -Dexamples=disabled -Dbenchmarks=disabled _build && \
+    meson --prefix=/usr/local --buildtype=release --optimization=3 -Dgtk_doc=disabled -Dtests=disabled -Dexamples=disabled -Dbenchmarks=disabled _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -2081,7 +2083,7 @@ RUN \
     tar -xf pango.tar -C pango --strip-components 1 && \
     rm -f pango.tar && \
     cd pango && \
-    meson --prefix=/usr/local --buildtype=release -Dintrospection=disabled _build && \
+    meson --prefix=/usr/local --buildtype=release --optimization=3 -Dintrospection=disabled _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -2205,6 +2207,96 @@ RUN \
     ldconfig && \
     echo "`date` libexif" >> /build/log.txt
 
+# # PINNED 8.13 doesn't build
+# # vips doesn't have PDFium (it uses poppler instead)
+# RUN \
+#     echo "`date` libvips" >> /build/log.txt && \
+#     export JOBS=`nproc` && \
+#     git clone --depth=1 --single-branch -b v`getver.py libvips` -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
+#     cd libvips && \
+#     # Allow using VIPS_TMPDIR for the temp directory \
+#     sed -i 's/tmpd;/tmpd;if ((tmpd=g_getenv("VIPS_TMPDIR"))) return(tmpd);/g' libvips/iofuncs/util.c && \
+#     meson --prefix=/usr/local --buildtype=release --optimization=3 _build -Dmodules=disabled -Dheif-module=disabled -Djpeg-xl-module=disabled -Dmagick-module=disabled -Dopenslide-module=disabled -Dpoppler-module=disabled && \
+#     cd _build && \
+#     ninja -j ${JOBS} && \
+#     ninja -j ${JOBS} install && \
+#     ldconfig && \
+#     echo "`date` libvips" >> /build/log.txt
+#
+# RUN \
+#     echo "`date` pyvips" >> /build/log.txt && \
+#     export JOBS=`nproc` && \
+#     git clone --depth=1 --single-branch -b v`getver.py pyvips` -c advice.detachedHead=false https://github.com/libvips/pyvips.git && \
+#     cd pyvips && \
+#     python -c $'# \n\
+# path = "pyvips/__init__.py" \n\
+# s = open(path).read().replace( \n\
+# """    import _libvips""", \n\
+# """    import ctypes \n\
+#     import os \n\
+#     libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath( \n\
+#         __file__))), \'pyvips.libs\')) \n\
+#     if os.path.exists(libpath): \n\
+#         libs = os.listdir(libpath) \n\
+#         loadCount = 0 \n\
+#         while True: \n\
+#             numLoaded = 0 \n\
+#             for name in libs: \n\
+#                 try: \n\
+#                     ctypes.cdll.LoadLibrary(os.path.join(libpath, name)) \n\
+#                     numLoaded += 1 \n\
+#                 except Exception: \n\
+#                     pass \n\
+#             if numLoaded - loadCount <= 0: \n\
+#                 break \n\
+#             loadCount = numLoaded \n\
+#         libvipspath = [lib for lib in libs if lib.startswith(\'libvips\')][0] \n\
+#         ctypes.cdll.LoadLibrary(os.path.join(libpath, libvipspath)) \n\
+#     from . import _libvips""") \n\
+# open(path, "w").write(s)' && \
+#     python -c $'# \n\
+# path = "pyvips/pyvips_build.py" \n\
+# s = open(path).read().replace( \n\
+# """ffibuilder.set_source("_libvips",""", \n\
+# """ffibuilder.set_source("pyvips._libvips",""") \n\
+# open(path, "w").write(s)' && \
+#     mkdir pyvips/bin && \
+#     find /build/libvips/_build/tools -executable -type f -exec cp {} pyvips/bin/. \; && \
+#     cp /usr/local/bin/magick pyvips/bin/. && \
+#     strip pyvips/bin/* --strip-unneeded -p -D && \
+#     python -c $'# \n\
+# path = "pyvips/bin/__init__.py" \n\
+# s = """import os \n\
+# import sys \n\
+# \n\
+# def program(): \n\
+#     path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0])) \n\
+#     os.execv(path, sys.argv) \n\
+# """ \n\
+# open(path, "w").write(s)' && \
+#     python -c $'# \n\
+# path = "setup.py" \n\
+# s = open(path).read().replace("from os import path", \n\
+# """from os import path \n\
+# import os""").replace( \n\
+# """packages=pyvips_packages,""", \n\
+# """packages=pyvips_packages, \n\
+#         include_package_data=True, \n\
+#         package_data={\'pyvips\': [\'bin/*\']}, \n\
+#         entry_points={\'console_scripts\': [\'%s=pyvips.bin:program\' % name for name in os.listdir(\'pyvips/bin\') if not name.endswith(\'.py\')]},""") \n\
+# open(path, "w").write(s)' && \
+#     # Strip libraries before building any wheels \
+#     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
+#     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
+#     find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse; git clean -fxd -e pyvips/bin' && \
+#     find /io/wheelhouse/ -name 'pyvips*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+#     find /io/wheelhouse/ -name 'pyvips*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
+#     find /io/wheelhouse/ -name 'pyvips*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
+#     ls -l /io/wheelhouse && \
+#     rm -rf ~/.cache && \
+#     echo "`date` pyvips" >> /build/log.txt
+
+# PINNED 8.13 doesn't build
 # vips doesn't have PDFium (it uses poppler instead)
 RUN \
     echo "`date` libvips" >> /build/log.txt && \
@@ -2217,7 +2309,8 @@ RUN \
     mv /etc/ld.so.conf.d/00-manylinux.conf /tmp/00-manylinux.conf && \
     mv /etc/ld.so.conf.d/01-manylinux.conf /tmp/01-manylinux.conf && \
     # Use these lines for a release \
-    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v`getver.py libvips`/vips-`getver.py libvips`.tar.gz -L -o vips.tar.gz && \
+    # curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v`getver.py libvips`/vips-`getver.py libvips`.tar.gz -L -o vips.tar.gz && \
+    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.12.2/vips-8.12.2.tar.gz -L -o vips.tar.gz && \
     mkdir vips && \
     tar -zxf vips.tar.gz -C vips --strip-components 1 && \
     rm -f vips.tar.gz && \

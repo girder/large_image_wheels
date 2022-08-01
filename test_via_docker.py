@@ -42,7 +42,7 @@ containers = [
 # print('Passed')
 
 
-def test_container(container, entry):
+def test_container(container, entry, full):
     lock = entry['lock']
     result = entry['out']
     with lock:
@@ -51,7 +51,9 @@ def test_container(container, entry):
         'docker', 'run',
         '-v', '%s/wheels:/wheels' % os.path.dirname(os.path.realpath(__file__)),
         '-v', '%s/test:/test' % os.path.dirname(os.path.realpath(__file__)),
-        '--rm', container, 'bash', '-e', '/test/test_script.sh']
+        '--rm', container, 'bash', '-e', '-c',
+        'bash /test/test_script.sh' + ('' if not full else ' && bash /test/li_script.sh'),
+    ]
     # cmd += sys.argv[1:]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     while True:
@@ -71,11 +73,12 @@ if __name__ == '__main__':
     count = multiprocessing.cpu_count()
     pool = multiprocessing.pool.ThreadPool(processes=count)
     results = []
+    full = len(sys.argv) > 2 and sys.argv[2] == 'full'
     for container in containers:
         if len(sys.argv) > 1 and sys.argv[1] not in container:
             continue
         entry = {'out': [], 'lock': threading.Lock(), 'status': 'queued', 'container': container}
-        result = pool.apply_async(test_container, (container, entry))
+        result = pool.apply_async(test_container, (container, entry, full))
         entry['result'] = result
         results.append(entry)
     pool.close()
