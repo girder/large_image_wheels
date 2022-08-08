@@ -16,13 +16,13 @@ fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
 gdal 3.5.1
 gdal-pypi 3.5.1
-gdal-sha 76dfdcc0574a09fb7cb00e207b92be5177ee7c91
+gdal-sha c868b1ed28dab542db8e5c1000b13d62286d5fca
 gdal-source 3.6.0
-gdk-pixbuf 2.42.8
+gdk-pixbuf 2.42.9
 giflib 5.2.1
 glib 2.73.3
-glymur 0.11.1
-glymur-pypi 0.11.1
+glymur 0.11.2
+glymur-pypi 0.11.2
 gobject-introspection 1.73.0
 harfbuzz 5.1.0
 hdf4 4_2_15
@@ -64,7 +64,7 @@ libxcrypt 4.4.28
 libxml2 2.9.12
 libzip 1.9.2
 lz4 1.9.3
-manylinux2014 1c083376dc71ccf51a44bd94442a41e700ecc5c72e79cfc05093556d624ff0a6
+manylinux2014 d195b4906bd74dcc9db60e8ffa594dd37f5eb7e9ce41dc1683cf9458a22ddf2e
 mapnik 9627432723dc847e15c45065af1ce43791d91575
 mapnik-release 3.1.0
 matio 1.5.23

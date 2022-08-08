@@ -1680,6 +1680,7 @@ RUN \
     -DMRSID_LIBRARY=/build/mrsid/Raster_DSDK/lib/libltidsdk.so \
     -DMRSID_INCLUDE_DIR=/build/mrsid/Raster_DSDK/include \
     -DGDAL_USE_LERC=ON \
+    -DSWIG_REGENERATE_PYTHON=ON \
     && \
     make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings -Wno-stringop-overflow -Wno-ignored-qualifiers" && \
     make -j ${JOBS} install && \
@@ -1694,9 +1695,10 @@ RUN \
     echo "`date` gdal python" >> /build/log.txt && \
     export JOBS=`nproc` && \
     cd gdal/swig/python && \
+    cp /build/gdal/_build/swig/python/setup.py . && \
     cp -r /usr/local/share/{proj,gdal} osgeo/. && \
     mkdir osgeo/bin && \
-    find ../../apps/ -executable -type f ! -name '*.cpp' -exec cp {} osgeo/bin/. \; && \
+    find /build/gdal/apps/ -executable -type f ! -name '*.cpp' -exec cp {} osgeo/bin/. \; && \
     find /build/gdal/_build/apps -executable -not -type d -exec bash -c 'cp --dereference /usr/local/bin/"$(basename {})" osgeo/bin/.' \; && \
     cp --dereference /usr/local/bin/gdal-config osgeo/bin/. && \
     find /build/libgeotiff/libgeotiff/bin/.libs -executable -type f -exec cp {} osgeo/bin/. \; && \
@@ -1753,6 +1755,7 @@ import re \n\
 _localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
 os.environ.setdefault("PROJ_LIB", os.path.join(_localpath, "proj")) \n\
 os.environ.setdefault("GDAL_DATA", os.path.join(_localpath, "gdal")) \n\
+os.environ.setdefault("CPL_LOG", os.devnull) \n\
 _caPath = "/etc/ssl/certs/ca-certificates.crt" \n\
 if os.path.exists(_caPath): \n\
     os.environ.setdefault("CURL_CA_BUNDLE", _caPath) \n\
@@ -2222,79 +2225,6 @@ RUN \
 #     ninja -j ${JOBS} install && \
 #     ldconfig && \
 #     echo "`date` libvips" >> /build/log.txt
-#
-# RUN \
-#     echo "`date` pyvips" >> /build/log.txt && \
-#     export JOBS=`nproc` && \
-#     git clone --depth=1 --single-branch -b v`getver.py pyvips` -c advice.detachedHead=false https://github.com/libvips/pyvips.git && \
-#     cd pyvips && \
-#     python -c $'# \n\
-# path = "pyvips/__init__.py" \n\
-# s = open(path).read().replace( \n\
-# """    import _libvips""", \n\
-# """    import ctypes \n\
-#     import os \n\
-#     libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath( \n\
-#         __file__))), \'pyvips.libs\')) \n\
-#     if os.path.exists(libpath): \n\
-#         libs = os.listdir(libpath) \n\
-#         loadCount = 0 \n\
-#         while True: \n\
-#             numLoaded = 0 \n\
-#             for name in libs: \n\
-#                 try: \n\
-#                     ctypes.cdll.LoadLibrary(os.path.join(libpath, name)) \n\
-#                     numLoaded += 1 \n\
-#                 except Exception: \n\
-#                     pass \n\
-#             if numLoaded - loadCount <= 0: \n\
-#                 break \n\
-#             loadCount = numLoaded \n\
-#         libvipspath = [lib for lib in libs if lib.startswith(\'libvips\')][0] \n\
-#         ctypes.cdll.LoadLibrary(os.path.join(libpath, libvipspath)) \n\
-#     from . import _libvips""") \n\
-# open(path, "w").write(s)' && \
-#     python -c $'# \n\
-# path = "pyvips/pyvips_build.py" \n\
-# s = open(path).read().replace( \n\
-# """ffibuilder.set_source("_libvips",""", \n\
-# """ffibuilder.set_source("pyvips._libvips",""") \n\
-# open(path, "w").write(s)' && \
-#     mkdir pyvips/bin && \
-#     find /build/libvips/_build/tools -executable -type f -exec cp {} pyvips/bin/. \; && \
-#     cp /usr/local/bin/magick pyvips/bin/. && \
-#     strip pyvips/bin/* --strip-unneeded -p -D && \
-#     python -c $'# \n\
-# path = "pyvips/bin/__init__.py" \n\
-# s = """import os \n\
-# import sys \n\
-# \n\
-# def program(): \n\
-#     path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0])) \n\
-#     os.execv(path, sys.argv) \n\
-# """ \n\
-# open(path, "w").write(s)' && \
-#     python -c $'# \n\
-# path = "setup.py" \n\
-# s = open(path).read().replace("from os import path", \n\
-# """from os import path \n\
-# import os""").replace( \n\
-# """packages=pyvips_packages,""", \n\
-# """packages=pyvips_packages, \n\
-#         include_package_data=True, \n\
-#         package_data={\'pyvips\': [\'bin/*\']}, \n\
-#         entry_points={\'console_scripts\': [\'%s=pyvips.bin:program\' % name for name in os.listdir(\'pyvips/bin\') if not name.endswith(\'.py\')]},""") \n\
-# open(path, "w").write(s)' && \
-#     # Strip libraries before building any wheels \
-#     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
-#     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-#     find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse; git clean -fxd -e pyvips/bin' && \
-#     find /io/wheelhouse/ -name 'pyvips*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
-#     find /io/wheelhouse/ -name 'pyvips*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
-#     find /io/wheelhouse/ -name 'pyvips*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
-#     ls -l /io/wheelhouse && \
-#     rm -rf ~/.cache && \
-#     echo "`date` pyvips" >> /build/log.txt
 
 # PINNED 8.13 doesn't build
 # vips doesn't have PDFium (it uses poppler instead)
@@ -2346,6 +2276,18 @@ s = open(path).read().replace( \n\
         __file__))), \'pyvips.libs\')) \n\
     if os.path.exists(libpath): \n\
         libs = os.listdir(libpath) \n\
+        loadCount = 0 \n\
+        while True: \n\
+            numLoaded = 0 \n\
+            for name in libs: \n\
+                try: \n\
+                    ctypes.cdll.LoadLibrary(os.path.join(libpath, name)) \n\
+                    numLoaded += 1 \n\
+                except Exception: \n\
+                    pass \n\
+            if numLoaded - loadCount <= 0: \n\
+                break \n\
+            loadCount = numLoaded \n\
         libvipspath = [lib for lib in libs if lib.startswith(\'libvips\')][0] \n\
         ctypes.cdll.LoadLibrary(os.path.join(libpath, libvipspath)) \n\
     from . import _libvips""") \n\
@@ -2357,7 +2299,11 @@ s = open(path).read().replace( \n\
 """ffibuilder.set_source("pyvips._libvips",""") \n\
 open(path, "w").write(s)' && \
     mkdir pyvips/bin && \
-    find /build/vips/tools/.libs/ -executable -type f -exec cp {} pyvips/bin/. \; && \
+    if [ -d /build/vips/tools/.libs/ ]; then \
+    find /build/vips/tools/.libs/ -executable -type f -exec cp {} pyvips/bin/. \; ; \
+    else \
+    find /build/libvips/_build/tools -executable -type f -exec cp {} pyvips/bin/. \; ; \
+    fi && \
     cp /usr/local/bin/magick pyvips/bin/. && \
     strip pyvips/bin/* --strip-unneeded -p -D && \
     python -c $'# \n\
@@ -2391,6 +2337,7 @@ open(path, "w").write(s)' && \
     ls -l /io/wheelhouse && \
     rm -rf ~/.cache && \
     echo "`date` pyvips" >> /build/log.txt
+
 
 RUN \
     echo "`date` cyrus-sasl" >> /build/log.txt && \
@@ -2479,6 +2426,7 @@ RUN \
     find javabridge/jvm -name '*.jar' -exec bash -c "echo placeholder > {}" \; && \
     # libsaproc.so is only used for debugging \
     rm -f javabridge/jvm/jre/lib/amd64/libsaproc.so && \
+    sed -i 's/env.exception_describe()/pass/g' javabridge/jutil.py && \
     # allow installing binaries \
     python -c $'# \n\
 path = "javabridge/jvm/bin/__init__.py" \n\

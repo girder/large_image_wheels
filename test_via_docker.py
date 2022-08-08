@@ -71,9 +71,11 @@ def test_container(container, entry, full):
 
 if __name__ == '__main__':
     count = multiprocessing.cpu_count()
+    full = len(sys.argv) > 2 and sys.argv[2] == 'full'
+    if full:
+        count = min(4, count)
     pool = multiprocessing.pool.ThreadPool(processes=count)
     results = []
-    full = len(sys.argv) > 2 and sys.argv[2] == 'full'
     for container in containers:
         if len(sys.argv) > 1 and sys.argv[1] not in container:
             continue
