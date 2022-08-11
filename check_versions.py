@@ -563,6 +563,23 @@ def getUrl(url, pkginfo):
     return requests.get(url, **param)
 
 
+# This can be imported into Chrome
+if len(sys.argv) >= 2 and sys.argv[1] == 'bookmarks':
+    print("""<!DOCTYPE NETSCAPE-Bookmark-file-1>
+  <META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">
+  <TITLE>Bookmarks</TITLE>
+  <H1>Bookmarks</H1>
+  <DL><p>
+    <DT><H3>LIW Sources</H3>
+    <DL><p>""")
+    for key, value in Packages.items():
+        url = ([v for v in value.values() if isinstance(v, str) and 'http' in v] + [''])[0]
+        if url:
+            print('      <DT><A HREF="%s">%s</A>' % (url, key))
+    print("""      </DL><p>
+      </DL><p>""")
+    sys.exit(0)
+
 failures = False
 for pkg in sorted(Packages):  # noqa
     if any(val for val in sys.argv[1:] if not val.startswith('-')):

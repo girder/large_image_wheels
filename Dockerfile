@@ -1949,6 +1949,7 @@ RUN \
     cd openslide && \
     patch src/openslide-vendor-mirax.c ../openslide-vendor-mirax.c.patch && \
     patch src/openslide.c ../openslide-init.patch && \
+    export LDFLAGS="$LDFLAGS"',-rpath,$ORIGIN' && \
     autoreconf -ifv && \
     ./configure --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
@@ -1975,21 +1976,7 @@ s = open(path).read().replace( \n\
         libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath( \n\
             __file__))), \'openslide_python.libs\')) \n\
         libs = os.listdir(libpath) \n\
-        loadCount = 0 \n\
-        while True: \n\
-            numLoaded = 0 \n\
-            for name in libs: \n\
-                try: \n\
-                    somelib = os.path.join(libpath, name) \n\
-                    if name.startswith(\'libopenslide\'): \n\
-                        lib = somelib \n\
-                    cdll.LoadLibrary(somelib) \n\
-                    numLoaded += 1 \n\
-                except Exception: \n\
-                    pass \n\
-            if numLoaded - loadCount <= 0: \n\
-                break \n\
-            loadCount = numLoaded \n\
+        lib = [lib for lib in libs if lib.startswith(\'libopenslide\')][0] \n\
         _lib = cdll.LoadLibrary(lib) \n\
     except Exception: \n\
         _lib = cdll.LoadLibrary(\'libopenslide.so.0\')""") \n\
@@ -2210,54 +2197,21 @@ RUN \
     ldconfig && \
     echo "`date` libexif" >> /build/log.txt
 
-# # PINNED 8.13 doesn't build
-# # vips doesn't have PDFium (it uses poppler instead)
-# RUN \
-#     echo "`date` libvips" >> /build/log.txt && \
-#     export JOBS=`nproc` && \
-#     git clone --depth=1 --single-branch -b v`getver.py libvips` -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
-#     cd libvips && \
-#     # Allow using VIPS_TMPDIR for the temp directory \
-#     sed -i 's/tmpd;/tmpd;if ((tmpd=g_getenv("VIPS_TMPDIR"))) return(tmpd);/g' libvips/iofuncs/util.c && \
-#     meson --prefix=/usr/local --buildtype=release --optimization=3 _build -Dmodules=disabled -Dheif-module=disabled -Djpeg-xl-module=disabled -Dmagick-module=disabled -Dopenslide-module=disabled -Dpoppler-module=disabled && \
-#     cd _build && \
-#     ninja -j ${JOBS} && \
-#     ninja -j ${JOBS} install && \
-#     ldconfig && \
-#     echo "`date` libvips" >> /build/log.txt
-
-# PINNED 8.13 doesn't build
-# vips doesn't have PDFium (it uses poppler instead)
 RUN \
     echo "`date` libvips" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    export AUTOMAKE_JOBS=`nproc` && \
-    # Something about library path resolution breaks if the local library \
-    # paths are before the systemish paths.  Rearrange things to work around \
-    # this until it can be figured out properly \
-    export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/lib" && \
-    mv /etc/ld.so.conf.d/00-manylinux.conf /tmp/00-manylinux.conf && \
-    mv /etc/ld.so.conf.d/01-manylinux.conf /tmp/01-manylinux.conf && \
-    # Use these lines for a release \
-    # curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v`getver.py libvips`/vips-`getver.py libvips`.tar.gz -L -o vips.tar.gz && \
-    curl --retry 5 --silent https://github.com/libvips/libvips/releases/download/v8.12.2/vips-8.12.2.tar.gz -L -o vips.tar.gz && \
-    mkdir vips && \
-    tar -zxf vips.tar.gz -C vips --strip-components 1 && \
-    rm -f vips.tar.gz && \
-    cd vips && \
+    # version \
+    git clone --depth=1 --single-branch -b v`getver.py libvips` -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
+    # master \
+    # git clone -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
+    cd libvips && \
     # Allow using VIPS_TMPDIR for the temp directory \
     sed -i 's/tmpd;/tmpd;if ((tmpd=g_getenv("VIPS_TMPDIR"))) return(tmpd);/g' libvips/iofuncs/util.c && \
-    # Use these lines for master \
-    # git clone --depth=1 https://github.com/libvips/libvips.git -c advice.detachedHead=false vips && \
-    # cd vips && \
-    # ./autogen.sh && \
-    # Common \
-    ./configure --prefix=/usr/local CFLAGS="$CFLAGS `pkg-config --cflags glib-2.0`" LIBS="`pkg-config --libs glib-2.0`" --disable-static --disable-modules && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    # Undo the library path workaround \
-    mv /tmp/00-manylinux.conf /etc/ld.so.conf.d/00-manylinux.conf && \
-    mv /tmp/01-manylinux.conf /etc/ld.so.conf.d/01-manylinux.conf && \
+    export LDFLAGS="$LDFLAGS"',-rpath,$ORIGIN' && \
+    meson --prefix=/usr/local --buildtype=release --optimization=3 _build -Dmodules=disabled -Dnifti-prefix-dir=/usr/local && \
+    cd _build && \
+    ninja -j ${JOBS} && \
+    ninja -j ${JOBS} install && \
     ldconfig && \
     echo "`date` libvips" >> /build/log.txt
 
@@ -2276,18 +2230,6 @@ s = open(path).read().replace( \n\
         __file__))), \'pyvips.libs\')) \n\
     if os.path.exists(libpath): \n\
         libs = os.listdir(libpath) \n\
-        loadCount = 0 \n\
-        while True: \n\
-            numLoaded = 0 \n\
-            for name in libs: \n\
-                try: \n\
-                    ctypes.cdll.LoadLibrary(os.path.join(libpath, name)) \n\
-                    numLoaded += 1 \n\
-                except Exception: \n\
-                    pass \n\
-            if numLoaded - loadCount <= 0: \n\
-                break \n\
-            loadCount = numLoaded \n\
         libvipspath = [lib for lib in libs if lib.startswith(\'libvips\')][0] \n\
         ctypes.cdll.LoadLibrary(os.path.join(libpath, libvipspath)) \n\
     from . import _libvips""") \n\
