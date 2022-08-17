@@ -231,19 +231,19 @@ cd /build && \
     ldconfig && \
     echo "`date` curl" >> /build/log.txt
 
-# RUN \
-#     echo "`date` zlib-ng" >> /build/log.txt && \
-#     export JOBS=`nproc` && \
-#     git clone --depth=1 --single-branch -b `getver.py zlib-ng` -c advice.detachedHead=false https://github.com/zlib-ng/zlib-ng.git zlib-ng && \
-#     cd zlib-ng && \
-#     mkdir _build && \
-#     cd _build && \
-#     cmake .. -DCMAKE_BUILD_TYPE=Release -DZLIB_COMPAT=ON -DZLIB_ENABLE_TESTS=OFF -DINSTALL_GTEST=OFF -DBUILD_GMOCK=OFF && \
-#     make --silent -j ${JOBS} && \
-#     make --silent -j ${JOBS} install && \
-#     ldconfig && \
-#     /usr/bin/cp -f ./libz* /usr/local/lib/. && \
-#     echo "`date` zlib-ng" >> /build/log.txt
+RUN \
+    echo "`date` zlib-ng" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b `getver.py zlib-ng` -c advice.detachedHead=false https://github.com/zlib-ng/zlib-ng.git zlib-ng && \
+    cd zlib-ng && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DZLIB_COMPAT=ON -DZLIB_ENABLE_TESTS=OFF -DINSTALL_GTEST=OFF -DBUILD_GMOCK=OFF && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    /usr/bin/cp -f ./libz* /usr/local/lib/. && \
+    echo "`date` zlib-ng" >> /build/log.txt
 
 RUN \
     echo "`date` strip-nondeterminism" >> /build/log.txt && \
@@ -1411,7 +1411,7 @@ RUN \
     cd _build && \
     CFLAGS="$CFLAGS -ftls-model=global-dynamic" \
     CXXFLAGS="$CXXFLAGS -Wno-deprecated-declarations -ftls-model=global-dynamic" \
-    cmake -DBUILD_CONFIG=mysql_release -DBUILD_SHARED_LIBS=ON -DWITH_BOOST=`find ../boost/ -maxdepth 1 -name 'boost_*'` -DWITH_ZLIB=system -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DCMAKE_BUILD_TYPE=Release -DWITHOUT_SERVER=ON -DREPRODUCIBLE_BUILD=ON -DINSTALL_MYSQLTESTDIR="" .. && \
+    cmake -DBUILD_CONFIG=mysql_release -DBUILD_SHARED_LIBS=ON -DWITH_BOOST=`find ../boost/ -maxdepth 1 -name 'boost_*'` -DWITH_ZLIB=bundled -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DCMAKE_BUILD_TYPE=Release -DWITHOUT_SERVER=ON -DREPRODUCIBLE_BUILD=ON -DINSTALL_MYSQLTESTDIR="" .. && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     # reduce docker size \
