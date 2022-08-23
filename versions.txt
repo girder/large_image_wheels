@@ -16,7 +16,7 @@ fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
 gdal 3.5.1
 gdal-pypi 3.5.1
-gdal-sha c387ba85a94d3608e625057e82efb1357845c6fd
+gdal-sha 581246a1ccaf62438e20be371f82453c19d54394
 gdal-source 3.6.0
 gdk-pixbuf 2.42.9
 giflib 5.2.1
@@ -46,13 +46,13 @@ libgeotiff 1.7.1
 libgsf 1.14.50
 libgta 1.2.1
 libheif 1.12.0
-libhwy 1.0.0
+libhwy 1.0.1
 libiconv 1.17
-libimagequant 4.0.1
+libimagequant 4.0.4
 libjpeg-turbo 2.1.4
 libmemcached 1.0.19
 libpng 1.6.37
-librasterlite2 c67fe8f7c7
+librasterlite2 4ebb31860b
 libraw 0.20.2
 librsvg 2.55.0
 libspatialite 08517f176a
@@ -95,7 +95,7 @@ postgresql 14.5
 proj-datumgrid 1.8
 proj4 9.0.1
 psutil 5.9.1
-pylibmc 1.6.2
+pylibmc 1.6.3
 pylibtiff 0.4.4
 pylibtiff-pypi 0.4.2
 pylibtiff-sha a9769ec5d9533b14915d65b3e776dd95564b8d11

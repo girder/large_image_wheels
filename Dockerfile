@@ -229,6 +229,18 @@ cd /build && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
+    # Installing our own curl breaks the python 2.7 pycurl used by yum.  This \
+    # is annoying, so patch the yum script in case we want to use it later \
+    python -c $'# \n\
+path = "/usr/bin/yum" \n\
+s = open(path).read().replace( \n\
+    "import sys", \n\
+"""import ctypes \n\
+ctypes.cdll.LoadLibrary("/usr/lib64/libcurl.so.4") \n\
+import os \n\
+os.environ["LD_LIBRARY_PATH"] = "/usr/lib64:" + os.environ["LD_LIBRARY_PATH"] \n\
+import sys""") \n\
+open(path, "w").write(s)' && \
     echo "`date` curl" >> /build/log.txt
 
 RUN \
@@ -529,14 +541,16 @@ RUN \
     echo "`date` lerc" >> /build/log.txt && \
 cd /build && \
 # \
+# # PINNED - 1.0.1 requires libatomic, which is not being located properly
 # RUN \
     echo "`date` libhwy" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b `getver.py libhwy` -c advice.detachedHead=false https://github.com/google/highway.git && \
+    # git clone --depth=1 --single-branch -b `getver.py libhwy` -c advice.detachedHead=false https://github.com/google/highway.git && \
+    git clone --depth=1 --single-branch -b 1.0.0 -c advice.detachedHead=false https://github.com/google/highway.git && \
     cd highway && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DCMAKE_CXX_FLAGS='-DVQSORT_SECURE_SEED=0' && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DHWY_ENABLE_EXAMPLES=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_CXX_FLAGS='-DVQSORT_SECURE_SEED=0' && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -2314,15 +2328,13 @@ RUN \
     ldconfig && \
     echo "`date` libmemcached" >> /build/log.txt
 
-# PINNED VERSION - use master to get fixes for some bugs.  If a new release is
-# made, we can go back to the latest release.
 RUN \
     echo "`date` pylibmc" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # Use master branch \
-    git clone --depth=1 --single-branch -c advice.detachedHead=false https://github.com/lericson/pylibmc.git && \
+    # git clone --depth=1 --single-branch -c advice.detachedHead=false https://github.com/lericson/pylibmc.git && \
     # Use latest release branch \
-    # git clone --depth=1 --single-branch -b `getver.py pylibmc` -c advice.detachedHead=false https://github.com/lericson/pylibmc.git && \
+    git clone --depth=1 --single-branch -b `getver.py pylibmc` -c advice.detachedHead=false https://github.com/lericson/pylibmc.git && \
     # Common \
     cd pylibmc && \
     sed -i 's/-dev//g' src/pylibmc-version.h && \
