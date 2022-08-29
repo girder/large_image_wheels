@@ -1302,7 +1302,6 @@ RUN \
     ldconfig && \
     echo "`date` lz4" >> /build/log.txt
 
-# PINNED - rasterlite isn't working with GDAL
 RUN \
     echo "`date` librasterlite2" >> /build/log.txt && \
     export JOBS=`nproc` && \
