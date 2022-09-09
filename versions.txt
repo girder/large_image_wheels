@@ -1,5 +1,5 @@
 advancecomp 2.3
-armadillo 11.2.3
+armadillo 11.2.4
 blosc 1.21.1
 boost 1.80.0
 cairo 1.17.6
@@ -16,7 +16,7 @@ fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
 gdal 3.5.1
 gdal-pypi 3.5.1
-gdal-sha fdf165e05df2f98acd34545de63216235d906f99
+gdal-sha 663f82f1182acaa743b6d83d64f0976fc696a917
 gdal-source 3.6.0
 gdk-pixbuf 2.42.9
 giflib 5.2.1
@@ -28,7 +28,7 @@ harfbuzz 5.1.0
 hdf4 4_2_15
 hdf5 1_13_2
 icu4c 71-1
-imagemagick 7.1.0-47
+imagemagick 7.1.0-48
 jbigkit 2.1
 jpeg-xl 0.6.1
 krb5 1.20
@@ -37,7 +37,7 @@ lcms2 2.13.1
 lerc 4.0.0
 libbrotli 1.0.9
 libde265 1.0.8
-libdeflate 1.13
+libdeflate 1.14
 libexif 0.6.24
 libexpat 2_4_8
 libffi 3.4.2
@@ -55,7 +55,7 @@ libpng 1.6.37
 librasterlite2 9dd8217cb9
 libraw 0.20.2
 librsvg 2.55.1
-libspatialite 08517f176a
+libspatialite 19b042a138
 libssh2 1.10.0
 libtiff 4.4.0
 libvips 8.13.1
@@ -64,7 +64,7 @@ libxcrypt 4.4.28
 libxml2 2.9.12
 libzip 1.9.2
 lz4 1.9.4
-manylinux2014 567f9044722eb864eb8669afec4e557d72717c3b4359b3929a3c5697e2fe5dbb
+manylinux2014 2d9c759df1f16d15acf5dcbc8792bbf25ee85c3e941938630d70016c6e278096
 mapnik 81103491b467e17218140f50bc0bb9dc8c1f0317
 mapnik-release 3.1.0
 matio 1.5.23
@@ -99,8 +99,8 @@ pylibmc 1.6.3
 pylibtiff 0.4.4
 pylibtiff-pypi 0.4.2
 pylibtiff-sha a9769ec5d9533b14915d65b3e776dd95564b8d11
-pyproj4 3.3.1
-pyproj4-pypi 3.3.1
+pyproj4 3.4.0
+pyproj4-pypi 3.4.0
 python-javabridge 4.0.3
 python-javabridge-pypi 4.0.3
 python-mapnik a2c2a86eec954b42d7f00093da03807d0834b1b4

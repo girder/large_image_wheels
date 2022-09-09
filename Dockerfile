@@ -1095,7 +1095,7 @@ import sys \n\
 def program(): \n\
     environ = os.environ.copy() \n\
     localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
-    environ.setdefault("PROJ_LIB", os.path.join(localpath, "..", "proj")) \n\
+    environ.setdefault("PROJ_DATA", os.path.join(localpath, "..", "proj")) \n\
 \n\
     path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0])) \n\
     os.execve(path, sys.argv, environ) \n\
@@ -1116,7 +1116,7 @@ s = s.replace("import warnings", \n\
 """import warnings \n\
 import os \n\
 localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
-os.environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj")) \n\
+os.environ.setdefault("PROJ_DATA", os.path.join(localpath, "proj")) \n\
 """) \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
@@ -1127,10 +1127,17 @@ data = data.replace( \n\
     "    return package_data", \n\
 """    package_data["pyproj"].extend(["bin/*", "proj/*"]) \n\
     return package_data""") \n\
-data = data.replace("""version=get_version(),""", \n\
-"""version=get_version(), \n\
+data = data.replace("""package_data=get_package_data(),""", \n\
+"""package_data=get_package_data(), \n\
     entry_points={\'console_scripts\': [\'%s=pyproj.bin:program\' % name for name in os.listdir(\'pyproj/bin\') if not name.endswith(\'.py\')]},""") \n\
 open(path, "w").write(data)' && \
+    python -c $'# \n\
+import re \n\
+path = "setup.cfg" \n\
+s = open(path).read() \n\
+# append .1 to version to make sure pip prefers this \n\
+s = re.sub(r"(version = \\"?[.0-9]*)", "\\\\1.1", s) \n\
+open(path, "w").write(s)' && \
     # now rebuild anything that can work with master \
     find /opt/py -mindepth 1 -not -name '*p36-*' -a -not -name '*p37-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     # Make sure all binaries have the execute flag \
@@ -1724,7 +1731,7 @@ import sys \n\
 def program(): \n\
     environ = os.environ.copy() \n\
     localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
-    environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj")) \n\
+    environ.setdefault("PROJ_DATA", os.path.join(localpath, "proj")) \n\
     environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal")) \n\
     caPath = "/etc/ssl/certs/ca-certificates.crt" \n\
     if os.path.exists(caPath): \n\
@@ -1766,7 +1773,7 @@ import os \n\
 import re \n\
 \n\
 _localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
-os.environ.setdefault("PROJ_LIB", os.path.join(_localpath, "proj")) \n\
+os.environ.setdefault("PROJ_DATA", os.path.join(_localpath, "proj")) \n\
 os.environ.setdefault("GDAL_DATA", os.path.join(_localpath, "gdal")) \n\
 os.environ.setdefault("CPL_LOG", os.devnull) \n\
 _caPath = "/etc/ssl/certs/ca-certificates.crt" \n\
@@ -1891,7 +1898,7 @@ import sys \n\
 def program(): \n\
     environ = os.environ.copy() \n\
     localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
-    environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj")) \n\
+    environ.setdefault("PROJ_DATA", os.path.join(localpath, "proj")) \n\
     environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal")) \n\
 \n\
     path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0])) \n\
@@ -1923,7 +1930,7 @@ s = open(path).read().replace( \n\
     "def bootstrap_env():", \n\
 """ \n\
 localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
-os.environ.setdefault("PROJ_LIB", os.path.join(localpath, "proj")) \n\
+os.environ.setdefault("PROJ_DATA", os.path.join(localpath, "proj")) \n\
 os.environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal")) \n\
 \n\
 def bootstrap_env():""") \n\
