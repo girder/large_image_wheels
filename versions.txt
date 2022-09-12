@@ -14,9 +14,9 @@ freetype 2.12.1
 freexl 3f33ce6faf
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
-gdal 3.5.1
-gdal-pypi 3.5.1
-gdal-sha 663f82f1182acaa743b6d83d64f0976fc696a917
+gdal 3.5.2
+gdal-pypi 3.5.2
+gdal-sha 5672ec3118d14cc9318856f64c66356d204b1ae0
 gdal-source 3.6.0
 gdk-pixbuf 2.42.9
 giflib 5.2.1
@@ -64,7 +64,7 @@ libxcrypt 4.4.28
 libxml2 2.9.12
 libzip 1.9.2
 lz4 1.9.4
-manylinux2014 2d9c759df1f16d15acf5dcbc8792bbf25ee85c3e941938630d70016c6e278096
+manylinux2014 0e69b9fd9aaf48fc9be08c8765351d1ef1888917c68a3f777747fc7c62623bd5
 mapnik 81103491b467e17218140f50bc0bb9dc8c1f0317
 mapnik-release 3.1.0
 matio 1.5.23
