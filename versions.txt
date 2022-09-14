@@ -3,7 +3,7 @@ armadillo 11.2.4
 blosc 1.21.1
 boost 1.80.0
 cairo 1.17.6
-cmake 3.24.1
+cmake 3.24.2
 curl 7_85_0
 cyrus-sasl 2.1.28
 fftw3 3.3.10
@@ -16,13 +16,13 @@ fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
 gdal 3.5.2
 gdal-pypi 3.5.2
-gdal-sha a8cd83036e0a010689471e4933e839e32259b4bb
+gdal-sha fcc670b722579cb12909f1a4f74b3108a41960b9
 gdal-source 3.6.0
 gdk-pixbuf 2.42.9
 giflib 5.2.1
 glib 2.73.3
-glymur 0.11.6
-glymur-pypi 0.11.6
+glymur 0.11.6post1
+glymur-pypi 0.11.6.post1
 gobject-introspection 1.73.1
 harfbuzz 5.1.0
 hdf4 4_2_15
