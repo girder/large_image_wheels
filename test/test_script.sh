@@ -25,6 +25,9 @@ pip install --upgrade pip
 pip install --upgrade setuptools
 # which pip2 && pip2 install virtualenv==20.0.5 || true
 # echo 'Test installing all libraries from wheels'
+if python -c 'import sys;sys.exit(not (sys.version_info[2] != (3, 7)))'; then
+  pip install 'pywavelets<1.4'
+fi
 # pip install libtiff openslide_python pyvips GDAL mapnik -f /wheels
 echo 'Test installing pyvips and other dependencies from wheels via large_image'
 pip install large_image[all] -f ${1:-/wheels}
@@ -324,8 +327,6 @@ EOF
 
 echo 'test javabridge'
 java -version
-# Disable this line if we need a specific version
-pip install python-bioformats
 python -c 'import javabridge, bioformats;javabridge.start_vm(class_path=bioformats.JARS, run_headless=True);javabridge.kill_vm()'
 curl --retry 5 -L -o sample.czi https://data.kitware.com/api/v1/file/5f048d599014a6d84e005dfc/download
 echo 'Use large_image to read a czi file'

@@ -729,6 +729,11 @@ s = s.replace("    path = find_library(libname)", \n\
         path = [lib for lib in libs if libname in lib][0] \n\
         path = os.path.join(libpath, path)""") \n\
 open(path, "w").write(s)' && \
+    python -c $'# \n\
+path = "glymur/version.py" \n\
+s = open(path).read() \n\
+s = s.replace("0.11.6post1", "0.11.6.post2") \n\
+open(path, "w").write(s)' && \
     # Import a premade setup.py \
     cp ../glymur.setup.py ./setup.py && rm -f setup.cfg && rm -f pyproject.toml && \
     # Don't convert the old one; it no longer exists \
