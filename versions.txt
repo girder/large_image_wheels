@@ -16,13 +16,13 @@ fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
 gdal 3.5.2
 gdal-pypi 3.5.2
-gdal-sha da8e335e3eb5441ae4288767f59c36936a1bca5f
+gdal-sha 6e740608a75d6a0ffa8758403f49f8cb457f2a9b
 gdal-source 3.6.0
 gdk-pixbuf 2.42.9
 giflib 5.2.1
 glib 2.74.0
-glymur 0.11.6post1
-glymur-pypi 0.11.6.post2
+glymur 0.11.7
+glymur-pypi 0.11.7
 gobject-introspection 1.74.0
 harfbuzz 5.2.0
 hdf4 4_2_15
@@ -40,7 +40,7 @@ libde265 1.0.8
 libdeflate 1.14
 libexif 0.6.24
 libexpat 2_4_8
-libffi 3.4.2
+libffi 3.4.3
 libgeos 3.11.0
 libgeotiff 1.7.1
 libgsf 1.14.50

@@ -25,9 +25,9 @@ pip install --upgrade pip
 pip install --upgrade setuptools
 # which pip2 && pip2 install virtualenv==20.0.5 || true
 # echo 'Test installing all libraries from wheels'
-if python -c 'import sys;sys.exit(not (sys.version_info[2] != (3, 7)))'; then
-  pip install 'pywavelets<1.4'
-fi
+# if python -c 'import sys;sys.exit(not (sys.version_info[2] != (3, 7)))'; then
+#   pip install 'pywavelets<1.4'
+# fi
 # pip install libtiff openslide_python pyvips GDAL mapnik -f /wheels
 echo 'Test installing pyvips and other dependencies from wheels via large_image'
 pip install large_image[all] -f ${1:-/wheels}
