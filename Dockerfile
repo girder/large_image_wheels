@@ -66,7 +66,7 @@ RUN \
     ln -s /opt/python/* /opt/py/. && \
     # Enable all versions in boost as well \
     # rm -rf /opt/py/cp35* && \
-    rm -rf /opt/py/cp311* && \
+    # rm -rf /opt/py/cp311* && \
     if [ "$PYPY" = true ]; then \
     echo "Only building pypy versions" && \
     rm -rf /opt/py/cp* && \
@@ -316,8 +316,11 @@ RUN \
     echo "`date` numpy" >> /build/log.txt && \
     for PYBIN in /opt/py/*/bin/; do \
       echo "${PYBIN}" && \
+      # earliest numpy wheel for 3.11 is 1.23.2 \
+      if [[ "${PYBIN}" =~ "cp311" ]]; then \
+        export NUMPY_VERSION="1.23"; \
       # earliest numpy wheel for 3.10 is 1.21.2 \
-      if [[ "${PYBIN}" =~ "cp310" ]]; then \
+      elif [[ "${PYBIN}" =~ "cp310" ]]; then \
         export NUMPY_VERSION="1.21"; \
       # earliest numpy wheel for 3.9 is 1.19.3 \
       elif [[ "${PYBIN}" =~ "cp39" ]]; then \
@@ -599,10 +602,12 @@ cd /build && \
     ldconfig && \
     echo "`date` jpeg-xl" >> /build/log.txt
 
+# PINNED - version 5.2.7 doesn't work with MySQL
 RUN \
     echo "`date` xz" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://downloads.sourceforge.net/project/lzmautils/xz-`getver.py xz`.tar.gz -L -o xz.tar.gz && \
+    # curl --retry 5 --silent https://downloads.sourceforge.net/project/lzmautils/xz-`getver.py xz`.tar.gz -L -o xz.tar.gz && \
+    curl --retry 5 --silent https://downloads.sourceforge.net/project/lzmautils/xz-5.2.6.tar.gz -L -o xz.tar.gz && \
     mkdir xz && \
     tar -zxf xz.tar.gz -C xz --strip-components 1 && \
     rm -f xz.tar.gz && \
@@ -983,6 +988,13 @@ RUN \
     # popd && \
     # work-around for https://github.com/boostorg/mpi/issues/112 /
     # sed -i 's/boost_mpi_python mpi/boost_mpi_python/g' libs/mpi/build/Jamfile.v2 && \
+    # \
+    # Support Python 3.11.  PINNED -- revert this once boost includes a newer \
+    # python in its libs \
+    cd libs/python && \
+    git checkout a218babc && \
+    cd ../.. && \
+    # \
     find . -name '.git' -exec rm -rf {} \+ && \
     echo "" > tools/build/src/user-config.jam && \
     echo "using mpi : /usr/local/lib ;" >> tools/build/src/user-config.jam && \
@@ -999,7 +1011,8 @@ RUN \
     echo "using python : 3.8 : /opt/py/cp38-cp38/bin/python : /opt/py/cp38-cp38/include/python3.8 : /opt/py/cp38-cp38/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.9 : /opt/py/cp39-cp39/bin/python : /opt/py/cp39-cp39/include/python3.9 : /opt/py/cp39-cp39/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.10 : /opt/py/cp310-cp310/bin/python : /opt/py/cp310-cp310/include/python3.10 : /opt/py/cp310-cp310/lib ;" >> tools/build/src/user-config.jam && \
-    export PYTHON_LIST="3.6,3.7,3.8,3.9,3.10" && \
+    echo "using python : 3.11 : /opt/py/cp311-cp311/bin/python : /opt/py/cp311-cp311/include/python3.11 : /opt/py/cp311-cp311/lib ;" >> tools/build/src/user-config.jam && \
+    export PYTHON_LIST="3.6,3.7,3.8,3.9,3.10,3.11" && \
     true; \
     fi && \
     ./bootstrap.sh --prefix=/usr/local --with-toolset=gcc variant=release && \

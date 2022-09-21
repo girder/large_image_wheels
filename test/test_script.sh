@@ -17,6 +17,13 @@ if curl --version; then true; else
   fi
 fi
 
+# We need to have scikit-image for some of our tests, and if there aren't 
+# wheels published for it, we need to have the tools to build it locally.
+if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 11)))'; then
+  apt-get update 
+  apt-get install -y gcc build-essential
+fi
+
 # python -m venv venv
 # . venv/bin/activate
 
