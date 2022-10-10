@@ -54,7 +54,8 @@ RUN \
     # for easier development \
     man \
     gtk-doc \
-    vim-enhanced && \
+    vim-enhanced \
+    && \
     yum clean all && \
     echo "`date` yum install" >> /build/log.txt
 
@@ -2317,7 +2318,6 @@ open(path, "w").write(s)' && \
     ls -l /io/wheelhouse && \
     rm -rf ~/.cache && \
     echo "`date` pyvips" >> /build/log.txt
-
 
 RUN \
     echo "`date` cyrus-sasl" >> /build/log.txt && \

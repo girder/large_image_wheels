@@ -1,4 +1,5 @@
 gh-pages/
 wheels/
+wheelhouse/
 docs/
 *.sw[op]

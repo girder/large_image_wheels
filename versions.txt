@@ -16,7 +16,7 @@ fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
 gdal 3.5.2
 gdal-pypi 3.5.2
-gdal-sha 0ee692724c5717a633e9f14314c06b9811ac1618
+gdal-sha c498e23386b99ded04842aeb8e23a93ebce92442
 gdal-source 3.6.0
 gdk-pixbuf 2.42.9
 giflib 5.2.1
@@ -70,7 +70,7 @@ mapnik-release 3.1.0
 matio 1.5.23
 meson 0.63.3
 minizip 3.0.6
-mysql 8.0.30
+mysql 8.0.31
 netcdf 4.9.0
 nifti 2_0_0
 ogdi 4_1_0

@@ -33,14 +33,14 @@ This makes wheels for the main libraries:
 - openslide_python
 - pylibmc
 - pylibtiff
-- python_javabridge
 - pyproj
+- python_javabridge
 - pyvips
 
 This also makes some wheels which weren't published in all desired Python versions in pypi:
 - psutil
 
-Currently, wheels are built for Python 3.6, 3.7, 3.8, 3.9, and 3.10.  Some libraries have older versions for older versions of Python as support for those versions is ended.
+Currently, wheels are built for Python 3.6, 3.7, 3.8, 3.9, 3.10, 3.11.  Some libraries have older versions for older versions of Python that were built before support for those versions is ended.
 
 ## Extras
 
