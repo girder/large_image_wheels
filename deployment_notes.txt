@@ -1,0 +1,17 @@
+Locally, create directories 'gh-pages', 'wheelhouse', and 'wheels'.  For the
+first two, clone the git repo and checkout the branch of that name in that 
+directory.
+
+Run './build.sh' (or './rebuild.sh') and './test_via_docker.py' to ensure
+everything builds and passes.
+
+To push new wheels to github:
+
+    cd wheelhouse
+    git add *.whl
+    git commit -a  # or add --amend to keep repo history smaller
+    git push
+
+    cd ../gh-pages
+    git commit -a   # should add index.html
+    git push

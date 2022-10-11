@@ -24,6 +24,11 @@ mkdir -p wheels
 docker run -v wheels:/opt/mount --rm --entrypoint bash girder/large_image_wheels -c 'cp /io/wheelhouse/*many* /opt/mount/.'
 ```
 
+This will use the last recorded versions (stored in the `versions.txt` file).  To update the versions that are used, you can do (before the docker build):
+```
+python3 -u check_versions.py > versions.txt
+```
+
 ## Results
 
 This makes wheels for the main libraries:
