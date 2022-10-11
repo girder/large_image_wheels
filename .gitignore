@@ -1,0 +1,4 @@
+gh-pages/
+wheels/
+docs/
+*.sw[op]
