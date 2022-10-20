@@ -545,12 +545,10 @@ RUN \
     echo "`date` lerc" >> /build/log.txt && \
 cd /build && \
 # \
-# # PINNED - 1.0.1 requires libatomic, which is not being located properly
 # RUN \
     echo "`date` libhwy" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    # git clone --depth=1 --single-branch -b `getver.py libhwy` -c advice.detachedHead=false https://github.com/google/highway.git && \
-    git clone --depth=1 --single-branch -b 1.0.0 -c advice.detachedHead=false https://github.com/google/highway.git && \
+    git clone --depth=1 --single-branch -b `getver.py libhwy` -c advice.detachedHead=false https://github.com/google/highway.git && \
     cd highway && \
     mkdir _build && \
     cd _build && \
@@ -1424,9 +1422,13 @@ RUN \
     export AUTOMAKE_JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b v`getver.py netcdf` -c advice.detachedHead=false https://github.com/Unidata/netcdf-c && \
     cd netcdf-c && \
+    # The compiler throws an erroneous error because strlen is used as a \
+    # function variable.  Avoid this. \
+    sed -i 's/int strlen,/int strlenn,/g' libnczarr/zutil.c && \
+    sed -i 's/format,strlen)/format,strlenn)/g' libnczarr/zutil.c && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DENABLE_EXAMPLES=OFF -DENABLE_PARALLEL4=ON -DUSE_PARALLEL=ON -DUSE_PARALLEL4=ON -DENABLE_HDF4=ON -DENABLE_PNETCDF=ON -DENABLE_BYTERANGE=ON -DENABLE_JNA=ON -DCMAKE_SHARED_LINKER_FLAGS=-ljpeg -DENABLE_TESTS=OFF -DENABLE_HDF4_FILE_TESTS=OFF && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DENABLE_EXAMPLES=OFF -DENABLE_PARALLEL4=ON -DUSE_PARALLEL=ON -DUSE_PARALLEL4=ON -DENABLE_HDF4=ON -DENABLE_PNETCDF=ON -DENABLE_BYTERANGE=ON -DENABLE_JNA=ON -DCMAKE_SHARED_LINKER_FLAGS=-ljpeg -DENABLE_TESTS=OFF -DENABLE_HDF4_FILE_TESTS=OFF -DENABLE_DAP=ON -DENABLE_HDF5=ON -DENABLE_NCZARR=ON && \
     # for hdf5 1_13, we might need to add  \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -1703,12 +1705,14 @@ RUN \
 # --with-dods-root is where libdap is installed
 RUN \
     echo "`date` gdal" >> /build/log.txt && \
+    # PINNED - gdal won't build with swig >= 4.1 \
+    pip install 'swig<4.1' && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
     # Specific version \
-    # git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
-    git clone --depth=1 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    ## git clone --depth=1 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     # sed -i 's/define GDAL_VERSION_MINOR    4/define GDAL_VERSION_MINOR    5/g' gdal/gcore/gdal_version.h.in && \
     # Common \
     cd gdal && \

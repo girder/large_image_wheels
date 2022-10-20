@@ -126,8 +126,9 @@ Inside a Django application's `settings.py` file, this is somewhat simpler::
 
 - Automate version checks
 
-  This is done on a local build machine.  A periodic job on the `rebuild.sh` script.  It can fail if new versions are not compatible.  Occasionally, pinned versions are checked manually to see if they can be unpinned.
+  This is done on a local build machine.  A nightly periodic job runs the `rebuild.sh` script.  It can fail if new versions are not compatible.  Occasionally, pinned versions are checked manually to see if they can be unpinned.
 
 - Automate releases
 
   The wheels should be published from a successful CI run rather than from a user commit.
+
