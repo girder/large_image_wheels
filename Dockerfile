@@ -84,7 +84,7 @@ RUN \
     echo "`date` rm python versions" >> /build/log.txt
 
 ARG SOURCE_DATE_EPOCH
-ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-1567045200} \
+ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-1667497300} \
     HOSTNAME=large_image_wheels \
     CFLAGS="-g0 -O2 -DNDEBUG" \
     LDFLAGS="-Wl,--strip-debug,--strip-discarded,--discard-locals" \
@@ -505,12 +505,12 @@ cd /build && \
     # build 8-bit \
     mkdir _build8 && \
     cd _build8 && \
-    cmake -DWITH_12BIT=0 -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local .. && \
+    cmake -DWITH_12BIT=0 -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD=${SOURCE_DATE_EPOCH} .. && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     cd .. && \
     # build 12-bit in place \
-    cmake -DWITH_12BIT=1 -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local . && \
+    cmake -DWITH_12BIT=1 -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD=${SOURCE_DATE_EPOCH} . && \
     make clean && \
     make --silent -j ${JOBS} && \
     # don't install this; we reference it explicitly \
@@ -1710,9 +1710,12 @@ RUN \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
     # Specific version \
-    git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
-    ## git clone --depth=1 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1000 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    # checkout out the recorded sha and prune to a depth of 1 \
+    git -C gdal checkout `getver.py gdal-sha` && \
+    git -C gdal gc --prune=all && \
     # sed -i 's/define GDAL_VERSION_MINOR    4/define GDAL_VERSION_MINOR    5/g' gdal/gcore/gdal_version.h.in && \
     # Common \
     cd gdal && \
@@ -2469,7 +2472,7 @@ open(path, "w").write(s)' && \
     # auditwheel modifies the java libraries, but some of those have \
     # hard-coded relative paths, which doesn't work.  Replace them with the \
     # unmodified versions.  See https://stackoverflow.com/questions/55904261 \
-    find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} bash -c 'mkdir /tmp/ptmp$(basename ${0}) && pushd /tmp/ptmp$(basename ${0}) && unzip ${0} && cp -f -r -L /usr/lib/jvm/java/* javabridge/jvm/. && fix_record.py && zip -r ${0} * && popd && rm -rf /tmp/ptmp$(basename ${0})' && \
+    find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} bash -c 'mkdir /tmp/ptmp$(basename ${0}) && pushd /tmp/ptmp$(basename ${0}) && unzip ${0} && cp -f -r -L /usr/lib/jvm/java/* javabridge/jvm/. && find javabridge/jars -name '\''*.jar'\'' -exec strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v {} \; && rm javabridge/jvm/jre/lib/amd64/server/classes.jsa && fix_record.py && zip -r ${0} * && popd && rm -rf /tmp/ptmp$(basename ${0})' && \
     find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \

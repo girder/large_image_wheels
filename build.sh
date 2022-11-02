@@ -3,11 +3,13 @@
 set -e
 
 docker pull quay.io/pypa/manylinux2014_x86_64:latest
-# Use the author date (not the commit date) for SOURCE_DATE_EPOCH.  This
-# allows adding the generated wheels to an existing commit without changing the
-# epoch used in the build.
-docker build --force-rm -t girder/large_image_wheels --build-arg SOURCE_DATE_EPOCH=$(git log -1 --pretty="format:%at" Dockerfile) --build-arg PYPY=false .
-# docker build --force-rm -t girder/large_image_wheels --build-arg SOURCE_DATE_EPOCH=$(git log -1 --pretty="format:%at" Dockerfile) .
+# We could use the latest commit author date for the SOURCE_DATE_EPOCH by
+# adding 
+#  --build-arg SOURCE_DATE_EPOCH=$(git log -1 --pretty="format:%at" Dockerfile) 
+# to the build command.  However, since we pull in the versions as part of the
+# build, this isn't necessary and introduces extra change from commits.
+docker build --force-rm -t girder/large_image_wheels --build-arg PYPY=false .
+# docker build --force-rm -t girder/large_image_wheels .
 mkdir -p wheels
 ls -al wheels
 rm -f wheels/*many*.whl

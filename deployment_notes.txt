@@ -15,3 +15,6 @@ To push new wheels to github:
     cd ../gh-pages
     git commit -a   # should add index.html
     git push
+
+Since we use checksums in the links on the gh-pages index, downloads will 
+likely fail when only one of the two branches is updated.
