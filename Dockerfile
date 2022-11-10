@@ -238,6 +238,7 @@ s = open(path).read().replace( \n\
     "import sys", \n\
 """import ctypes \n\
 ctypes.cdll.LoadLibrary("/usr/lib64/libcurl.so.4") \n\
+ctypes.cdll.LoadLibrary("/usr/lib64/liblzma.so.5") \n\
 import os \n\
 os.environ["LD_LIBRARY_PATH"] = "/usr/lib64:" + os.environ["LD_LIBRARY_PATH"] \n\
 import sys""") \n\
@@ -1131,6 +1132,10 @@ s = re.sub(r"(__version__ = \\"[^\\"]*)\\"", "\\\\1.1\\"", s) \n\
 s = s.replace("2.4.rc0", "2.4") \n\
 s = s.replace("import warnings", \n\
 """import warnings \n\
+# This import foolishness is because is some environments, even after \n\
+# importing importlib.metadata, somehow importlib.metadata is not present. \n\
+from importlib import metadata as _importlib_metadata \n\
+importlib.metadata = _importlib_metadata \n\
 import os \n\
 localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
 os.environ.setdefault("PROJ_DATA", os.path.join(localpath, "proj")) \n\
@@ -1710,12 +1715,12 @@ RUN \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
     # Specific version \
-    # git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
-    git clone --depth=1000 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
-    # checkout out the recorded sha and prune to a depth of 1 \
-    git -C gdal checkout `getver.py gdal-sha` && \
-    git -C gdal gc --prune=all && \
+    # git clone --depth=1000 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    # # checkout out the recorded sha and prune to a depth of 1 \
+    # git -C gdal checkout `getver.py gdal-sha` && \
+    # git -C gdal gc --prune=all && \
     # sed -i 's/define GDAL_VERSION_MINOR    4/define GDAL_VERSION_MINOR    5/g' gdal/gcore/gdal_version.h.in && \
     # Common \
     cd gdal && \
