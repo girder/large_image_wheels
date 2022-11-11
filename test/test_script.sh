@@ -61,9 +61,7 @@ if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 8)))'; then
   python -c 'import glymur'
   python -c 'import libtiff, openslide, pyproj, pyvips, osgeo, mapnik, glymur, javabridge'
 elif python -c 'import sys;sys.exit(not (sys.version_info >= (3, 7)))'; then
-  echo 'Test basic import of glymur'
-  python -c 'import glymur'
-  python -c 'import libtiff, openslide, pyproj, pyvips, osgeo, mapnik, glymur, javabridge'
+  python -c 'import libtiff, openslide, pyproj, pyvips, osgeo, mapnik, javabridge'
 else
   python -c 'import libtiff, openslide, pyvips, osgeo, mapnik, javabridge'
 fi
@@ -275,7 +273,7 @@ fi
 echo 'Test running executables'
 `python -c 'import os,sys,libtiff;sys.stdout.write(os.path.dirname(libtiff.__file__))'`/bin/tiffinfo landcover.tif
 tiffinfo landcover.tif
-if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 7)))'; then
+if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 8)))'; then
 `python -c 'import os,sys,glymur;sys.stdout.write(os.path.dirname(glymur.__file__))'`/bin/opj_dump -h | grep -q 'opj_dump utility from the OpenJPEG project'
 opj_dump -h | grep -q 'opj_dump utility from the OpenJPEG project'
 fi

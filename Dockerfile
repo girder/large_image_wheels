@@ -269,6 +269,21 @@ RUN \
     make install && \
     echo "`date` strip-nondeterminism" >> /build/log.txt
 
+# PINNED - patchelf 0.17.0 (specifically
+# https://github.com/NixOS/patchelf/pull/430) breaks some of our output
+RUN \
+    echo "`date` patchelf" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    # git clone --depth=1 --single-branch -b `getver.py patchelf` -c advice.detachedHead=false https://github.com/NixOS/patchelf && \
+    git clone --depth=1 --single-branch -b 0.16.1 -c advice.detachedHead=false https://github.com/NixOS/patchelf && \
+    cd patchelf && \
+    ./bootstrap.sh && \
+    ./configure --silent --prefix=/usr/local && \
+    make -j `nproc` && \
+    make -j `nproc` install && \
+    ldconfig && \
+    echo "`date` patchelf" >> /build/log.txt
+
 # Install a utility to recompress wheel (zip) files to make them smaller
 RUN \
     echo "`date` advancecomp" >> /build/log.txt && \
@@ -286,14 +301,14 @@ RUN \
     ldconfig && \
     # Because we will recompress all wheels, we can create them with no \
     # compression to save some time \
-    sed -i 's/ZIP_DEFLATED/ZIP_STORED/g' /opt/_internal/pipx/venvs/auditwheel/lib/python3.9/site-packages/auditwheel/tools.py && \
+    sed -i 's/ZIP_DEFLATED/ZIP_STORED/g' /opt/_internal/pipx/venvs/auditwheel/lib/python3.10/site-packages/auditwheel/tools.py && \
     echo "`date` advancecomp" >> /build/log.txt
 
 RUN \
     echo "`date` auditwheel" >> /build/log.txt && \
     # vips doesn't work with auditwheel 3.2 since the copylib doesn't adjust \
     # rpaths the same as 3.1.1.  Revert that aspect of the behavior. \
-    sed -i 's/patcher.set_rpath(dest_path, dest_dir)/new_rpath = os.path.relpath(dest_dir, os.path.dirname(dest_path))\n        new_rpath = os.path.join('\''$ORIGIN'\'', new_rpath)\n        patcher.set_rpath(dest_path, new_rpath)/g' /opt/_internal/pipx/venvs/auditwheel/lib/python3.9/site-packages/auditwheel/repair.py && \
+    sed -i 's/patcher.set_rpath(dest_path, dest_dir)/new_rpath = os.path.relpath(dest_dir, os.path.dirname(dest_path))\n        new_rpath = os.path.join('\''$ORIGIN'\'', new_rpath)\n        patcher.set_rpath(dest_path, new_rpath)/g' /opt/_internal/pipx/venvs/auditwheel/lib/python3.10/site-packages/auditwheel/repair.py && \
     # Tell auditwheel not to whitelist libz.so, libiXext.so, etc. \
     # Do whitelist libjvm.so \
     python -c $'# \n\
@@ -772,7 +787,7 @@ open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    find /opt/py -mindepth 1 -not -name '*p36-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    find /opt/py -mindepth 1 -not -name '*p36-*' -a -not -name '*p37-* '-print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     find /io/wheelhouse/ -name 'Glymur*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'Glymur*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'Glymur*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
@@ -1441,6 +1456,15 @@ RUN \
     echo "`date` netcdf" >> /build/log.txt
 
 RUN \
+    echo "`date` libaio" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b libaio.`getver.py libaio` -c advice.detachedHead=false https://pagure.io/libaio.git && \
+    cd libaio && \
+    make prefix=/usr/local --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` libaio" >> /build/log.txt
+
+RUN \
     echo "`date` mysql" >> /build/log.txt && \
     export JOBS=`nproc` && \
     curl --retry 5 --silent https://cdn.mysql.com/Downloads/MySQL-8.0/mysql-boost-`getver.py mysql`.tar.gz -L -o mysql.tar.gz && \
@@ -1715,12 +1739,12 @@ RUN \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
     # Specific version \
-    git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
-    # git clone --depth=1000 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
-    # # checkout out the recorded sha and prune to a depth of 1 \
-    # git -C gdal checkout `getver.py gdal-sha` && \
-    # git -C gdal gc --prune=all && \
+    git clone --depth=1000 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    # checkout out the recorded sha and prune to a depth of 1 \
+    git -C gdal checkout `getver.py gdal-sha` && \
+    git -C gdal gc --prune=all && \
     # sed -i 's/define GDAL_VERSION_MINOR    4/define GDAL_VERSION_MINOR    5/g' gdal/gcore/gdal_version.h.in && \
     # Common \
     cd gdal && \

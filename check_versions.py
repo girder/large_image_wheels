@@ -172,6 +172,10 @@ Packages = {
         'git': 'https://github.com/Esri/lerc.git',
         're': r'\/v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
+    'libaio': {
+        'git': 'https://pagure.io/libaio.git',
+        're': r'libaio\.([0-9]+-[0-9]+-[0-9]+(|\.[0-9]+))$',
+    },
     'libbrotli': {
         'git': 'https://github.com/google/brotli.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
@@ -395,6 +399,10 @@ Packages = {
     'parallel-netcdf': {
         'git': 'https://github.com/Parallel-NetCDF/PnetCDF.git',
         're': r'checkpoint\.([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
+    'patchelf': {
+        'git': 'https://github.com/NixOS/patchelf.git',
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     # pcre has moved; it has also not changed in decades -- we may want to
     # switch to pcre2 when glib does.
