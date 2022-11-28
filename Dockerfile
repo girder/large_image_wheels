@@ -530,16 +530,16 @@ cd /build && \
     make clean && \
     make --silent -j ${JOBS} && \
     # don't install this; we reference it explicitly \
-    echo "`date` libjpeg-turbo" >> /build/log.txt && \
-cd /build && \
-# \
-# # libdeflate is faster than libzip \
-# RUN \
+    echo "`date` libjpeg-turbo" >> /build/log.txt
+
+RUN \
     echo "`date` libdeflate" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    export AUTOMAKE_JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b v`getver.py libdeflate` -c advice.detachedHead=false https://github.com/ebiggers/libdeflate.git && \
     cd libdeflate && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -666,7 +666,7 @@ RUN \
 RUN \
     echo "`date` pylibtiff" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b  wheel-support-`getver.py pylibtiff` -c advice.detachedHead=false https://github.com/manthey/pylibtiff.git && \
+    git clone --depth=1 --single-branch -b  wheel-support-0.4.4 -c advice.detachedHead=false https://github.com/manthey/pylibtiff.git && \
     cd pylibtiff && \
     mkdir libtiff/bin && \
     find /build/tiff/tools/.libs/ -executable -type f -exec cp {} libtiff/bin/. \; && \
@@ -690,6 +690,7 @@ s = open(path).read().replace( \n\
         package_data={\'libtiff\': [\'bin/*\']}, \n\
         entry_points={\'console_scripts\': [\'%s=libtiff.bin:program\' % name for name in os.listdir(\'libtiff/bin\') if not name.endswith(\'.py\')]},""") \n\
 s = s.replace("name=\'libtiff\'", "name=\'pylibtiff\'") \n\
+s = s.replace("version=\'0.5.0\'", "version=\'0.5.1\'") \n\
 open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
@@ -1150,6 +1151,7 @@ s = s.replace("import warnings", \n\
 # This import foolishness is because is some environments, even after \n\
 # importing importlib.metadata, somehow importlib.metadata is not present. \n\
 from importlib import metadata as _importlib_metadata \n\
+import importlib \n\
 importlib.metadata = _importlib_metadata \n\
 import os \n\
 localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
@@ -1168,13 +1170,6 @@ data = data.replace("""package_data=get_package_data(),""", \n\
 """package_data=get_package_data(), \n\
     entry_points={\'console_scripts\': [\'%s=pyproj.bin:program\' % name for name in os.listdir(\'pyproj/bin\') if not name.endswith(\'.py\')]},""") \n\
 open(path, "w").write(data)' && \
-    python -c $'# \n\
-import re \n\
-path = "setup.cfg" \n\
-s = open(path).read() \n\
-# append .1 to version to make sure pip prefers this \n\
-s = re.sub(r"(version = \\"?[.0-9]*)", "\\\\1.1", s) \n\
-open(path, "w").write(s)' && \
     # now rebuild anything that can work with master \
     find /opt/py -mindepth 1 -not -name '*p36-*' -a -not -name '*p37-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     # Make sure all binaries have the execute flag \

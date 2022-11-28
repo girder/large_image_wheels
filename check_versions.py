@@ -529,12 +529,33 @@ Packages = {
 }
 
 
-def compareVersions(a, b):
-    if packaging.version.parse(a).is_prerelease != packaging.version.parse(b).is_prerelease:
-        return -1 if packaging.version.parse(a).is_prerelease else 1
-    if packaging.version.parse(a) < packaging.version.parse(b):
+def compareVersions(a, b):  # noqa
+    try:
+        av = packaging.version.parse(a)
+    except Exception:
+        try:
+            av = packaging.version.parse(a.replace('_', '.').replace('-', '.'))
+        except Exception:
+            av = a
+    try:
+        bv = packaging.version.parse(b)
+    except Exception:
+        try:
+            bv = packaging.version.parse(b.replace('_', '.').replace('-', '.'))
+        except Exception:
+            bv = b
+    if isinstance(av, str) and not isinstance(bv, str):
         return -1
-    if packaging.version.parse(a) > packaging.version.parse(b):
+    if not isinstance(av, str) and isinstance(bv, str):
+        return 1
+    try:
+        if av.is_prerelease != bv.is_prerelease:
+            return -1 if av.is_prerelease else 1
+    except Exception:
+        pass
+    if av < bv:
+        return -1
+    if av > bv:
         return 1
     return 0
 

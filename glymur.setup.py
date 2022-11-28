@@ -26,6 +26,7 @@ kwargs = {
     'test_suite': 'glymur.test',
 'ext_modules': [Extension('glymur.openjpeg', [], libraries=['openjp2'])],
     'install_requires': ['lxml', 'numpy', 'setuptools', 'packaging'],
+    'python_requires': '>=3.8',
 }
 
 kwargs['classifiers'] = [
@@ -34,6 +35,7 @@ kwargs['classifiers'] = [
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: Implementation :: CPython",
     "License :: OSI Approved :: MIT License",
     "Development Status :: 5 - Production/Stable",
