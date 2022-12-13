@@ -1,7 +1,7 @@
 advancecomp 2.4
 armadillo 11.4.2
-blosc 1.21.2
-boost 1.80.0
+blosc 1.21.3
+boost 1.81.0
 cairo 1.17.6
 cmake 3.25.1
 curl 7_86_0
@@ -14,9 +14,9 @@ freetype 2.12.1
 freexl 3f33ce6faf
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
-gdal 3.6.0
-gdal-pypi 3.6.0.1
-gdal-sha e8b253032fbf2c6b1e2db2a8742c07cbd158bc87
+gdal 3.6.1
+gdal-pypi 3.6.1
+gdal-sha 87fda0221a246ca1b6e49cb0eda9f636106cea6b
 gdal-source 3.7.0
 gdk-pixbuf 2.42.10
 giflib 5.2.1
@@ -58,7 +58,7 @@ libraw 0.20.2
 librsvg 2.55.90
 libspatialite 19b042a138
 libssh2 1.10.0
-libtiff 4.4.0
+libtiff 4.5.0
 libvips 8.13.3
 libwebp 1.2.4
 libxcrypt 4.4.33
@@ -100,7 +100,7 @@ psutil 5.9.4
 pylibmc 1.6.3
 pylibtiff 0.5.0
 pylibtiff-pypi 0.4.2
-pylibtiff-sha 19170fa67541e595b4f7c19f2c5e95b2c0a98493
+pylibtiff-sha 2588dc71a2b8f93cbc64bcd0e737deba9a96b655
 pyproj4 3.4.1
 pyproj4-pypi 3.4.1
 python-javabridge 4.0.3
@@ -114,7 +114,7 @@ strip-nondeterminism 0.042
 superlu 5.3.0
 util-linux 2.38.1
 xerces-c 3.2.4
-xz 5.2.9
+xz 5.4.0
 zlib 1.2.13
 zlib-ng 2.0.6
 zstd 1.5.2

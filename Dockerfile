@@ -666,7 +666,7 @@ RUN \
 RUN \
     echo "`date` pylibtiff" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b  wheel-support-0.4.4 -c advice.detachedHead=false https://github.com/manthey/pylibtiff.git && \
+    git clone --depth=1 --single-branch -b  v`getver.py pylibtiff` -c advice.detachedHead=false https://github.com/pearu/pylibtiff.git && \
     cd pylibtiff && \
     mkdir libtiff/bin && \
     find /build/tiff/tools/.libs/ -executable -type f -exec cp {} libtiff/bin/. \; && \
@@ -684,14 +684,55 @@ open(path, "w").write(s)' && \
     python -c $'# \n\
 path = "setup.py" \n\
 s = open(path).read().replace( \n\
-"""        configuration=configuration,""", \n\
-"""        configuration=configuration, \n\
-        include_package_data=True, \n\
-        package_data={\'libtiff\': [\'bin/*\']}, \n\
-        entry_points={\'console_scripts\': [\'%s=libtiff.bin:program\' % name for name in os.listdir(\'libtiff/bin\') if not name.endswith(\'.py\')]},""") \n\
-s = s.replace("name=\'libtiff\'", "name=\'pylibtiff\'") \n\
-s = s.replace("version=\'0.5.0\'", "version=\'0.5.1\'") \n\
+"""\'console_scripts\': [""", \n\
+"""\'console_scripts\': \n\
+        [\'%s=libtiff.bin:program\' % name for name in os.listdir(\'libtiff/bin\') if not name.endswith(\'.py\')] + [""") \n\
+s = s.replace("name=\\"libtiff.tif_lzw\\",", \n\
+"name=\\"libtiff.tif_lzw\\", libraries=[\'tiff\'],") \n\
+s = s.replace("python_requires=\'>=3.8\',", "") \n\
+s = s.replace("packages=find_packages(),", \n\
+    "packages=find_packages(), package_data={\'libtiff\': [\'bin/*\']},") \n\
 open(path, "w").write(s)' && \
+    python -c $'# \n\
+path = "libtiff/libtiff_ctypes.py" \n\
+s = open(path).read() \n\
+s = s.replace( \n\
+"""    libtiff = None if lib is None else ctypes.cdll.LoadLibrary(lib)""", \n\
+"""    if lib is None: \n\
+        libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.realpath( \n\
+            __file__)), ".libs")) \n\
+        if not os.path.exists(libpath): \n\
+            libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath( \n\
+                __file__))), "libtiff.libs")) \n\
+        if not os.path.exists(libpath): \n\
+            libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath( \n\
+                __file__))), "pylibtiff.libs")) \n\
+        libs = os.listdir(libpath) \n\
+        loadCount = 0 \n\
+        while True: \n\
+            numLoaded = 0 \n\
+            for name in libs: \n\
+                try: \n\
+                    somelib = os.path.join(libpath, name) \n\
+                    if name.startswith("libtiff-"): \n\
+                        lib = somelib \n\
+                    ctypes.cdll.LoadLibrary(somelib) \n\
+                    numLoaded += 1 \n\
+                except Exception: \n\
+                    pass \n\
+            if numLoaded - loadCount <= 0: \n\
+                break \n\
+            loadCount = numLoaded \n\
+\n\
+    libtiff = None if lib is None else ctypes.cdll.LoadLibrary(lib)""") \n\
+open(path, "w").write(s)' && \
+    cp libtiff/tiff_h_4_3_0.py libtiff/tiff_h_4_4_0.py && \
+    cp libtiff/tiff_h_4_3_0.py libtiff/tiff_h_4_5_0.py && \
+    # Increment version slightly \
+    git config --global user.email "you@example.com" && \
+    git config --global user.name "Your Name" && \
+    git commit -a --amend -m x && \
+    git tag `getver.py pylibtiff`.1 && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
@@ -1734,12 +1775,12 @@ RUN \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
     # Specific version \
-    # git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
-    git clone --depth=1000 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
-    # checkout out the recorded sha and prune to a depth of 1 \
-    git -C gdal checkout `getver.py gdal-sha` && \
-    git -C gdal gc --prune=all && \
+    # git clone --depth=1000 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    # # checkout out the recorded sha and prune to a depth of 1 \
+    # git -C gdal checkout `getver.py gdal-sha` && \
+    # git -C gdal gc --prune=all && \
     # sed -i 's/define GDAL_VERSION_MINOR    4/define GDAL_VERSION_MINOR    5/g' gdal/gcore/gdal_version.h.in && \
     # Common \
     cd gdal && \
