@@ -115,7 +115,7 @@ COPY getver.py fix_record.py /usr/local/bin/
 # mirax files and does no harm otherwise.
 # The openslide-init.patch allows building vips from GitHub source
 # (see https://github.com/libvips/libvips/issues/874)
-COPY versions.txt mapnik_proj_transform.cpp.patch mapnik_setup.py.patch openslide-init.patch openslide-vendor-mirax.c.patch glymur.setup.py ./
+COPY versions.txt mapnik_proj_transform.cpp.patch mapnik_setup.py.patch openslide-init.patch openslide-vendor-mirax.c.patch openslide-vendor-mirax.c.master.patch glymur.setup.py ./
 
 # Newer version of pkg-config than available in manylinux2014
 RUN \
@@ -1775,12 +1775,12 @@ RUN \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
     # Specific version \
-    git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
-    # git clone --depth=1000 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
-    # # checkout out the recorded sha and prune to a depth of 1 \
-    # git -C gdal checkout `getver.py gdal-sha` && \
-    # git -C gdal gc --prune=all && \
+    git clone --depth=1000 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    # checkout out the recorded sha and prune to a depth of 1 \
+    git -C gdal checkout `getver.py gdal-sha` && \
+    git -C gdal gc --prune=all && \
     # sed -i 's/define GDAL_VERSION_MINOR    4/define GDAL_VERSION_MINOR    5/g' gdal/gcore/gdal_version.h.in && \
     # Common \
     cd gdal && \
@@ -1916,8 +1916,9 @@ RUN \
     export JOBS=`nproc` && \
     export HEAVY_JOBS=`nproc` && \
     # Master \
-    git clone --depth=1 --single-branch -c advice.detachedHead=false --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
+    git clone --depth=1000 --single-branch -c advice.detachedHead=false --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
     cd mapnik && \
+    git checkout d417b8933a08c4a11ee257dd57759b1382f0e3d3 && \
     # Specific checkout \
     # git clone --depth=1000 --single-branch -c advice.detachedHead=false --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
     # cd mapnik && \
@@ -2053,13 +2054,19 @@ RUN \
     echo "`date` openslide" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    curl --retry 5 --silent https://github.com/openslide/openslide/archive/v`getver.py openslide`.tar.gz -L -o openslide.tar.gz && \
-    mkdir openslide && \
-    tar -zxf openslide.tar.gz -C openslide --strip-components 1 && \
-    rm -f openslide.tar.gz && \
+    # Last version \
+    # curl --retry 5 --silent https://github.com/openslide/openslide/archive/v`getver.py openslide`.tar.gz -L -o openslide.tar.gz && \
+    # mkdir openslide && \
+    # tar -zxf openslide.tar.gz -C openslide --strip-components 1 && \
+    # rm -f openslide.tar.gz && \
+    # cd openslide && \
+    # patch src/openslide-vendor-mirax.c ../openslide-vendor-mirax.c.patch && \
+    # patch src/openslide.c ../openslide-init.patch && \
+    # Master \
+    git clone https://github.com/openslide/openslide && \
     cd openslide && \
-    patch src/openslide-vendor-mirax.c ../openslide-vendor-mirax.c.patch && \
-    patch src/openslide.c ../openslide-init.patch && \
+    patch src/openslide-vendor-mirax.c ../openslide-vendor-mirax.c.master.patch && \
+    # Common \
     export LDFLAGS="$LDFLAGS"',-rpath,$ORIGIN' && \
     autoreconf -ifv && \
     ./configure --prefix=/usr/local --disable-static && \
@@ -2071,12 +2078,21 @@ RUN \
 RUN \
     echo "`date` openslide-python" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py openslide-python` -c advice.detachedHead=false https://github.com/openslide/openslide-python.git && \
+    # Last version \
+    # git clone --depth=1 --single-branch -b v`getver.py openslide-python` -c advice.detachedHead=false https://github.com/openslide/openslide-python.git && \
+    # Master \
+    git clone --depth=1 --single-branch -c advice.detachedHead=false https://github.com/openslide/openslide-python.git && \
+    # Common \
     cd openslide-python && \
     python -c $'# \n\
 path = "setup.py" \n\
 s = open(path).read().replace( \n\
     "_convert.c\'", "_convert.c\'], libraries=[\'openslide\'") \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
+path = "openslide/_version.py" \n\
+s = open(path).read().replace( \n\
+    "1.2.0", "1.2.1") \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
 path = "openslide/lowlevel.py" \n\
