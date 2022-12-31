@@ -726,8 +726,6 @@ s = s.replace( \n\
 \n\
     libtiff = None if lib is None else ctypes.cdll.LoadLibrary(lib)""") \n\
 open(path, "w").write(s)' && \
-    cp libtiff/tiff_h_4_3_0.py libtiff/tiff_h_4_4_0.py && \
-    cp libtiff/tiff_h_4_3_0.py libtiff/tiff_h_4_5_0.py && \
     # Increment version slightly \
     git config --global user.email "you@example.com" && \
     git config --global user.name "Your Name" && \
@@ -1775,12 +1773,12 @@ RUN \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
     # Specific version \
-    # git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
-    git clone --depth=1000 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
-    # checkout out the recorded sha and prune to a depth of 1 \
-    git -C gdal checkout `getver.py gdal-sha` && \
-    git -C gdal gc --prune=all && \
+    # git clone --depth=1000 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    # # checkout out the recorded sha and prune to a depth of 1 \
+    # git -C gdal checkout `getver.py gdal-sha` && \
+    # git -C gdal gc --prune=all && \
     # sed -i 's/define GDAL_VERSION_MINOR    4/define GDAL_VERSION_MINOR    5/g' gdal/gcore/gdal_version.h.in && \
     # Common \
     cd gdal && \
