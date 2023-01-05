@@ -16,13 +16,13 @@ fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
 gdal 3.6.2
 gdal-pypi 3.6.2
-gdal-sha 2cefafcbade8711af92c33ea6916812f70d441cd
+gdal-sha 92f2bab2bfd8001ee076af8abc90fe9cbfdcd5f0
 gdal-source 3.7.0
 gdk-pixbuf 2.42.10
 giflib 5.2.1
 glib 2.75.1
-glymur 0.12.1
-glymur-pypi 0.12.1
+glymur 0.12.2
+glymur-pypi 0.12.2
 gobject-introspection 1.74.0
 harfbuzz 6.0.0
 hdf4 4_2_15

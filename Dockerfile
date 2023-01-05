@@ -1771,14 +1771,13 @@ RUN \
     # PINNED - gdal won't build with swig >= 4.1 \
     pip install 'swig<4.1' && \
     export JOBS=`nproc` && \
-    export AUTOMAKE_JOBS=`nproc` && \
     # Specific version \
-    git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    # git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     # Master -- also adjust version \
-    # git clone --depth=1000 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
-    # # checkout out the recorded sha and prune to a depth of 1 \
-    # git -C gdal checkout `getver.py gdal-sha` && \
-    # git -C gdal gc --prune=all && \
+    git clone --depth=1000 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    # checkout out the recorded sha and prune to a depth of 1 \
+    git -C gdal checkout `getver.py gdal-sha` && \
+    git -C gdal gc --prune=all && \
     # sed -i 's/define GDAL_VERSION_MINOR    4/define GDAL_VERSION_MINOR    5/g' gdal/gcore/gdal_version.h.in && \
     # Common \
     cd gdal && \
@@ -1790,6 +1789,7 @@ RUN \
     -DMRSID_INCLUDE_DIR=/build/mrsid/Raster_DSDK/include \
     -DGDAL_USE_LERC=ON \
     -DSWIG_REGENERATE_PYTHON=ON \
+    -DENABLE_DEFLATE64=OFF \
     && \
     make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings -Wno-stringop-overflow -Wno-ignored-qualifiers" && \
     make -j ${JOBS} install && \
