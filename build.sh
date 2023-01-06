@@ -8,6 +8,11 @@ docker pull quay.io/pypa/manylinux2014_x86_64:latest
 #  --build-arg SOURCE_DATE_EPOCH=$(git log -1 --pretty="format:%at" Dockerfile) 
 # to the build command.  However, since we pull in the versions as part of the
 # build, this isn't necessary and introduces extra change from commits.
+
+# This can be hard to debug with buildkit, as you don't get intermediate 
+# images.  You can go back to the old build method:
+# export DOCKER_BUILDKIT=0
+
 docker build --force-rm -t girder/large_image_wheels --build-arg PYPY=false .
 # docker build --force-rm -t girder/large_image_wheels .
 mkdir -p wheels

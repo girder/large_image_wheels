@@ -235,7 +235,9 @@ Packages = {
     },
     'libjpeg-turbo': {
         'git': 'https://github.com/libjpeg-turbo/libjpeg-turbo.git',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
+        # 're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
+        # Don't allow 2.1.90
+        're': r'\/([0-9]+\.[0-9]+(|\.[0-9]|\.[0-8][0-9]+))$',
     },
     'libmemcached': {
         # 'filelist': 'https://launchpad.net/libmemcached/+download',
@@ -503,7 +505,7 @@ Packages = {
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'util-linux': {
-        'git': 'https://github.com/karelzak/util-linux.git',
+        'git': 'https://github.com/util-linux/util-linux.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'xerces-c': {

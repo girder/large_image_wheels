@@ -113,9 +113,13 @@ COPY getver.py fix_record.py /usr/local/bin/
 
 # The openslide-vendor-mirax.c.patch allows girder's file layout to work with
 # mirax files and does no harm otherwise.
-# The openslide-init.patch allows building vips from GitHub source
-# (see https://github.com/libvips/libvips/issues/874)
-COPY versions.txt mapnik_proj_transform.cpp.patch mapnik_setup.py.patch openslide-init.patch openslide-vendor-mirax.c.patch openslide-vendor-mirax.c.master.patch glymur.setup.py ./
+COPY versions.txt \
+    glymur.setup.py \
+    mapnik_proj_transform.cpp.patch \
+    mapnik_setup.py.patch \
+    mapnik-enumeration.patch \
+    openslide-vendor-mirax.c.patch \
+    ./
 
 # Newer version of pkg-config than available in manylinux2014
 RUN \
@@ -506,13 +510,13 @@ cd /build && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
-    echo "`date` libwebp" >> /build/log.txt && \
-cd /build && \
-# \
-# # For 8 and 12-bit jpeg \
-# RUN \
+    echo "`date` libwebp" >> /build/log.txt
+
+RUN \
     echo "`date` libjpeg-turbo" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    # Needed for 2.1.90 \
+    # export CFLAGS="-g0 -O2 -DNDEBUG -fPIC" && \
     curl --retry 5 --silent https://github.com/libjpeg-turbo/libjpeg-turbo/archive/`getver.py libjpeg-turbo`.tar.gz -L -o libjpeg-turbo.tar.gz && \
     mkdir libjpeg-turbo && \
     tar -zxf libjpeg-turbo.tar.gz -C libjpeg-turbo --strip-components 1 && \
@@ -784,10 +788,14 @@ s = s.replace("    path = find_library(libname)", \n\
 """    path = find_library(libname) \n\
     libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath( \n\
         __file__))), \'Glymur.libs\')) \n\
-    if path is None and os.path.exists(libpath): \n\
+    if os.path.exists(libpath): \n\
         libs = os.listdir(libpath) \n\
-        path = [lib for lib in libs if libname in lib][0] \n\
-        path = os.path.join(libpath, path)""") \n\
+        try: \n\
+            pospath = os.path.join(libpath, [lib for lib in libs if "lib" + libname in lib][0]) \n\
+            if os.path.exists(pospath): \n\
+                path = pospath \n\
+        except Exception: \n\
+            pass""") \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
 path = "glymur/version.py" \n\
@@ -876,7 +884,7 @@ RUN \
     echo "`date` util-linux" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py util-linux` -c advice.detachedHead=false https://github.com/karelzak/util-linux.git && \
+    git clone --depth=1 --single-branch -b v`getver.py util-linux` -c advice.detachedHead=false https://github.com/util-linux/util-linux.git && \
     cd util-linux && \
     sed -i 's/#ifndef UMOUNT_UNUSED/#ifndef O_PATH\n# define O_PATH 010000000\n#endif\n\n#ifndef UMOUNT_UNUSED/g' libmount/src/context_umount.c && \
     ./autogen.sh && \
@@ -1894,14 +1902,12 @@ open(path, "w").write(s)' && \
     rm -rf ~/.cache && \
     echo "`date` gdal python" >> /build/log.txt
 
-# Mapnik
-
 RUN \
     echo "`date` harfbuzz" >> /build/log.txt && \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b `getver.py harfbuzz` -c advice.detachedHead=false https://github.com/harfbuzz/harfbuzz.git && \
     cd harfbuzz && \
-    meson --prefix=/usr/local --buildtype=release --optimization=3 -Dtests=disabled _build && \
+    meson --prefix=/usr/local --buildtype=release --optimization=3 -Dtests=disabled -Ddocs=disabled _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -1914,37 +1920,14 @@ RUN \
     export JOBS=`nproc` && \
     export HEAVY_JOBS=`nproc` && \
     # Master \
-    git clone --depth=1000 --single-branch -c advice.detachedHead=false --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
-    cd mapnik && \
-    git checkout d417b8933a08c4a11ee257dd57759b1382f0e3d3 && \
+    git clone --depth=1 --single-branch -c advice.detachedHead=false --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
+    cd mapnik \
     # Specific checkout \
     # git clone --depth=1000 --single-branch -c advice.detachedHead=false --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
     # cd mapnik && \
-    # # Apr 28 2021 \
-    # git checkout fb2e45c57981f8a3b071f37a0b27f211bf233081 && \
+    # git checkout d417b8933a08c4a11ee257dd57759b1382f0e3d3 && \
     # Common \
     find . -name '.git' -exec rm -rf {} \+ && \
-    # Scons build process \
-    # # Keeps the docker smaller \
-    # rm -rf demo test && mkdir test && mkdir demo && touch test/build.py && touch demo/build.py && \
-    # python scons/scons.py configure JOBS=`nproc` \
-    # BOOST_INCLUDES=/usr/local/include BOOST_LIBS=/usr/local/lib \
-    # ICU_INCLUDES=/usr/local/include ICU_LIBS=/usr/local/lib \
-    # HB_INCLUDES=/usr/local/include HB_LIBS=/usr/local/lib \
-    # PNG_INCLUDES=/usr/local/include PNG_LIBS=/usr/local/lib \
-    # JPEG_INCLUDES=/usr/local/include JPEG_LIBS=/usr/local/lib \
-    # TIFF_INCLUDES=/usr/local/include TIFF_LIBS=/usr/local/lib \
-    # WEBP_INCLUDES=/usr/local/include WEBP_LIBS=/usr/local/lib \
-    # PROJ_INCLUDES=/usr/local/include PROJ_LIBS=/usr/local/lib \
-    # SQLITE_INCLUDES=/usr/local/include SQLITE_LIBS=/usr/local/lib \
-    # RASTERLITE_INCLUDES=/usr/local/include RASTERLITE_LIBS=/usr/local/lib \
-    # WARNING_CXXFLAGS="-Wno-unused-variable -Wno-unused-but-set-variable -Wno-attributes -Wno-unknown-pragmas -Wno-maybe-uninitialized -Wno-parentheses" \
-    # QUIET=true \
-    # CPP_TESTS=false \
-    # DEBUG=false \
-    # DEMO=false \
-    # && \
-    # CMake build process -- doesn't build mapnik-config as of 9/6/21 \
     # Keeps the docker smaller \
     rm -rf demo test && mkdir test && mkdir demo && touch test/CMakeLists.txt && touch demo/CMakeLists.txt && \
     mkdir _build && \
@@ -1966,11 +1949,18 @@ RUN \
     ldconfig && \
     echo "`date` mapnik" >> /build/log.txt
 
+# PINNED - updates break patches but don't build directly
 RUN \
     echo "`date` python-mapnik" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -c advice.detachedHead=false --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/python-mapnik.git && \
+    # master \
+    # git clone --depth=1 --single-branch -c advice.detachedHead=false --quiet -j ${JOBS} https://github.com/mapnik/python-mapnik.git && \
+    # cd python-mapnik && \
+    # specific checkout \
+    git clone --depth=100 --single-branch -c advice.detachedHead=false --quiet -j ${JOBS} https://github.com/mapnik/python-mapnik.git && \
     cd python-mapnik && \
+    git checkout a2c2a86eec954b42d7f00093da03807d0834b1b4 && \
+    # common \
     find . -name '.git' -exec rm -rf {} \+ && \
     # Copy the mapnik input sources and fonts to the python path and add them \
     # via setup.py.  Modify the paths.py file that gets created to refer to \
@@ -1995,25 +1985,6 @@ def program(): \n\
     os.execve(path, sys.argv, environ) \n\
 """ \n\
 open(path, "w").write(s)' && \
-    #     python -c $'# \n\
-    # path = "setup.py" \n\
-    # s = open(path).read().replace( \n\
-    #     "\'share/*/*\'", \n\
-    #     """\'share/*/*\', \'input/*\', \'fonts/*\', \'proj/*\', \'gdal/*\', \'bin/*\'""").replace( \n\
-    #     "path=font_path))", """path=font_path)) \n\
-    #     f_paths.write("localpath = os.path.dirname(os.path.abspath( __file__ ))\\\\n") \n\
-    #     f_paths.write("mapniklibpath = os.path.join(localpath, \'mapnik.libs\')\\\\n") \n\
-    #     f_paths.write("mapniklibpath = os.path.normpath(mapniklibpath)\\\\n") \n\
-    #     f_paths.write("inputpluginspath = os.path.join(localpath, \'input\')\\\\n") \n\
-    #     f_paths.write("fontscollectionpath = os.path.join(localpath, \'fonts\')\\\\n") \n\
-    # """) \n\
-    # s = s.replace("test_suite=\'nose.collector\',", \n\
-    # """test_suite=\'nose.collector\', \n\
-    #     entry_points={\'console_scripts\': [\'%s=mapnik.bin:program\' % name for name in os.listdir(\'mapnik/bin\') if not name.endswith(\'.py\')]},""") \n\
-    # p1 = s.index("cflags =") \n\
-    # p2 = s.index("os.environ", p1) \n\
-    # s = s[:p1] + "try:\\n    " + s[p1:p2].replace("\\n", "\\n    ") + "\\nexcept Exception:\\n    pass\\n" + s[p2:] \n\
-    # open(path, "w").write(s)' && \
     python -c $'# \n\
 path = "mapnik/__init__.py" \n\
 s = open(path).read().replace( \n\
@@ -2028,6 +1999,7 @@ open(path, "w").write(s)' && \
     git apply ../mapnik_proj_transform.cpp.patch && \
     # Apply a patch and set variables to work with the cmake build of mapnik \
     git apply ../mapnik_setup.py.patch && \
+    git apply ../mapnik-enumeration.patch && \
     export CC=c++ && \
     export CXX=c++ && \
     # Strip libraries before building any wheels \
@@ -2048,28 +2020,19 @@ open(path, "w").write(s)' && \
     rm -rf ~/.cache && \
     echo "`date` python-mapnik" >> /build/log.txt
 
+# PINNED VERSION - use master since last version is stale
 RUN \
     echo "`date` openslide" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    # Last version \
-    # curl --retry 5 --silent https://github.com/openslide/openslide/archive/v`getver.py openslide`.tar.gz -L -o openslide.tar.gz && \
-    # mkdir openslide && \
-    # tar -zxf openslide.tar.gz -C openslide --strip-components 1 && \
-    # rm -f openslide.tar.gz && \
-    # cd openslide && \
-    # patch src/openslide-vendor-mirax.c ../openslide-vendor-mirax.c.patch && \
-    # patch src/openslide.c ../openslide-init.patch && \
-    # Master \
     git clone https://github.com/openslide/openslide && \
     cd openslide && \
-    patch src/openslide-vendor-mirax.c ../openslide-vendor-mirax.c.master.patch && \
-    # Common \
-    export LDFLAGS="$LDFLAGS"',-rpath,$ORIGIN' && \
-    autoreconf -ifv && \
-    ./configure --prefix=/usr/local --disable-static && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
+    patch src/openslide-vendor-mirax.c ../openslide-vendor-mirax.c.patch && \
+    meson --prefix=/usr/local --buildtype=release --optimization=3 _build && \
+    cd _build && \
+    ninja -j ${JOBS} && \
+    ninja -j ${JOBS} install && \
+    # \
     ldconfig && \
     echo "`date` openslide" >> /build/log.txt
 
@@ -2107,7 +2070,7 @@ s = open(path).read().replace( \n\
         _lib = cdll.LoadLibrary(\'libopenslide.so.0\')""") \n\
 open(path, "w").write(s)' && \
     mkdir openslide/bin && \
-    find /build/openslide/tools/.libs/ -executable -type f -exec cp {} openslide/bin/. \; && \
+    find /build/openslide/_build/tools/ -executable -not -type d -exec bash -c 'cp --dereference /usr/local/bin/"$(basename {})" openslide/bin/.' \; && \
     strip openslide/bin/* --strip-unneeded -p -D && \
     python -c $'# \n\
 path = "openslide/bin/__init__.py" \n\
@@ -2551,7 +2514,7 @@ open(path, "w").write(s)' && \
     # auditwheel modifies the java libraries, but some of those have \
     # hard-coded relative paths, which doesn't work.  Replace them with the \
     # unmodified versions.  See https://stackoverflow.com/questions/55904261 \
-    find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} bash -c 'mkdir /tmp/ptmp$(basename ${0}) && pushd /tmp/ptmp$(basename ${0}) && unzip ${0} && cp -f -r -L /usr/lib/jvm/java/* javabridge/jvm/. && find javabridge/jars -name '\''*.jar'\'' -exec strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v {} \; && rm javabridge/jvm/jre/lib/amd64/server/classes.jsa && fix_record.py && zip -r ${0} * && popd && rm -rf /tmp/ptmp$(basename ${0})' && \
+    find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} bash -c 'mkdir /tmp/ptmp$(basename ${0}) && pushd /tmp/ptmp$(basename ${0}) && unzip ${0} && mkdir so && cp -f -r -L javabridge/jvm/jre/lib/amd64/*.so so/. && cp -f -r -L /usr/lib/jvm/java/* javabridge/jvm/. && cp -f -r -L so/* javabridge/jvm/jre/lib/amd64/. && rm -rf so && find javabridge/jars -name '\''*.jar'\'' -exec strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v {} \; && rm javabridge/jvm/jre/lib/amd64/server/classes.jsa && fix_record.py && zip -r ${0} * && popd && rm -rf /tmp/ptmp$(basename ${0})' && \
     find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
