@@ -1,4 +1,10 @@
 FROM quay.io/pypa/manylinux2014_x86_64
+# With docker build-kit, to debug a specific build step, use
+#   FROM quay.io/pypa/manylinux2014_x86_64 as working
+# and add just before the build step to debug
+#   FROM working
+# Then do
+#   docker build --force-rm --target=working .
 
 RUN mkdir /build
 WORKDIR /build
@@ -1776,18 +1782,20 @@ RUN \
 # --with-dods-root is where libdap is installed
 RUN \
     echo "`date` gdal" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    # We need numpy present in the default python to build all extensions \
+    pip install numpy && \
+    # - Specific version \
+    git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     # PINNED - gdal won't build with swig >= 4.1 \
     pip install 'swig<4.1' && \
-    export JOBS=`nproc` && \
-    # Specific version \
-    # git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
-    # Master -- also adjust version \
-    git clone --depth=1000 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
-    # checkout out the recorded sha and prune to a depth of 1 \
-    git -C gdal checkout `getver.py gdal-sha` && \
-    git -C gdal gc --prune=all && \
+    # - Master -- also adjust version \
+    # git clone --depth=1000 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    # # checkout out the recorded sha and prune to a depth of 1 \
+    # git -C gdal checkout `getver.py gdal-sha` && \
+    # git -C gdal gc --prune=all && \
     # sed -i 's/define GDAL_VERSION_MINOR    4/define GDAL_VERSION_MINOR    5/g' gdal/gcore/gdal_version.h.in && \
-    # Common \
+    # - Common \
     cd gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
     mkdir _build && \
@@ -1811,12 +1819,10 @@ RUN \
 RUN \
     echo "`date` gdal python" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    cd gdal/swig/python && \
-    cp /build/gdal/_build/swig/python/setup.py . && \
+    cd gdal/_build/swig/python && \
     cp -r /usr/local/share/{proj,gdal} osgeo/. && \
     mkdir osgeo/bin && \
-    find /build/gdal/apps/ -executable -type f ! -name '*.cpp' -exec cp {} osgeo/bin/. \; && \
-    find /build/gdal/_build/apps -executable -not -type d -exec bash -c 'cp --dereference /usr/local/bin/"$(basename {})" osgeo/bin/.' \; && \
+    find /build/gdal/_build/apps -executable -type f -exec bash -c 'cp --dereference /usr/local/bin/"$(basename {})" osgeo/bin/.' \; && \
     cp --dereference /usr/local/bin/gdal-config osgeo/bin/. && \
     find /build/libgeotiff/libgeotiff/bin/.libs -executable -type f -exec cp {} osgeo/bin/. \; && \
     (strip osgeo/bin/* --strip-unneeded || true) && \
@@ -1843,12 +1849,6 @@ import re \n\
 import os \n\
 path = "setup.py" \n\
 data = open(path).read() \n\
-data = data.replace( \n\
-    "        self.gdaldir = self.get_gdal_config(\'prefix\')", \n\
-    "        try:\\n" + \n\
-    "            self.gdaldir = self.get_gdal_config(\'prefix\')\\n" + \n\
-    "        except Exception:\\n" + \n\
-    "            return True") \n\
 data = re.sub( \n\
     r"gdal_version = \'\\d+.\\d+.\\d+(dev|)\'", \n\
     "gdal_version = \'" + os.popen("gdal-config --version").read().strip().split(\'.dev\')[0].split(\'dev\')[0] + "\'", \n\
