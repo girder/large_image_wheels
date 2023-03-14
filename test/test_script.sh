@@ -410,6 +410,14 @@ except pyvips.error.Error:
   pass
 EOF
 
+echo 'test an ome.tiff file'
+curl --retry 5 -L -o sample.ome.tif https://data.kitware.com/api/v1/file/5cb9c6288d777f072b4e85f0/download
+python <<EOF
+import large_image_source_vips
+
+large_image_source_vips.open('sample.ome.tif')
+EOF
+
 # echo 'test pyvips and large svg'
 # python <<EOF
 # import pyvips

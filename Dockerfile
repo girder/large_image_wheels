@@ -166,7 +166,9 @@ RUN \
     tar -zxf zlib.tar.gz -C zlib --strip-components 1 && \
     rm -f zlib.tar.gz && \
     cd zlib && \
-    ./configure --prefix=/usr/local && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -219,8 +221,9 @@ cd /build && \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b libssh2-`getver.py libssh2` -c advice.detachedHead=false https://github.com/libssh2/libssh2.git && \
     cd libssh2 && \
-    ./buildconf || (sed -i 's/m4_undefine/# m4_undefine/g' configure.ac && ./buildconf) && \
-    ./configure --silent --prefix=/usr/local --disable-static && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DENABLE_ZLIB_COMPRESSION=ON -DBUILD_EXAMPLES=OFF -DBUILD_SHARED_LIBS=ON && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -236,6 +239,11 @@ cd /build && \
     tar -zxf curl.tar.gz -C curl --strip-components 1 && \
     rm -f curl.tar.gz && \
     cd  curl && \
+    # If we use cmake for the build, this does something different and causes
+    # netcdf to fail to find the appropriate libraries
+    # mkdir _build && \
+    # cd _build && \
+    # cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF -DBUILD_STATIC=OFF -DCURL_CA_FALLBACK=ON && \
     ./configure --prefix=/usr/local --disable-static --with-openssl --with-ldap-lib=/usr/local/lib/libldap.so && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -452,8 +460,9 @@ RUN \
     tar -xf libpng.tar -C libpng --strip-components 1 && \
     rm -f libpng.tar && \
     cd libpng && \
-    autoreconf -ifv && \
-    ./configure --silent --prefix=/usr/local LIBS="`pkg-config --libs zlib`" --disable-static && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -479,6 +488,9 @@ cd /build && \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b v`getver.py zstd` -c advice.detachedHead=false https://github.com/facebook/zstd && \
     cd zstd && \
+    mkdir _build && \
+    cd _build && \
+    cmake ../build/cmake -DCMAKE_BUILD_TYPE=Release -DZSTD_BUILD_STATIC=OFF -DZSTD_LZ4_SUPPORT=ON -DZSTD_LZMA_SUPPORT=ON -DZSTD_ZLIB_SUPPORT=ON -DZSTD_BUILD_PROGRAMS=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -512,7 +524,9 @@ cd /build && \
     tar -zxf libwebp.tar.gz -C libwebp --strip-components 1 && \
     rm -f libwebp.tar.gz && \
     cd libwebp && \
-    ./configure --silent --prefix=/usr/local --enable-libwebpmux --enable-libwebpdecoder --enable-libwebpextras --disable-static && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -531,12 +545,12 @@ RUN \
     # build 8-bit \
     mkdir _build8 && \
     cd _build8 && \
-    cmake -DWITH_12BIT=0 -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD=${SOURCE_DATE_EPOCH} .. && \
+    cmake .. -DWITH_12BIT=0 -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD=${SOURCE_DATE_EPOCH} && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     cd .. && \
     # build 12-bit in place \
-    cmake -DWITH_12BIT=1 -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD=${SOURCE_DATE_EPOCH} . && \
+    cmake . -DWITH_12BIT=1 -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD=${SOURCE_DATE_EPOCH} && \
     make clean && \
     make --silent -j ${JOBS} && \
     # don't install this; we reference it explicitly \
@@ -651,6 +665,11 @@ RUN \
     tar -zxf tiff.tar.gz -C tiff --strip-components 1 && \
     rm -f tiff.tar.gz && \
     cd tiff && \
+    # We could use cmake here, but it seems to have a harder time sorting the \
+    # two libjpeg versions \
+    # mkdir _build && \
+    # cd _build && \
+    # cmake .. -DCMAKE_BUILD_TYPE=Release -DJPEG12_INCLUDE_DIR=/build/libjpeg-turbo -DJPEG12_LIBRARY=/build/libjpeg-turbo/libjpeg-12.so && \
     ./configure --prefix=/usr/local \
     --disable-static \
     --enable-jpeg12 \
@@ -735,6 +754,7 @@ s = s.replace( \n\
             loadCount = numLoaded \n\
 \n\
     libtiff = None if lib is None else ctypes.cdll.LoadLibrary(lib)""") \n\
+s = s.replace("""print("Not trying""", """# print("Not trying""") \n\
 open(path, "w").write(s)' && \
     # Increment version slightly \
     git config --global user.email "you@example.com" && \
@@ -858,7 +878,9 @@ RUN \
     tar -zxf pcre.tar.gz -C pcre --strip-components 1 && \
     rm -f pcre.tar.gz && \
     cd pcre && \
-    ./configure --silent --prefix=/usr/local --enable-unicode-properties --enable-pcre16 --enable-pcre32 --enable-jit --disable-static && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DPCRE_BUILD_PCRE16=ON -DPCRE_BUILD_PCRE32=ON -DPCRE_SUPPORT_UNICODE_PROPERTIES=ON -DPCRE_SUPPORT_JIT=ON && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1241,7 +1263,7 @@ RUN \
     cd minizip && \
     mkdir _build && \
     cd _build && \
-    cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=yes -DINSTALL_INC_DIR=/usr/local/include/minizip -DMZ_OPENSSL=yes .. && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=yes -DINSTALL_INC_DIR=/usr/local/include/minizip -DMZ_OPENSSL=yes && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1256,8 +1278,9 @@ RUN \
     tar -zxf libexpat.tar.gz -C libexpat --strip-components 1 && \
     rm -f libexpat.tar.gz && \
     cd libexpat/expat && \
-    autoreconf -ifv && \
-    ./configure --silent --prefix=/usr/local --disable-static && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DEXPAT_BUILD_EXAMPLES=OFF -DEXPAT_BUILD_TESTS=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1284,7 +1307,7 @@ RUN \
     cd geos && \
     mkdir _build && \
     cd _build && \
-    cmake -DGEOS_BUILD_DEVELOPER=NO -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF .. && \
+    cmake .. -DGEOS_BUILD_DEVELOPER=NO -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1299,7 +1322,9 @@ RUN \
     tar -zxf libxml2.tar.gz -C libxml2 --strip-components 1 && \
     rm -f libxml2.tar.gz && \
     cd libxml2 && \
-    ./configure --prefix=/usr/local --disable-static --without-python && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DLIBXML2_WITH_TESTS=OFF -DLIBXML2_WITH_PYTHON=OFF -DLIBXML2_WITH_ICU=ON  && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig && \
@@ -1327,6 +1352,10 @@ RUN \
     export AUTOMAKE_JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b `getver.py libgeotiff` -c advice.detachedHead=false https://github.com/OSGeo/libgeotiff.git && \
     cd libgeotiff/libgeotiff && \
+    # This could be done with cmake, but then librasterlite2 doesn't find it
+    # mkdir _build && \
+    # cd _build && \
+    # cmake .. -DCMAKE_BUILD_TYPE=Release -DWITH_JPEG=ON -DWITH_ZLIB=ON  && \
     autoreconf -ifv && \
     ./configure --silent --prefix=/usr/local --with-zlib=yes --with-jpeg=yes --disable-static && \
     make --silent -j ${JOBS} && \
@@ -1349,7 +1378,8 @@ RUN \
 RUN \
     echo "`date` freetype" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.savannah.gnu.org/releases/freetype/freetype-`getver.py freetype`.tar.gz -L -o freetype.tar.gz && \
+    # Retry extra hard; there is a bad mirror that fails \
+    curl --fail --retry-all-errors --retry-max-time 30 --retry 10 --silent https://download.savannah.gnu.org/releases/freetype/freetype-`getver.py freetype`.tar.gz -L -o freetype.tar.gz && \
     mkdir freetype && \
     tar -zxf freetype.tar.gz -C freetype --strip-components 1 && \
     rm -f freetype.tar.gz && \
@@ -1429,6 +1459,10 @@ data = data.replace( \n\
     b"#include <locale>\\n" + \n\
     b"#include \\"stdafx.h\\"") \n\
 open(path, "wb").write(data)' && \
+    # If we use cmake here, GDAL doesn't find the results properly \
+    # mkdir _build && \
+    # cd _build && \
+    # cmake .. -DCMAKE_BUILD_TYPE=Release && \
     autoreconf -ifv && \
     ./configure --silent --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
@@ -1529,7 +1563,7 @@ RUN \
     cd _build && \
     CFLAGS="$CFLAGS -ftls-model=global-dynamic" \
     CXXFLAGS="$CXXFLAGS -Wno-deprecated-declarations -ftls-model=global-dynamic" \
-    cmake -DBUILD_CONFIG=mysql_release -DBUILD_SHARED_LIBS=ON -DWITH_BOOST=`find ../boost/ -maxdepth 1 -name 'boost_*'` -DWITH_ZLIB=bundled -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DCMAKE_BUILD_TYPE=Release -DWITHOUT_SERVER=ON -DREPRODUCIBLE_BUILD=ON -DINSTALL_MYSQLTESTDIR="" .. && \
+    cmake .. -DBUILD_CONFIG=mysql_release -DBUILD_SHARED_LIBS=ON -DWITH_BOOST=`find ../boost/ -maxdepth 1 -name 'boost_*'` -DWITH_ZLIB=bundled -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DCMAKE_BUILD_TYPE=Release -DWITHOUT_SERVER=ON -DREPRODUCIBLE_BUILD=ON -DINSTALL_MYSQLTESTDIR="" && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     # reduce docker size \
@@ -1588,7 +1622,9 @@ RUN \
     tar -zxf cfitsio.tar.gz -C cfitsio --strip-components 1 && \
     rm -f cfitsio.tar.gz && \
     cd cfitsio && \
-    ./configure --silent --prefix=/usr/local && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1657,7 +1693,7 @@ RUN \
     cd xerces-c && \
     mkdir _build && \
     cd _build && \
-    cmake -DCMAKE_BUILD_TYPE=Release .. && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1672,7 +1708,7 @@ RUN \
 #     cd OpenBLAS && \
 #     mkdir _build && \
 #     cd _build && \
-#     cmake -DUSE_OPENMP=True -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release .. && \
+#     cmake .. -DUSE_OPENMP=True -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release && \
 #     make --silent -j ${JOBS} && \
 #     make --silent -j ${JOBS} install && \
 #     ldconfig && \
@@ -1685,7 +1721,7 @@ RUN \
 #     cd superlu && \
 #     mkdir _build && \
 #     cd _build && \
-#     cmake -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release -Denable_internal_blaslib=OFF -Denable_tests=OFF -DTPL_BLAS_LIBRARIES=/usr/local/lib64/libopenblas.so .. && \
+#     cmake .. -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release -Denable_internal_blaslib=OFF -Denable_tests=OFF -DTPL_BLAS_LIBRARIES=/usr/local/lib64/libopenblas.so && \
 #     make --silent -j ${JOBS} && \
 #     make --silent -j ${JOBS} install && \
 #     ldconfig && \
@@ -1698,7 +1734,7 @@ RUN \
     cd lapack && \
     mkdir _build && \
     cd _build && \
-    cmake -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release .. && \
+    cmake .. -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1715,7 +1751,7 @@ RUN \
     cd armadillo && \
     mkdir _build && \
     cd _build && \
-    cmake -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib .. && \
+    cmake .. -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1746,6 +1782,21 @@ RUN \
     make --silent -j ${JOBS} install && \
     ldconfig && \
     echo "`date` blosc" >> /build/log.txt
+
+RUN \
+    echo "`date` libde265" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b v`getver.py libde265` -c advice.detachedHead=false https://github.com/strukturag/libde265.git && \
+    cd libde265 && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED=ON -DBUILD_STATIC=OFF -DWITH_EXAMPLES=OFF && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    find . -name '*.a' -delete && \
+    echo "`date` libde265" >> /build/log.txt
 
 RUN \
     echo "`date` libheif" >> /build/log.txt && \
@@ -1786,14 +1837,14 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
-    # PINNED - gdal won't build with swig >= 4.1 \
-    pip install 'swig<4.1' && \
+    # git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    # # PINNED - gdal won't build with swig >= 4.1 \
+    # pip install 'swig<4.1' && \
     # - Master -- also adjust version \
-    # git clone --depth=1000 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
-    # # checkout out the recorded sha and prune to a depth of 1 \
-    # git -C gdal checkout `getver.py gdal-sha` && \
-    # git -C gdal gc --prune=all && \
+    git clone --depth=1000 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    # checkout out the recorded sha and prune to a depth of 1 \
+    git -C gdal checkout `getver.py gdal-sha` && \
+    git -C gdal gc --prune=all && \
     # sed -i 's/define GDAL_VERSION_MINOR    4/define GDAL_VERSION_MINOR    5/g' gdal/gcore/gdal_version.h.in && \
     # - Common \
     cd gdal && \
@@ -1933,7 +1984,8 @@ RUN \
     mkdir _build && \
     cd _build && \
     CXXFLAGS="-Wno-unused-variable -Wno-unused-but-set-variable -Wno-attributes -Wno-unknown-pragmas -Wno-maybe-uninitialized -Wno-parentheses" \
-    cmake -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release \
+    cmake .. \
+    -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_BENCHMARK=OFF \
     -DBUILD_DEMO_CPP=OFF \
     -DBUILD_DEMO_VIEWER=OFF \
@@ -1942,7 +1994,7 @@ RUN \
     -DJPEG_LIBRARY_RELEASE=/usr/local/lib/libopenjp2.so \
     -DCMAKE_INSTALL_LIBDIR=lib \
     -DFONTS_INSTALL_DIR=/usr/local/lib/mapnik/fonts \
-    .. && \
+    && \
     # Common build process \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -2130,7 +2182,7 @@ RUN \
     cd nifti && \
     mkdir _build && \
     cd _build && \
-    cmake -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release .. && \
+    cmake .. -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -2167,20 +2219,6 @@ RUN \
     ninja -j ${JOBS} install && \
     ldconfig && \
     echo "`date` pango" >> /build/log.txt
-
-RUN \
-    echo "`date` libde265" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py libde265` -c advice.detachedHead=false https://github.com/strukturag/libde265.git && \
-    cd libde265 && \
-    ./autogen.sh && \
-    ./configure --silent --prefix=/usr/local --disable-static && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
-    find . -name '*.a' -delete && \
-    echo "`date` libde265" >> /build/log.txt
 
 RUN \
     echo "`date` librsvg" >> /build/log.txt && \
@@ -2285,11 +2323,13 @@ RUN \
     ldconfig && \
     echo "`date` libexif" >> /build/log.txt
 
+# PINNED - 8.14.2 breaks support for one of our test ome tiff files.
 RUN \
     echo "`date` libvips" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # version \
-    git clone --depth=1 --single-branch -b v`getver.py libvips` -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
+    # git clone --depth=1 --single-branch -b v`getver.py libvips` -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
+    git clone --depth=1 --single-branch -b v8.14.1 -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
     # master \
     # git clone -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
     cd libvips && \
