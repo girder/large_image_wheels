@@ -55,13 +55,11 @@ echo 'Test basic import of pylibmc'
 python -c 'import pylibmc'
 echo 'Test basic imports of all wheels'
 if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 8)))'; then
-  echo 'Test basic import of pyproj'
-  python -c 'import pyproj'
   echo 'Test basic import of glymur'
   python -c 'import glymur'
-  python -c 'import libtiff, openslide, pyproj, pyvips, osgeo, mapnik, glymur, javabridge'
+  python -c 'import libtiff, openslide, pyvips, osgeo, mapnik, glymur, javabridge'
 elif python -c 'import sys;sys.exit(not (sys.version_info >= (3, 7)))'; then
-  python -c 'import libtiff, openslide, pyproj, pyvips, osgeo, mapnik, javabridge'
+  python -c 'import libtiff, openslide, pyvips, osgeo, mapnik, javabridge'
 else
   python -c 'import libtiff, openslide, pyvips, osgeo, mapnik, javabridge'
 fi
@@ -303,7 +301,6 @@ gdal-config --formats
 gdal-config --formats | wc
 python <<EOF
 import os
-# known = set('JPEG raw GTIFF MEM vrt Derived HFA SDTS NITF GXF AAIGrid CEOS SAR_CEOS XPM DTED JDEM Envisat ELAS FIT L1B RS2 ILWIS RMF Leveller SGI SRTMHGT IDRISI GSG ERS PALSARJaxa DIMAP GFF COSAR PDS ADRG COASP TSX Terragen BLX MSGN TIL R northwood SAGA XYZ HEIF ESRIC HF2 KMLSUPEROVERLAY CTG ZMap NGSGEOID IRIS MAP CALS SAFE SENTINEL2 PRF MRF WMTS GRIB BMP DAAS TGA STACTA OGCAPI BSB AIGrid ARG USGSDEM AirSAR OZI PCIDSK SIGDEM RIK STACIT PDF PNG GIF WCS HTTP netCDF Zarr EEDA FITS HDF5 PLMOSAIC WMS GTA WEBP HDF4 Rasterlite MBTiles PostGISRaster JP2OpenJPEG EXR PCRaster MrSID MEM geojson TAB Shape KML VRT AVC SDTS GML CSV DGN GMT NTF S57 Tiger Geoconcept GeoRSS DXF PGDump GPSBabel EDIGEO SXF OpenFileGDB WAsP Selafin JML VDV FlatGeobuf MapML GPX GMLAS SVG CSW NAS PLSCENES SOSI WFS NGW Elastic Idrisi PDS SQLite GeoPackage OSM VFK MVT AmigoCloud Carto ILI MySQL PG XLSX XLS CAD ODS LVBAG'.lower().split())
 known = set('JPEG raw GTIFF MEM vrt Derived HFA SDTS NITF GXF AAIGrid CEOS SAR_CEOS XPM DTED JDEM Envisat ELAS FIT L1B RS2 ILWIS RMF Leveller SGI SRTMHGT IDRISI GSG ERS PALSARJaxa DIMAP GFF COSAR PDS ADRG COASP TSX Terragen BLX MSGN TIL R northwood SAGA XYZ HEIF ESRIC HF2 KMLSUPEROVERLAY CTG ZMap NGSGEOID IRIS MAP CALS SAFE SENTINEL2 PRF MRF WMTS GRIB BMP DAAS TGA STACTA OGCAPI BSB AIGrid ARG USGSDEM AirSAR OZI PCIDSK SIGDEM RIK STACIT PDF PNG GIF WCS HTTP netCDF Zarr EEDA FITS HDF5 PLMOSAIC WMS GTA WEBP HDF4 Rasterlite MBTiles PostGISRaster JP2OpenJPEG EXR PCRaster JPEGXL MrSID MEM geojson TAB Shape KML VRT AVC SDTS GML CSV DGN GMT NTF S57 Tiger Geoconcept GeoRSS DXF PGDump GPSBabel EDIGEO SXF OpenFileGDB WAsP Selafin JML VDV FlatGeobuf MapML GPX GMLAS SVG CSW NAS PLSCENES SOSI WFS NGW Elastic Idrisi PDS SQLite GeoPackage OSM VFK MVT AmigoCloud Carto ILI MySQL PG XLSX XLS CAD ODS LVBAG'.lower().split())
 current = set(os.popen('gdal-config --formats').read().lower().split())
 print('New formats: %s' % ' '.join(sorted(current - known)))
@@ -317,11 +314,6 @@ if (( $(gdal-config --formats | wc -w) < 98 )); then false; fi
 mapnik-render --version 2>&1 | grep version
 `python -c 'import os,sys,pyvips;sys.stdout.write(os.path.dirname(pyvips.__file__))'`/bin/vips --version
 vips --version
-if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 8)))'; then
-PROJ_LIB=`python -c 'import os,sys,pyproj;sys.stdout.write(os.path.dirname(pyproj.__file__))'`/proj `python -c 'import os,sys,pyproj;sys.stdout.write(os.path.dirname(pyproj.__file__))'`/bin/projinfo EPSG:4326
-projinfo EPSG:4326
-projinfo ESRI:102654
-fi
 echo 'test GDAL transform'
 python <<EOF
 from osgeo import ogr, osr
@@ -416,6 +408,14 @@ python <<EOF
 import large_image_source_vips
 
 large_image_source_vips.open('sample.ome.tif')
+EOF
+
+echo 'test libvips and webp'
+curl --retry 5 -L  -o d042-353.crop.small.float32.tif https://data.kitware.com/api/v1/file/6005cd112fa25629b9f98fca/download
+python <<EOF
+import large_image_converter.__main__ as main
+
+main.main(['d042-353.crop.small.float32.tif', '/tmp/outfloat.tiff', '--compression', 'webp'])
 EOF
 
 # echo 'test pyvips and large svg'

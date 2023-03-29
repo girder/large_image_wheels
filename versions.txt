@@ -16,7 +16,7 @@ fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
 gdal 3.6.3
 gdal-pypi 3.6.3
-gdal-sha 695b24e5cc94bdc656df551277737a95766df4b7
+gdal-sha c642af0722d43bb337aaf86293129dbed576e534
 gdal-source 3.7.0
 gdk-pixbuf 2.42.10
 giflib 5.2.1
@@ -101,8 +101,6 @@ pylibmc 1.6.3
 pylibtiff 0.5.1
 pylibtiff-pypi 0.4.2
 pylibtiff-sha b67eae36795cd772e99c45536756cef6b191a4de
-pyproj4 3.5.0
-pyproj4-pypi 3.5.0
 python-javabridge 4.0.3
 python-javabridge-pypi 4.0.3
 python-mapnik 6c0e9b5c90ae505ea005761c0cdfd2edde1ff612

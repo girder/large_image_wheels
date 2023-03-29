@@ -6,7 +6,7 @@ manylinux wheel files for girder/large_image dependencies.
 
 You can install from the wheels in this repository using a command like:
 ```
-pip install pylibtiff openslide_python pyvips gdal mapnik pyproj glymur javabridge -f https://girder.github.io/large_image_wheels
+pip install pylibtiff openslide_python pyvips gdal mapnik glymur javabridge -f https://girder.github.io/large_image_wheels
 ```
 
 ## Building
@@ -38,7 +38,6 @@ This makes wheels for the main libraries:
 - openslide_python
 - pylibmc
 - pylibtiff
-- pyproj
 - python_javabridge
 - pyvips
 

@@ -524,9 +524,12 @@ cd /build && \
     tar -zxf libwebp.tar.gz -C libwebp --strip-components 1 && \
     rm -f libwebp.tar.gz && \
     cd libwebp && \
-    mkdir _build && \
-    cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    # If we build with cmake, libvips throws an exception when we try to use \
+    # webp encoding. \
+    # mkdir _build && \
+    # cd _build && \
+    # cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    ./configure --silent --prefix=/usr/local --enable-libwebpmux --enable-libwebpdecoder --enable-libwebpextras --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1187,74 +1190,6 @@ RUN \
     # make --silent -j ${JOBS} install && \
     ldconfig && \
     echo "`date` proj4" >> /build/log.txt
-
-RUN \
-    echo "`date` pyproj4" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    git clone --single-branch -b `getver.py pyproj4` -c advice.detachedHead=false https://github.com/pyproj4/pyproj.git && \
-    cd pyproj && \
-    mkdir pyproj/bin && \
-    find /build/proj.4/_build/bin/ -executable -not -type d -exec bash -c 'cp --dereference /usr/local/bin/"$(basename {})" pyproj/bin/.' \; && \
-    strip pyproj/bin/* --strip-unneeded -p -D && \
-    python -c $'# \n\
-path = "pyproj/bin/__init__.py" \n\
-s = """import os \n\
-import sys \n\
-\n\
-def program(): \n\
-    environ = os.environ.copy() \n\
-    localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
-    environ.setdefault("PROJ_DATA", os.path.join(localpath, "..", "proj")) \n\
-\n\
-    path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0])) \n\
-    os.execve(path, sys.argv, environ) \n\
-""" \n\
-open(path, "w").write(s)' && \
-    cp -r /usr/local/share/proj pyproj/. && \
-    # Strip libraries before building any wheels \
-    # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
-    find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    python -c $'# \n\
-import re \n\
-path = "pyproj/__init__.py" \n\
-s = open(path).read() \n\
-# append .1 to version to make sure pip prefers this \n\
-s = re.sub(r"(__version__ = \\"[^\\"]*)\\"", "\\\\1.1\\"", s) \n\
-s = s.replace("2.4.rc0", "2.4") \n\
-s = s.replace("import warnings", \n\
-"""import warnings \n\
-# This import foolishness is because is some environments, even after \n\
-# importing importlib.metadata, somehow importlib.metadata is not present. \n\
-from importlib import metadata as _importlib_metadata \n\
-import importlib \n\
-importlib.metadata = _importlib_metadata \n\
-import os \n\
-localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
-os.environ.setdefault("PROJ_DATA", os.path.join(localpath, "proj")) \n\
-""") \n\
-open(path, "w").write(s)' && \
-    python -c $'# \n\
-import os \n\
-path = "setup.py" \n\
-data = open(path).read() \n\
-data = data.replace( \n\
-    "    return package_data", \n\
-"""    package_data["pyproj"].extend(["bin/*", "proj/*"]) \n\
-    return package_data""") \n\
-data = data.replace("""package_data=get_package_data(),""", \n\
-"""package_data=get_package_data(), \n\
-    entry_points={\'console_scripts\': [\'%s=pyproj.bin:program\' % name for name in os.listdir(\'pyproj/bin\') if not name.endswith(\'.py\')]},""") \n\
-open(path, "w").write(data)' && \
-    # now rebuild anything that can work with master \
-    find /opt/py -mindepth 1 -not -name '*p36-*' -a -not -name '*p37-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
-    # Make sure all binaries have the execute flag \
-    find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 bash -c 'mkdir /tmp/ptmp; pushd /tmp/ptmp; unzip ${0}; chmod a+x pyproj/bin/*; chmod a-x pyproj/bin/*.py; zip -r ${0} *; popd; rm -rf /tmp/ptmp' && \
-    find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
-    find /io/wheelhouse/ -name 'pyproj*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
-    find /io/wheelhouse/ -name 'pyproj*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
-    ls -l /io/wheelhouse && \
-    rm -rf ~/.cache && \
-    echo "`date` pyproj4" >> /build/log.txt
 
 RUN \
     echo "`date` minizip" >> /build/log.txt && \

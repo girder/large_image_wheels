@@ -458,16 +458,6 @@ Packages = {
     'pylibtiff-pypi': {
         'pypi': 'libtiff',
     },
-    'pyproj4': {
-        'git': 'https://github.com/pyproj4/pyproj.git',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
-    },
-    # 'pyproj4-sha': {
-    #     'gitsha': 'https://github.com/pyproj4/pyproj.git',
-    # },
-    'pyproj4-pypi': {
-        'pypi': 'pyproj',
-    },
     'python-mapnik': {
         'gitsha': 'https://github.com/mapnik/python-mapnik.git',
     },
