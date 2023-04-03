@@ -32,9 +32,7 @@ Packages = {
         're': r'boost-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'cairo': {
-        # The clone at github.com doesn't contain tags or releases.
-        # 'git': 'https://github.com/freedesktop/cairo.git',
-        'git': 'https://anongit.freedesktop.org/git/cairo.git',
+        'git': 'https://gitlab.freedesktop.org/cairo/cairo.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'cmake': {
@@ -59,7 +57,7 @@ Packages = {
         # 'insecure': True,
     },
     'fontconfig': {
-        'git': 'https://github.com/freedesktop/fontconfig.git',
+        'git': 'https://gitlab.freedesktop.org/fontconfig/fontconfig.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'fossil': {
@@ -414,15 +412,15 @@ Packages = {
     #     're': r'pcre-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
     # },
     'pixman': {
-        'git': 'https://github.com/freedesktop/pixman.git',
+        'git': 'https://gitlab.freedesktop.org/pixman/pixman.git',
         're': r'pixman-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'pkg-config': {
-        'git': 'https://github.com/freedesktop/pkg-config.git',
+        'git': 'https://gitlab.freedesktop.org/pkg-config/pkg-config.git',
         're': r'pkg-config-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'poppler': {
-        'git': 'https://github.com/freedesktop/poppler.git',
+        'git': 'https://gitlab.freedesktop.org/poppler/poppler.git',
         're': r'poppler-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'postgresql': {
@@ -457,6 +455,13 @@ Packages = {
     },
     'pylibtiff-pypi': {
         'pypi': 'libtiff',
+    },
+    'pyproj4': {
+        'git': 'https://github.com/pyproj4/pyproj.git',
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
+    'pyproj4-pypi': {
+        'pypi': 'pyproj',
     },
     'python-mapnik': {
         'gitsha': 'https://github.com/mapnik/python-mapnik.git',

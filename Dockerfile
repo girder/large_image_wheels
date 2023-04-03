@@ -132,7 +132,7 @@ RUN \
     echo "`date` pkg-config" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    until timeout 60 git clone --depth=1 --single-branch -b pkg-config-`getver.py pkg-config` -c advice.detachedHead=false https://github.com/freedesktop/pkg-config.git; do sleep 5; echo "retrying"; done && \
+    until timeout 60 git clone --depth=1 --single-branch -b pkg-config-`getver.py pkg-config` -c advice.detachedHead=false https://gitlab.freedesktop.org/pkg-config/pkg-config.git; do sleep 5; echo "retrying"; done && \
     cd pkg-config && \
     ./autogen.sh && \
     ./configure --silent --prefix=/usr/local --with-internal-glib --disable-host-tool --disable-static && \
@@ -382,7 +382,7 @@ RUN \
     done && \
     echo "`date` numpy" >> /build/log.txt
 
-# Build psutils for Python versions not published on pypi
+# Build psutil for Python versions not published on pypi
 RUN \
     echo "`date` psutil" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -399,7 +399,7 @@ RUN \
     # find /opt/py -mindepth 1 -name '*p36-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     true; \
     fi && \
-    if find /io/wheelhouse/ -name 'psutil*.whl'; then \
+    if find /io/wheelhouse/ -name 'psutil*.whl' | grep .; then \
     find /io/wheelhouse/ -name 'psutil*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
@@ -1191,6 +1191,84 @@ RUN \
     ldconfig && \
     echo "`date` proj4" >> /build/log.txt
 
+# Only build for versions that aren't published
+RUN \
+    echo "`date` pyproj4" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --single-branch -b `getver.py pyproj4` -c advice.detachedHead=false https://github.com/pyproj4/pyproj.git && \
+    cd pyproj && \
+    mkdir pyproj/bin && \
+    find /build/proj.4/_build/bin/ -executable -not -type d -exec bash -c 'cp --dereference /usr/local/bin/"$(basename {})" pyproj/bin/.' \; && \
+    strip pyproj/bin/* --strip-unneeded -p -D && \
+    python -c $'# \n\
+path = "pyproj/bin/__init__.py" \n\
+s = """import os \n\
+import sys \n\
+\n\
+def program(): \n\
+    environ = os.environ.copy() \n\
+    localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
+    environ.setdefault("PROJ_DATA", os.path.join(localpath, "..", "proj")) \n\
+\n\
+    path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0])) \n\
+    os.execve(path, sys.argv, environ) \n\
+""" \n\
+open(path, "w").write(s)' && \
+    cp -r /usr/local/share/proj pyproj/. && \
+    # Strip libraries before building any wheels \
+    # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
+    find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
+    python -c $'# \n\
+import re \n\
+path = "pyproj/__init__.py" \n\
+s = open(path).read() \n\
+# append .1 to version to make sure pip prefers this \n\
+s = re.sub(r"(__version__ = \\"[^\\"]*)\\"", "\\\\1.1\\"", s) \n\
+s = s.replace("2.4.rc0", "2.4") \n\
+s = s.replace("import warnings", \n\
+"""import warnings \n\
+# This import foolishness is because is some environments, even after \n\
+# importing importlib.metadata, somehow importlib.metadata is not present. \n\
+from importlib import metadata as _importlib_metadata \n\
+import importlib \n\
+importlib.metadata = _importlib_metadata \n\
+import os \n\
+localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
+os.environ.setdefault("PROJ_DATA", os.path.join(localpath, "proj")) \n\
+""") \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
+import os \n\
+path = "setup.py" \n\
+data = open(path).read() \n\
+data = data.replace( \n\
+    "    return package_data", \n\
+"""    package_data["pyproj"].extend(["bin/*", "proj/*"]) \n\
+    return package_data""") \n\
+data = data.replace("""package_data=get_package_data(),""", \n\
+"""package_data=get_package_data(), \n\
+    entry_points={\'console_scripts\': [\'%s=pyproj.bin:program\' % name for name in os.listdir(\'pyproj/bin\') if not name.endswith(\'.py\')]},""") \n\
+open(path, "w").write(data)' && \
+    # now rebuild anything that can work with master \
+    if [ "$PYPY" = true ]; then \
+    # find /opt/py -mindepth 1 -not -name '*p36-*' -a -not -name '*p37-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    true; \
+    else \
+    # find /opt/py -mindepth 1 -not -name '*p36-*' -a -not -name '*p37-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    true; \
+    fi && \
+    if find /io/wheelhouse/ -name 'pyproj*.whl' | grep .; then \
+    # Make sure all binaries have the execute flag \
+    find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 bash -c 'mkdir /tmp/ptmp; pushd /tmp/ptmp; unzip ${0}; chmod a+x pyproj/bin/*; chmod a-x pyproj/bin/*.py; zip -r ${0} *; popd; rm -rf /tmp/ptmp' && \
+    find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'pyproj*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
+    find /io/wheelhouse/ -name 'pyproj*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
+    ls -l /io/wheelhouse && \
+    true; \
+    fi && \
+    rm -rf ~/.cache && \
+    echo "`date` pyproj4" >> /build/log.txt
+
 RUN \
     echo "`date` minizip" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1301,7 +1379,7 @@ RUN \
 RUN \
     echo "`date` pixman" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    until timeout 60 git clone --depth=1 --single-branch -b pixman-`getver.py pixman` -c advice.detachedHead=false https://github.com/freedesktop/pixman.git; do sleep 5; echo "retrying"; done && \
+    until timeout 60 git clone --depth=1 --single-branch -b pixman-`getver.py pixman` -c advice.detachedHead=false https://gitlab.freedesktop.org/pixman/pixman.git; do sleep 5; echo "retrying"; done && \
     cd pixman && \
     meson --prefix=/usr/local --buildtype=release --optimization=3 _build && \
     cd _build && \
@@ -1328,7 +1406,7 @@ RUN \
 RUN \
     echo "`date` fontconfig" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    until timeout 60 git clone --depth=1 --single-branch -b `getver.py fontconfig` -c advice.detachedHead=false https://github.com/freedesktop/fontconfig.git; do sleep 5; echo "retrying"; done && \
+    until timeout 60 git clone --depth=1 --single-branch -b `getver.py fontconfig` -c advice.detachedHead=false https://gitlab.freedesktop.org/fontconfig/fontconfig.git; do sleep 5; echo "retrying"; done && \
     cd fontconfig && \
     meson --prefix=/usr/local --buildtype=release --optimization=3 -Ddoc=disabled -Dtests=disabled _build && \
     cd _build && \
@@ -1340,7 +1418,7 @@ RUN \
 RUN \
     echo "`date` cairo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    until timeout 60 git clone --depth=1 --single-branch -b `getver.py cairo` -c advice.detachedHead=false https://anongit.freedesktop.org/git/cairo.git; do sleep 5; echo "retrying"; done && \
+    until timeout 60 git clone --depth=1 --single-branch -b `getver.py cairo` -c advice.detachedHead=false https://gitlab.freedesktop.org/cairo/cairo.git; do sleep 5; echo "retrying"; done && \
     cd cairo && \
     meson --prefix=/usr/local --buildtype=release --optimization=3 -Dtests=disabled _build && \
     cd _build && \
@@ -1539,7 +1617,7 @@ RUN \
 RUN \
     echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    until timeout 60 git clone --depth=1 --single-branch -b poppler-`getver.py poppler` -c advice.detachedHead=false https://github.com/freedesktop/poppler.git; do sleep 5; echo "retrying"; done && \
+    until timeout 60 git clone --depth=1 --single-branch -b poppler-`getver.py poppler` -c advice.detachedHead=false https://gitlab.freedesktop.org/poppler/poppler.git; do sleep 5; echo "retrying"; done && \
     cd poppler && \
     mkdir _build && \
     cd _build && \
@@ -1772,15 +1850,15 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    # git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
-    # # PINNED - gdal won't build with swig >= 4.1 \
-    # pip install 'swig<4.1' && \
+    git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    # PINNED - gdal won't build with swig >= 4.1 \
+    pip install 'swig<4.1' && \
     # - Master -- also adjust version \
-    git clone --depth=1000 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
-    # checkout out the recorded sha and prune to a depth of 1 \
-    git -C gdal checkout `getver.py gdal-sha` && \
-    git -C gdal gc --prune=all && \
-    # sed -i 's/define GDAL_VERSION_MINOR    4/define GDAL_VERSION_MINOR    5/g' gdal/gcore/gdal_version.h.in && \
+    # git clone --depth=1000 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    # # checkout out the recorded sha and prune to a depth of 1 \
+    # git -C gdal checkout `getver.py gdal-sha` && \
+    # git -C gdal gc --prune=all && \
+    # # sed -i 's/define GDAL_VERSION_MINOR    4/define GDAL_VERSION_MINOR    5/g' gdal/gcore/gdal_version.h.in && \
     # - Common \
     cd gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
@@ -2019,7 +2097,6 @@ RUN \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
-    # \
     ldconfig && \
     echo "`date` openslide" >> /build/log.txt
 

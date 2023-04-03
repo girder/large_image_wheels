@@ -36,6 +36,7 @@ pip install --upgrade setuptools
 #   pip install 'pywavelets<1.4'
 # fi
 # pip install libtiff openslide_python pyvips GDAL mapnik -f /wheels
+pip install 'simplejpeg<1.6.6 ; python_version < "3.7"'
 echo 'Test installing pyvips and other dependencies from wheels via large_image'
 pip install 'large-image[all]' -f ${1:-/wheels}
 
@@ -372,7 +373,7 @@ django.conf.settings.GDAL_LIBRARY_PATH=osgeo.GDAL_LIBRARY_PATH
 django.conf.settings.GEOS_LIBRARY_PATH=osgeo.GEOS_LIBRARY_PATH
 from django.contrib.gis.gdal import CoordTransform, SpatialReference
 from django.contrib.gis.geos import Polygon
-spatial_ref = SpatialReference('PROJCS["Albers Conical Equal Area",GEOGCS["NAD83",DATUM["North_American_Datum_1983",SPHEROID["GRS 1980",6378137,298.2572221010042,AUTHORITY["EPSG","7019"]],TOWGS84[0,0,0,0,0,0,0],AUTHORITY["EPSG","6269"]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433],AUTHORITY["EPSG","4269"]],PROJECTION["Albers_Conic_Equal_Area"],PARAMETER["standard_parallel_1",29.5],PARAMETER["standard_parallel_2",45.5],PARAMETER["latitude_of_center",23],PARAMETER["longitude_of_center",-96],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]]]')
+spatial_ref = SpatialReference('PROJCS["Albers Conical Equal Area",GEOGCS["NAD83",DATUM["North_American_Datum_1983",SPHEROID["GRS 1980",6378137,298.2572221010042,AUTHORITY["EPSG","7019"]],TOWGS84[0,0,0,0,0,0,0],AUTHORITY["EPSG","6269"]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433],AUTHORITY["EPSG","4269"]],PROJECTION["Albers_Conic_Equal_Area"],PARAMETER["standard_parallel_1",29.5],PARAMETER["standard_parallel_2",45.5],PARAMETER["latitude_of_center",23],PARAMETER["longitude_of_center",-96],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AUTHORITY["EPSG","4269"]]')
 trans = CoordTransform(spatial_ref, SpatialReference(spatial_ref.srid))
 poly = Polygon([[1319547.040429464, 2658548.125730889], [2005547.040429464, 2658548.125730889], [2005547.040429464, 2148548.125730889], [1319547.040429464, 2148548.125730889], [1319547.040429464, 2658548.125730889]])
 # These will be different if everything is correct

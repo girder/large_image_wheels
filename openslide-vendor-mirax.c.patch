@@ -19,7 +19,7 @@ index c79b4a3..bfb6f34 100644
  
  struct slide_zoom_level_section {
 @@ -245,6 +247,23 @@ static uint32_t *read_image(openslide_t *osr,
-                                        dest.p, w, h,
+                                        dest, w, h,
                                         err);
      break;
 +  case FORMAT_JPEG2000: {
@@ -35,7 +35,7 @@ index c79b4a3..bfb6f34 100644
 +      }
 +      buflen = _openslide_fread(f, buf, image->length);
 +      result = _openslide_jp2k_decode_buffer(
-+          dest.p, w, h,
++          dest, w, h,
 +          buf, buflen, OPENSLIDE_JP2K_RGB, err);
 +    }
 +    break;
