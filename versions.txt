@@ -21,10 +21,10 @@ gdal-source 3.7.0
 gdk-pixbuf 2.42.10
 giflib 5.2.1
 glib 2.76.2
-glymur 0.12.3
-glymur-pypi 0.12.3
+glymur 0.12.4
+glymur-pypi 0.12.4
 gobject-introspection 1.76.1
-harfbuzz 7.1.0
+harfbuzz 7.2.0
 hdf4 4_2_16
 hdf5 1_14_0
 icu4c 73-1
@@ -65,7 +65,7 @@ libxcrypt 4.4.33
 libxml2 2.9.12
 libzip 1.9.2
 lz4 1.9.4
-manylinux2014 bc1b92cee27af8cd949e6abb7036ec17e2ce66066a89131fdf6ec9212c6762e3
+manylinux2014 43ce3888d02011559e90861dbd3ab1636317ed9e07eac2b8f359015d7d829178
 mapnik c4aa24496a0cc044e753a09ce4314957e2e3e237
 mapnik-release 3.1.0
 matio 1.5.23
