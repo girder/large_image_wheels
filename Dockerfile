@@ -1817,8 +1817,9 @@ RUN \
     export AUTOMAKE_JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b v`getver.py libheif` -c advice.detachedHead=false https://github.com/strukturag/libheif.git && \
     cd libheif && \
-    ./autogen.sh && \
-    ./configure --silent --prefix=/usr/local --disable-static --disable-examples --disable-go && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1843,7 +1844,6 @@ RUN \
 #  DDS - uses crunch library which is for Windows
 #  JPEG-in-TIFF 12 bit - we use our built libtiff not the internal, so this
 #    reports as no.
-# --with-dods-root is where libdap is installed
 RUN \
     echo "`date` gdal" >> /build/log.txt && \
     export JOBS=`nproc` && \
