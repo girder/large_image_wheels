@@ -954,7 +954,7 @@ open(path, "w").write(s)' && \
 path = "gthread/meson.build" \n\
 s = open(path).read().replace("library(\'gthread-2.0\',", "library(\'gthread-2.0-liw\',") \n\
 open(path, "w").write(s)' && \
-    meson --prefix=/usr/local --buildtype=release --optimization=3 -Dtests=False -Dglib_debug=disabled _build && \
+    meson setup --prefix=/usr/local --buildtype=release --optimization=3 -Dtests=False -Dglib_debug=disabled _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -981,7 +981,7 @@ path = "giscanner/meson.build" \n\
 s = open(path).read() \n\
 s = s[:s.index("install_subdir")] + s[s.index("flex"):] \n\
 open(path, "w").write(s)' && \
-    meson --prefix=/usr/local --buildtype=release --optimization=3 _build && \
+    meson setup --prefix=/usr/local --buildtype=release --optimization=3 _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -997,7 +997,7 @@ RUN \
     tar -xf gdk-pixbuf.tar -C gdk-pixbuf --strip-components 1 && \
     rm -f gdk-pixbuf.tar && \
     cd gdk-pixbuf && \
-    meson --prefix=/usr/local --buildtype=release --optimization=3 -Dbuiltin_loaders=all -Dman=False -Dinstalled_tests=False _build && \
+    meson setup --prefix=/usr/local --buildtype=release --optimization=3 -Dbuiltin_loaders=all -Dman=False -Dinstalled_tests=False _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -1381,7 +1381,7 @@ RUN \
     export JOBS=`nproc` && \
     until timeout 60 git clone --depth=1 --single-branch -b pixman-`getver.py pixman` -c advice.detachedHead=false https://gitlab.freedesktop.org/pixman/pixman.git; do sleep 5; echo "retrying"; done && \
     cd pixman && \
-    meson --prefix=/usr/local --buildtype=release --optimization=3 _build && \
+    meson setup --prefix=/usr/local --buildtype=release --optimization=3 _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -1408,7 +1408,7 @@ RUN \
     export JOBS=`nproc` && \
     until timeout 60 git clone --depth=1 --single-branch -b `getver.py fontconfig` -c advice.detachedHead=false https://gitlab.freedesktop.org/fontconfig/fontconfig.git; do sleep 5; echo "retrying"; done && \
     cd fontconfig && \
-    meson --prefix=/usr/local --buildtype=release --optimization=3 -Ddoc=disabled -Dtests=disabled _build && \
+    meson setup --prefix=/usr/local --buildtype=release --optimization=3 -Ddoc=disabled -Dtests=disabled _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -1420,7 +1420,7 @@ RUN \
     export JOBS=`nproc` && \
     until timeout 60 git clone --depth=1 --single-branch -b `getver.py cairo` -c advice.detachedHead=false https://gitlab.freedesktop.org/cairo/cairo.git; do sleep 5; echo "retrying"; done && \
     cd cairo && \
-    meson --prefix=/usr/local --buildtype=release --optimization=3 -Dtests=disabled _build && \
+    meson setup --prefix=/usr/local --buildtype=release --optimization=3 -Dtests=disabled _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -1971,7 +1971,7 @@ RUN \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b `getver.py harfbuzz` -c advice.detachedHead=false https://github.com/harfbuzz/harfbuzz.git && \
     cd harfbuzz && \
-    meson --prefix=/usr/local --buildtype=release --optimization=3 -Dtests=disabled -Ddocs=disabled _build && \
+    meson setup --prefix=/usr/local --buildtype=release --optimization=3 -Dtests=disabled -Ddocs=disabled _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -2093,7 +2093,7 @@ RUN \
     git clone https://github.com/openslide/openslide && \
     cd openslide && \
     patch src/openslide-vendor-mirax.c ../openslide-vendor-mirax.c.patch && \
-    meson --prefix=/usr/local --buildtype=release --optimization=3 _build && \
+    meson setup --prefix=/usr/local --buildtype=release --optimization=3 _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -2177,7 +2177,7 @@ RUN \
     tar -zxf orc.tar.gz -C orc --strip-components 1 && \
     rm -f orc.tar.gz && \
     cd orc && \
-    meson --prefix=/usr/local --buildtype=release --optimization=3 -Dgtk_doc=disabled -Dtests=disabled -Dexamples=disabled -Dbenchmarks=disabled _build && \
+    meson setup --prefix=/usr/local --buildtype=release --optimization=3 -Dgtk_doc=disabled -Dtests=disabled -Dexamples=disabled -Dbenchmarks=disabled _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -2225,7 +2225,7 @@ RUN \
     tar -xf pango.tar -C pango --strip-components 1 && \
     rm -f pango.tar && \
     cd pango && \
-    meson --prefix=/usr/local --buildtype=release --optimization=3 -Dintrospection=disabled _build && \
+    meson setup --prefix=/usr/local --buildtype=release --optimization=3 -Dintrospection=disabled _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -2348,7 +2348,7 @@ RUN \
     # Allow using VIPS_TMPDIR for the temp directory \
     sed -i 's/tmpd;/tmpd;if ((tmpd=g_getenv("VIPS_TMPDIR"))) return(tmpd);/g' libvips/iofuncs/util.c && \
     export LDFLAGS="$LDFLAGS"',-rpath,$ORIGIN' && \
-    meson --prefix=/usr/local --buildtype=release --optimization=3 _build -Dmodules=disabled -Dnifti-prefix-dir=/usr/local && \
+    meson setup --prefix=/usr/local --buildtype=release --optimization=3 _build -Dmodules=disabled -Dnifti-prefix-dir=/usr/local && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \

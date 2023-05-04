@@ -10,13 +10,13 @@ fftw3 3.3.10
 fitsio 3450
 fontconfig 2.14.2
 fossil 2.21
-freetype 2.13.0
+freetype 2.12.1
 freexl 3f33ce6faf
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
 gdal 3.6.4
 gdal-pypi 3.6.4
-gdal-sha a9ac6c24c7c31e44e1462e5fa7d24f77230be0ed
+gdal-sha 938de5e30f1dcd7a99c5383be19d3ca53e1c0eac
 gdal-source 3.8.0
 gdk-pixbuf 2.42.10
 giflib 5.2.1
@@ -24,9 +24,9 @@ glib 2.76.2
 glymur 0.12.5
 glymur-pypi 0.12.5
 gobject-introspection 1.76.1
-harfbuzz 7.2.0
+harfbuzz 7.3.0
 hdf4 4_2_16
-hdf5 1_14_0
+hdf5 1_14_1
 icu4c 73-1
 imagemagick 7.1.1-8
 jbigkit 2.1
@@ -114,7 +114,7 @@ strip-nondeterminism 0.042
 superlu 6.0.0
 util-linux 2.38.1
 xerces-c 3.2.4
-xz 5.4.2
+xz 5.4.3
 zlib 1.2.13
 zlib-ng 2.0.7
 zstd 1.5.5

@@ -130,6 +130,7 @@ curl --retry 5 -L -o landcover.tif https://data.kitware.com/api/v1/file/5be43e84
 echo 'Use gdal to open a geotiff file'
 python <<EOF
 from osgeo import gdal
+gdal.UseExceptions()
 import pprint
 d = gdal.Open('landcover.tif')
 pprint.pprint({
@@ -243,6 +244,7 @@ curl --retry 5 -L -o sample.ntf https://data.kitware.com/api/v1/file/5cee913e8d7
 echo 'Use gdal to open a nitf file'
 python <<EOF
 from osgeo import gdal
+gdal.UseExceptions()
 import pprint
 d = gdal.Open('sample.ntf')
 pprint.pprint({
@@ -417,6 +419,13 @@ python <<EOF
 import large_image_converter.__main__ as main
 
 main.main(['d042-353.crop.small.float32.tif', '/tmp/outfloat.tiff', '--compression', 'webp'])
+EOF
+
+echo 'test GDAL vsicurl'
+python <<EOF
+import large_image_source_gdal
+ts = large_image_source_gdal.open('https://data.kitware.com/api/v1/file/hashsum/sha512/5e56cdb8fb1a02615698a153862c10d5292b1ad42836a6e8bce5627e93a387dc0d3c9b6cfbd539796500bc2d3e23eafd07550f8c214e9348880bbbc6b3b0ea0c/download')
+print(ts.getMetadata())
 EOF
 
 # echo 'test pyvips and large svg'
