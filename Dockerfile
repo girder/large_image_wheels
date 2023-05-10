@@ -121,6 +121,7 @@ COPY getver.py fix_record.py /usr/local/bin/
 # mirax files and does no harm otherwise.
 COPY versions.txt \
     glymur.setup.py \
+    mapnik_projection.cpp.patch \
     mapnik_proj_transform.cpp.patch \
     mapnik_setup.py.patch \
     mapnik-enumeration.patch \
@@ -238,7 +239,7 @@ cd /build && \
     mkdir curl && \
     tar -zxf curl.tar.gz -C curl --strip-components 1 && \
     rm -f curl.tar.gz && \
-    cd  curl && \
+    cd curl && \
     # If we use cmake for the build, this does something different and causes
     # netcdf to fail to find the appropriate libraries
     # mkdir _build && \
@@ -382,32 +383,32 @@ RUN \
     done && \
     echo "`date` numpy" >> /build/log.txt
 
-# Build psutil for Python versions not published on pypi
-RUN \
-    echo "`date` psutil" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b release-`getver.py psutil` -c advice.detachedHead=false https://github.com/giampaolo/psutil.git && \
-    cd psutil && \
-    # Strip libraries before building any wheels \
-    # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
-    find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    if [ "$PYPY" = true ]; then \
-    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
-    true; \
-    else \
-    # only build for python 3.6 \
-    # find /opt/py -mindepth 1 -name '*p36-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
-    true; \
-    fi && \
-    if find /io/wheelhouse/ -name 'psutil*.whl' | grep .; then \
-    find /io/wheelhouse/ -name 'psutil*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
-    find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
-    find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
-    ls -l /io/wheelhouse && \
-    true; \
-    fi && \
-    rm -rf ~/.cache && \
-    echo "`date` psutil" >> /build/log.txt
+# # Build psutil for Python versions not published on pypi
+# RUN \
+#     echo "`date` psutil" >> /build/log.txt && \
+#     export JOBS=`nproc` && \
+#     git clone --depth=1 --single-branch -b release-`getver.py psutil` -c advice.detachedHead=false https://github.com/giampaolo/psutil.git && \
+#     cd psutil && \
+#     # Strip libraries before building any wheels \
+#     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
+#     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
+#     if [ "$PYPY" = true ]; then \
+#     find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+#     true; \
+#     else \
+#     # only build for python 3.6 \
+#     # find /opt/py -mindepth 1 -name '*p36-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+#     true; \
+#     fi && \
+#     if find /io/wheelhouse/ -name 'psutil*.whl' | grep .; then \
+#     find /io/wheelhouse/ -name 'psutil*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+#     find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
+#     find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
+#     ls -l /io/wheelhouse && \
+#     true; \
+#     fi && \
+#     rm -rf ~/.cache && \
+#     echo "`date` psutil" >> /build/log.txt
 
 RUN \
     echo "`date` libzip" >> /build/log.txt && \
@@ -663,16 +664,14 @@ RUN \
 RUN \
     echo "`date` libtiff" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.osgeo.org/libtiff/tiff-`getver.py libtiff`.tar.gz -L -o tiff.tar.gz && \
-    mkdir tiff && \
-    tar -zxf tiff.tar.gz -C tiff --strip-components 1 && \
-    rm -f tiff.tar.gz && \
-    cd tiff && \
+    git clone --depth=1 --single-branch -b v`getver.py libtiff` -c advice.detachedHead=false https://gitlab.com/libtiff/libtiff.git && \
+    cd libtiff && \
     # We could use cmake here, but it seems to have a harder time sorting the \
     # two libjpeg versions \
     # mkdir _build && \
     # cd _build && \
     # cmake .. -DCMAKE_BUILD_TYPE=Release -DJPEG12_INCLUDE_DIR=/build/libjpeg-turbo -DJPEG12_LIBRARY=/build/libjpeg-turbo/libjpeg-12.so && \
+    ./autogen.sh || true && \
     ./configure --prefix=/usr/local \
     --disable-static \
     --enable-jpeg12 \
@@ -698,10 +697,10 @@ RUN \
 RUN \
     echo "`date` pylibtiff" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b  v`getver.py pylibtiff` -c advice.detachedHead=false https://github.com/pearu/pylibtiff.git && \
+    git clone --depth=1 --single-branch -b v`getver.py pylibtiff` -c advice.detachedHead=false https://github.com/pearu/pylibtiff.git && \
     cd pylibtiff && \
     mkdir libtiff/bin && \
-    find /build/tiff/tools/.libs/ -executable -type f -exec cp {} libtiff/bin/. \; && \
+    find /build/libtiff/tools/.libs/ -executable -type f -exec cp {} libtiff/bin/. \; && \
     strip libtiff/bin/* --strip-unneeded -p -D && \
     python -c $'# \n\
 path = "libtiff/bin/__init__.py" \n\
@@ -1169,16 +1168,26 @@ RUN \
     ldconfig && \
     echo "`date` sqlite" >> /build/log.txt
 
+# RUN \
+#     echo "`date` proj-data" >> /build/log.txt && \
+#     export JOBS=`nproc` && \
+#     git clone --depth=1 --single-branch -b `getver.py proj-data` -c advice.detachedHead=false https://github.com/OSGeo/PROJ-data.git && \
+#     cd PROJ-data && \
+#     mkdir _build && \
+#     cd _build && \
+#     cmake .. -DCMAKE_BUILD_TYPE=Release && \
+#     make dist && \
+#     echo "`date` proj-data" >> /build/log.txt
+
 RUN \
     echo "`date` proj4" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b `getver.py proj4` -c advice.detachedHead=false https://github.com/OSGeo/proj.4.git && \
     cd proj.4 && \
-    curl --retry 5 --silent http://download.osgeo.org/proj/proj-datumgrid-`getver.py proj-datumgrid`.zip -L -o proj-datumgrid.zip && \
-    cd data && \
-    unzip -o ../proj-datumgrid.zip && \
-    cd .. && \
+    # cd data && \
+    # unzip -o /build/PROJ-data/_build/proj-data-*.zip && \
+    # cd .. && \
     mkdir _build && \
     cd _build && \
     cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF && \
@@ -1337,7 +1346,7 @@ RUN \
     cd libxml2 && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DLIBXML2_WITH_TESTS=OFF -DLIBXML2_WITH_PYTHON=OFF -DLIBXML2_WITH_ICU=ON  && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DLIBXML2_WITH_TESTS=OFF -DLIBXML2_WITH_PYTHON=OFF -DLIBXML2_WITH_ICU=ON && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig && \
@@ -1368,7 +1377,7 @@ RUN \
     # This could be done with cmake, but then librasterlite2 doesn't find it
     # mkdir _build && \
     # cd _build && \
-    # cmake .. -DCMAKE_BUILD_TYPE=Release -DWITH_JPEG=ON -DWITH_ZLIB=ON  && \
+    # cmake .. -DCMAKE_BUILD_TYPE=Release -DWITH_JPEG=ON -DWITH_ZLIB=ON && \
     autoreconf -ifv && \
     ./configure --silent --prefix=/usr/local --with-zlib=yes --with-jpeg=yes --disable-static && \
     make --silent -j ${JOBS} && \
@@ -1391,15 +1400,12 @@ RUN \
 RUN \
     echo "`date` freetype" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    # Retry extra hard; there is a bad mirror that fails \
-    curl --fail --retry-all-errors --retry-max-time 30 --retry 10 --silent https://download.savannah.gnu.org/releases/freetype/freetype-`getver.py freetype`.tar.gz -L -o freetype.tar.gz && \
-    mkdir freetype && \
-    tar -zxf freetype.tar.gz -C freetype --strip-components 1 && \
-    rm -f freetype.tar.gz && \
+    until timeout 60 git clone --depth=1 --single-branch -b VER-`getver.py freetype` -c advice.detachedHead=false --recurse-submodules -j ${JOBS} https://gitlab.freedesktop.org/freetype/freetype.git; do sleep 5; echo "retrying"; done && \
     cd freetype && \
-    ./configure --silent --prefix=/usr/local --disable-static && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
+    meson setup --prefix=/usr/local --buildtype=release --optimization=3 _build && \
+    cd _build && \
+    ninja -j ${JOBS} && \
+    ninja -j ${JOBS} install && \
     ldconfig && \
     echo "`date` freetype" >> /build/log.txt
 
@@ -1544,7 +1550,7 @@ RUN \
     mkdir _build && \
     cd _build && \
     cmake .. -DCMAKE_BUILD_TYPE=Release -DENABLE_EXAMPLES=OFF -DENABLE_PARALLEL4=ON -DUSE_PARALLEL=ON -DUSE_PARALLEL4=ON -DENABLE_HDF4=ON -DENABLE_PNETCDF=ON -DENABLE_BYTERANGE=ON -DENABLE_JNA=ON -DCMAKE_SHARED_LINKER_FLAGS=-ljpeg -DENABLE_TESTS=OFF -DENABLE_HDF4_FILE_TESTS=OFF -DENABLE_DAP=ON -DENABLE_HDF5=ON -DENABLE_NCZARR=ON && \
-    # for hdf5 1_13, we might need to add  \
+    # for hdf5 1_13, we might need to add \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1850,7 +1856,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if true; then \
+    if false; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     # PINNED - gdal won't build with swig >= 4.1 \
     # pip install 'swig<4.1' && \
@@ -1988,12 +1994,14 @@ RUN \
     export HEAVY_JOBS=`nproc` && \
     # Master \
     git clone --depth=1 --single-branch -c advice.detachedHead=false --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
-    cd mapnik \
+    cd mapnik && \
     # Specific checkout \
     # git clone --depth=1000 --single-branch -c advice.detachedHead=false --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
     # cd mapnik && \
     # git checkout d417b8933a08c4a11ee257dd57759b1382f0e3d3 && \
     # Common \
+    git apply ../mapnik_projection.cpp.patch && \
+    sed -i 's/PJ_LOG_ERROR/PJ_LOG_NONE/g' src/*.cpp && \
     find . -name '.git' -exec rm -rf {} \+ && \
     # Keeps the docker smaller \
     rm -rf demo test && mkdir test && mkdir demo && touch test/CMakeLists.txt && touch demo/CMakeLists.txt && \
@@ -2125,16 +2133,16 @@ open(path, "w").write(s)' && \
     python -c $'# \n\
 path = "openslide/lowlevel.py" \n\
 s = open(path).read().replace( \n\
-"""    _lib = cdll.LoadLibrary(\'libopenslide.so.0\')""", \n\
-"""    try: \n\
-        import os \n\
-        libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath( \n\
-            __file__))), \'openslide_python.libs\')) \n\
-        libs = os.listdir(libpath) \n\
-        lib = [lib for lib in libs if lib.startswith(\'libopenslide\')][0] \n\
-        _lib = cdll.LoadLibrary(lib) \n\
-    except Exception: \n\
-        _lib = cdll.LoadLibrary(\'libopenslide.so.0\')""") \n\
+"""        return try_load([\'libopenslide.so.1\', \'libopenslide.so.0\'])""", \n\
+"""        try: \n\
+            import os \n\
+            libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath( \n\
+                __file__))), \'openslide_python.libs\')) \n\
+            libs = os.listdir(libpath) \n\
+            lib = [lib for lib in libs if lib.startswith(\'libopenslide\')][0] \n\
+            return try_load([lib]) \n\
+        except Exception: \n\
+            return try_load([\'libopenslide.so.1\', \'libopenslide.so.0\'])""") \n\
 open(path, "w").write(s)' && \
     mkdir openslide/bin && \
     find /build/openslide/_build/tools/ -executable -not -type d -exec bash -c 'cp --dereference /usr/local/bin/"$(basename {})" openslide/bin/.' \; && \

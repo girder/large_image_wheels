@@ -66,8 +66,8 @@ Packages = {
         're': r'fossil-linux-x64-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
     },
     'freetype': {
-        'filelist': 'https://download.savannah.gnu.org/releases/freetype',
-        're': r'freetype-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
+        'git': 'https://gitlab.freedesktop.org/freetype/freetype.git',
+        're': r'VER-([0-9]+\-[0-9]+(|\-[0-9]+))$',
     },
     'freexl': {
         'fossil': 'https://www.gaia-gis.it/fossil/freexl/timeline?n=10&r=trunk&ss=x',
@@ -271,8 +271,8 @@ Packages = {
         're': r'libssh2-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libtiff': {
-        'filelist': 'https://download.osgeo.org/libtiff/',
-        're': r'tiff-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
+        'git': 'https://gitlab.com/libtiff/libtiff.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libvips': {
         'git': 'https://github.com/libvips/libvips.git',
@@ -431,17 +431,14 @@ Packages = {
         'git': 'https://github.com/OSGeo/proj.4.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
-    # 'proj4-sha': {
-    #     'gitsha': 'https://github.com/OSGeo/proj.4.git',
+    # 'proj-data': {
+    #     'git': 'https://github.com/OSGeo/PROJ-data.git',
+    #     're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     # },
-    'proj-datumgrid': {
-        'filelist': 'http://download.osgeo.org/proj/',
-        're': r'proj-datumgrid-([0-9]+\.[0-9]+(|\.[0-9]+)).(tgz|zip)$',
-    },
-    'psutil': {
-        'git': 'https://github.com/giampaolo/psutil.git',
-        're': r'release-([0-9]+\.[0-9]+(|\.[0-9]+))$',
-    },
+    # 'psutil': {
+    #     'git': 'https://github.com/giampaolo/psutil.git',
+    #     're': r'release-([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    # },
     'pylibmc': {
         'git': 'https://github.com/lericson/pylibmc.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',

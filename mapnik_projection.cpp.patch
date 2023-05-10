@@ -1,0 +1,12 @@
+diff --git a/src/projection.cpp b/src/projection.cpp
+index ceb8265..7f0d499 100644
+--- a/src/projection.cpp
++++ b/src/projection.cpp
+@@ -99,6 +99,7 @@ void projection::init_proj() const
+     if (!proj_)
+     {
+         proj_ctx_ = proj_context_create();
++        proj_log_level(proj_ctx_, PJ_LOG_ERROR);
+         proj_ = proj_create(proj_ctx_, params_.c_str());
+         if (!proj_ || !proj_ctx_)
+         {
