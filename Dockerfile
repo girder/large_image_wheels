@@ -1850,15 +1850,18 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    # git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
-    # # PINNED - gdal won't build with swig >= 4.1 \
+    if true; then \
+    git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
+    # PINNED - gdal won't build with swig >= 4.1 \
     # pip install 'swig<4.1' && \
+    true; else \
     # - Master -- also adjust version \
     git clone --depth=1000 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     # checkout out the recorded sha and prune to a depth of 1 \
     git -C gdal checkout `getver.py gdal-sha` && \
     git -C gdal gc --prune=all && \
     # sed -i 's/define GDAL_VERSION_MINOR    4/define GDAL_VERSION_MINOR    5/g' gdal/gcore/gdal_version.h.in && \
+    true; fi && \
     # - Common \
     cd gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
