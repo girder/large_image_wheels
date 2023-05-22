@@ -1898,6 +1898,8 @@ RUN \
     find /build/gdal/_build/apps -executable -type f -exec bash -c 'cp --dereference /usr/local/bin/"$(basename {})" osgeo/bin/.' \; && \
     cp --dereference /usr/local/bin/gdal-config osgeo/bin/. && \
     find /build/libgeotiff/libgeotiff/bin/.libs -executable -type f -exec cp {} osgeo/bin/. \; && \
+    # Copy proj executables, as we aren't necessarily building proj ourselves \
+    find /build/proj.4/_build/bin/ -executable -not -type d -exec bash -c 'cp --dereference /usr/local/bin/"$(basename {})" osgeo/bin/.' \; && \
     (strip osgeo/bin/* --strip-unneeded || true) && \
     python -c $'# \n\
 path = "osgeo/bin/__init__.py" \n\
