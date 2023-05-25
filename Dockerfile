@@ -73,7 +73,7 @@ RUN \
     ln -s /opt/python/* /opt/py/. && \
     # Enable all versions in boost as well \
     # rm -rf /opt/py/cp35* && \
-    # rm -rf /opt/py/cp311* && \
+    rm -rf /opt/py/cp312* && \
     if [ "$PYPY" = true ]; then \
     echo "Only building pypy versions" && \
     rm -rf /opt/py/cp* && \
@@ -758,6 +758,12 @@ s = s.replace( \n\
     libtiff = None if lib is None else ctypes.cdll.LoadLibrary(lib)""") \n\
 s = s.replace("""print("Not trying""", """# print("Not trying""") \n\
 open(path, "w").write(s)' && \
+    # We need numpy present in the default python to check the header. \
+    # Ensure the correct header records.  This will generate a missing header \
+    # companion file \
+    pip install numpy && \
+    (TIFF_HEADER_PATH=/build/libtiff/libtiff/tiff.h python libtiff/libtiff_ctypes.py || true) && \
+    pip uninstall -y numpy && \
     # Increment version slightly \
     git config --global user.email "you@example.com" && \
     git config --global user.name "Your Name" && \
@@ -1084,9 +1090,9 @@ RUN \
     # \
     # Support Python 3.11.  PINNED -- revert this once boost includes a newer \
     # python in its libs \
-    cd libs/python && \
-    git checkout a218babc && \
-    cd ../.. && \
+    # cd libs/python && \
+    # git checkout a218babc && \
+    # cd ../.. && \
     # \
     find . -name '.git' -exec rm -rf {} \+ && \
     echo "" > tools/build/src/user-config.jam && \

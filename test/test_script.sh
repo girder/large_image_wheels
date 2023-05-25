@@ -421,6 +421,14 @@ import large_image_converter.__main__ as main
 main.main(['d042-353.crop.small.float32.tif', '/tmp/outfloat.tiff', '--compression', 'webp'])
 EOF
 
+echo 'test libvips and jpeg'
+curl --retry 5 -L  -o d042-353.crop.small.float32.tif https://data.kitware.com/api/v1/file/6005cd112fa25629b9f98fca/download
+python <<EOF
+import large_image_converter.__main__ as main
+
+main.main(['d042-353.crop.small.float32.tif', '/tmp/outfloatjpeg.tiff', '--compression', 'jpeg'])
+EOF
+
 echo 'test GDAL vsicurl'
 python <<EOF
 import large_image_source_gdal
