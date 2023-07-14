@@ -1574,7 +1574,7 @@ RUN \
 RUN \
     echo "`date` mysql" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://cdn.mysql.com/Downloads/MySQL-8.0/mysql-boost-`getver.py mysql`.tar.gz -L -o mysql.tar.gz && \
+    curl --retry 5 --silent https://cdn.mysql.com/Downloads/MySQL-`getver.py mysql 2`/mysql-boost-`getver.py mysql`.tar.gz -L -o mysql.tar.gz && \
     mkdir mysql && \
     tar -zxf mysql.tar.gz -C mysql --strip-components 1 && \
     rm -f mysql.tar.gz && \
@@ -1862,7 +1862,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if true; then \
+    if false; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     # PINNED - gdal won't build with swig >= 4.1 \
     # pip install 'swig<4.1' && \
@@ -2173,7 +2173,7 @@ s = open(path).read().replace( \n\
     include_package_data=True, \n\
     package_data={\'openslide\': [\'bin/*\']}, \n\
     entry_points={\'console_scripts\': [\'%s=openslide.bin:program\' % name for name in os.listdir(\'openslide/bin\') if not name.endswith(\'.py\')]},""") \n\
-s = s.replace(">=3.7", ">=3.6") \n\
+s = s.replace(">=3.8", ">=3.6") \n\
 open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
@@ -2546,6 +2546,7 @@ s = s.replace("entry_points={", \n\
 s = s.replace("""package_data={"javabridge": [""", \n\
 """package_data={"javabridge": [\'jvm/*\', \'jvm/*/*\', \'jvm/*/*/*\', \'jvm/*/*/*/*\', \'jvm/*/*/*/*/*\', """) \n\
 s = re.sub(r"(numpy)[>=.0-9]*", "numpy", s) \n\
+s = s.replace("Cython>=0.29.16", "Cython>=0.29.16,<3") \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
 path = "javabridge/__init__.py" \n\

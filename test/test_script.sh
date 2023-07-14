@@ -275,7 +275,7 @@ fi
 #   memory in static TLS block
 if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 8)))'; then
 echo 'Test import order with pytorch, gdal, and pyproj'
-if pip install torch; then (
+if pip install 'torch<2'; then (
 python -c 'import osgeo.gdal;import torch;import pyproj;print(pyproj.Proj("epsg:4326"))'
 python -c 'import pyproj;import osgeo.gdal;import torch;print(pyproj.Proj("epsg:4326"))'
 python -c 'import torch;import osgeo.gdal;import pyproj;print(pyproj.Proj("epsg:4326"))'
