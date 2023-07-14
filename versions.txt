@@ -14,9 +14,9 @@ freetype 2-13-1
 freexl 3f33ce6faf
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
-gdal 3.7.0
-gdal-pypi 3.7.0
-gdal-sha a6d03b2e86e760b32306e9fdb4961a17d33ab66d
+gdal 3.7.1
+gdal-pypi 3.7.1
+gdal-sha cf9d411943a9153c5e779fb2c0df8d27e455c653
 gdal-source 3.8.0
 gdk-pixbuf 2.42.10
 giflib 5.2.1
@@ -65,7 +65,7 @@ libxcrypt 4.4.36
 libxml2 2.9.12
 libzip 1.10.0
 lz4 1.9.4
-manylinux2014 2f9e5abda045d41f5418216fe7601cf12249989b9aba0a83d009b8cc434cb220
+manylinux2014 eab4c20f80c8aeb758ccfb4cd235c9d168adb02cac83b085f0aec64101d5bdf2
 mapnik 123232ffde565af38afd06fe3e8edd9bfdce93bc
 mapnik-release 3.1.0
 matio 1.5.23
@@ -83,7 +83,7 @@ openmpi 4.1.5
 openslide 3.4.1
 openslide-python 1.2.0
 openslide-python-pypi 1.2.0
-openslide-python-sha 8878e59351647e1cd06327e7868117c91870ba20
+openslide-python-sha 8e9bb0e1b4f7f9dec859190bcfdf0aa52c0359a4
 openslide-sha 9978f301eddfeb8960bb76ff8dcef1d316aa587f
 openssl-1.x 1_1_1r
 orc 0.4.34
