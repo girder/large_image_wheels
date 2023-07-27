@@ -30,7 +30,6 @@ fi
 python --version
 pip install --upgrade pip
 pip install --upgrade setuptools
-# which pip2 && pip2 install virtualenv==20.0.5 || true
 # echo 'Test installing all libraries from wheels'
 # if python -c 'import sys;sys.exit(not (sys.version_info[2] != (3, 7)))'; then
 #   pip install 'pywavelets<1.4'
@@ -292,8 +291,15 @@ if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 8)))'; then
 `python -c 'import os,sys,glymur;sys.stdout.write(os.path.dirname(glymur.__file__))'`/bin/opj_dump -h | grep -q 'opj_dump utility from the OpenJPEG project'
 opj_dump -h | grep -q 'opj_dump utility from the OpenJPEG project'
 fi
+
+if slidetool --version; then
+`python -c 'import os,sys,openslide;sys.stdout.write(os.path.dirname(openslide.__file__))'`/bin/slidetool --version
+slidetool --version
+else
 `python -c 'import os,sys,openslide;sys.stdout.write(os.path.dirname(openslide.__file__))'`/bin/openslide-show-properties --version
 openslide-show-properties --version
+fi
+
 `python -c 'import os,sys,osgeo;sys.stdout.write(os.path.dirname(osgeo.__file__))'`/bin/gdalinfo --version
 gdalinfo --version
 gdalinfo --formats

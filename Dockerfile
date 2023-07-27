@@ -1862,7 +1862,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if false; then \
+    if true; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     # PINNED - gdal won't build with swig >= 4.1 \
     # pip install 'swig<4.1' && \
@@ -2010,6 +2010,11 @@ RUN \
     # Common \
     git apply ../mapnik_projection.cpp.patch && \
     sed -i 's/PJ_LOG_ERROR/PJ_LOG_NONE/g' src/*.cpp && \
+    find include -name '*.hpp' -exec sed -i 's:boost/spirit/include/phoenix_operator.hpp:boost/phoenix/operator.hpp:g' {} \; && \
+    find include -name '*.hpp' -exec sed -i 's:boost/spirit/include/phoenix_function.hpp:boost/phoenix/function.hpp:g' {} \; && \
+    find include -name '*.hpp' -exec sed -i 's:boost/spirit/include/phoenix.hpp:boost/phoenix.hpp:g' {} \; && \
+    find plugins -name '*.cpp' -exec sed -i 's/boost::trim_if/boost::algorithm::trim_if/g' {} \; && \
+    sed -i 's:#include <algorithm>:#include <algorithm>\n#include <boost/algorithm/string.hpp>:g' plugins/input/csv/csv_utils.cpp && \
     find . -name '.git' -exec rm -rf {} \+ && \
     # Keeps the docker smaller \
     rm -rf demo test && mkdir test && mkdir demo && touch test/CMakeLists.txt && touch demo/CMakeLists.txt && \
