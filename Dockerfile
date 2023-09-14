@@ -1759,7 +1759,7 @@ RUN \
     cd lapack && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release && \
+    cmake .. -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release -DTEST_FORTRAN_COMPILER=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1862,7 +1862,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if true; then \
+    if false; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     # PINNED - gdal won't build with swig >= 4.1 \
     # pip install 'swig<4.1' && \
