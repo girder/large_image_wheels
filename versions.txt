@@ -3,7 +3,7 @@ armadillo 12.6.4
 blosc 1.21.5
 boost 1.83.0
 cairo 1.17.8
-cmake 3.27.5
+cmake 3.27.6
 curl 8_3_0
 cyrus-sasl 2.1.28
 fftw3 3.3.10
@@ -16,7 +16,7 @@ fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
 gdal 3.7.2
 gdal-pypi 3.7.2
-gdal-sha 73b6535cb4e5bcd9a10dd5c1918d9ad48b6ba86c
+gdal-sha 6e86881e3430b774763678d350b19df199414020
 gdal-source 3.8.0
 gdk-pixbuf 2.42.10
 giflib 5.2.1
@@ -24,11 +24,11 @@ glib 2.78.0
 glymur 0.12.8
 glymur-pypi 0.12.8
 gobject-introspection 1.78.1
-harfbuzz 8.2.0
+harfbuzz 8.2.1
 hdf4 4_2_16
 hdf5 1_14_2
 icu4c 73-2
-imagemagick 7.1.1-16
+imagemagick 7.1.1-17
 jbigkit 2.1
 jpeg-xl 0.8.1
 krb5 1.21.2
@@ -59,7 +59,7 @@ librsvg 2.57.0
 libspatialite f3a42724c4
 libssh2 1.11.0
 libtiff 4.6.0
-libvips 8.14.4
+libvips 8.14.5
 libwebp 1.3.2
 libxcrypt 4.4.36
 libxml2 2.9.12
@@ -96,11 +96,11 @@ poppler 23.09.0
 postgresql 16.0
 proj4 9.3.0
 pylibmc 1.6.3
-pylibtiff 0.6.0
+pylibtiff 0.6.1
 pylibtiff-pypi 0.4.2
-pylibtiff-sha 54c655587e629064d4e6a953e4af10db949e0e1d
-pyproj4 3.6.0
-pyproj4-pypi 3.6.0
+pylibtiff-sha 689089d9e7fd03863487463a570c60966c6e74f8
+pyproj4 3.6.1
+pyproj4-pypi 3.6.1
 python-javabridge 4.0.3
 python-javabridge-pypi 4.0.3
 python-mapnik 6c0e9b5c90ae505ea005761c0cdfd2edde1ff612

@@ -36,11 +36,10 @@ pip install --upgrade setuptools
 # fi
 # pip install libtiff openslide_python pyvips GDAL mapnik -f /wheels
 pip install 'simplejpeg<1.6.6 ; python_version < "3.7"'
+pip install 'pylibtiff ; python_version < "3.8"' --find-links https://girder.github.io/large_image_wheels
 echo 'Test installing pyvips and other dependencies from wheels via large_image'
 pip install 'large-image[all]' -f ${1:-/wheels}
 
-echo 'Test basic import of libtiff'
-python -c 'import libtiff'
 echo 'Test basic import of openslide'
 python -c 'import openslide'
 echo 'Test basic import of gdal'
@@ -55,13 +54,15 @@ echo 'Test basic import of pylibmc'
 python -c 'import pylibmc'
 echo 'Test basic imports of all wheels'
 if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 8)))'; then
+  echo 'Test basic import of libtiff'
+  python -c 'import libtiff'
   echo 'Test basic import of glymur'
   python -c 'import glymur'
   python -c 'import libtiff, openslide, pyvips, osgeo, mapnik, glymur, javabridge'
 elif python -c 'import sys;sys.exit(not (sys.version_info >= (3, 7)))'; then
-  python -c 'import libtiff, openslide, pyvips, osgeo, mapnik, javabridge'
+  python -c 'import openslide, pyvips, osgeo, mapnik, javabridge'
 else
-  python -c 'import libtiff, openslide, pyvips, osgeo, mapnik, javabridge'
+  python -c 'import openslide, pyvips, osgeo, mapnik, javabridge'
 fi
 echo 'Time import of gdal'
 python -c 'import sys,time;s = time.time();from osgeo import gdal;sys.exit(0 if time.time()-s < 1 else ("Slow GDAL import %5.3fs" % (time.time() - s)))'
@@ -285,9 +286,9 @@ python -c 'import torch;import pyproj;import osgeo.gdal;print(pyproj.Proj("epsg:
 fi
 
 echo 'Test running executables'
+if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 8)))'; then
 `python -c 'import os,sys,libtiff;sys.stdout.write(os.path.dirname(libtiff.__file__))'`/bin/tiffinfo landcover.tif
 tiffinfo landcover.tif
-if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 8)))'; then
 `python -c 'import os,sys,glymur;sys.stdout.write(os.path.dirname(glymur.__file__))'`/bin/opj_dump -h | grep -q 'opj_dump utility from the OpenJPEG project'
 opj_dump -h | grep -q 'opj_dump utility from the OpenJPEG project'
 fi
