@@ -36,9 +36,10 @@ pip install --upgrade setuptools
 # fi
 # pip install libtiff openslide_python pyvips GDAL mapnik -f /wheels
 pip install 'simplejpeg<1.6.6 ; python_version < "3.7"'
+pip install 'scikit-image>=0.22.0rc1 ; python_version >= "3.12"'
 pip install 'pylibtiff ; python_version < "3.8"' --find-links https://girder.github.io/large_image_wheels
 echo 'Test installing pyvips and other dependencies from wheels via large_image'
-pip install 'large-image[all]' -f ${1:-/wheels}
+pip install 'large-image[openslide,gdal,mapnik,bioformats,memcached,tiff,openjpeg,vips,converter]' -f ${1:-/wheels}
 
 echo 'Test basic import of openslide'
 python -c 'import openslide'

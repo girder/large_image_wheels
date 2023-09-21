@@ -73,7 +73,6 @@ RUN \
     ln -s /opt/python/* /opt/py/. && \
     # Enable all versions in boost as well \
     # rm -rf /opt/py/cp35* && \
-    rm -rf /opt/py/cp312* && \
     if [ "$PYPY" = true ]; then \
     echo "Only building pypy versions" && \
     rm -rf /opt/py/cp* && \
@@ -352,8 +351,11 @@ RUN \
     echo "`date` numpy" >> /build/log.txt && \
     for PYBIN in /opt/py/*/bin/; do \
       echo "${PYBIN}" && \
+      # earliest numpy wheel for 3.12 is 1.26.0 \
+      if [[ "${PYBIN}" =~ "cp312" ]]; then \
+        export NUMPY_VERSION="1.26"; \
       # earliest numpy wheel for 3.11 is 1.23.2 \
-      if [[ "${PYBIN}" =~ "cp311" ]]; then \
+      elif [[ "${PYBIN}" =~ "cp311" ]]; then \
         export NUMPY_VERSION="1.23"; \
       # earliest numpy wheel for 3.10 is 1.21.2 \
       elif [[ "${PYBIN}" =~ "cp310" ]]; then \
@@ -369,12 +371,12 @@ RUN \
         export NUMPY_VERSION="1.14"; \
       elif [[ "${PYBIN}" =~ "cp36" ]]; then \
         export NUMPY_VERSION="1.11"; \
-      # earliest numpy wheel for pypy 3.7 is 1.20.0 \
-      elif [[ "${PYBIN}" =~ "pp37" ]]; then \
-        export NUMPY_VERSION="1.20"; \
       # earliest numpy wheel for pypy 3.8 is 1.22.0 \
       elif [[ "${PYBIN}" =~ "pp38" ]]; then \
         export NUMPY_VERSION="1.22"; \
+      # earliest numpy wheel for pypy 3.7 is 1.20.0 \
+      elif [[ "${PYBIN}" =~ "pp37" ]]; then \
+        export NUMPY_VERSION="1.20"; \
       # fallback for anything else \
       else \
         export NUMPY_VERSION="1"; \
@@ -720,7 +722,7 @@ s = open(path).read().replace( \n\
         [\'%s=libtiff.bin:program\' % name for name in os.listdir(\'libtiff/bin\') if not name.endswith(\'.py\')] + [""") \n\
 s = s.replace("name=\\"libtiff.tif_lzw\\",", \n\
 "name=\\"libtiff.tif_lzw\\", libraries=[\'tiff\'],") \n\
-s = s.replace("python_requires=\'>=3.8\',", "") \n\
+# s = s.replace("python_requires=\'>=3.8\',", "") \n\
 s = s.replace("packages=find_packages(),", \n\
     "packages=find_packages(), package_data={\'libtiff\': [\'bin/*\']},") \n\
 open(path, "w").write(s)' && \
@@ -1111,7 +1113,8 @@ RUN \
     echo "using python : 3.9 : /opt/py/cp39-cp39/bin/python : /opt/py/cp39-cp39/include/python3.9 : /opt/py/cp39-cp39/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.10 : /opt/py/cp310-cp310/bin/python : /opt/py/cp310-cp310/include/python3.10 : /opt/py/cp310-cp310/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.11 : /opt/py/cp311-cp311/bin/python : /opt/py/cp311-cp311/include/python3.11 : /opt/py/cp311-cp311/lib ;" >> tools/build/src/user-config.jam && \
-    export PYTHON_LIST="3.6,3.7,3.8,3.9,3.10,3.11" && \
+    echo "using python : 3.12 : /opt/py/cp312-cp312/bin/python : /opt/py/cp312-cp312/include/python3.12 : /opt/py/cp312-cp312/lib ;" >> tools/build/src/user-config.jam && \
+    export PYTHON_LIST="3.6,3.7,3.8,3.9,3.10,3.11,3.12" && \
     true; \
     fi && \
     ./bootstrap.sh --prefix=/usr/local --with-toolset=gcc variant=release && \
@@ -1633,7 +1636,7 @@ RUN \
     cd poppler && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DENABLE_UNSTABLE_API_ABI_HEADERS=on -DBUILD_CPP_TESTS=OFF -DBUILD_GTK_TESTS=OFF -DBUILD_MANUAL_TESTS=OFF -DBUILD_QT5_TESTS=OFF -DBUILD_QT6_TESTS=OFF && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DENABLE_UNSTABLE_API_ABI_HEADERS=on -DBUILD_CPP_TESTS=OFF -DBUILD_GTK_TESTS=OFF -DBUILD_MANUAL_TESTS=OFF -DBUILD_QT5_TESTS=OFF -DBUILD_QT6_TESTS=OFF -DENABLE_NSS3=OFF -DENABLE_GPGME=OFF -DENABLE_QT5=OFF -DENABLE_QT6=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1862,7 +1865,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if false; then \
+    if true; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     # PINNED - gdal won't build with swig >= 4.1 \
     # pip install 'swig<4.1' && \
@@ -2089,6 +2092,7 @@ open(path, "w").write(s)' && \
     # Apply a patch and set variables to work with the cmake build of mapnik \
     git apply ../mapnik_setup.py.patch && \
     git apply ../mapnik-enumeration.patch && \
+    sed -i 's/PyUnicode_FromUnicode(/PyUnicode_FromKindAndData(PyUnicode_1BYTE_KIND, /g' src/python_grid_utils.cpp && \
     export CC=c++ && \
     export CXX=c++ && \
     # Strip libraries before building any wheels \
