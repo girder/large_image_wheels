@@ -3,7 +3,7 @@ armadillo 12.6.4
 blosc 1.21.5
 boost 1.83.0
 cairo 1.18.0
-cmake 3.27.6
+cmake 3.27.7
 curl 8_3_0
 cyrus-sasl 2.1.28
 fftw3 3.3.10
@@ -16,7 +16,7 @@ fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
 gdal 3.7.2
 gdal-pypi 3.7.2
-gdal-sha f0095ee8ebd54f3515ef762ffbeede551834a091
+gdal-sha 78d5980666602266a7e532ae5f76ffe1bf70b4ec
 gdal-source 3.8.0
 gdk-pixbuf 2.42.10
 giflib 5.2.1
@@ -28,7 +28,7 @@ harfbuzz 8.2.1
 hdf4 4_2_16
 hdf5 1_14_2
 icu4c 73-2
-imagemagick 7.1.1-19
+imagemagick 7.1.1-20
 jbigkit 2.1
 jpeg-xl 0.8.1
 krb5 1.21.2
@@ -65,7 +65,7 @@ libxcrypt 4.4.36
 libxml2 2.9.12
 libzip 1.10.1
 lz4 1.9.4
-manylinux2014 29ae5cc1fbe9c6cc65cfb83148a7ccdaa5ecac8134cb94ed3722738c6851a0f1
+manylinux2014 1053836839d6e0e6f6408b2eb6b731dd5aa880eda32e554b3c9cec3f5a62ad61
 mapnik f391178af02157a05c1135c430900ab39241f653
 mapnik-release 3.1.0
 matio 1.5.23
@@ -81,10 +81,10 @@ openjpeg 2.5.0
 openldap 2_6_6
 openmpi 4.1.6
 openslide 3.4.1
-openslide-python 1.3.0
-openslide-python-pypi 1.3.0
-openslide-python-sha 487b074ac26ac037ba17804845e8e816aef264a2
-openslide-sha 642b057b1e15f7c83eadd651c092724e993e8700
+openslide-python 1.3.1
+openslide-python-pypi 1.3.1
+openslide-python-sha b3e03303aceb2f1287a3a9941cfd1436abd5c2c0
+openslide-sha 7cd03842495518adc857dfe7ee743d60aa3a61f5
 openssl-1.x 1_1_1r
 orc 0.4.34
 pango 1.51.0
