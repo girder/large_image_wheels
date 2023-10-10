@@ -17,12 +17,12 @@ if curl --version; then true; else
   fi
 fi
 
-# We need to have scikit-image for some of our tests, and if there aren't
-# wheels published for it, we need to have the tools to build it locally.
-if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 11)))'; then
-  apt-get update
-  apt-get install -y gcc build-essential
-fi
+# # We need to have scikit-image for some of our tests, and if there aren't
+# # wheels published for it, we need to have the tools to build it locally.
+# if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 11)))'; then
+#   apt-get update
+#   apt-get install -y gcc build-essential
+# fi
 
 # python -m venv venv
 # . venv/bin/activate
@@ -35,8 +35,6 @@ pip install --upgrade setuptools
 #   pip install 'pywavelets<1.4'
 # fi
 # pip install libtiff openslide_python pyvips GDAL mapnik -f /wheels
-pip install 'simplejpeg<1.6.6 ; python_version < "3.7"'
-pip install 'scikit-image>=0.22.0rc1 ; python_version >= "3.12"'
 pip install 'pylibtiff ; python_version < "3.8"' --find-links https://girder.github.io/large_image_wheels
 echo 'Test installing pyvips and other dependencies from wheels via large_image'
 pip install 'large-image[openslide,gdal,mapnik,bioformats,memcached,tiff,openjpeg,vips,converter]' -f ${1:-/wheels}
@@ -312,7 +310,7 @@ gdal-config --formats
 gdal-config --formats | wc
 python <<EOF
 import os
-known = set('JPEG raw GTIFF MEM vrt Derived HFA SDTS NITF GXF AAIGrid CEOS SAR_CEOS XPM DTED JDEM Envisat ELAS FIT L1B RS2 ILWIS RMF Leveller SGI SRTMHGT IDRISI GSG ERS PALSARJaxa DIMAP GFF COSAR PDS ADRG COASP TSX Terragen BLX MSGN TIL R northwood SAGA XYZ HEIF ESRIC HF2 KMLSUPEROVERLAY CTG ZMap NGSGEOID IRIS MAP CALS SAFE SENTINEL2 PRF MRF WMTS GRIB BMP DAAS TGA STACTA OGCAPI BSB AIGrid ARG USGSDEM AirSAR OZI PCIDSK SIGDEM RIK STACIT PDF PNG GIF WCS HTTP netCDF Zarr EEDA FITS HDF5 PLMOSAIC WMS GTA WEBP HDF4 Rasterlite MBTiles PostGISRaster JP2OpenJPEG EXR PCRaster JPEGXL MrSID MEM geojson TAB Shape KML VRT AVC SDTS GML CSV DGN GMT NTF S57 Tiger Geoconcept GeoRSS DXF PGDump GPSBabel EDIGEO SXF OpenFileGDB WAsP Selafin JML VDV FlatGeobuf MapML GPX GMLAS SVG CSW NAS PLSCENES SOSI WFS NGW Elastic Idrisi PDS SQLite GeoPackage OSM VFK MVT AmigoCloud Carto ILI MySQL PG XLSX XLS CAD ODS LVBAG'.lower().split())
+known = set('JPEG raw GTIFF MEM vrt Derived HFA SDTS NITF GXF AAIGrid CEOS SAR_CEOS XPM DTED JDEM Envisat ELAS FIT L1B RS2 ILWIS RMF Leveller SGI SRTMHGT IDRISI GSG ERS PALSARJaxa DIMAP GFF COSAR PDS ADRG COASP TSX Terragen BLX MSGN TIL R northwood SAGA XYZ HEIF ESRIC HF2 KMLSUPEROVERLAY CTG ZMap NGSGEOID IRIS MAP CALS SAFE SENTINEL2 PRF MRF WMTS GRIB BMP DAAS TGA STACTA OGCAPI BSB AIGrid ARG USGSDEM AirSAR OZI PCIDSK SIGDEM RIK STACIT PDF PNG GIF WCS HTTP netCDF Zarr EEDA FITS HDF5 PLMOSAIC WMS GTA WEBP HDF4 Rasterlite MBTiles PostGISRaster JP2OpenJPEG EXR PCRaster JPEGXL MrSID MEM geojson TAB Shape KML VRT AVC SDTS GML CSV DGN GMT NTF S57 Tiger Geoconcept GeoRSS DXF PGDump GPSBabel EDIGEO SXF OpenFileGDB WAsP Selafin JML VDV FlatGeobuf MapML GPX GMLAS SVG CSW NAS PLSCENES SOSI WFS NGW Elastic Idrisi PDS SQLite GeoPackage OSM VFK MVT AmigoCloud Carto ILI MySQL PG XLSX XLS CAD ODS LVBAG gtfs'.lower().split())
 current = set(os.popen('gdal-config --formats').read().lower().split())
 print('New formats: %s' % ' '.join(sorted(current - known)))
 print('Missing formats: %s' % ' '.join(sorted(known - current)))

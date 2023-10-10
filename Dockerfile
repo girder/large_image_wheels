@@ -72,7 +72,7 @@ RUN \
     mkdir /opt/py && \
     ln -s /opt/python/* /opt/py/. && \
     # Enable all versions in boost as well \
-    # rm -rf /opt/py/cp35* && \
+    rm -rf /opt/py/cp36* && \
     if [ "$PYPY" = true ]; then \
     echo "Only building pypy versions" && \
     rm -rf /opt/py/cp* && \
@@ -288,7 +288,8 @@ RUN \
     echo "`date` strip-nondeterminism" >> /build/log.txt
 
 # PINNED - patchelf 0.17.0 (specifically
-# https://github.com/NixOS/patchelf/pull/430) breaks some of our output
+# https://github.com/NixOS/patchelf/pull/430) breaks some of our output - see
+# https://github.com/pypa/manylinux/issues/1421
 RUN \
     echo "`date` patchelf" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1082,20 +1083,6 @@ RUN \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b boost-`getver.py boost` -c advice.detachedHead=false --quiet --recurse-submodules -j ${JOBS} https://github.com/boostorg/boost.git && \
     cd boost && \
-    # pushd libs/spirit && \
-    # # switch to a version of spirit that fixes a bug in 1.70 and 1.71 \
-    # git fetch --depth=1000 && \
-    # git checkout 10d027f && \
-    # popd && \
-    # work-around for https://github.com/boostorg/mpi/issues/112 /
-    # sed -i 's/boost_mpi_python mpi/boost_mpi_python/g' libs/mpi/build/Jamfile.v2 && \
-    # \
-    # Support Python 3.11.  PINNED -- revert this once boost includes a newer \
-    # python in its libs \
-    # cd libs/python && \
-    # git checkout a218babc && \
-    # cd ../.. && \
-    # \
     find . -name '.git' -exec rm -rf {} \+ && \
     echo "" > tools/build/src/user-config.jam && \
     echo "using mpi : /usr/local/lib ;" >> tools/build/src/user-config.jam && \
@@ -1107,14 +1094,13 @@ RUN \
     export PYTHON_LIST="3.7,3.8,3.9" && \
     true; \
     else \
-    echo "using python : 3.6 : /opt/py/cp36-cp36m/bin/python : /opt/py/cp36-cp36m/include/python3.6m : /opt/py/cp36-cp36m/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.7 : /opt/py/cp37-cp37m/bin/python : /opt/py/cp37-cp37m/include/python3.7m : /opt/py/cp37-cp37m/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.8 : /opt/py/cp38-cp38/bin/python : /opt/py/cp38-cp38/include/python3.8 : /opt/py/cp38-cp38/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.9 : /opt/py/cp39-cp39/bin/python : /opt/py/cp39-cp39/include/python3.9 : /opt/py/cp39-cp39/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.10 : /opt/py/cp310-cp310/bin/python : /opt/py/cp310-cp310/include/python3.10 : /opt/py/cp310-cp310/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.11 : /opt/py/cp311-cp311/bin/python : /opt/py/cp311-cp311/include/python3.11 : /opt/py/cp311-cp311/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.12 : /opt/py/cp312-cp312/bin/python : /opt/py/cp312-cp312/include/python3.12 : /opt/py/cp312-cp312/lib ;" >> tools/build/src/user-config.jam && \
-    export PYTHON_LIST="3.6,3.7,3.8,3.9,3.10,3.11,3.12" && \
+    export PYTHON_LIST="3.7,3.8,3.9,3.10,3.11,3.12" && \
     true; \
     fi && \
     ./bootstrap.sh --prefix=/usr/local --with-toolset=gcc variant=release && \
@@ -1512,13 +1498,11 @@ RUN \
     ldconfig && \
     echo "`date` hdf4" >> /build/log.txt
 
-# PINNED VERSION - netcdf-c doesn't build with 1_13_0
 RUN \
     echo "`date` hdf5" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    # git clone --depth=1 --single-branch -b hdf5-`getver.py hdf5` -c advice.detachedHead=false https://github.com/HDFGroup/hdf5.git && \
-    git clone --depth=1 --single-branch -b hdf5-1_12_2 -c advice.detachedHead=false https://github.com/HDFGroup/hdf5.git && \
+    git clone --depth=1 --single-branch -b hdf5-`getver.py hdf5` -c advice.detachedHead=false https://github.com/HDFGroup/hdf5.git && \
     cd hdf5 && \
     mkdir _build && \
     cd _build && \
@@ -1865,10 +1849,8 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if false; then \
+    if true; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
-    # PINNED - gdal won't build with swig >= 4.1 \
-    # pip install 'swig<4.1' && \
     true; else \
     # - Master -- also adjust version \
     git clone --depth=1000 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
@@ -1991,6 +1973,7 @@ RUN \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b `getver.py harfbuzz` -c advice.detachedHead=false https://github.com/harfbuzz/harfbuzz.git && \
     cd harfbuzz && \
+    sed -i 's!/usr/bin/python3!/usr/bin/env python3!g' src/relative_to.py && \
     meson setup --prefix=/usr/local --buildtype=release --optimization=3 -Dtests=disabled -Ddocs=disabled _build && \
     cd _build && \
     ninja -j ${JOBS} && \
@@ -2138,16 +2121,6 @@ RUN \
     # Common \
     cd openslide-python && \
     python -c $'# \n\
-path = "setup.py" \n\
-s = open(path).read().replace( \n\
-    "_convert.c\'", "_convert.c\'], libraries=[\'openslide\'") \n\
-open(path, "w").write(s)' && \
-    python -c $'# \n\
-path = "openslide/_version.py" \n\
-s = open(path).read().replace( \n\
-    "1.2.0", "1.2.1") \n\
-open(path, "w").write(s)' && \
-    python -c $'# \n\
 path = "openslide/lowlevel.py" \n\
 s = open(path).read().replace( \n\
 """        return try_load([\'libopenslide.so.1\', \'libopenslide.so.0\'])""", \n\
@@ -2177,12 +2150,22 @@ open(path, "w").write(s)' && \
     python -c $'# \n\
 path = "setup.py" \n\
 s = open(path).read().replace( \n\
-"""    zip_safe=True,""", \n\
-"""    zip_safe=True, \n\
-    include_package_data=True, \n\
-    package_data={\'openslide\': [\'bin/*\']}, \n\
-    entry_points={\'console_scripts\': [\'%s=openslide.bin:program\' % name for name in os.listdir(\'openslide/bin\') if not name.endswith(\'.py\')]},""") \n\
-s = s.replace(">=3.8", ">=3.6") \n\
+    "_convert.c\'", "_convert.c\'], libraries=[\'openslide\'") \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
+path = "pyproject.toml" \n\
+s = open(path).read() \n\
+s = s.replace(">= 3.8", ">= 3.7") \n\
+s += """ \n\
+[tool.setuptools.package-data] \n\
+openslide = [\'bin/*\'] \n\
+\n\
+[project.scripts] \n\
+""" \n\
+import os \n\
+for name in os.listdir(\'openslide/bin\'): \n\
+  if not name.endswith(\'.py\'): \n\
+    s += "%s = \'openslide.bin:program\'" % name \n\
 open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
@@ -2363,13 +2346,11 @@ RUN \
     ldconfig && \
     echo "`date` libexif" >> /build/log.txt
 
-# PINNED - 8.14.2 breaks support for one of our test ome tiff files.
 RUN \
     echo "`date` libvips" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # version \
-    # git clone --depth=1 --single-branch -b v`getver.py libvips` -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
-    git clone --depth=1 --single-branch -b v8.14.1 -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
+    git clone --depth=1 --single-branch -b v`getver.py libvips` -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
     # master \
     # git clone -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
     cd libvips && \
