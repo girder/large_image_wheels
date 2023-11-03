@@ -174,6 +174,10 @@ Packages = {
         'git': 'https://pagure.io/libaio.git',
         're': r'libaio\.([0-9]+-[0-9]+-[0-9]+(|\.[0-9]+))$',
     },
+    'libarchive': {
+        'git': 'https://github.com/libarchive/libarchive.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
     'libbrotli': {
         'git': 'https://github.com/google/brotli.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
@@ -205,11 +209,6 @@ Packages = {
     'libgeotiff': {
         'git': 'https://github.com/OSGeo/libgeotiff.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
-    },
-    'libgsf': {
-        'json': 'https://download.gnome.org/sources/libgsf/cache.json',
-        'keys': lambda data: list(data[1]['libgsf']),
-        're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$',
     },
     'libgta': {
         'git': 'https://github.com/marlam/gta-mirror.git',

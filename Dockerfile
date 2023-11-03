@@ -2269,20 +2269,17 @@ RUN \
     echo "`date` librsvg" >> /build/log.txt
 
 RUN \
-    echo "`date` libgsf" >> /build/log.txt && \
+    echo "`date` libarchive" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/libgsf/`getver.py libgsf 2`/libgsf-`getver.py libgsf`.tar.xz -L -o libgsf.tar.xz && \
-    unxz libgsf.tar.xz && \
-    mkdir libgsf && \
-    tar -xf libgsf.tar -C libgsf --strip-components 1 && \
-    rm -f libgsf.tar && \
-    cd libgsf && \
-    ./configure --silent --prefix=/usr/local --disable-introspection --disable-static && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
+    git clone --depth=1 --single-branch -b v`getver.py libarchive` -c advice.detachedHead=false https://github.com/libarchive/libarchive.git && \
+    cd libarchive && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
     ldconfig && \
-    echo "`date` libgsf" >> /build/log.txt
+    echo "`date` libarchive" >> /build/log.txt
 
 RUN \
     echo "`date` libraw" >> /build/log.txt && \
@@ -2356,8 +2353,9 @@ RUN \
     cd libvips && \
     # Allow using VIPS_TMPDIR for the temp directory \
     sed -i 's/tmpd;/tmpd;if ((tmpd=g_getenv("VIPS_TMPDIR"))) return(tmpd);/g' libvips/iofuncs/util.c && \
+    sed -i 's/cfg_var.set('\''HAVE_TARGET_CLONES'\'', '\''1'\'')/# cfg_var.set('\''HAVE_TARGET_CLONES'\'', '\''1'\'')/g' meson.build && \
     export LDFLAGS="$LDFLAGS"',-rpath,$ORIGIN' && \
-    meson setup --prefix=/usr/local --buildtype=release --optimization=3 _build -Dmodules=disabled -Dnifti-prefix-dir=/usr/local && \
+    meson setup --prefix=/usr/local --buildtype=release --optimization=3 _build -Dmodules=disabled -Dexamples=false -Dnifti-prefix-dir=/usr/local && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
