@@ -178,11 +178,9 @@ cd /build && \
 # RUN \
     echo "`date` krb5" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://kerberos.org/dist/krb5/`getver.py krb5 2`/krb5-`getver.py krb5`.tar.gz -L -o krb5.tar.gz && \
-    mkdir krb5 && \
-    tar -zxf krb5.tar.gz -C krb5 --strip-components 1 && \
-    rm -f krb5.tar.gz && \
+    git clone --depth=1 --single-branch -b krb5-`getver.py krb5`-final -c advice.detachedHead=false https://github.com/krb5/krb5.git && \
     cd krb5/src && \
+    autoreconf -ifv && \
     ./configure --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -458,11 +456,7 @@ RUN \
     echo "`date` libpng" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    curl --retry 5 --silent https://downloads.sourceforge.net/libpng/libpng-`getver.py libpng`.tar.xz -L -o libpng.tar.xz && \
-    unxz libpng.tar.xz && \
-    mkdir libpng && \
-    tar -xf libpng.tar -C libpng --strip-components 1 && \
-    rm -f libpng.tar && \
+    git clone --depth=1 --single-branch -b v`getver.py libpng` -c advice.detachedHead=false https://github.com/glennrp/libpng.git && \
     cd libpng && \
     mkdir _build && \
     cd _build && \
@@ -837,7 +831,7 @@ open(path, "w").write(s)' && \
     python -c $'# \n\
 path = "glymur/version.py" \n\
 s = open(path).read() \n\
-s = s.replace("0.11.6post1", "0.11.6.post2") \n\
+s = s.replace(\'"0.12.9"\', \'"0.12.9.post1"\') \n\
 open(path, "w").write(s)' && \
     # Import a premade setup.py \
     cp ../glymur.setup.py ./setup.py && rm -f setup.cfg && rm -f pyproject.toml && \
@@ -936,12 +930,8 @@ RUN \
 RUN \
     echo "`date` glib" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.gnome.org/sources/glib/`getver.py glib 2`/glib-`getver.py glib`.tar.xz -L -o glib-2.tar.xz && \
-    unxz glib-2.tar.xz && \
-    mkdir glib-2 && \
-    tar -xf glib-2.tar -C glib-2 --strip-components 1 && \
-    rm -f glib-2.tar && \
-    cd glib-2 && \
+    git clone --depth=1 --single-branch -b `getver.py glib` -c advice.detachedHead=false https://github.com/GNOME/glib.git && \
+    cd glib && \
     python -c $'# \n\
 path = "gio/meson.build" \n\
 s = open(path).read().replace("library(\'gio-2.0\',", "library(\'gio-2.0-liw\',") \n\
@@ -972,11 +962,7 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` gobject-introspection" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.gnome.org/sources/gobject-introspection/`getver.py gobject-introspection 2`/gobject-introspection-`getver.py gobject-introspection`.tar.xz -L -o gobject-introspection.tar.xz && \
-    unxz gobject-introspection.tar.xz && \
-    mkdir gobject-introspection && \
-    tar -xf gobject-introspection.tar -C gobject-introspection --strip-components 1 && \
-    rm -f gobject-introspection.tar && \
+    git clone --depth=1 --single-branch -b `getver.py gobject-introspection` -c advice.detachedHead=false https://github.com/GNOME/gobject-introspection.git && \
     cd gobject-introspection && \
     python -c $'# \n\
 path = "giscanner/shlibs.py" \n\
@@ -999,11 +985,7 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` gdk-pixbuf" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://download.gnome.org/sources/gdk-pixbuf/`getver.py gdk-pixbuf 2`/gdk-pixbuf-`getver.py gdk-pixbuf`.tar.xz -L -o gdk-pixbuf.tar.xz && \
-    unxz gdk-pixbuf.tar.xz && \
-    mkdir gdk-pixbuf && \
-    tar -xf gdk-pixbuf.tar -C gdk-pixbuf --strip-components 1 && \
-    rm -f gdk-pixbuf.tar && \
+    git clone --depth=1 --single-branch -b `getver.py gdk-pixbuf` -c advice.detachedHead=false https://github.com/GNOME/gdk-pixbuf.git && \
     cd gdk-pixbuf && \
     meson setup --prefix=/usr/local --buildtype=release --optimization=3 -Dbuiltin_loaders=all -Dman=False -Dinstalled_tests=False _build && \
     cd _build && \
@@ -1061,6 +1043,10 @@ RUN \
 RUN \
     echo "`date` openmpi" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    # building from git is super slow
+    # git clone --depth=1 --single-branch -b v`getver.py openmpi` -c advice.detachedHead=false --recurse-submodules  https://github.com/open-mpi/ompi.git openmpi && \
+    # cd openmpi && \
+    # ./autogen.pl && \
     curl --retry 5 --silent https://download.open-mpi.org/release/open-mpi/v`getver.py openmpi 2`/openmpi-`getver.py openmpi`.tar.gz -L -o openmpi.tar.gz && \
     mkdir openmpi && \
     tar -zxf openmpi.tar.gz -C openmpi --strip-components 1 && \
@@ -1156,7 +1142,7 @@ RUN \
     mkdir sqlite && \
     tar -zxf sqlite.tar.gz -C sqlite --strip-components 1 && \
     rm -f sqlite.tar.gz && \
-    cd sqlite && \
+     cd sqlite && \
     ./configure --silent --prefix=/usr/local --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -1334,10 +1320,7 @@ RUN \
     echo "`date` libxml" >> /build/log.txt && \
     export JOBS=`nproc` && \
     rm -rf libxml2* && \
-    curl --retry 5 --silent http://xmlsoft.org/sources/libxml2-`getver.py libxml2`.tar.gz -L -o libxml2.tar.gz && \
-    mkdir libxml2 && \
-    tar -zxf libxml2.tar.gz -C libxml2 --strip-components 1 && \
-    rm -f libxml2.tar.gz && \
+    git clone --depth=1 --single-branch -b v`getver.py libxml2` -c advice.detachedHead=false https://github.com/GNOME/libxml2.git && \
     cd libxml2 && \
     mkdir _build && \
     cd _build && \
@@ -1629,7 +1612,7 @@ RUN \
 RUN \
     echo "`date` fitsio" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent -k https://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/cfitsio`getver.py fitsio`.tar.gz -L -o cfitsio.tar.gz && \
+    curl --retry 5 --silent -k https://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/cfitsio-`getver.py fitsio`.tar.gz -L -o cfitsio.tar.gz && \
     mkdir cfitsio && \
     tar -zxf cfitsio.tar.gz -C cfitsio --strip-components 1 && \
     rm -f cfitsio.tar.gz && \
@@ -1698,10 +1681,7 @@ RUN \
 RUN \
     echo "`date` xerces-c" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://www.apache.org/dist/xerces/c/3/sources/xerces-c-`getver.py xerces-c`.tar.gz -L -o xerces-c.tar.gz && \
-    mkdir xerces-c && \
-    tar -zxf xerces-c.tar.gz -C xerces-c --strip-components 1 && \
-    rm -f xerces-c.tar.gz && \
+    git clone --depth=1 --single-branch -b v`getver.py xerces-c` -c advice.detachedHead=false https://github.com/apache/xerces-c.git && \
     cd xerces-c && \
     mkdir _build && \
     cd _build && \
@@ -1849,7 +1829,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if true; then \
+    if false; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
@@ -1887,6 +1867,7 @@ RUN \
     cp -r /usr/local/share/{proj,gdal} osgeo/. && \
     mkdir osgeo/bin && \
     find /build/gdal/_build/apps -executable -type f -exec bash -c 'cp --dereference /usr/local/bin/"$(basename {})" osgeo/bin/.' \; && \
+    rm -f osgeo/bin/gdal-config || true && \
     cp --dereference /usr/local/bin/gdal-config osgeo/bin/. && \
     find /build/libgeotiff/libgeotiff/bin/.libs -executable -type f -exec cp {} osgeo/bin/. \; && \
     # Copy proj executables, as we aren't necessarily building proj ourselves \
@@ -1922,10 +1903,12 @@ data = re.sub( \n\
 data = data.replace( \n\
     "scripts/*.py\'),", \n\
 """scripts/*.py\'), \n\
-    package_data={\'osgeo\': [\'proj/*\', \'gdal/*\', \'bin/*\']}, \n\
-    entry_points={\'console_scripts\': [\'%s=osgeo.bin:program\' % name for name in os.listdir(\'osgeo/bin\') if not name.endswith(\'.py\')]},""") \n\
+    package_data={\'osgeo\': [\'proj/*\', \'gdal/*\', \'bin/*\']},""") \n\
+data = data.replace("console_scripts = []", """console_scripts = [\'%s=osgeo.bin:program\' % name for name in os.listdir(\'osgeo/bin\') if not name.endswith(\'.py\')]""") \n\
 data = data.replace("    python_requires=\'>=3.6.0\',", "") \n\
 open(path, "w").write(data)' && \
+    # package_data={\'osgeo\': [\'proj/*\', \'gdal/*\', \'bin/*\']}, \n\
+    # entry_points={\'console_scripts\': [\'%s=osgeo.bin:program\' % name for name in os.listdir(\'osgeo/bin\') if not name.endswith(\'.py\')]},""") \n\
     python -c $'# \n\
 path = "osgeo/__init__.py" \n\
 s = open(path).read().replace( \n\
@@ -2001,6 +1984,7 @@ RUN \
     find include -name '*.hpp' -exec sed -i 's:boost/spirit/include/phoenix.hpp:boost/phoenix.hpp:g' {} \; && \
     find plugins -name '*.cpp' -exec sed -i 's/boost::trim_if/boost::algorithm::trim_if/g' {} \; && \
     sed -i 's:#include <algorithm>:#include <algorithm>\n#include <boost/algorithm/string.hpp>:g' plugins/input/csv/csv_utils.cpp && \
+    sed -i 's/  xmlError\*/  const xmlError \*/g' src/libxml2_loader.cpp && \
     find . -name '.git' -exec rm -rf {} \+ && \
     # Keeps the docker smaller \
     rm -rf demo test && mkdir test && mkdir demo && touch test/CMakeLists.txt && touch demo/CMakeLists.txt && \
@@ -2198,11 +2182,8 @@ RUN \
 RUN \
     echo "`date` nifti" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://downloads.sourceforge.net/project/niftilib/nifticlib/nifticlib_`getver.py nifti`/nifticlib-`getver.py nifti 3 _ .`.tar.gz -L -o nifti.tar.gz && \
-    mkdir nifti && \
-    tar -zxf nifti.tar.gz -C nifti --strip-components 1 && \
-    rm -f nifti.tar.gz && \
-    cd nifti && \
+    git clone --depth=1 --single-branch -b v`getver.py nifti` -c advice.detachedHead=false https://github.com/NIFTI-Imaging/nifti_clib.git && \
+    cd nifti_clib && \
     mkdir _build && \
     cd _build && \
     cmake .. -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release && \
@@ -2230,11 +2211,7 @@ RUN \
 RUN \
     echo "`date` pango" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent http://ftp.gnome.org/pub/GNOME/sources/pango/`getver.py pango 2`/pango-`getver.py pango`.tar.xz -L -o pango.tar.xz && \
-    unxz pango.tar.xz && \
-    mkdir pango && \
-    tar -xf pango.tar -C pango --strip-components 1 && \
-    rm -f pango.tar && \
+    git clone --depth=1 --single-branch -b `getver.py pango` -c advice.detachedHead=false https://github.com/GNOME/pango.git && \
     cd pango && \
     meson setup --prefix=/usr/local --buildtype=release --optimization=3 -Dintrospection=disabled _build && \
     cd _build && \
@@ -2247,18 +2224,15 @@ RUN \
     echo "`date` librsvg" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export PATH="$HOME/.cargo/bin:$PATH" && \
-    curl --retry 5 --silent https://download.gnome.org/sources/librsvg/`getver.py librsvg 2`/librsvg-`getver.py librsvg`.tar.xz -L -o librsvg.tar.xz && \
-    unxz librsvg.tar.xz && \
-    mkdir librsvg && \
-    tar -xf librsvg.tar -C librsvg --strip-components 1 && \
-    rm -f librsvg.tar && \
+    git clone --depth=1 --single-branch -b `getver.py librsvg` -c advice.detachedHead=false https://github.com/GNOME/librsvg.git && \
     cd librsvg && \
-    sed -i 's/ tests doc win32//g' Makefile.in && \
-    sed -i 's/install-man install/install/g' Makefile.in && \
+    # sed -i 's/ tests doc win32//g' Makefile.in && \
+    # sed -i 's/install-man install/install/g' Makefile.in && \
     export RUSTFLAGS="$RUSTFLAGS -O -C link_args=-Wl,--strip-debug,--strip-discarded,--discard-local" && \
     # This was needed before librsvg 2.53.1 \
     # GI_DOCGEN=`which true` \
     # RST2MAN=`which true` \
+    ./autogen.sh && \
     ./configure --silent --prefix=/usr/local --disable-introspection --disable-debug --disable-static && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \

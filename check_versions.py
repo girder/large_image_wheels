@@ -53,7 +53,7 @@ Packages = {
     },
     'fitsio': {
         'filelist': 'https://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/',
-        're': r'^cfitsio([0-9]+).tar.(gz|xz)$',
+        're': r'^cfitsio-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
         # 'insecure': True,
     },
     'fontconfig': {
@@ -100,18 +100,16 @@ Packages = {
         ],
     },
     'gdk-pixbuf': {
-        'json': 'https://download.gnome.org/sources/gdk-pixbuf/cache.json',
-        'keys': lambda data: list(data[1]['gdk-pixbuf']),
-        're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$',
+        'git': 'https://github.com/GNOME/gdk-pixbuf.git',
+        're': r'\/([0-9]+\.[0-8][0-9]*(|\.[0-9]+)(|\.[0-9]+))$',
     },
     'giflib': {
         'filelist': 'https://sourceforge.net/projects/giflib/files/',
         're': r'giflib-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.gz\/download',
     },
     'glib': {
-        'json': 'https://download.gnome.org/sources/glib/cache.json',
-        'keys': lambda data: list(data[1]['glib']),
-        're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$',
+        'git': 'https://github.com/GNOME/glib.git',
+        're': r'/([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$',
     },
     'glymur': {
         'git': 'https://github.com/quintusdias/glymur.git',
@@ -122,9 +120,8 @@ Packages = {
         'pypi': 'glymur',
     },
     'gobject-introspection': {
-        'json': 'https://download.gnome.org/sources/gobject-introspection/cache.json',
-        'keys': lambda data: list(data[1]['gobject-introspection']),
-        're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$',
+        'git': 'https://github.com/GNOME/gobject-introspection.git',
+        're': r'/([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$',
     },
     'harfbuzz': {
         'git': 'https://github.com/harfbuzz/harfbuzz.git',
@@ -155,8 +152,8 @@ Packages = {
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'krb5': {
-        'filelist': 'https://kerberos.org/dist/',
-        're': r'krb5-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
+        'git': 'https://github.com/krb5/krb5.git',
+        're': r'krb5-([0-9]+\.[0-9]+(|\.[0-9]+))-final$',
     },
     'lapack': {
         'git': 'https://github.com/Reference-LAPACK/lapack.git',
@@ -243,8 +240,8 @@ Packages = {
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libpng': {
-        'filelist': 'https://sourceforge.net/projects/libpng/files/libpng16/',
-        're': r'libpng16\/([0-9]+\.[0-9]+(|\.[0-9]+))\/$',
+        'git': 'https://github.com/glennrp/libpng.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'librasterlite2': {
         'fossil': 'https://www.gaia-gis.it/fossil/librasterlite2/timeline?n=10&r=trunk&ss=x',
@@ -256,9 +253,8 @@ Packages = {
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'librsvg': {
-        'json': 'https://download.gnome.org/sources/librsvg/cache.json',
-        'keys': lambda data: list(data[1]['librsvg']),
-        're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$',
+        'git': 'https://github.com/GNOME/librsvg.git',
+        're': r'/([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$',
     },
     'libspatialite': {
         'fossil': 'https://www.gaia-gis.it/fossil/libspatialite/timeline?n=10&r=trunk&ss=x',
@@ -286,8 +282,8 @@ Packages = {
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libxml2': {
-        'filelist': 'http://xmlsoft.org/sources/',
-        're': r'libxml2-([0-9]+\.[0-9]+(|\.[0-9]+)(|[a-z])).tar.(gz|xz)$',
+        'git': 'https://github.com/GNOME/libxml2.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libzip': {
         'git': 'https://github.com/nih-at/libzip.git',
@@ -336,8 +332,8 @@ Packages = {
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'nifti': {
-        'filelist': 'https://sourceforge.net/projects/niftilib/files/nifticlib/',
-        're': r'nifticlib_([0-9]+_[0-9]+(|_[0-9]+))\/$',
+        'git': 'https://github.com/NIFTI-Imaging/nifti_clib.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'ogdi': {
         'git': 'https://github.com/libogdi/ogdi.git',
@@ -360,6 +356,9 @@ Packages = {
         're': r'OPENLDAP_REL_ENG_([0-9]+_[0-9]+(|_[0-9]+))$',
     },
     'openmpi': {
+        # building from git is too slow
+        # 'git': 'https://github.com/open-mpi/ompi.git',
+        # 're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
         'filelist': 'https://www.open-mpi.org/software/ompi/v4.1/',
         're': r'openmpi-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
     },
@@ -389,11 +388,8 @@ Packages = {
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'pango': {
-        'json': 'https://download.gnome.org/sources/pango/cache.json',
-        'keys': lambda data: list(data[1]['pango']),
-        # 're': r'^([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$',
-        # Exclude 1.9x, as it is a prelude to 2.x
-        're': r'^([0-9]+\.[0-8][0-9]*(|\.[0-9]+)(|\.[0-9]+))$',
+        'git': 'https://github.com/GNOME/pango.git',
+        're': r'/([0-9]+\.[0-8][0-9]*(|\.[0-9]+)(|\.[0-9]+))$',
     },
     'parallel-netcdf': {
         'git': 'https://github.com/Parallel-NetCDF/PnetCDF.git',
@@ -485,7 +481,7 @@ Packages = {
     'sqlite': {
         'text': 'https://www.sqlite.org/download.html',
         'keys': lambda data: ['.'.join(re.search(
-            r'([0-9]{4})\/sqlite-autoconf-([0-9]+).tar.(gz|xz)', data).groups()[:2])]
+            r'([0-9]{4})\/sqlite-autoconf-([0-9]+).tar.(gz|xz)', data).groups()[:2])],
     },
     'strip-nondeterminism': {
         'git': 'https://github.com/esoule/strip-nondeterminism.git',
@@ -500,8 +496,8 @@ Packages = {
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'xerces-c': {
-        'filelist': 'http://xerces.apache.org/xerces-c/download.cgi',
-        're': r'xerces-c-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
+        'git': 'https://github.com/apache/xerces-c.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'xz': {
         'filelist': 'https://sourceforge.net/projects/lzmautils/files/',
@@ -517,7 +513,8 @@ Packages = {
     },
     'zstd': {
         'git': 'https://github.com/facebook/zstd.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+        're': r'v([0-4]+\.[0-9]+(|\.[0-9]+))$',
+        # 're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
 }
 
