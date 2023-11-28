@@ -636,7 +636,7 @@ cd /build && \
     find . -name '.git' -exec rm -rf {} \+ && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DCMAKE_CXX_FLAGS='-fpermissive' -DJPEGXL_ENABLE_EXAMPLES=OFF -DJPEGXL_ENABLE_MANPAGES=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DCMAKE_CXX_FLAGS='-fpermissive' -DJPEGXL_ENABLE_EXAMPLES=OFF -DJPEGXL_ENABLE_MANPAGES=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF -DHWY_ENABLE_INSTALL=OFF -DHWY_ENABLE_TESTS=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1829,7 +1829,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if false; then \
+    if true; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
@@ -1905,10 +1905,12 @@ data = data.replace( \n\
 """scripts/*.py\'), \n\
     package_data={\'osgeo\': [\'proj/*\', \'gdal/*\', \'bin/*\']},""") \n\
 data = data.replace("console_scripts = []", """console_scripts = [\'%s=osgeo.bin:program\' % name for name in os.listdir(\'osgeo/bin\') if not name.endswith(\'.py\')]""") \n\
+if "console_scripts" not in data: data = data.replace( \n\
+    "scripts/*.py\'),", \n\
+"""scripts/*.py\'), \n\
+    entry_points={\'console_scripts\': [\'%s=osgeo.bin:program\' % name for name in os.listdir(\'osgeo/bin\') if not name.endswith(\'.py\')]},""") \n\
 data = data.replace("    python_requires=\'>=3.6.0\',", "") \n\
 open(path, "w").write(data)' && \
-    # package_data={\'osgeo\': [\'proj/*\', \'gdal/*\', \'bin/*\']}, \n\
-    # entry_points={\'console_scripts\': [\'%s=osgeo.bin:program\' % name for name in os.listdir(\'osgeo/bin\') if not name.endswith(\'.py\')]},""") \n\
     python -c $'# \n\
 path = "osgeo/__init__.py" \n\
 s = open(path).read().replace( \n\
@@ -2206,6 +2208,10 @@ RUN \
     cargo install cargo-c && \
     cargo cinstall && \
     ldconfig && \
+    # rust leaves huge build artifacts that aren't useful to us \
+    rm -rf target/release/deps && \
+    find . -name '*.a' -delete && \
+    rm -rf /root/.cargo/registry && \
     echo "`date` libimagequant" >> /build/log.txt
 
 RUN \
@@ -2240,6 +2246,7 @@ RUN \
     # rust leaves huge build artifacts that aren't useful to us \
     rm -rf target/release/deps && \
     find . -name '*.a' -delete && \
+    rm -rf /root/.cargo/registry && \
     echo "`date` librsvg" >> /build/log.txt
 
 RUN \

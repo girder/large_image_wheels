@@ -3,7 +3,7 @@ armadillo 12.6.6
 blosc 1.21.5
 boost 1.83.0
 cairo 1.18.0
-cmake 3.27.8
+cmake 3.27.9
 curl 8_4_0
 cyrus-sasl 2.1.28
 fftw3 3.3.10
@@ -14,14 +14,14 @@ freetype 2-13-2
 freexl 106b174596
 fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
-gdal 3.8.0
-gdal-pypi 3.8.0
-gdal-sha 32bb33a6b7fff7b5d238760fff17548c8736df4c
+gdal 3.8.1
+gdal-pypi 3.8.1
+gdal-sha 8655f56595ca4c199069d6654ded11503d4f9802
 gdal-source 3.9.0
 gdk-pixbuf 2.42.10
 giflib 5.2.1
 glib 2.78.1
-glymur 0.12.9
+glymur 0.12.9post1
 glymur-pypi 0.12.9.post1
 gobject-introspection 1.78.1
 harfbuzz 8.3.0
@@ -65,7 +65,7 @@ libxcrypt 4.4.36
 libxml2 2.12.1
 libzip 1.10.1
 lz4 1.9.4
-manylinux2014 355ac32f868c200253f4af55d5b1a63a78593ef29ed9aaf0900b8b2f304ab772
+manylinux2014 a96a8b62a98cd986f790c8b5ee6cd2846f96e7d22cca5e0d6db7ecb2e1079882
 mapnik 2e1b32512b1f8b52331994f2a809d8a383c0c984
 mapnik-release 3.1.0
 matio 1.5.26
