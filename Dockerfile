@@ -1829,7 +1829,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if true; then \
+    if false; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
@@ -2561,3 +2561,19 @@ open(path, "w").write(s)' && \
     ls -l /io/wheelhouse && \
     rm -rf ~/.cache && \
     echo "`date` python-javabridge" >> /build/log.txt
+
+RUN \
+    echo "`date` python-bioformats" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b v`getver.py python-bioformats` -c advice.detachedHead=false https://github.com/CellProfiler/python-bioformats.git && \
+    cd python-bioformats && \
+    curl -LJ https://downloads.openmicroscopy.org/bio-formats/`getver.py bioformats`/artifacts/bioformats_package.jar -o bioformats/jars/bioformats_package.jar && \
+    python -c $'# \n\
+import re \n\
+path = "setup.py" \n\
+s = open(path).read() \n\
+# append .1 to version to make sure pip prefers this \n\
+s = re.sub(r"(version=\\"[^\\"]*)\\"", "\\\\1.1\\"", s) \n\
+open(path, "w").write(s)' && \
+    pip wheel . --no-deps -w /io/wheelhouse && \
+    echo "`date` python-bioformats" >> /build/log.txt

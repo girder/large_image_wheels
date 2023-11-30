@@ -23,6 +23,10 @@ Packages = {
         'filelist': 'https://sourceforge.net/projects/arma/files/',
         're': r'armadillo-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)/download$',
     },
+    'bioformats': {
+        'filelist': 'https://www.openmicroscopy.org/bio-formats/downloads/',
+        're': r'bio-formats/([0-9]+\.[0-9]+(|\.[0-9]+))/artifacts/bioformats_package.jar$',
+    },
     'blosc': {
         'git': 'https://github.com/Blosc/c-blosc.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
@@ -454,6 +458,10 @@ Packages = {
     },
     'pyproj4-pypi': {
         'pypi': 'pyproj',
+    },
+    'python-bioformats': {
+        'git': 'https://github.com/CellProfiler/python-bioformats.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'python-mapnik': {
         'gitsha': 'https://github.com/mapnik/python-mapnik.git',
