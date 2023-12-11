@@ -1829,7 +1829,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if false; then \
+    if true; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
@@ -1842,6 +1842,8 @@ RUN \
     # - Common \
     cd gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
+    (sed -i 's/>=3.8/>=3.7/g' swig/python/pyproject.toml || true) && \
+    (sed -i 's/>=3.8/>=3.7/g' swig/python/setup.py.in || true) && \
     mkdir _build && \
     cd _build && \
     cmake .. -DCMAKE_BUILD_TYPE=Release \

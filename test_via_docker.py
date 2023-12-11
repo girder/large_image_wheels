@@ -7,7 +7,6 @@ import sys
 import threading
 
 containers = [
-    # 'python:3.6-slim',
     'python:3.7-slim',
     'python:3.8-slim',
     'python:3.9-slim',

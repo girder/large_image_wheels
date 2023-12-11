@@ -41,10 +41,7 @@ This makes wheels for the main libraries:
 - python_javabridge
 - pyvips
 
-This also makes some wheels which weren't published in all desired Python versions in pypi:
-- psutil
-
-Currently, wheels are built for Python 3.6, 3.7, 3.8, 3.9, 3.10, 3.11.  Some libraries have older versions for older versions of Python that were built before support for those versions is ended.
+Currently, wheels are built for Python 3.7, 3.8, 3.9, 3.10, 3.11, 3.12.  Some libraries have older versions for older versions of Python that were built before support for those versions is ended.
 
 ## Extras
 
@@ -122,10 +119,6 @@ Inside a Django application's `settings.py` file, this is somewhat simpler::
 - More executables
 
   A variety of executables are bundled with the wheels in appropriate `bin` directories.  There are additional tools that could be added.  If there is a specific need for an executable that hasn't been included, please create an issue for it.
-
-- Automate version checks
-
-  This is done on a local build machine.  A nightly periodic job runs the `rebuild.sh` script.  It can fail if new versions are not compatible.  Occasionally, pinned versions are checked manually to see if they can be unpinned.
 
 - Automate releases
 
