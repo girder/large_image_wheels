@@ -419,6 +419,11 @@ import large_image_source_vips
 large_image_source_vips.open('sample.ome.tif')
 EOF
 
+echo 'test vips conversion'
+vips tiffsave sample.ome.tif sample.lzw.tif --tile --tile-width 256 --tile-height 256 --pyramid --bigtiff --compression lzw --predictor horizontal
+tifftools dump sample.lzw.tif,1 | grep -q 'Predictor'
+vips tiffsave sample.ome.tif sample.jpeg.tif --tile --tile-width 256 --tile-height 256 --pyramid --bigtiff --compression jpeg --Q 90
+
 echo 'test libvips and webp'
 curl --retry 5 -L  -o d042-353.crop.small.float32.tif https://data.kitware.com/api/v1/file/6005cd112fa25629b9f98fca/download
 python <<EOF

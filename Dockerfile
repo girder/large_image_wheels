@@ -340,6 +340,9 @@ data = open(path).read().replace( \n\
     "libSM.so.6", "XlibSM.so.6").replace( \n\
     "libICE.so.6", "XlibICE.so.6").replace( \n\
     "libexpat.so.1", "Xlibexpat.so.1").replace( \n\
+    "libgobject-2.0.so.0", "Xlibgobject-2.0.so.0").replace( \n\
+    "libgthread-2.0.so.0", "Xlibgthread-2.0.so.0").replace( \n\
+    "libglib-2.0.so.0", "Xlibglib-2.0.so.0").replace( \n\
     "XlibXext.so.6", "libjvm.so") \n\
 open(path, "w").write(data)' && \
     echo "`date` auditwheel" >> /build/log.txt
@@ -930,28 +933,9 @@ RUN \
 RUN \
     echo "`date` glib" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    pip install --no-cache-dir packaging && \
     git clone --depth=1 --single-branch -b `getver.py glib` -c advice.detachedHead=false https://github.com/GNOME/glib.git && \
     cd glib && \
-    python -c $'# \n\
-path = "gio/meson.build" \n\
-s = open(path).read().replace("library(\'gio-2.0\',", "library(\'gio-2.0-liw\',") \n\
-open(path, "w").write(s)' && \
-    python -c $'# \n\
-path = "glib/meson.build" \n\
-s = open(path).read().replace("library(\'glib-2.0\',", "library(\'glib-2.0-liw\',") \n\
-open(path, "w").write(s)' && \
-    python -c $'# \n\
-path = "gmodule/meson.build" \n\
-s = open(path).read().replace("library(\'gmodule-2.0\',", "library(\'gmodule-2.0-liw\',") \n\
-open(path, "w").write(s)' && \
-    python -c $'# \n\
-path = "gobject/meson.build" \n\
-s = open(path).read().replace("library(\'gobject-2.0\',", "library(\'gobject-2.0-liw\',") \n\
-open(path, "w").write(s)' && \
-    python -c $'# \n\
-path = "gthread/meson.build" \n\
-s = open(path).read().replace("library(\'gthread-2.0\',", "library(\'gthread-2.0-liw\',") \n\
-open(path, "w").write(s)' && \
     meson setup --prefix=/usr/local --buildtype=release --optimization=3 -Dtests=False -Dglib_debug=disabled _build && \
     cd _build && \
     ninja -j ${JOBS} && \
@@ -965,17 +949,18 @@ RUN \
     git clone --depth=1 --single-branch -b `getver.py gobject-introspection` -c advice.detachedHead=false https://github.com/GNOME/gobject-introspection.git && \
     cd gobject-introspection && \
     python -c $'# \n\
-path = "giscanner/shlibs.py" \n\
-s = open(path).read().replace( \n\
-"""    lib%s""", \n\
-"""    lib%s(-liw|)""") \n\
-open(path, "w").write(s)' && \
-    python -c $'# \n\
 path = "giscanner/meson.build" \n\
 s = open(path).read() \n\
 s = s[:s.index("install_subdir")] + s[s.index("flex"):] \n\
 open(path, "w").write(s)' && \
     meson setup --prefix=/usr/local --buildtype=release --optimization=3 _build && \
+    cd _build && \
+    ninja -j ${JOBS} && \
+    ninja -j ${JOBS} install && \
+    ldconfig && \
+    cd ../../glib && \
+    rm -rf _build && \
+    meson setup --prefix=/usr/local --buildtype=release --optimization=3 -Dtests=False -Dglib_debug=disabled -Dintrospection=enabled _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -1829,7 +1814,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if true; then \
+    if false; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
@@ -2326,11 +2311,14 @@ RUN \
     ldconfig && \
     echo "`date` libexif" >> /build/log.txt
 
+# PINNED - 8.15 breaks writing pyramids (see
+# https://github.com/libvips/libvips/issues/3808)
 RUN \
     echo "`date` libvips" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # version \
-    git clone --depth=1 --single-branch -b v`getver.py libvips` -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
+    git clone --depth=1 --single-branch -b v8.14.5 -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
+    # git clone --depth=1 --single-branch -b v`getver.py libvips` -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
     # master \
     # git clone -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
     cd libvips && \
