@@ -351,40 +351,8 @@ open(path, "w").write(data)' && \
 # have at least this version to use our wheels.
 RUN \
     echo "`date` numpy" >> /build/log.txt && \
-    for PYBIN in /opt/py/*/bin/; do \
-      echo "${PYBIN}" && \
-      # earliest numpy wheel for 3.12 is 1.26.0 \
-      if [[ "${PYBIN}" =~ "cp312" ]]; then \
-        export NUMPY_VERSION="1.26"; \
-      # earliest numpy wheel for 3.11 is 1.23.2 \
-      elif [[ "${PYBIN}" =~ "cp311" ]]; then \
-        export NUMPY_VERSION="1.23"; \
-      # earliest numpy wheel for 3.10 is 1.21.2 \
-      elif [[ "${PYBIN}" =~ "cp310" ]]; then \
-        export NUMPY_VERSION="1.21"; \
-      # earliest numpy wheel for 3.9 is 1.19.3 \
-      elif [[ "${PYBIN}" =~ "cp39" ]]; then \
-        export NUMPY_VERSION="1.19"; \
-      # 3.8 can work with numpy 1.15, but numpy only started publishing 3.8 \
-      # wheels at 1.17.1 \
-      elif [[ "${PYBIN}" =~ "cp38" ]]; then \
-        export NUMPY_VERSION="1.17"; \
-      elif [[ "${PYBIN}" =~ "cp37" ]]; then \
-        export NUMPY_VERSION="1.14"; \
-      elif [[ "${PYBIN}" =~ "cp36" ]]; then \
-        export NUMPY_VERSION="1.11"; \
-      # earliest numpy wheel for pypy 3.8 is 1.22.0 \
-      elif [[ "${PYBIN}" =~ "pp38" ]]; then \
-        export NUMPY_VERSION="1.22"; \
-      # earliest numpy wheel for pypy 3.7 is 1.20.0 \
-      elif [[ "${PYBIN}" =~ "pp37" ]]; then \
-        export NUMPY_VERSION="1.20"; \
-      # fallback for anything else \
-      else \
-        export NUMPY_VERSION="1"; \
-      fi && \
-      "${PYBIN}/pip" install --no-cache-dir "numpy==${NUMPY_VERSION}.*"; \
-    done && \
+    export JOBS=`nproc` && \
+    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" install --no-cache-dir --root-user-action=ignore oldest-supported-numpy' && \
     echo "`date` numpy" >> /build/log.txt
 
 # # Build psutil for Python versions not published on pypi
@@ -2317,7 +2285,7 @@ RUN \
     echo "`date` libvips" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # version \
-    git clone --depth=1 --single-branch -b v8.14.5 -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
+    git clone --depth=1 --single-branch -b v8.15.0 -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
     # git clone --depth=1 --single-branch -b v`getver.py libvips` -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
     # master \
     # git clone -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
@@ -2566,4 +2534,6 @@ s = open(path).read() \n\
 s = re.sub(r"(version=\\"[^\\"]*)\\"", "\\\\1.1\\"", s) \n\
 open(path, "w").write(s)' && \
     pip wheel . --no-deps -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'python_bioformats*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
+    find /io/wheelhouse/ -name 'python_bioformats*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     echo "`date` python-bioformats" >> /build/log.txt

@@ -17,7 +17,7 @@ fyba 5b9437e2622cf596e5a16a5f129517cdf387736f
 fyba-release 4.1.1
 gdal 3.8.2
 gdal-pypi 3.8.2
-gdal-sha 98c3491967e303e7e63b1fe124dd0fa9a4dd31e9
+gdal-sha 8fddbf591fa973b5875b8d29f433ce59036e9d53
 gdal-source 3.9.0
 gdk-pixbuf 2.42.10
 giflib 5.2.1
@@ -91,7 +91,7 @@ orc 0.4.34
 pango 1.51.1
 parallel-netcdf 1.12.3
 patchelf 0.18.0
-pixman 0.42.2
+pixman 0.43.0
 pkg-config 0.29.2
 poppler 24.01.0
 postgresql 16.1
@@ -107,8 +107,8 @@ python-javabridge 4.0.3
 python-javabridge-pypi 4.0.3
 python-mapnik 6c0e9b5c90ae505ea005761c0cdfd2edde1ff612
 python-mapnik-pypi 0.1
-pyvips 2.2.1
-pyvips-pypi 2.2.1
+pyvips 2.2.2
+pyvips-pypi 2.2.2
 sqlite 2023.3440200
 strip-nondeterminism 0.042
 superlu 6.0.1
