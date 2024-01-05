@@ -507,6 +507,8 @@ cd /build && \
 RUN \
     echo "`date` libjpeg-turbo" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    export CFLAGS="$CFLAGS -O3" && \
+    export CXXFLAGS="$CXXFLAGS -O3" && \
     # Needed for 2.1.90 \
     # export CFLAGS="-g0 -O2 -DNDEBUG -fPIC" && \
     curl --retry 5 --silent https://github.com/libjpeg-turbo/libjpeg-turbo/archive/`getver.py libjpeg-turbo`.tar.gz -L -o libjpeg-turbo.tar.gz && \
@@ -602,8 +604,8 @@ cd /build && \
 # RUN \
     echo "`date` jpeg-xl" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py jpeg-xl` -c advice.detachedHead=false --recurse-submodules -j ${JOBS} https://gitlab.com/wg1/jpeg-xl.git && \
-    cd jpeg-xl && \
+    git clone --depth=1 --single-branch -b v`getver.py jpeg-xl` -c advice.detachedHead=false --recurse-submodules -j ${JOBS} https://github.com/libjxl/libjxl.git && \
+    cd libjxl && \
     find . -name '.git' -exec rm -rf {} \+ && \
     mkdir _build && \
     cd _build && \
@@ -632,6 +634,8 @@ RUN \
 RUN \
     echo "`date` libtiff" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    export CFLAGS="$CFLAGS -O3" && \
+    export CXXFLAGS="$CXXFLAGS -O3" && \
     git clone --depth=1 --single-branch -b v`getver.py libtiff` -c advice.detachedHead=false https://gitlab.com/libtiff/libtiff.git && \
     cd libtiff && \
     # We could use cmake here, but it seems to have a harder time sorting the \
@@ -1782,7 +1786,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if false; then \
+    if true; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
@@ -2280,15 +2284,15 @@ RUN \
     echo "`date` libexif" >> /build/log.txt
 
 # PINNED - 8.15 breaks writing pyramids (see
-# https://github.com/libvips/libvips/issues/3808)
+# https://github.com/libvips/libvips/issues/3808), so using master
 RUN \
     echo "`date` libvips" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # version \
-    git clone --depth=1 --single-branch -b v8.15.0 -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
+    # git clone --depth=1 --single-branch -b v8.15.0 -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
     # git clone --depth=1 --single-branch -b v`getver.py libvips` -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
     # master \
-    # git clone -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
+    git clone -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
     cd libvips && \
     # Allow using VIPS_TMPDIR for the temp directory \
     sed -i 's/tmpd;/tmpd;if ((tmpd=g_getenv("VIPS_TMPDIR"))) return(tmpd);/g' libvips/iofuncs/util.c && \

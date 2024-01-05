@@ -152,7 +152,7 @@ Packages = {
         're': r'jbigkit-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
     },
     'jpeg-xl': {
-        'git': 'https://gitlab.com/wg1/jpeg-xl.git',
+        'git': 'https://github.com/libjxl/libjxl.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'krb5': {
