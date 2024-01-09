@@ -247,6 +247,10 @@ Packages = {
         'git': 'https://github.com/glennrp/libpng.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
+    'libpsl': {
+        'git': 'https://github.com/rockdaboot/libpsl.git',
+        're': r'\/([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
     'librasterlite2': {
         'fossil': 'https://www.gaia-gis.it/fossil/librasterlite2/timeline?n=10&r=trunk&ss=x',
         # 'filelist': 'https://www.gaia-gis.it/fossil/librasterlite2/',

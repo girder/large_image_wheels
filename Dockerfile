@@ -230,6 +230,21 @@ cd /build && \
 # \
 # # Make our own curl so we don't depend on system libraries. \
 # RUN \
+    echo "`date` libpsl" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    export AUTOMAKE_JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b `getver.py libpsl` -c advice.detachedHead=false https://github.com/rockdaboot/libpsl.git && \
+    cd libpsl && \
+    ./autogen.sh && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` libpsl" >> /build/log.txt && \
+cd /build && \
+# \
+# # Make our own curl so we don't depend on system libraries. \
+# RUN \
     echo "`date` curl" >> /build/log.txt && \
     export JOBS=`nproc` && \
     curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-`getver.py curl`/curl-`getver.py curl 3 _ .`.tar.gz -L -o curl.tar.gz && \
@@ -446,6 +461,7 @@ cd /build && \
     tar -zxf giflib.tar.gz -C giflib --strip-components 1 && \
     rm -f giflib.tar.gz && \
     cd giflib && \
+    sed -i 's/\$(MAKE) -C doc/echo/g' Makefile && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
