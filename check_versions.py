@@ -322,7 +322,7 @@ Packages = {
         'pypi': 'meson',
     },
     'minizip': {
-        'git': 'https://github.com/nmoinvaz/minizip.git',
+        'git': 'https://github.com/zlib-ng/minizip-ng.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     # MrSID's listing of versions is behind an agreement page, which prevents

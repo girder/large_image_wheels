@@ -22,6 +22,7 @@ RUN \
     mesa-libGL-devel \
     mesa-libGLU-devel \
     SDL-devel \
+    chrpath \
     # for javabridge \
     java-1.8.0-openjdk-devel \
     zip \
@@ -121,9 +122,7 @@ COPY getver.py fix_record.py /usr/local/bin/
 COPY versions.txt \
     glymur.setup.py \
     mapnik_projection.cpp.patch \
-    mapnik_proj_transform.cpp.patch \
     mapnik_setup.py.patch \
-    mapnik-enumeration.patch \
     openslide-vendor-mirax.c.patch \
     ./
 
@@ -432,7 +431,7 @@ RUN \
     cd openjpeg && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED=ON -DBUILD_STATIC=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -658,8 +657,13 @@ RUN \
     # two libjpeg versions \
     # mkdir _build && \
     # cd _build && \
-    # cmake .. -DCMAKE_BUILD_TYPE=Release -DJPEG12_INCLUDE_DIR=/build/libjpeg-turbo -DJPEG12_LIBRARY=/build/libjpeg-turbo/libjpeg-12.so && \
+    # cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    # # -DJPEG_INCLUDE_DIR=/build/libjpeg-turbo -DJPEG_LIBRARY_RELEASE=/build/libjpeg-turbo/libjpeg.so && \
     ./autogen.sh || true && \
+    # for reasons I don't understand, configure changes $ORIGIN to RIGIN (or, \
+    # more generally, elides $O.  Use a placeholder values and chrpath to fix \
+    # it afterwards \
+    export LDFLAGS="$LDFLAGS"',-rpath,OORIGIN' && \
     ./configure --prefix=/usr/local \
     --disable-static \
     --enable-jpeg12 \
@@ -668,7 +672,9 @@ RUN \
     | tee configure.output && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
+    chrpath -r '$ORIGIN' /usr/local/lib/libtiff.so && \
     ldconfig && \
+    chrpath -l /usr/local/lib/libtiff.so && \
     echo "`date` libtiff" >> /build/log.txt
 
 # Rebuild openjpeg with our libtiff
@@ -727,21 +733,12 @@ s = s.replace( \n\
             libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath( \n\
                 __file__))), "pylibtiff.libs")) \n\
         libs = os.listdir(libpath) \n\
-        loadCount = 0 \n\
-        while True: \n\
-            numLoaded = 0 \n\
-            for name in libs: \n\
-                try: \n\
-                    somelib = os.path.join(libpath, name) \n\
-                    if name.startswith("libtiff-"): \n\
-                        lib = somelib \n\
-                    ctypes.cdll.LoadLibrary(somelib) \n\
-                    numLoaded += 1 \n\
-                except Exception: \n\
-                    pass \n\
-            if numLoaded - loadCount <= 0: \n\
-                break \n\
-            loadCount = numLoaded \n\
+        try: \n\
+            pospath = os.path.join(libpath, [lib for lib in libs if lib.startswith("libtiff-")][0]) \n\
+            if os.path.exists(pospath): \n\
+                lib = pospath \n\
+        except Exception: \n\
+            pass \n\
 \n\
     libtiff = None if lib is None else ctypes.cdll.LoadLibrary(lib)""") \n\
 s = s.replace("""print("Not trying""", """# print("Not trying""") \n\
@@ -882,11 +879,7 @@ RUN \
     ldconfig && \
     echo "`date` pcre" >> /build/log.txt
 
-RUN \
-    echo "`date` meson" >> /build/log.txt && \
-    pip install --no-cache-dir meson && \
-    echo "`date` meson" >> /build/log.txt
-
+# Used by openslide and libvips
 RUN \
     echo "`date` libffi" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -904,6 +897,7 @@ open(path, "w").write(s)' && \
     ldconfig && \
     echo "`date` libffi" >> /build/log.txt
 
+# Used by openslide and libvips
 RUN \
     echo "`date` util-linux" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -918,6 +912,7 @@ RUN \
     ldconfig && \
     echo "`date` util-linux" >> /build/log.txt
 
+# Used by openslide, libvips, and mapnik
 RUN \
     echo "`date` glib" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -931,6 +926,13 @@ RUN \
     ldconfig && \
     echo "`date` glib" >> /build/log.txt
 
+# Build tool
+RUN \
+    echo "`date` meson" >> /build/log.txt && \
+    pip install --no-cache-dir meson && \
+    echo "`date` meson" >> /build/log.txt
+
+# Used by openslide and libvips
 RUN \
     echo "`date` gobject-introspection" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -955,6 +957,7 @@ open(path, "w").write(s)' && \
     ldconfig && \
     echo "`date` gobject-introspection" >> /build/log.txt
 
+# Used by openslide and libvips
 RUN \
     echo "`date` gdk-pixbuf" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -969,6 +972,7 @@ RUN \
 
 # Boost
 
+# Used by gdal, mapnik, openslide, libvips.  Unicode support
 RUN \
     echo "`date` libiconv" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -983,6 +987,7 @@ RUN \
     ldconfig && \
     echo "`date` libiconv" >> /build/log.txt
 
+# Used by gdal, mapnik, openslide, libvips.  Unicode support
 RUN \
     echo "`date` icu4c" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -996,6 +1001,8 @@ RUN \
     ldconfig && \
     echo "`date` icu4c" >> /build/log.txt
 
+# Used in libvips
+# Also seems to be used in boost, armadillo, ImageMagick, others
 RUN \
     echo "`date` fftw3" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1012,6 +1019,7 @@ RUN \
     ldconfig && \
     echo "`date` fftw3" >> /build/log.txt
 
+# Used by gdal, mapnik, libvips, netcdf
 # We can't add --disable-mpi-fortran, or parallel-netcdf doesn't build
 RUN \
     echo "`date` openmpi" >> /build/log.txt && \
@@ -1032,6 +1040,7 @@ RUN \
     find . -name '*.a' -delete && \
     echo "`date` openmpi" >> /build/log.txt
 
+# Used by mapnik.  The headers may be used by other libraries
 # This works with boost 1.69.0 and with 1.70 and above with an update to spirit
 # It probably won't work for 1.66.0 and before, as those versions didn't handle
 # multiple python versions properly.
@@ -1050,7 +1059,8 @@ RUN \
     echo "using python : 3.7 : /opt/py/pp37-pypy37_pp73/bin/python : /opt/py/pp37-pypy37_pp73/include : /opt/py/pp37-pypy37_pp73/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.8 : /opt/py/pp38-pypy38_pp73/bin/python : /opt/py/pp38-pypy38_pp73/include/pypy3.8 : /opt/py/pp38-pypy38_pp73/lib/pypy3.8 ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.9 : /opt/py/pp39-pypy39_pp73/bin/python : /opt/py/pp39-pypy39_pp73/include/pypy3.9 : /opt/py/pp39-pypy39_pp73/lib/pypy3.9 ;" >> tools/build/src/user-config.jam && \
-    export PYTHON_LIST="3.7,3.8,3.9" && \
+    echo "using python : 3.10 : /opt/py/pp310-pypy310_pp73/bin/python : /opt/py/pp310-pypy310_pp73/include/pypy3.10 : /opt/py/pp310-pypy310_pp73/lib/pypy3.10 ;" >> tools/build/src/user-config.jam && \
+    export PYTHON_LIST="3.7,3.8,3.9,3.10" && \
     true; \
     else \
     echo "using python : 3.7 : /opt/py/cp37-cp37m/bin/python : /opt/py/cp37-cp37m/include/python3.7m : /opt/py/cp37-cp37m/lib ;" >> tools/build/src/user-config.jam && \
@@ -1086,28 +1096,7 @@ RUN \
     ldconfig && \
     echo "`date` boost" >> /build/log.txt
 
-RUN \
-    echo "`date` fossil" >> /build/log.txt && \
-    # fossil executable \
-    curl --retry 5 --silent -L https://fossil-scm.org/home/uv/fossil-linux-x64-`getver.py fossil`.tar.gz -o fossil.tar.gz && \
-    tar -zxf fossil.tar.gz && \
-    mv fossil /usr/local/bin/. && \
-    rm -f fossil.tar.gz && \
-    # # fossil from source \
-    # # Previously, we had to build fossil to allow it to work in our
-    # # environment.  The prebuilt binaries fail because they can't find any of
-    # # a list of versions of GLIBC.
-    # curl --retry 5 --silent -L https://fossil-scm.org/home/tarball/f48180f2ff3169651a725396d4f7d667c99a92873b9c3df7eee2f144be7a0721/fossil-src-2.17.tar.gz -o fossil.tar.gz && \
-    # mkdir fossil && \
-    # tar -zxf fossil.tar.gz -C fossil --strip-components 1 && \
-    # rm -f fossil.tar.gz && \
-    # cd fossil && \
-    # ./configure --prefix=/usr/local --disable-static && \
-    # make --silent -j ${JOBS} && \
-    # make --silent -j ${JOBS} install && \
-    # ldconfig && \
-    echo "`date` fossil" >> /build/log.txt
-
+# Used by gdal, mapnik, openslide, libvips
 RUN \
     echo "`date` sqlite" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1122,6 +1111,7 @@ RUN \
     ldconfig && \
     echo "`date` sqlite" >> /build/log.txt
 
+# This used to be used by proj4
 # RUN \
 #     echo "`date` proj-data" >> /build/log.txt && \
 #     export JOBS=`nproc` && \
@@ -1133,6 +1123,7 @@ RUN \
 #     make dist && \
 #     echo "`date` proj-data" >> /build/log.txt
 
+# Used by gdal and mapnik
 RUN \
     echo "`date` proj4" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1235,8 +1226,8 @@ open(path, "w").write(data)' && \
 RUN \
     echo "`date` minizip" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b `getver.py minizip` -c advice.detachedHead=false https://github.com/nmoinvaz/minizip.git && \
-    cd minizip && \
+    git clone --depth=1 --single-branch -b `getver.py minizip` -c advice.detachedHead=false https://github.com/zlib-ng/minizip-ng.git && \
+    cd minizip-ng && \
     mkdir _build && \
     cd _build && \
     cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=yes -DINSTALL_INC_DIR=/usr/local/include/minizip -DMZ_OPENSSL=yes && \
@@ -1245,6 +1236,7 @@ RUN \
     ldconfig && \
     echo "`date` minizip" >> /build/log.txt
 
+# Used by gdal, mapnik, openslide, libvips.  XML parsing
 RUN \
     echo "`date` libexpat" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1262,6 +1254,30 @@ RUN \
     ldconfig && \
     echo "`date` libexpat" >> /build/log.txt
 
+# CVS tool used by several libraries
+RUN \
+    echo "`date` fossil" >> /build/log.txt && \
+    # fossil executable \
+    curl --retry 5 --silent -L https://fossil-scm.org/home/uv/fossil-linux-x64-`getver.py fossil`.tar.gz -o fossil.tar.gz && \
+    tar -zxf fossil.tar.gz && \
+    mv fossil /usr/local/bin/. && \
+    rm -f fossil.tar.gz && \
+    # # fossil from source \
+    # # Previously, we had to build fossil to allow it to work in our
+    # # environment.  The prebuilt binaries fail because they can't find any of
+    # # a list of versions of GLIBC.
+    # curl --retry 5 --silent -L https://fossil-scm.org/home/tarball/f48180f2ff3169651a725396d4f7d667c99a92873b9c3df7eee2f144be7a0721/fossil-src-2.17.tar.gz -o fossil.tar.gz && \
+    # mkdir fossil && \
+    # tar -zxf fossil.tar.gz -C fossil --strip-components 1 && \
+    # rm -f fossil.tar.gz && \
+    # cd fossil && \
+    # ./configure --prefix=/usr/local --disable-static && \
+    # make --silent -j ${JOBS} && \
+    # make --silent -j ${JOBS} install && \
+    # ldconfig && \
+    echo "`date` fossil" >> /build/log.txt
+
+# Used by gdal and mapnik.  Reads from xls, xlsx, and ods files
 RUN \
     echo "`date` freexl" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1276,6 +1292,7 @@ RUN \
     ldconfig && \
     echo "`date` freexl" >> /build/log.txt
 
+# Used by libspatialite
 RUN \
     echo "`date` libgeos" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1289,6 +1306,7 @@ RUN \
     ldconfig && \
     echo "`date` libgeos" >> /build/log.txt
 
+# Used by gdal, mapnik, openslide, libvips
 RUN \
     echo "`date` libxml" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1303,6 +1321,7 @@ RUN \
     ldconfig && \
     echo "`date` libxml" >> /build/log.txt
 
+# Used by gdal and mapnik
 RUN \
     echo "`date` libspatialite" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1319,6 +1338,7 @@ RUN \
     find . -name '*.a' -delete && \
     echo "`date` libspatialite" >> /build/log.txt
 
+# Used by gdal and mapnik
 RUN \
     echo "`date` libgeotiff" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1336,6 +1356,7 @@ RUN \
     ldconfig && \
     echo "`date` libgeotiff" >> /build/log.txt
 
+# Used by rasterlite
 RUN \
     echo "`date` pixman" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1348,6 +1369,7 @@ RUN \
     ldconfig && \
     echo "`date` pixman" >> /build/log.txt
 
+# Used by cairo, python_javabridge
 RUN \
     echo "`date` freetype" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1360,6 +1382,7 @@ RUN \
     ldconfig && \
     echo "`date` freetype" >> /build/log.txt
 
+# Used by cairo
 RUN \
     echo "`date` fontconfig" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1372,6 +1395,7 @@ RUN \
     ldconfig && \
     echo "`date` fontconfig" >> /build/log.txt
 
+# Used by openslide, GDAL, mapnik, libvips.  2D graphics library
 RUN \
     echo "`date` cairo" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1384,6 +1408,7 @@ RUN \
     ldconfig && \
     echo "`date` cairo" >> /build/log.txt
 
+# Used by GDAL, mapnik, libvips.  Lossless compression
 RUN \
     echo "`date` lz4" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1394,6 +1419,7 @@ RUN \
     ldconfig && \
     echo "`date` lz4" >> /build/log.txt
 
+# Used by GDAL and mapnik.  Raster coverage via SpatiaLite
 RUN \
     echo "`date` librasterlite2" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1410,6 +1436,8 @@ RUN \
     ldconfig && \
     echo "`date` librasterlite2" >> /build/log.txt
 
+# Used by gdal and mapnik.  Handle the National Mapping Authority of Norway
+# geodata standard format SOSI.
 # PINNED VERSION - use master
 # fyba won't compile with GCC 8.2.x, so apply fix in issue #21
 RUN \
@@ -1440,6 +1468,7 @@ open(path, "wb").write(data)' && \
     ldconfig && \
     echo "`date` fyba" >> /build/log.txt
 
+# Used by netcdf, GDAL
 # Build items necessary for netcdf support
 RUN \
     echo "`date` hdf4" >> /build/log.txt && \
@@ -1454,6 +1483,7 @@ RUN \
     ldconfig && \
     echo "`date` hdf4" >> /build/log.txt
 
+# Used by gdal, mapnik, pyvips
 RUN \
     echo "`date` hdf5" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1473,6 +1503,7 @@ RUN \
     find bin -type f ! -name 'lib*' -delete && \
     echo "`date` hdf5" >> /build/log.txt
 
+# Used by gdal, mapnik
 RUN \
     echo "`date` parallel-netcdf" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1486,6 +1517,7 @@ RUN \
     ldconfig && \
     echo "`date` parallel-netcdf" >> /build/log.txt
 
+# Used by gdal, mapnik
 RUN \
     echo "`date` netcdf" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1505,6 +1537,7 @@ RUN \
     ldconfig && \
     echo "`date` netcdf" >> /build/log.txt
 
+# Used by mysql.  Linux async i/o library
 RUN \
     echo "`date` libaio" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1514,6 +1547,7 @@ RUN \
     ldconfig && \
     echo "`date` libaio" >> /build/log.txt
 
+# Used by GDAL, mapnik, pylibmc
 RUN \
     echo "`date` mysql" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1539,6 +1573,7 @@ RUN \
     ldconfig && \
     echo "`date` mysql" >> /build/log.txt
 
+# Used by GDAL.  Open Geographic Datastore Interface
 # ogdi doesn't build with parallelism
 RUN \
     echo "`date` ogdi" >> /build/log.txt && \
@@ -1552,6 +1587,7 @@ RUN \
     ldconfig && \
     echo "`date` ogdi" >> /build/log.txt
 
+# Used by GDAL's postgis raster driver; used by pylibmc
 RUN \
     echo "`date` postgresql" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1569,6 +1605,7 @@ RUN \
     ldconfig && \
     echo "`date` postgresql" >> /build/log.txt
 
+# Used by GDAL, mapnik, libvips.  PDF reader
 RUN \
     echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1582,6 +1619,7 @@ RUN \
     ldconfig && \
     echo "`date` poppler" >> /build/log.txt
 
+# Used by GDAL, mapnik, libvips.  Flexible Image Transport System reader
 RUN \
     echo "`date` fitsio" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1598,6 +1636,7 @@ RUN \
     ldconfig && \
     echo "`date` fitsio" >> /build/log.txt
 
+# Used by GDAL, pylibmc.  Hashing library
 # We want the "obsolete-api" to be available for some packages (GDAL), but the
 # base docker image has the newer api version installed.  When we install the
 # older one, the install command complains about the extant version, but still
@@ -1617,6 +1656,7 @@ RUN \
     ldconfig && \
     echo "`date` libxcrypt" >> /build/log.txt
 
+# Used by GDAL.  Generic Tagged Arrays
 # If we use gettext installed via yum, autoreconf and configure fail.  We can
 # build with cmake instead.  The failure message is
 # possibly undefined macro: AC_LIB_HAVE_LINKFLAGS
@@ -1651,6 +1691,7 @@ RUN \
 #     ldconfig && \
 #     echo "`date` libecw" >> /build/log.txt
 
+# Used by GDAL.  XML parser
 RUN \
     echo "`date` xerces-c" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1692,6 +1733,7 @@ RUN \
 #     ldconfig && \
 #     echo "`date` superlu" >> /build/log.txt
 
+# Used by GDAL.  Linear lagebra library
 RUN \
     echo "`date` lapack" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1705,6 +1747,7 @@ RUN \
     ldconfig && \
     echo "`date` lapack" >> /build/log.txt
 
+# Used by GDAL.  Linear lagebra library
 RUN \
     echo "`date` armadillo" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1722,6 +1765,7 @@ RUN \
     ldconfig && \
     echo "`date` armadillo" >> /build/log.txt
 
+# Used by GDAL
 # PINNED VERSION - can't easily check the version
 # MrSID only works with gcc 4 or 5 unless we change it.
 RUN \
@@ -1735,6 +1779,7 @@ RUN \
     cp -n mrsid/Lidar_DSDK/lib/* /usr/local/lib/. && \
     echo "`date` mrsid" >> /build/log.txt
 
+# Used by GDAL.  Block compression library
 RUN \
     echo "`date` blosc" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1748,6 +1793,7 @@ RUN \
     ldconfig && \
     echo "`date` blosc" >> /build/log.txt
 
+# Needed for libheif
 RUN \
     echo "`date` libde265" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1763,6 +1809,8 @@ RUN \
     find . -name '*.a' -delete && \
     echo "`date` libde265" >> /build/log.txt
 
+# Used by GDAL, mapnik, and libvips; decoder for HEIC, AVIF, JPEG-in-HEIF,
+# JPEG2000
 RUN \
     echo "`date` libheif" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1802,7 +1850,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if true; then \
+    if false; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
@@ -1825,6 +1873,7 @@ RUN \
     -DGDAL_USE_LERC=ON \
     -DSWIG_REGENERATE_PYTHON=ON \
     -DENABLE_DEFLATE64=OFF \
+    2>&1 >../cmakelog.txt \
     && \
     make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings -Wno-stringop-overflow -Wno-ignored-qualifiers" && \
     make -j ${JOBS} install && \
@@ -1928,6 +1977,7 @@ open(path, "w").write(s)' && \
     rm -rf ~/.cache && \
     echo "`date` gdal python" >> /build/log.txt
 
+# Used by mapnik and libtiff
 RUN \
     echo "`date` harfbuzz" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1952,9 +2002,9 @@ RUN \
     # Specific checkout \
     # git clone --depth=1000 --single-branch -c advice.detachedHead=false --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
     # cd mapnik && \
-    # git checkout d417b8933a08c4a11ee257dd57759b1382f0e3d3 && \
+    # git checkout 34c95df2670c1f794ef27b357ba07d716b53cdfe && \
     # Common \
-    git apply ../mapnik_projection.cpp.patch && \
+    git apply --stat --numstat --apply ../mapnik_projection.cpp.patch && \
     sed -i 's/PJ_LOG_ERROR/PJ_LOG_NONE/g' src/*.cpp && \
     find include -name '*.hpp' -exec sed -i 's:boost/spirit/include/phoenix_operator.hpp:boost/phoenix/operator.hpp:g' {} \; && \
     find include -name '*.hpp' -exec sed -i 's:boost/spirit/include/phoenix_function.hpp:boost/phoenix/function.hpp:g' {} \; && \
@@ -1974,8 +2024,6 @@ RUN \
     -DBUILD_DEMO_CPP=OFF \
     -DBUILD_DEMO_VIEWER=OFF \
     -DBUILD_TESTING=OFF \
-    -DJPEG_INCLUDE_DIR=/usr/local/include \
-    -DJPEG_LIBRARY_RELEASE=/usr/local/lib/libopenjp2.so \
     -DCMAKE_INSTALL_LIBDIR=lib \
     -DFONTS_INSTALL_DIR=/usr/local/lib/mapnik/fonts \
     && \
@@ -1990,12 +2038,12 @@ RUN \
     echo "`date` python-mapnik" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # master \
-    # git clone --depth=1 --single-branch -c advice.detachedHead=false --quiet -j ${JOBS} https://github.com/mapnik/python-mapnik.git && \
-    # cd python-mapnik && \
-    # specific checkout \
-    git clone --depth=100 --single-branch -c advice.detachedHead=false --quiet -j ${JOBS} https://github.com/mapnik/python-mapnik.git && \
+    git clone --depth=1 --single-branch -c advice.detachedHead=false --quiet -j ${JOBS} https://github.com/mapnik/python-mapnik.git && \
     cd python-mapnik && \
-    git checkout a2c2a86eec954b42d7f00093da03807d0834b1b4 && \
+    # specific checkout \
+    # git clone --depth=100 --single-branch -c advice.detachedHead=false --quiet -j ${JOBS} https://github.com/mapnik/python-mapnik.git && \
+    # cd python-mapnik && \
+    # git checkout a2c2a86eec954b42d7f00093da03807d0834b1b4 && \
     # common \
     find . -name '.git' -exec rm -rf {} \+ && \
     # Copy the mapnik input sources and fonts to the python path and add them \
@@ -2032,10 +2080,8 @@ os.environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal")) \n\
 \n\
 def bootstrap_env():""") \n\
 open(path, "w").write(s)' && \
-    git apply ../mapnik_proj_transform.cpp.patch && \
     # Apply a patch and set variables to work with the cmake build of mapnik \
-    git apply ../mapnik_setup.py.patch && \
-    git apply ../mapnik-enumeration.patch && \
+    git apply --stat --numstat --apply ../mapnik_setup.py.patch && \
     sed -i 's/PyUnicode_FromUnicode(/PyUnicode_FromKindAndData(PyUnicode_1BYTE_KIND, /g' src/python_grid_utils.cpp && \
     export CC=c++ && \
     export CXX=c++ && \
@@ -2141,6 +2187,7 @@ open(path, "w").write(s)' && \
 
 # VIPS
 
+# Optimizing loop compiler.  Used by libvips for speed improvements
 RUN \
     echo "`date` orc" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -2156,6 +2203,7 @@ RUN \
     ldconfig && \
     echo "`date` orc" >> /build/log.txt
 
+# Used by libvips
 RUN \
     echo "`date` nifti" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -2169,11 +2217,13 @@ RUN \
     ldconfig && \
     echo "`date` nifti" >> /build/log.txt
 
+# General build tool
 RUN \
     echo "`date` rust" >> /build/log.txt && \
     curl --retry 5 --silent https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal && \
     echo "`date` rust" >> /build/log.txt
 
+# Used by libvips and ImageMagick
 RUN \
     echo "`date` libimagequant" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -2189,6 +2239,7 @@ RUN \
     rm -rf /root/.cargo/registry && \
     echo "`date` libimagequant" >> /build/log.txt
 
+# Used by libvips and ImageMagick
 RUN \
     echo "`date` pango" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -2201,6 +2252,7 @@ RUN \
     ldconfig && \
     echo "`date` pango" >> /build/log.txt
 
+# Used by libvips and ImageMagick
 RUN \
     echo "`date` librsvg" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -2224,6 +2276,7 @@ RUN \
     rm -rf /root/.cargo/registry && \
     echo "`date` librsvg" >> /build/log.txt
 
+# Used by libvips
 RUN \
     echo "`date` libarchive" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -2237,6 +2290,7 @@ RUN \
     ldconfig && \
     echo "`date` libarchive" >> /build/log.txt
 
+# Used by ImageMagick, though I don't see the library being bundled by libvips
 RUN \
     echo "`date` libraw" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -2251,6 +2305,7 @@ RUN \
 
 # We could install more packages for better ImageMagick support:
 #  Autotrace DJVU DPS FLIF FlashPIX Ghostscript Graphviz LQR RAQM WMF
+# Used by libvips
 RUN \
     echo "`date` imagemagick" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -2264,6 +2319,7 @@ RUN \
     ldconfig && \
     echo "`date` imagemagick" >> /build/log.txt
 
+# MatLAB I/O.  Used by libvips
 RUN \
     echo "`date` matio" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -2286,6 +2342,7 @@ open(path, "w").write(s)' && \
     ldconfig && \
     echo "`date` matio" >> /build/log.txt
 
+# Used by libvips
 RUN \
     echo "`date` libexif" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -2300,27 +2357,29 @@ RUN \
     echo "`date` libexif" >> /build/log.txt
 
 # PINNED - 8.15 breaks writing pyramids (see
-# https://github.com/libvips/libvips/issues/3808), so using master
+# https://github.com/libvips/libvips/issues/3808), so using master.  This
+# should be fixed in 8.15.2
 RUN \
     echo "`date` libvips" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # version \
     # git clone --depth=1 --single-branch -b v8.15.0 -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
-    # git clone --depth=1 --single-branch -b v`getver.py libvips` -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
+    git clone --depth=1 --single-branch -b v`getver.py libvips` -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
     # master \
-    git clone -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
+    # git clone -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
     cd libvips && \
     # Allow using VIPS_TMPDIR for the temp directory \
     sed -i 's/tmpd;/tmpd;if ((tmpd=g_getenv("VIPS_TMPDIR"))) return(tmpd);/g' libvips/iofuncs/util.c && \
     sed -i 's/cfg_var.set('\''HAVE_TARGET_CLONES'\'', '\''1'\'')/# cfg_var.set('\''HAVE_TARGET_CLONES'\'', '\''1'\'')/g' meson.build && \
     export LDFLAGS="$LDFLAGS"',-rpath,$ORIGIN' && \
-    meson setup --prefix=/usr/local --buildtype=release --optimization=3 _build -Dmodules=disabled -Dexamples=false -Dnifti-prefix-dir=/usr/local && \
+    meson setup --prefix=/usr/local --buildtype=release _build -Dmodules=disabled -Dexamples=false -Dnifti-prefix-dir=/usr/local 2>&1 >meson_config.txt && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
     ldconfig && \
     echo "`date` libvips" >> /build/log.txt
 
+# Our version of pyvips contains libvips and all dependencies
 RUN \
     echo "`date` pyvips" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -2386,6 +2445,7 @@ open(path, "w").write(s)' && \
     rm -rf ~/.cache && \
     echo "`date` pyvips" >> /build/log.txt
 
+# sasl is required for libmemcached
 RUN \
     echo "`date` cyrus-sasl" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -2419,6 +2479,7 @@ RUN \
     ldconfig && \
     echo "`date` libmemcached" >> /build/log.txt
 
+# pylibmc requires more libraries than are bundled in the official wheels
 RUN \
     echo "`date` pylibmc" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -2458,6 +2519,8 @@ open(path, "w").write(s)' && \
     rm -rf ~/.cache && \
     echo "`date` pylibmc" >> /build/log.txt
 
+# python-javabridge needs a jvm to work; this bundles the jvm with the python
+# package.
 RUN \
     echo "`date` python-javabridge" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -2540,6 +2603,10 @@ open(path, "w").write(s)' && \
     rm -rf ~/.cache && \
     echo "`date` python-javabridge" >> /build/log.txt
 
+# bioformats is a java reader/writer for images.  python-bioformats bundles the
+# jar and provides some interface to the java package through
+# python-javabridge.  We build it because we want a newer jar than is provided
+# by the public package
 RUN \
     echo "`date` python-bioformats" >> /build/log.txt && \
     export JOBS=`nproc` && \
