@@ -264,6 +264,10 @@ Packages = {
         'git': 'https://github.com/GNOME/librsvg.git',
         're': r'/([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$',
     },
+    'librttopo': {
+        'git': 'https://git.osgeo.org/gitea/rttopo/librttopo.git',
+        're': r'librttopo-([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
     'libspatialite': {
         'fossil': 'https://www.gaia-gis.it/fossil/libspatialite/timeline?n=10&r=trunk&ss=x',
         # 'filelist': 'https://www.gaia-gis.it/fossil/libspatialite/',
@@ -407,13 +411,6 @@ Packages = {
         'git': 'https://github.com/NixOS/patchelf.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
-    # pcre has moved; it has also not changed in decades -- we may want to
-    # switch to pcre2 when glib does.
-    # 'pcre': {
-    #     # 'filelist': 'https://ftp.pcre.org/pub/pcre/',
-    #     'filelist': 'https://sourceforge.net/projects/pcre/files/pcre/',
-    #     're': r'pcre-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
-    # },
     'pixman': {
         'git': 'https://gitlab.freedesktop.org/pixman/pixman.git',
         're': r'pixman-([0-9]+\.[0-9]+(|\.[0-9]+))$',
@@ -512,6 +509,8 @@ Packages = {
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'xz': {
+        # 'git': 'https://github.com/tukaani-project/xz.git',
+        # 're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
         'filelist': 'https://sourceforge.net/projects/lzmautils/files/',
         're': r'xz-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.gz\/download',
     },

@@ -49,6 +49,10 @@ RUN \
     json-c12-devel \
     # for mysql \
     ncurses-devel \
+    # needed for mysql to use newer versions of xz with mysql \
+    devtoolset-11-gcc \
+    devtoolset-11-gcc-c++ \
+    devtoolset-11-binutils \
     # for postrges \
     readline-devel \
     # for epsilon \
@@ -421,6 +425,7 @@ RUN \
     ldconfig && \
     echo "`date` lcms2" >> /build/log.txt
 
+# Used by libtiff, gdal, mapnik, openslide, glymur
 RUN \
     echo "`date` openjpeg" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -519,6 +524,7 @@ cd /build && \
     ldconfig && \
     echo "`date` libwebp" >> /build/log.txt
 
+# Used in gdal, mapnik, libvips, openslide, glymur, python-javabridge
 RUN \
     echo "`date` libjpeg-turbo" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -545,6 +551,7 @@ RUN \
     # don't install this; we reference it explicitly \
     echo "`date` libjpeg-turbo" >> /build/log.txt
 
+# Used in gdal, mapnik, libvips, openslide, glymur
 RUN \
     echo "`date` libdeflate" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -558,6 +565,7 @@ RUN \
     ldconfig && \
     echo "`date` libdeflate" >> /build/log.txt
 
+# Used in gdal, mapnik, libvips, openslide, glymur.  Image compression format
 # PINNED - version 4.x causes segfaults in libvips in some manner on CircleCI
 RUN \
     echo "`date` lerc" >> /build/log.txt && \
@@ -574,6 +582,7 @@ RUN \
     echo "`date` lerc" >> /build/log.txt && \
 cd /build && \
 # \
+# Used by libvips.  SIMD/Vector functions \
 # RUN \
     echo "`date` libhwy" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -588,6 +597,7 @@ cd /build && \
     echo "`date` libhwy" >> /build/log.txt && \
 cd /build && \
 # \
+# Used by gdal, mapnik, libvips.  High dynamic range images \
 # RUN \
     echo "`date` openexr" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -602,6 +612,7 @@ cd /build && \
     echo "`date` openexr" >> /build/log.txt && \
 cd /build && \
 # \
+# Used by gdal, mapnik, libvips, openslide, javabridge.  Lossless compression \
 # RUN \
     echo "`date` libbrotli" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -616,6 +627,7 @@ cd /build && \
     echo "`date` libbrotli" >> /build/log.txt && \
 cd /build && \
 # \
+# Used by gdal, mapnik, vips \
 # RUN \
     echo "`date` jpeg-xl" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -630,10 +642,18 @@ cd /build && \
     ldconfig && \
     echo "`date` jpeg-xl" >> /build/log.txt
 
-# PINNED - version 5.2.7 doesn't work with MySQL
+# Used by mysql, gdal, mapnik, openslide, libtiff, glymur
+# PINNED to work with MySQL and with libvips
 RUN \
     echo "`date` xz" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    ## It'd be better to use the most recent \
+    # git clone --depth=1 --single-branch -b v`getver.py xz` -c advice.detachedHead=false https://github.com/tukaani-project/xz.git && \
+    # cd xz && \
+    # mkdir _build && \
+    # cd _build && \
+    # cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF && \
+    ## But that breaks a bunch of packages \
     # curl --retry 5 --silent https://downloads.sourceforge.net/project/lzmautils/xz-`getver.py xz`.tar.gz -L -o xz.tar.gz && \
     curl --retry 5 --silent https://downloads.sourceforge.net/project/lzmautils/xz-5.2.6.tar.gz -L -o xz.tar.gz && \
     mkdir xz && \
@@ -641,6 +661,7 @@ RUN \
     rm -f xz.tar.gz && \
     cd xz && \
     ./configure --silent --prefix=/usr/local --disable-static && \
+    ## This is in common \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -862,23 +883,6 @@ open(path, "w").write(s)' && \
     rm -rf ~/.cache && \
     echo "`date` glymur" >> /build/log.txt
 
-# PINNED VERSION - last of its line
-RUN \
-    echo "`date` pcre" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    curl --retry 5 --silent https://downloads.sourceforge.net/project/pcre/pcre/8.45/pcre-8.45.tar.gz -L -o pcre.tar.gz && \
-    mkdir pcre && \
-    tar -zxf pcre.tar.gz -C pcre --strip-components 1 && \
-    rm -f pcre.tar.gz && \
-    cd pcre && \
-    mkdir _build && \
-    cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DPCRE_BUILD_PCRE16=ON -DPCRE_BUILD_PCRE32=ON -DPCRE_SUPPORT_UNICODE_PROPERTIES=ON -DPCRE_SUPPORT_JIT=ON && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` pcre" >> /build/log.txt
-
 # Used by openslide and libvips
 RUN \
     echo "`date` libffi" >> /build/log.txt && \
@@ -912,6 +916,12 @@ RUN \
     ldconfig && \
     echo "`date` util-linux" >> /build/log.txt
 
+# Build tool
+RUN \
+    echo "`date` meson" >> /build/log.txt && \
+    pip install --no-cache-dir meson && \
+    echo "`date` meson" >> /build/log.txt
+
 # Used by openslide, libvips, and mapnik
 RUN \
     echo "`date` glib" >> /build/log.txt && \
@@ -925,12 +935,6 @@ RUN \
     ninja -j ${JOBS} install && \
     ldconfig && \
     echo "`date` glib" >> /build/log.txt
-
-# Build tool
-RUN \
-    echo "`date` meson" >> /build/log.txt && \
-    pip install --no-cache-dir meson && \
-    echo "`date` meson" >> /build/log.txt
 
 # Used by openslide and libvips
 RUN \
@@ -1321,6 +1325,19 @@ RUN \
     ldconfig && \
     echo "`date` libxml" >> /build/log.txt
 
+# Used by libspatialite
+RUN \
+    echo "`date` librttopo" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b librttopo-`getver.py librttopo` -c advice.detachedHead=false https://git.osgeo.org/gitea/rttopo/librttopo.git && \
+    cd librttopo && \
+    ./autogen.sh && \
+    ./configure --prefix=/usr/local --disable-static && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` librttopo" >> /build/log.txt
+
 # Used by gdal and mapnik
 RUN \
     echo "`date` libspatialite" >> /build/log.txt && \
@@ -1329,9 +1346,9 @@ RUN \
     mkdir libspatialite && \
     cd libspatialite && \
     fossil open ../libspatialite.fossil && \
-    # fossil checkout -f 5808354e84 && \
+    # fossil checkout -f d3aee83d3cbdd296 && \
     rm -f ../libspatialite.fossil && \
-    ./configure --silent --prefix=/usr/local --disable-examples --disable-static --disable-rttopo --disable-gcp && \
+    ./configure --silent --prefix=/usr/local --disable-examples --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1850,7 +1867,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if false; then \
+    if true; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
