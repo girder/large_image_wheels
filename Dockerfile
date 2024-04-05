@@ -991,11 +991,13 @@ RUN \
     ldconfig && \
     echo "`date` libiconv" >> /build/log.txt
 
+# PINNED - xerces-c doesn't work with 75-1
 # Used by gdal, mapnik, openslide, libvips.  Unicode support
 RUN \
     echo "`date` icu4c" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b release-`getver.py icu4c` -c advice.detachedHead=false https://github.com/unicode-org/icu.git && \
+    # git clone --depth=1 --single-branch -b release-`getver.py icu4c` -c advice.detachedHead=false https://github.com/unicode-org/icu.git && \
+    git clone --depth=1 --single-branch -b release-74-2 -c advice.detachedHead=false https://github.com/unicode-org/icu.git && \
     cd icu/icu4c/source && \
     CFLAGS="$CFLAGS -DUNISTR_FROM_CHAR_EXPLICIT=explicit -DUNISTR_FROM_STRING_EXPLICIT=explicit -DU_CHARSET_IS_UTF8=1 -DU_NO_DEFAULT_INCLUDE_UTF_HEADERS=1 -DU_HIDE_OBSOLETE_UTF_OLD_H=1" ./configure --silent --prefix=/usr/local --disable-tests --disable-samples --with-data-packaging=library --disable-static && \
     make --silent -j ${JOBS} && \
@@ -1867,7 +1869,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if true; then \
+    if false; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
@@ -1982,7 +1984,6 @@ open(path, "w").write(s)' && \
     mkdir scripts && \
     cp gdal-utils/osgeo_utils/samples/gdalinfo.py scripts/gdalinfo.py && \
     cp gdal-utils/osgeo_utils/samples/ogrinfo.py scripts/ogrinfo.py && \
-    cp gdal-utils/osgeo_utils/samples/ogr2ogr.py scripts/ogr2ogr.py && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
@@ -2019,7 +2020,7 @@ RUN \
     # Specific checkout \
     # git clone --depth=1000 --single-branch -c advice.detachedHead=false --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
     # cd mapnik && \
-    # git checkout 34c95df2670c1f794ef27b357ba07d716b53cdfe && \
+    # git checkout 7864289291b594a2a3504149219e0f6c1ea14dc5 && \
     # Common \
     git apply --stat --numstat --apply ../mapnik_projection.cpp.patch && \
     sed -i 's/PJ_LOG_ERROR/PJ_LOG_NONE/g' src/*.cpp && \
@@ -2029,12 +2030,13 @@ RUN \
     find plugins -name '*.cpp' -exec sed -i 's/boost::trim_if/boost::algorithm::trim_if/g' {} \; && \
     sed -i 's:#include <algorithm>:#include <algorithm>\n#include <boost/algorithm/string.hpp>:g' plugins/input/csv/csv_utils.cpp && \
     sed -i 's/  xmlError\*/  const xmlError \*/g' src/libxml2_loader.cpp && \
+    sed -i 's:#include <mapnik/image_util.hpp>:#define PSTL_USE_PARALLEL_POLICIES 0\n#define _GLIBCXX_USE_TBB_PAR_BACKEND 0\n#include <mapnik/image_util.hpp>:g' src/image_util.cpp && \
     find . -name '.git' -exec rm -rf {} \+ && \
     # Keeps the docker smaller \
     rm -rf demo test && mkdir test && mkdir demo && touch test/CMakeLists.txt && touch demo/CMakeLists.txt && \
     mkdir _build && \
     cd _build && \
-    CXXFLAGS="-Wno-unused-variable -Wno-unused-but-set-variable -Wno-attributes -Wno-unknown-pragmas -Wno-maybe-uninitialized -Wno-parentheses" \
+    CXXFLAGS="-Wno-unused-variable -Wno-unused-but-set-variable -Wno-attributes -Wno-unknown-pragmas -Wno-maybe-uninitialized -Wno-parentheses -std=c++17" \
     cmake .. \
     -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_BENCHMARK=OFF \
@@ -2276,12 +2278,8 @@ RUN \
     export PATH="$HOME/.cargo/bin:$PATH" && \
     git clone --depth=1 --single-branch -b `getver.py librsvg` -c advice.detachedHead=false https://github.com/GNOME/librsvg.git && \
     cd librsvg && \
-    # sed -i 's/ tests doc win32//g' Makefile.in && \
-    # sed -i 's/install-man install/install/g' Makefile.in && \
+    if false; then \
     export RUSTFLAGS="$RUSTFLAGS -O -C link_args=-Wl,--strip-debug,--strip-discarded,--discard-local" && \
-    # This was needed before librsvg 2.53.1 \
-    # GI_DOCGEN=`which true` \
-    # RST2MAN=`which true` \
     ./autogen.sh && \
     ./configure --silent --prefix=/usr/local --disable-introspection --disable-debug --disable-static && \
     make -j ${JOBS} && \
@@ -2289,6 +2287,15 @@ RUN \
     ldconfig && \
     # rust leaves huge build artifacts that aren't useful to us \
     rm -rf target/release/deps && \
+    true; else \
+    export LDFLAGS="$LDFLAGS,--no-as-needed,-ldl" && \
+    meson setup --prefix=/usr/local --buildtype=release --optimization=3 -Dintrospection=disabled -Ddocs=disabled -Dtests=disabled _build && \
+    meson compile -C _build -j ${JOBS} && \
+    meson install -C _build && \
+    ldconfig && \
+    # rust leaves huge build artifacts that aren't useful to us \
+    rm -rf _build/target/release/deps && \
+    true; fi && \
     find . -name '*.a' -delete && \
     rm -rf /root/.cargo/registry && \
     echo "`date` librsvg" >> /build/log.txt
