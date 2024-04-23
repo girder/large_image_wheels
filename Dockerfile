@@ -2289,7 +2289,7 @@ RUN \
     rm -rf target/release/deps && \
     true; else \
     export LDFLAGS="$LDFLAGS,--no-as-needed,-ldl" && \
-    meson setup --prefix=/usr/local --buildtype=release --optimization=3 -Dintrospection=disabled -Ddocs=disabled -Dtests=disabled _build && \
+    meson setup --prefix=/usr/local --buildtype=release --optimization=3 -Dintrospection=disabled -Ddocs=disabled -Dtests=false _build && \
     meson compile -C _build -j ${JOBS} && \
     meson install -C _build && \
     ldconfig && \

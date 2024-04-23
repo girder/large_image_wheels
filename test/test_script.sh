@@ -35,7 +35,7 @@ pip install --upgrade setuptools
 #   pip install 'pywavelets<1.4'
 # fi
 # pip install libtiff openslide_python pyvips GDAL mapnik -f /wheels
-pip install 'pylibtiff ; python_version < "3.8"' --find-links https://girder.github.io/large_image_wheels
+pip install 'pylibtiff; python_version < "3.8"' 'gdal; python_version < "3.8"' --find-links https://girder.github.io/large_image_wheels
 echo 'Test installing pyvips and other dependencies from wheels via large_image'
 pip install 'large-image[openslide,gdal,mapnik,bioformats,memcached,tiff,openjpeg,vips,converter]' -f ${1:-/wheels}
 
