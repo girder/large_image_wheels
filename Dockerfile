@@ -712,6 +712,7 @@ RUN \
 RUN \
     echo "`date` pylibtiff" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    pip install -U setuptools-scm && \
     git clone --depth=1 --single-branch -b v`getver.py pylibtiff` -c advice.detachedHead=false https://github.com/pearu/pylibtiff.git && \
     cd pylibtiff && \
     mkdir libtiff/bin && \
@@ -1570,7 +1571,8 @@ RUN \
 RUN \
     echo "`date` mysql" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://cdn.mysql.com/Downloads/MySQL-`getver.py mysql 2`/mysql-boost-`getver.py mysql`.tar.gz -L -o mysql.tar.gz && \
+    # curl --retry 5 --silent https://cdn.mysql.com/Downloads/MySQL-`getver.py mysql 2`/mysql-boost-`getver.py mysql`.tar.gz -L -o mysql.tar.gz && \
+    curl --retry 5 --silent https://cdn.mysql.com/Downloads/MySQL-`getver.py mysql 2`/mysql-`getver.py mysql`.tar.gz -L -o mysql.tar.gz && \
     mkdir mysql && \
     tar -zxf mysql.tar.gz -C mysql --strip-components 1 && \
     rm -f mysql.tar.gz && \

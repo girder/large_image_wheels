@@ -337,7 +337,8 @@ Packages = {
     # },
     'mysql': {
         'filelist': 'https://dev.mysql.com/downloads/mysql/?tpl=version&os=src',
-        're': r'mysql-boost-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)(&|$)',
+        # 're': r'mysql-boost-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)(&|$)',
+        're': r'mysql-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)(&|$)',
     },
     'netcdf': {
         'git': 'https://github.com/Unidata/netcdf-c.git',
