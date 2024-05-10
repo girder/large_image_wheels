@@ -11,6 +11,7 @@ WORKDIR /build
 
 RUN \
     echo "`date` yum install" >> /build/log.txt && \
+    rm /etc/yum/pluginconf.d/fastestmirror.conf && \
     yum install -y \
     # for strip-nondeterminism \
     cpanminus \
@@ -78,6 +79,8 @@ RUN \
     ln -s /opt/python/* /opt/py/. && \
     # Enable all versions in boost as well \
     rm -rf /opt/py/cp36* && \
+    # javabridge doesn't work with 3.13 yet \
+    rm -rf /opt/py/cp313* && \
     if [ "$PYPY" = true ]; then \
     echo "Only building pypy versions" && \
     rm -rf /opt/py/cp* && \
@@ -1076,7 +1079,9 @@ RUN \
     echo "using python : 3.10 : /opt/py/cp310-cp310/bin/python : /opt/py/cp310-cp310/include/python3.10 : /opt/py/cp310-cp310/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.11 : /opt/py/cp311-cp311/bin/python : /opt/py/cp311-cp311/include/python3.11 : /opt/py/cp311-cp311/lib ;" >> tools/build/src/user-config.jam && \
     echo "using python : 3.12 : /opt/py/cp312-cp312/bin/python : /opt/py/cp312-cp312/include/python3.12 : /opt/py/cp312-cp312/lib ;" >> tools/build/src/user-config.jam && \
+    # echo "using python : 3.13 : /opt/py/cp313-cp313/bin/python : /opt/py/cp313-cp313/include/python3.13 : /opt/py/cp313-cp313/lib ;" >> tools/build/src/user-config.jam && \
     export PYTHON_LIST="3.7,3.8,3.9,3.10,3.11,3.12" && \
+    # export PYTHON_LIST="3.7,3.8,3.9,3.10,3.11,3.12,3.13" && \
     true; \
     fi && \
     ./bootstrap.sh --prefix=/usr/local --with-toolset=gcc variant=release && \
@@ -1871,7 +1876,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if false; then \
+    if true; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
