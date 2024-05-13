@@ -11,7 +11,8 @@ WORKDIR /build
 
 RUN \
     echo "`date` yum install" >> /build/log.txt && \
-    rm /etc/yum/pluginconf.d/fastestmirror.conf && \
+    # If one of the mirrors is broken, don't check mirrors \
+    # rm /etc/yum/pluginconf.d/fastestmirror.conf && \
     yum install -y \
     # for strip-nondeterminism \
     cpanminus \
@@ -373,7 +374,7 @@ open(path, "w").write(data)' && \
 RUN \
     echo "`date` numpy" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" install --no-cache-dir --root-user-action=ignore oldest-supported-numpy' && \
+    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" install --no-cache-dir --root-user-action=ignore '\''oldest-supported-numpy; python_version < "3.9"'\'' '\''numpy; python_version >= "3.9"'\''' && \
     echo "`date` numpy" >> /build/log.txt
 
 # # Build psutil for Python versions not published on pypi
@@ -768,6 +769,7 @@ s = s.replace( \n\
     libtiff = None if lib is None else ctypes.cdll.LoadLibrary(lib)""") \n\
 s = s.replace("""print("Not trying""", """# print("Not trying""") \n\
 open(path, "w").write(s)' && \
+    sed -i 's/'\''oldest-supported-numpy'\''/'\''oldest-supported-numpy; python_version < "3.9"'\'', '\''numpy; python_version >= "3.9"'\''/g' pyproject.toml && \
     # We need numpy present in the default python to check the header. \
     # Ensure the correct header records.  This will generate a missing header \
     # companion file \
@@ -783,15 +785,7 @@ open(path, "w").write(s)' && \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     for PYBIN in /opt/py/*/bin/; do \
-      python -c $'# \n\
-import numpy \n\
-import re \n\
-numpyver = ".".join(numpy.__version__.split(".")[:2]) \n\
-path = "setup.py" \n\
-s = open(path).read() \n\
-s = re.sub(\n\
-  r"install_requires=.*,", "install_requires=[\'numpy>='" + numpyver + r"$'\'],", s) \n\
-open(path, "w").write(s)' && \
+      rm -rf build || true && \
       "${PYBIN}/python" -c 'import libtiff' || true && \
       "${PYBIN}/pip" wheel --no-deps . -w /io/wheelhouse; \
     done && \
@@ -848,34 +842,6 @@ s = s.replace(\'"0.12.9"\', \'"0.12.9.post1"\') \n\
 open(path, "w").write(s)' && \
     # Import a premade setup.py \
     cp ../glymur.setup.py ./setup.py && rm -f setup.cfg && rm -f pyproject.toml && \
-    # Don't convert the old one; it no longer exists \
-#     python -c $'# \n\
-# path = "setup.py" \n\
-# s = open(path).read() \n\
-# s = s.replace("\'numpy>=1.7.1\', ", "") \n\
-# s = s.replace("from setuptools import setup", \n\
-# """from setuptools import setup \n\
-# import os \n\
-# from distutils.core import Extension""") \n\
-# s = s.replace(", \'tests\'", "") \n\
-# s = s.replace("\'test_suite\': \'glymur.test\'", \n\
-# """\'test_suite\': \'glymur.test\', \n\
-# \'ext_modules\': [Extension(\'glymur.openjpeg\', [], libraries=[\'openjp2\'])]""") \n\
-# s = s.replace("\'data/*.jpx\'", "\'data/*.jpx\', \'bin/*\'") \n\
-# s = s.replace("\'console_scripts\': [", \n\
-# """\'console_scripts\': [\'%s=glymur.bin:program\' % name for name in os.listdir(\'glymur/bin\') if not name.endswith(\'.py\')] + [""") \n\
-# open(path, "w").write(s)' && \
-    # It would be better to use the setup.cfg, but the extensions seem to be an issue \
-#     python -c $'# \n\
-# import os \n\
-# path = "setup.cfg" \n\
-# s = open(path).read() \n\
-# s = s.replace("data/*.j2k", \n\
-# """data/*.j2k \n\
-#     bin/*""") \n\
-# s = s.replace("console_scripts =", \n\
-# "console_scripts =" + "".join("\\n\\t%s=glymur.bin:program" % name for name in os.listdir(\'glymur/bin\') if not name.endswith(\'.py\'))) \n\
-# open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
@@ -1092,11 +1058,11 @@ RUN \
     --with-regex \
     --with-atomic \
     --with-system \
-    --with-python \
     --with-program_options \
-    python="$PYTHON_LIST" \
     cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable -Wno-parentheses -Wno-maybe-uninitialized -Wno-attributes" \
     install && \
+    # --with-python \
+    # python="$PYTHON_LIST" \
     # pypy \
     # This conflicts with the non-pypy version \
     # echo "" > tools/build/src/user-config.jam && \
@@ -1318,12 +1284,14 @@ RUN \
     ldconfig && \
     echo "`date` libgeos" >> /build/log.txt
 
+# PINNED - librasterlite2 doesn't work with 2.13.0
 # Used by gdal, mapnik, openslide, libvips
 RUN \
     echo "`date` libxml" >> /build/log.txt && \
     export JOBS=`nproc` && \
     rm -rf libxml2* && \
-    git clone --depth=1 --single-branch -b v`getver.py libxml2` -c advice.detachedHead=false https://github.com/GNOME/libxml2.git && \
+    # git clone --depth=1 --single-branch -b v`getver.py libxml2` -c advice.detachedHead=false https://github.com/GNOME/libxml2.git && \
+    git clone --depth=1 --single-branch -b v2.12.7 -c advice.detachedHead=false https://github.com/GNOME/libxml2.git && \
     cd libxml2 && \
     mkdir _build && \
     cd _build && \
@@ -1876,7 +1844,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if true; then \
+    if false; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
@@ -2027,7 +1995,7 @@ RUN \
     # Specific checkout \
     # git clone --depth=1000 --single-branch -c advice.detachedHead=false --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
     # cd mapnik && \
-    # git checkout 7864289291b594a2a3504149219e0f6c1ea14dc5 && \
+    # git checkout 34bb44e49050196fbf5a37426b0e0b7c9fd4fdda && \
     # Common \
     git apply --stat --numstat --apply ../mapnik_projection.cpp.patch && \
     sed -i 's/PJ_LOG_ERROR/PJ_LOG_NONE/g' src/*.cpp && \
@@ -2059,12 +2027,11 @@ RUN \
     ldconfig && \
     echo "`date` mapnik" >> /build/log.txt
 
-# PINNED - updates break patches but don't build directly
 RUN \
     echo "`date` python-mapnik" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # master \
-    git clone --depth=1 --single-branch -c advice.detachedHead=false --quiet -j ${JOBS} https://github.com/mapnik/python-mapnik.git && \
+    git clone --depth=1 --single-branch -c advice.detachedHead=false --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/python-mapnik.git && \
     cd python-mapnik && \
     # specific checkout \
     # git clone --depth=100 --single-branch -c advice.detachedHead=false --quiet -j ${JOBS} https://github.com/mapnik/python-mapnik.git && \
@@ -2075,13 +2042,13 @@ RUN \
     # Copy the mapnik input sources and fonts to the python path and add them \
     # via setup.py.  Modify the paths.py file that gets created to refer to \
     # the relative location of these files. \
-    cp -r /usr/local/lib/mapnik/* mapnik/. && \
-    cp -r /usr/local/share/{proj,gdal} mapnik/. && \
-    mkdir mapnik/bin && \
-    cp /usr/local/bin/{mapnik-render,mapnik-index,shapeindex} mapnik/bin/. && \
-    strip mapnik/bin/* --strip-unneeded -p -D && \
+    cp -r /usr/local/lib/mapnik/* packaging/mapnik/. && \
+    cp -r /usr/local/share/{proj,gdal} packaging/mapnik/. && \
+    mkdir packaging/mapnik/bin && \
+    cp /usr/local/bin/{mapnik-render,mapnik-index,shapeindex} packaging/mapnik/bin/. && \
+    strip packaging/mapnik/bin/* --strip-unneeded -p -D && \
     python -c $'# \n\
-path = "mapnik/bin/__init__.py" \n\
+path = "packaging/mapnik/bin/__init__.py" \n\
 s = """import os \n\
 import sys \n\
 \n\
@@ -2096,7 +2063,7 @@ def program(): \n\
 """ \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
-path = "mapnik/__init__.py" \n\
+path = "packaging/mapnik/__init__.py" \n\
 s = open(path).read().replace( \n\
     "def bootstrap_env():", \n\
 """ \n\
@@ -2106,22 +2073,23 @@ os.environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal")) \n\
 \n\
 def bootstrap_env():""") \n\
 open(path, "w").write(s)' && \
+    python -c $'# \n\
+path = "pyproject.toml" \n\
+s = open(path).read() \n\
+s = s.replace(".beta", "") \n\
+s = s.replace("authors", "dynamic = [\\"scripts\\"]\\nauthors") \n\
+open(path, "w").write(s)' && \
+    sed -i 's/AsLongLong/AsLong/g' src/mapnik_value_converter.hpp && \
+    sed -i 's/\.def(py::self == py::self)/\/\/ .def(py::self == py::self)/g' src/mapnik_datasource.cpp && \
+    sed -i 's/\.def_property_readonly("symbolizers", \&rule::get_symbolizers)/.def_property_readonly("symbolizers", \&rule::get_symbolizers).def_property_readonly("symbols", \&rule::get_symbolizers)/g' src/mapnik_rule.cpp && \
+    sed -i 's/handle.cast<mapnik::value_integer>();/handle.cast<mapnik::value_integer>();}else if (py::isinstance<py::none>(handle)) {/g' src/create_datasource.hpp && \
+    sed -i 's/to_string3)/to_string3).def("tostring",\&to_string1).def("tostring",\&to_string2).def("tostring",\&to_string3)/g' src/mapnik_image.cpp && \
     # Apply a patch and set variables to work with the cmake build of mapnik \
     git apply --stat --numstat --apply ../mapnik_setup.py.patch && \
-    sed -i 's/PyUnicode_FromUnicode(/PyUnicode_FromKindAndData(PyUnicode_1BYTE_KIND, /g' src/python_grid_utils.cpp && \
-    export CC=c++ && \
-    export CXX=c++ && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    if [ "$PYPY" = true ]; then \
-    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c 'export WORKDIR=/tmp/python-mapnik-`basename ${0}`; mkdir -p $WORKDIR; cp -r . $WORKDIR/.; pushd $WORKDIR; BOOST_PYTHON_LIB=`"${0}/bin/python" -c "import sys;sys.stdout.write('\''boost_python'\''+str(sys.version_info.major)+str(sys.version_info.minor))"` "${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && popd && rm -rf $WORKDIR' && \
-    true; \
-    else \
-    # Exclude pypy, since boost-python isn't using it \
-    find /opt/py -mindepth 1 -not -name '*pp*' -print0 | xargs -n 1 -0 -P ${JOBS} bash -c 'export WORKDIR=/tmp/python-mapnik-`basename ${0}`; mkdir -p $WORKDIR; cp -r . $WORKDIR/.; pushd $WORKDIR; BOOST_PYTHON_LIB=`"${0}/bin/python" -c "import sys;sys.stdout.write('\''boost_python'\''+str(sys.version_info.major)+str(sys.version_info.minor))"` "${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && popd && rm -rf $WORKDIR' && \
-    true; \
-    fi && \
+    find /opt/py -mindepth 1 -not -name '*p37-*' -print0 | xargs -n 1 -0 -P ${JOBS} bash -c 'export WORKDIR=/tmp/python-mapnik-`basename ${0}`; mkdir -p $WORKDIR; cp -r . $WORKDIR/.; pushd $WORKDIR; "${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && popd && rm -rf $WORKDIR' && \
     find /io/wheelhouse/ -name 'mapnik*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'mapnik*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'mapnik*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \

@@ -1,52 +1,9 @@
 diff --git a/setup.py b/setup.py
-index 9985da5..57cba59 100755
+index 9b73f01..98df3bc 100755
 --- a/setup.py
 +++ b/setup.py
-@@ -84,22 +84,26 @@ class WhichBoostCommand(Command):
-         print("\n".join(get_boost_library_names()))
- 
- 
--cflags = sysconfig.get_config_var('CFLAGS')
--sysconfig._config_vars['CFLAGS'] = re.sub(
--    ' +', ' ', cflags.replace('-g ', '').replace('-Os', '').replace('-arch i386', ''))
--opt = sysconfig.get_config_var('OPT')
--sysconfig._config_vars['OPT'] = re.sub(
--    ' +', ' ', opt.replace('-g ', '').replace('-Os', ''))
--ldshared = sysconfig.get_config_var('LDSHARED')
--sysconfig._config_vars['LDSHARED'] = re.sub(
--    ' +', ' ', ldshared.replace('-g ', '').replace('-Os', '').replace('-arch i386', ''))
--ldflags = sysconfig.get_config_var('LDFLAGS')
--sysconfig._config_vars['LDFLAGS'] = re.sub(
--    ' +', ' ', ldflags.replace('-g ', '').replace('-Os', '').replace('-arch i386', ''))
--pycflags = sysconfig.get_config_var('PY_CFLAGS')
--sysconfig._config_vars['PY_CFLAGS'] = re.sub(
--    ' +', ' ', pycflags.replace('-g ', '').replace('-Os', '').replace('-arch i386', ''))
--sysconfig._config_vars['CFLAGSFORSHARED'] = ''
-+try:
-+    cflags = sysconfig.get_config_var('CFLAGS')
-+    sysconfig._config_vars['CFLAGS'] = re.sub(
-+        ' +', ' ', cflags.replace('-g ', '').replace('-Os', '').replace('-arch i386', ''))
-+    opt = sysconfig.get_config_var('OPT')
-+    sysconfig._config_vars['OPT'] = re.sub(
-+        ' +', ' ', opt.replace('-g ', '').replace('-Os', ''))
-+    ldshared = sysconfig.get_config_var('LDSHARED')
-+    sysconfig._config_vars['LDSHARED'] = re.sub(
-+        ' +', ' ', ldshared.replace('-g ', '').replace('-Os', '').replace('-arch i386', ''))
-+    ldflags = sysconfig.get_config_var('LDFLAGS')
-+    sysconfig._config_vars['LDFLAGS'] = re.sub(
-+        ' +', ' ', ldflags.replace('-g ', '').replace('-Os', '').replace('-arch i386', ''))
-+    pycflags = sysconfig.get_config_var('PY_CFLAGS')
-+    sysconfig._config_vars['PY_CFLAGS'] = re.sub(
-+        ' +', ' ', pycflags.replace('-g ', '').replace('-Os', '').replace('-arch i386', ''))
-+    sysconfig._config_vars['CFLAGSFORSHARED'] = ''
-+
-+except Exception:
-+    pass
- os.environ['ARCHFLAGS'] = ''
- 
- if os.environ.get("MASON_BUILD", "false") == "true":
-@@ -113,22 +117,17 @@ else:
- 
+@@ -13,22 +13,16 @@ def check_output(args):
+      return output.rstrip('\n')
  
  linkflags = []
 -lib_path = os.path.join(check_output([mapnik_config, '--prefix']),'lib')
@@ -54,15 +11,14 @@ index 9985da5..57cba59 100755
 -linkflags.extend(check_output([mapnik_config, '--ldflags']).split(' '))
 -linkflags.extend(check_output([mapnik_config, '--dep-libs']).split(' '))
 -linkflags.extend([
--'-lmapnik-wkt',
--'-lmapnik-json',
--] + ['-l%s' % i for i in get_boost_library_names()])
+-    '-lmapnik-wkt',
+-    '-lmapnik-json',
+-])
 +lib_path = check_output(['pkg-config', 'libmapnik', '--variable', 'libdir'])
 +linkflags.extend(check_output(['pkg-config', 'libmapnik', '--libs']).split(' '))
-+linkflags.extend(['-l%s' % i for i in get_boost_library_names()])
  
  # Dynamically make the mapnik/paths.py file
- f_paths = open('mapnik/paths.py', 'w')
+ f_paths = open('packaging/mapnik/paths.py', 'w')
  f_paths.write('import os\n')
  f_paths.write('\n')
  
@@ -71,9 +27,9 @@ index 9985da5..57cba59 100755
 +input_plugin_path = os.path.join(lib_path, 'mapnik', 'input')
 +font_path = os.path.join(lib_path, 'mapnik', 'fonts')
  
- if mason_build:
-     try:
-@@ -181,6 +180,12 @@ else:
+ if os.environ.get('LIB_DIR_NAME'):
+     mapnik_lib_path = lib_path + os.environ.get('LIB_DIR_NAME')
+@@ -39,12 +33,16 @@ else:
          "inputpluginspath = '{path}'\n".format(path=input_plugin_path))
      f_paths.write(
          "fontscollectionpath = '{path}'\n".format(path=font_path))
@@ -82,30 +38,37 @@ index 9985da5..57cba59 100755
 +    f_paths.write("mapniklibpath = os.path.normpath(mapniklibpath)\n")
 +    f_paths.write("inputpluginspath = os.path.join(localpath, 'input')\n")
 +    f_paths.write("fontscollectionpath = os.path.join(localpath, 'fonts')\n")
-+
      f_paths.write(
          "__all__ = [mapniklibpath,inputpluginspath,fontscollectionpath]\n")
      f_paths.close()
-@@ -223,9 +228,7 @@ if mason_build:
-         except shutil.Error:
-             pass
  
 -extra_comp_args = check_output([mapnik_config, '--cflags']).split(' ')
--
 -extra_comp_args = list(filter(lambda arg: arg != "-fvisibility=hidden", extra_comp_args))
 +extra_comp_args = check_output(['pkg-config', 'libmapnik', '--cflags']).split(' ')
  
- if os.environ.get("PYCAIRO", "false") == "true":
-     try:
-@@ -267,9 +271,10 @@ setup(
-         'nose',
-     ],
-     package_data={
--        'mapnik': ['lib/*.*', 'lib/*/*/*', 'share/*/*'],
-+        'mapnik': ['lib/*.*', 'lib/*/*/*', 'share/*/*', 'input/*', 'fonts/*', 'proj/*', 'gdal/*', 'bin/*'],
-     },
-     test_suite='nose.collector',
-+    entry_points={'console_scripts': ['%s=mapnik.bin:program' % name for name in os.listdir('mapnik/bin') if not name.endswith('.py')]},
-     cmdclass={
-         'whichboost': WhichBoostCommand,
-     },
+ if sys.platform == 'darwin':
+      pass
+@@ -112,9 +110,9 @@ ext_modules = [
+ ]
+ 
+ if os.environ.get("CC", False) == False:
+-    os.environ["CC"] = check_output([mapnik_config, '--cxx'])
++    os.environ["CC"] = 'c++'
+ if os.environ.get("CXX", False) == False:
+-    os.environ["CXX"] = check_output([mapnik_config, '--cxx'])
++    os.environ["CXX"] = 'c++'
+ 
+ setup(
+      name="mapnik",
+@@ -122,9 +120,10 @@ setup(
+      packages=find_packages(where="packaging"),
+      package_dir={"": "packaging"},
+      package_data={
+-          'mapnik': ['lib/*.*', 'lib/*/*/*', 'share/*/*'],
++	  'mapnik': ['lib/*.*', 'lib/*/*/*', 'share/*/*', 'input/*', 'fonts/*', 'proj/*', 'gdal/*', 'bin/*'],
+      },
+      ext_modules=ext_modules,
++     entry_points={'console_scripts': ['%s=mapnik.bin:program' % name for name in os.listdir('packaging/mapnik/bin') if not name.endswith('.py')]},
+      #extras_require={"test": "pytest"},
+      cmdclass={"build_ext": build_ext},
+      #zip_safe=False,

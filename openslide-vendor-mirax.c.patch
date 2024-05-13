@@ -1,5 +1,5 @@
 diff --git a/src/openslide-vendor-mirax.c b/src/openslide-vendor-mirax.c
-index c79b4a3..bfb6f34 100644
+index ffc03b3..b8f46e6 100644
 --- a/src/openslide-vendor-mirax.c
 +++ b/src/openslide-vendor-mirax.c
 @@ -32,6 +32,7 @@
@@ -33,7 +33,7 @@ index c79b4a3..bfb6f34 100644
 +        g_prefix_error(err, "Couldn't fseek %s: ", data->datafile_paths[image->fileno]);
 +        return false;
 +      }
-+      buflen = _openslide_fread(f, buf, image->length);
++      buflen = _openslide_fread_exact(f, buf, image->length, NULL);
 +      result = _openslide_jp2k_decode_buffer(
 +          dest, w, h,
 +          buf, buflen, OPENSLIDE_JP2K_RGB, err);
@@ -60,7 +60,7 @@ index c79b4a3..bfb6f34 100644
    if (!_openslide_fexists(slidedat_path, &tmp_err)) {
      if (tmp_err != NULL) {
        g_propagate_prefixed_error(err, tmp_err, "Testing whether %s exists: ",
-@@ -975,6 +1005,8 @@ static enum image_format parse_image_format(const char *name, GError **err) {
+@@ -973,6 +1003,8 @@ static enum image_format parse_image_format(const char *name, GError **err) {
      return FORMAT_PNG;
    } else if (!strcmp(name, "BMP24")) {
      return FORMAT_BMP;
@@ -69,7 +69,7 @@ index c79b4a3..bfb6f34 100644
    } else {
      g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
                  "Unrecognized image format: %s", name);
-@@ -1361,8 +1393,10 @@ static int get_associated_image_nonhier_offset(GKeyFile *keyfile,
+@@ -1359,8 +1391,10 @@ static int get_associated_image_nonhier_offset(GKeyFile *keyfile,
    // verify image format
    // we have only ever seen JPEG
    if (parse_image_format(format, NULL) != FORMAT_JPEG) {
@@ -80,7 +80,7 @@ index c79b4a3..bfb6f34 100644
      return -1;
    }
  
-@@ -1375,10 +1409,22 @@ static bool mirax_open(openslide_t *osr, const char *filename,
+@@ -1373,10 +1407,22 @@ static bool mirax_open(openslide_t *osr, const char *filename,
    // get directory from filename
    g_autofree char *dirname =
      g_strndup(filename, strlen(filename) - strlen(MRXS_EXT));
@@ -104,7 +104,7 @@ index c79b4a3..bfb6f34 100644
    // hash the slidedat
    if (!_openslide_hash_file(quickhash1, slidedat_path, err)) {
      return false;
-@@ -1411,7 +1457,7 @@ static bool mirax_open(openslide_t *osr, const char *filename,
+@@ -1409,7 +1455,7 @@ static bool mirax_open(openslide_t *osr, const char *filename,
    READ_KEY_OR_FAIL(objective_magnification, slidedat, GROUP_GENERAL,
                     KEY_OBJECTIVE_MAGNIFICATION, integer);
  
@@ -113,7 +113,7 @@ index c79b4a3..bfb6f34 100644
    int image_divisions =
      g_key_file_get_integer(slidedat, GROUP_GENERAL,
                             KEY_CAMERA_IMAGE_DIVISIONS_PER_SIDE, &tmp_err);
-@@ -1501,7 +1547,7 @@ static bool mirax_open(openslide_t *osr, const char *filename,
+@@ -1499,7 +1545,7 @@ static bool mirax_open(openslide_t *osr, const char *filename,
      g_autofree char *key = g_strdup_printf(KEY_d_FILE, i);
      g_autofree char *name = NULL;
      READ_KEY_OR_FAIL(name, slidedat, GROUP_DATAFILE, key, value);
@@ -122,7 +122,7 @@ index c79b4a3..bfb6f34 100644
    }
  
    // load data from all slide_zoom_level_section_names sections
-@@ -1626,7 +1672,7 @@ static bool mirax_open(openslide_t *osr, const char *filename,
+@@ -1624,7 +1670,7 @@ static bool mirax_open(openslide_t *osr, const char *filename,
    */
  
    // read indexfile
