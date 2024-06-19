@@ -570,12 +570,10 @@ RUN \
     echo "`date` libdeflate" >> /build/log.txt
 
 # Used in gdal, mapnik, libvips, openslide, glymur.  Image compression format
-# PINNED - version 4.x causes segfaults in libvips in some manner on CircleCI
 RUN \
     echo "`date` lerc" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    # git clone --depth=1 --single-branch -b v`getver.py lerc` -c advice.detachedHead=false https://github.com/Esri/lerc.git && \
-    git clone --depth=1 --single-branch -b v3.0 -c advice.detachedHead=false https://github.com/Esri/lerc.git && \
+    git clone --depth=1 --single-branch -b v`getver.py lerc` -c advice.detachedHead=false https://github.com/Esri/lerc.git && \
     cd lerc && \
     mkdir _build && \
     cd _build && \
@@ -1844,7 +1842,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if false; then \
+    if true; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
@@ -2355,7 +2353,6 @@ RUN \
     ldconfig && \
     echo "`date` libexif" >> /build/log.txt
 
-# PINNED - 8.15 breaks writing pyramids (see
 # https://github.com/libvips/libvips/issues/3808), so using master.  This
 # should be fixed in 8.15.2
 RUN \
