@@ -30,6 +30,8 @@ fi
 python --version
 pip install --upgrade pip
 pip install --upgrade setuptools
+pip uninstall -y numpy scipy
+pip cache purge || true
 # echo 'Test installing all libraries from wheels'
 # if python -c 'import sys;sys.exit(not (sys.version_info[2] != (3, 7)))'; then
 #   pip install 'pywavelets<1.4'
@@ -272,7 +274,7 @@ fi
 # imported before gdal, gdal fails with the error:
 #   ImportError: /usr/lib/x86_64-linux-gnu/libstdc++.so.6: cannot allocate
 #   memory in static TLS block
-if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 8)))'; then
+if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 8) and sys.version_info < (3, 12)))'; then
 echo 'Test import order with pytorch, gdal, and pyproj'
 if pip install 'torch<2'; then (
 python -c 'import osgeo.gdal;import torch;import pyproj;print(pyproj.Proj("epsg:4326"))'

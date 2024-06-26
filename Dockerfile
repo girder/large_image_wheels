@@ -11,8 +11,6 @@ WORKDIR /build
 
 RUN \
     echo "`date` yum install" >> /build/log.txt && \
-    # If one of the mirrors is broken, don't check mirrors \
-    # rm /etc/yum/pluginconf.d/fastestmirror.conf && \
     yum install -y \
     # for strip-nondeterminism \
     cpanminus \
@@ -1842,7 +1840,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if true; then \
+    if false; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
