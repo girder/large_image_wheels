@@ -4,7 +4,7 @@ bioformats 7.3.0
 blosc 1.21.6
 boost 1.85.0
 cairo 1.18.0
-cmake 3.29.6
+cmake 3.30.0
 curl 8_8_0
 cyrus-sasl 2.1.28
 fftw3 3.3.10
@@ -17,13 +17,13 @@ fyba f17e23dfd894d2a63cda1dd706d66f8e6e33e255
 fyba-release 4.1.1
 gdal 3.9.1
 gdal-pypi 3.9.1
-gdal-sha e179609a8f52283c396f0a2e508ea2ffedaae0ad
+gdal-sha c89aeb430754a637b6687f836859835760456802
 gdal-source 3.10.0
 gdk-pixbuf 2.42.12
 giflib 5.2.2
 glib 2.81.0
-glymur 0.13.3
-glymur-pypi 0.13.3
+glymur 0.13.4
+glymur-pypi 0.13.4
 gobject-introspection 1.80.1
 harfbuzz 9.0.0
 hdf4 4_2_16
@@ -32,6 +32,7 @@ icu4c 75-1
 imagemagick 7.1.1-34
 jbigkit 2.1
 jpeg-xl 0.10.3
+kealib 1.5.3
 krb5 1.21.3
 lapack 3.12.0
 lcms2 2.16
@@ -53,6 +54,7 @@ libiconv 1.17
 libimagequant 4.3.1
 libjpeg-turbo 3.0.3
 libmemcached 1.0.19
+libnsl 2.0.1
 libpng 1.6.43
 libpsl 0.21.5
 librasterlite2 00cef3dac9
@@ -62,10 +64,11 @@ librttopo 1.1.0
 libspatialite 39ad6f1ed3
 libssh2 1.11.0
 libtiff 4.6.0
+libtirpc 1-2-6
 libvips 8.15.2
 libwebp 1.4.0
 libxcrypt 4.4.36
-libxml2 2.13.1
+libxml2 2.13.2
 libzip 1.10.1
 lz4 1.9.4
 manylinux2014 b8a442f00c20eaf830f45ccef3f21e12b561238e2af61abffca014f3a34590f6
@@ -114,9 +117,9 @@ pyvips-pypi 2.2.3
 sqlite 2024.3460000
 strip-nondeterminism 0.042
 superlu 6.0.1
-util-linux 2.40.1
+util-linux 2.40.2
 xerces-c 3.2.5
 xz 5.6.2
 zlib 1.3.1
-zlib-ng 2.2.0
+zlib-ng 2.2.1
 zstd 1.5.6

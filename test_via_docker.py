@@ -6,24 +6,33 @@ import subprocess
 import sys
 import threading
 
-containers = [
-    'python:3.7-slim',
-    'python:3.8-slim',
-    'python:3.9-slim',
-    'python:3.10-slim',
-    'python:3.11-slim',
-    'python:3.12-slim',
+containers = {
+    'python:3.7-slim': [],
+    'python:3.8-slim': [],
+    'python:3.9-slim': [],
+    'python:3.10-slim': [],
+    'python:3.11-slim': [],
+    'python:3.12-slim': [],
+    # -- centos
     # See https://github.com/molinav/docker-pyenv for some additional images
-    # 'centos/python-36-centos7',
-    # 'molinav/pyenv:3.7-centos-7',
-    'centos/python-38-centos7',
-    'molinav/pyenv:3.9-centos-7',
-    # 'molinav/pyenv:3.6-opensuse-15.3',
-    # 'molinav/pyenv:3.7-opensuse-15.3',
-    # 'molinav/pyenv:3.8-opensuse-15.3',
-    # 'molinav/pyenv:3.9-opensuse-15.3',
-    # 'pypy:3.7',
-]
+    # 'molinav/pyenv:3.7-centos-7': [],
+    'centos/python-38-centos7 3.8': [],
+    'molinav/pyenv:3.9-centos-7': [],
+    # -- opensuse
+    # 'molinav/pyenv:3.7-opensuse-15.3': [],
+    # 'molinav/pyenv:3.8-opensuse-15.3': [],
+    # 'molinav/pyenv:3.9-opensuse-15.3': [],
+    # -- pypy
+    # 'pypy:3.7': [],
+    # 'pypy:3.8': [],
+    # 'pypy:3.9': [],
+    # 'pypy:3.10': [],
+    # -- manylinux_2_28
+    # 'almalinux:8 3.8': ['yum install -y python38-pip'],
+    # 'almalinux:8 3.9': ['yum install -y python39-pip'],
+    'almalinux:8 3.11': ['yum install -y python3.11-pip'],
+    # 'almalinux:8 3.12': ['yum install -y python3.12-pip'],
+}
 
 
 # Without parallelism, this is much simpler:
@@ -43,17 +52,22 @@ containers = [
 # print('Passed')
 
 
-def test_container(container, entry, full):
+def test_container(container, entry, full, subcmds=None):
     lock = entry['lock']
     result = entry['out']
     with lock:
         entry['status'] = 'started'
+    if subcmds is None:
+        subcmds = []
+    subcmds.append('bash /test/test_script.sh')
+    if full:
+        subcmds.append('bash /test/li_script.sh')
     cmd = [
         'docker', 'run',
         '-v', '%s/wheels:/wheels' % os.path.dirname(os.path.realpath(__file__)),
         '-v', '%s/test:/test' % os.path.dirname(os.path.realpath(__file__)),
         '--rm', container, 'bash', '-e', '-c',
-        'bash /test/test_script.sh' + ('' if not full else ' && bash /test/li_script.sh'),
+        ' && '.join(subcmds),
     ]
     # cmd += sys.argv[1:]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -81,7 +95,7 @@ if __name__ == '__main__':
         if len(sys.argv) > 1 and sys.argv[1] not in container:
             continue
         entry = {'out': [], 'lock': threading.Lock(), 'status': 'queued', 'container': container}
-        result = pool.apply_async(test_container, (container, entry, full))
+        result = pool.apply_async(test_container, (container.split()[0], entry, full, containers[container]))
         entry['result'] = result
         results.append(entry)
     pool.close()

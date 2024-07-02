@@ -155,6 +155,10 @@ Packages = {
         'git': 'https://github.com/libjxl/libjxl.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
+    'kealib': {
+        'git': 'https://github.com/ubarsc/kealib.git',
+        're': r'kealib-([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
     'krb5': {
         'git': 'https://github.com/krb5/krb5.git',
         're': r'krb5-([0-9]+\.[0-9]+(|\.[0-9]+))-final$',
@@ -243,6 +247,10 @@ Packages = {
         'git': 'https://github.com/memcachier/libmemcached.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
+    'libnsl': {
+        'git': 'https://github.com/thkukuk/libnsl.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
     'libpng': {
         'git': 'https://github.com/glennrp/libpng.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
@@ -280,6 +288,10 @@ Packages = {
     'libtiff': {
         'git': 'https://gitlab.com/libtiff/libtiff.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
+    'libtirpc': {
+        'git': 'https://github.com/alisw/libtirpc.git',
+        're': r'libtirpc-([0-9]+-[0-9]+(|-[0-9]+(|-rc[0-9]+)))$',
     },
     'libvips': {
         'git': 'https://github.com/libvips/libvips.git',

@@ -902,6 +902,32 @@ RUN \
     ldconfig && \
     echo "`date` glib" >> /build/log.txt
 
+# Used by GDAL
+RUN \
+    echo "`date` libtirpc" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b libtirpc-`getver.py libtirpc` -c advice.detachedHead=false https://github.com/alisw/libtirpc.git && \
+    cd libtirpc && \
+    . ./autogen.sh && \
+    ./configure --prefix=/usr/local --disable-static && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` libtirpc" >> /build/log.txt && \
+cd /build && \
+# \
+# RUN \
+    echo "`date` libnsl" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b v`getver.py libnsl` -c advice.detachedHead=false https://github.com/thkukuk/libnsl.git && \
+    cd libnsl && \
+    ./autogen.sh && \
+    ./configure --prefix=/usr/local --disable-static && \
+    make -j ${JOBS} && \
+    make -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` libnsl" >> /build/log.txt
+
 # Used by openslide and libvips
 RUN \
     echo "`date` gobject-introspection" >> /build/log.txt && \
@@ -1291,7 +1317,7 @@ RUN \
     cd libxml2 && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DLIBXML2_WITH_TESTS=OFF -DLIBXML2_WITH_PYTHON=OFF -DLIBXML2_WITH_ICU=ON && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DLIBXML2_WITH_TESTS=OFF -DLIBXML2_WITH_PYTHON=OFF -DLIBXML2_WITH_ICU=OFF -DLIBXML2_WITH_ICONV=ON && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig && \
@@ -1815,11 +1841,25 @@ RUN \
     ldconfig && \
     echo "`date` libheif" >> /build/log.txt
 
+# Used by GDAL
+RUN \
+    echo "`date` kealib" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b kealib-`getver.py kealib` -c advice.detachedHead=false https://github.com/ubarsc/kealib.git && \
+    cd kealib && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` kealib" >> /build/log.txt
+
 # PINNED VERSION - use master
 # This build doesn't support everything.
 # Unsupported without more work or investigation:
-#  GRASS Kea Google-libkml ODBC FGDB MDB OCI GEORASTER SDE Rasdaman
-#  SFCGAL OpenCL MongoDB MongoCXX HDFS TileDB
+#  GRASS Google-libkml ODBC FGDB MDB OCI GEORASTER SDE Rasdaman SFCGAL OpenCL
+#  MongoDB MongoCXX HDFS TileDB
 # -- GRASS should be straightforward (see github.com/OSGeo/grass), but gdal
 #  has to be installed first, then grass, then spatialite and gdal recompiled
 #  with GRASS support.
@@ -2607,6 +2647,8 @@ RUN \
     git clone --depth=1 --single-branch -b v`getver.py python-bioformats` -c advice.detachedHead=false https://github.com/CellProfiler/python-bioformats.git && \
     cd python-bioformats && \
     curl -LJ https://downloads.openmicroscopy.org/bio-formats/`getver.py bioformats`/artifacts/bioformats_package.jar -o bioformats/jars/bioformats_package.jar && \
+    # Recompress; saves 2.5% or so \
+    advzip -k -z bioformats/jars/bioformats_package.jar && \
     python -c $'# \n\
 import re \n\
 path = "setup.py" \n\
