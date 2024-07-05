@@ -100,6 +100,7 @@ ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-1667497300} \
     HOSTNAME=large_image_wheels \
     CFLAGS="-g0 -O2 -DNDEBUG" \
     LDFLAGS="-Wl,--strip-debug,--strip-discarded,--discard-locals" \
+    PATH="/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1
 #   PIP_USE_FEATURE="in-tree-build" \
 
@@ -132,7 +133,7 @@ COPY versions.txt \
     openslide-vendor-mirax.c.patch \
     ./
 
-# Newer version of pkg-config than available in manylinux2014
+# Newer version of pkg-config than available in manylinux
 RUN \
     echo "`date` pkg-config" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -147,12 +148,11 @@ RUN \
 
 # Some of these paths are added later
 ENV PKG_CONFIG=/usr/local/bin/pkg-config \
-    PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:/usr/share/pkgconfig \
-    PATH="/venv/bin:$PATH"
+    PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:/usr/share/pkgconfig
 # We had been doing:
 #     PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:/usr/lib64/pkgconfig:/usr/share/pkgconfig \
 # but we don't want to find the built-in libraries, as if we bind to them, we
-# are probably not be portable.
+# probably are not portable.
 
 # CMake - use a precompiled binary
 RUN \
@@ -195,15 +195,15 @@ cd /build && \
 # \
 # # Make our own openssl so we don't depend on system libraries. \
 # RUN \
-    echo "`date` openssl 1.1" >> /build/log.txt && \
-    git clone --depth=1 --single-branch -b OpenSSL_`getver.py openssl-1.x` -c advice.detachedHead=false https://github.com/openssl/openssl.git openssl_1_1 && \
-    cd openssl_1_1 && \
+    echo "`date` openssl" >> /build/log.txt && \
+    git clone --depth=1 --single-branch -b openssl-`getver.py openssl` -c advice.detachedHead=false https://github.com/openssl/openssl.git openssl && \
+    cd openssl && \
     ./config --prefix=/usr/local --openssldir=/usr/local/ssl shared zlib && \
     make --silent -j ${JOBS} && \
     # using "all install_sw" rather than "install" to avoid installing docs \
     make --silent -j ${JOBS} all install_sw && \
     ldconfig && \
-    echo "`date` openssl 1.1" >> /build/log.txt && \
+    echo "`date` openssl" >> /build/log.txt && \
 cd /build && \
 # \
 # RUN \
@@ -605,7 +605,7 @@ cd /build && \
     cd openexr && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DOPENEXR_INSTALL_EXAMPLES=OFF && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DOPENEXR_INSTALL_EXAMPLES=OFF -DOPENEXR_BUILD_EXAMPLES=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -648,11 +648,13 @@ RUN \
     echo "`date` xz" >> /build/log.txt && \
     export JOBS=`nproc` && \
     ## It'd be better to use the most recent \
-    # git clone --depth=1 --single-branch -b v`getver.py xz` -c advice.detachedHead=false https://github.com/tukaani-project/xz.git && \
-    # cd xz && \
-    # mkdir _build && \
-    # cd _build && \
-    # cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF && \
+    if false; then \
+    git clone --depth=1 --single-branch -b v`getver.py xz` -c advice.detachedHead=false https://github.com/tukaani-project/xz.git && \
+    cd xz && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF && \
+    true; else \
     ## But that breaks a bunch of packages \
     # curl --retry 5 --silent https://downloads.sourceforge.net/project/lzmautils/xz-`getver.py xz`.tar.gz -L -o xz.tar.gz && \
     curl --retry 5 --silent https://downloads.sourceforge.net/project/lzmautils/xz-5.2.6.tar.gz -L -o xz.tar.gz && \
@@ -661,6 +663,7 @@ RUN \
     rm -f xz.tar.gz && \
     cd xz && \
     ./configure --silent --prefix=/usr/local --disable-static && \
+    true; fi && \
     ## This is in common \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -1715,7 +1718,7 @@ RUN \
     cd xerces-c && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -Dtranscoder=iconv && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1749,7 +1752,7 @@ RUN \
 #     ldconfig && \
 #     echo "`date` superlu" >> /build/log.txt
 
-# Used by GDAL.  Linear lagebra library
+# Used by GDAL.  Linear algebra library
 RUN \
     echo "`date` lapack" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1763,7 +1766,7 @@ RUN \
     ldconfig && \
     echo "`date` lapack" >> /build/log.txt
 
-# Used by GDAL.  Linear lagebra library
+# Used by GDAL.  Linear algebra library
 RUN \
     echo "`date` armadillo" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1854,6 +1857,20 @@ RUN \
     make --silent -j ${JOBS} install && \
     ldconfig && \
     echo "`date` kealib" >> /build/log.txt
+
+# Used by GDAL
+RUN \
+    echo "`date` libopendrive" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b `getver.py libopendrive` -c advice.detachedHead=false https://github.com/pageldev/libOpenDRIVE.git && \
+    cd libOpenDRIVE && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` libopendrive" >> /build/log.txt
 
 # PINNED VERSION - use master
 # This build doesn't support everything.
@@ -2289,24 +2306,15 @@ RUN \
     export PATH="$HOME/.cargo/bin:$PATH" && \
     git clone --depth=1 --single-branch -b `getver.py librsvg` -c advice.detachedHead=false https://github.com/GNOME/librsvg.git && \
     cd librsvg && \
-    if false; then \
-    export RUSTFLAGS="$RUSTFLAGS -O -C link_args=-Wl,--strip-debug,--strip-discarded,--discard-local" && \
-    ./autogen.sh && \
-    ./configure --silent --prefix=/usr/local --disable-introspection --disable-debug --disable-static && \
-    make -j ${JOBS} && \
-    make -j ${JOBS} install && \
-    ldconfig && \
-    # rust leaves huge build artifacts that aren't useful to us \
-    rm -rf target/release/deps && \
-    true; else \
     export LDFLAGS="$LDFLAGS,--no-as-needed,-ldl" && \
+    # Make the output library much smaller && \
+    printf "[profile.release]\nlto = true" >> Cargo.toml && \
     meson setup --prefix=/usr/local --buildtype=release --optimization=3 -Dintrospection=disabled -Ddocs=disabled -Dtests=false _build && \
     meson compile -C _build -j ${JOBS} && \
     meson install -C _build && \
     ldconfig && \
     # rust leaves huge build artifacts that aren't useful to us \
     rm -rf _build/target/release/deps && \
-    true; fi && \
     find . -name '*.a' -delete && \
     rm -rf /root/.cargo/registry && \
     echo "`date` librsvg" >> /build/log.txt

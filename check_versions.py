@@ -251,6 +251,10 @@ Packages = {
         'git': 'https://github.com/thkukuk/libnsl.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
+    'libopendrive': {
+        'git': 'https://github.com/pageldev/libOpenDRIVE.git',
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
     'libpng': {
         'git': 'https://github.com/glennrp/libpng.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
@@ -404,9 +408,9 @@ Packages = {
     'openslide-sha': {
         'gitsha': 'https://github.com/openslide/openslide.git',
     },
-    'openssl-1.x': {
+    'openssl': {
         'git': 'https://github.com/openssl/openssl.git',
-        're': r'OpenSSL_(1_[0-9]+_[0-9]+[a-z])$',
+        're': r'openssl-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'orc': {
         'git': 'https://github.com/GStreamer/orc.git',
