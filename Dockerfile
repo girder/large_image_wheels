@@ -173,7 +173,7 @@ RUN \
     cd zlib && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DZLIB_BUILD_EXAMPLES=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -233,7 +233,6 @@ cd /build && \
     echo "`date` libssh2" >> /build/log.txt && \
 cd /build && \
 # \
-# # Make our own curl so we don't depend on system libraries. \
 # RUN \
     echo "`date` libpsl" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -246,23 +245,37 @@ cd /build && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
     echo "`date` libpsl" >> /build/log.txt && \
+# \
+# RUN \
+cd /build && \
+    echo "`date` libidn2" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    curl --retry 5 --silent https://ftp.gnu.org/gnu/libidn/libidn2-`getver.py libidn2`.tar.gz -L -o libidn2.tar.gz && \
+    mkdir libidn2 && \
+    tar -zxf libidn2.tar.gz -C libidn2 --strip-components 1 && \
+    rm -f libidn2.tar.gz && \
+    cd libidn2 && \
+    ./configure --silent --prefix=/usr/local --disable-static && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` libidn2" >> /build/log.txt && \
 cd /build && \
 # \
 # # Make our own curl so we don't depend on system libraries. \
 # RUN \
     echo "`date` curl" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    # The github releases have slightly different headers and are prefered \
+    # git clone --depth=1 --single-branch -b curl-`getver.py curl` -c advice.detachedHead=false https://github.com/curl/curl.git && \
     curl --retry 5 --silent https://github.com/curl/curl/releases/download/curl-`getver.py curl`/curl-`getver.py curl 3 _ .`.tar.gz -L -o curl.tar.gz && \
     mkdir curl && \
     tar -zxf curl.tar.gz -C curl --strip-components 1 && \
     rm -f curl.tar.gz && \
     cd curl && \
-    # If we use cmake for the build, this does something different and causes
-    # netcdf to fail to find the appropriate libraries
-    # mkdir _build && \
-    # cd _build && \
-    # cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF -DBUILD_STATIC=OFF -DCURL_CA_FALLBACK=ON && \
-    ./configure --prefix=/usr/local --disable-static --with-openssl --with-ldap-lib=/usr/local/lib/libldap.so && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF -DBUILD_STATIC=OFF -DCURL_CA_FALLBACK=ON -DBUILD_LIBCURL_DOCS=OFF -DBUILD_MISC_DOCS=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -859,13 +872,9 @@ RUN \
     export AUTOMAKE_JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b v`getver.py libffi` -c advice.detachedHead=false https://github.com/libffi/libffi.git && \
     cd libffi && \
-    python -c $'# \n\
-path = "Makefile.am" \n\
-s = open(path).read().replace("info_TEXINFOS", "# info_TEXINFOS") \n\
-open(path, "w").write(s)' && \
     ./autogen.sh && \
-    ./configure --silent --prefix=/usr/local --disable-static && \
-    make --silent -j ${JOBS} && \
+    ./configure --silent --prefix=/usr/local --disable-static --disable-docs && \
+    # make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
     echo "`date` libffi" >> /build/log.txt
@@ -986,13 +995,11 @@ RUN \
     ldconfig && \
     echo "`date` libiconv" >> /build/log.txt
 
-# PINNED - xerces-c doesn't work with 75-1
 # Used by gdal, mapnik, openslide, libvips.  Unicode support
 RUN \
     echo "`date` icu4c" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    # git clone --depth=1 --single-branch -b release-`getver.py icu4c` -c advice.detachedHead=false https://github.com/unicode-org/icu.git && \
-    git clone --depth=1 --single-branch -b release-74-2 -c advice.detachedHead=false https://github.com/unicode-org/icu.git && \
+    git clone --depth=1 --single-branch -b release-`getver.py icu4c` -c advice.detachedHead=false https://github.com/unicode-org/icu.git && \
     cd icu/icu4c/source && \
     CFLAGS="$CFLAGS -DUNISTR_FROM_CHAR_EXPLICIT=explicit -DUNISTR_FROM_STRING_EXPLICIT=explicit -DU_CHARSET_IS_UTF8=1 -DU_NO_DEFAULT_INCLUDE_UTF_HEADERS=1 -DU_HIDE_OBSOLETE_UTF_OLD_H=1" ./configure --silent --prefix=/usr/local --disable-tests --disable-samples --with-data-packaging=library --disable-static && \
     make --silent -j ${JOBS} && \
@@ -1309,18 +1316,17 @@ RUN \
     ldconfig && \
     echo "`date` libgeos" >> /build/log.txt
 
-# PINNED - librasterlite2 doesn't work with 2.13.0
 # Used by gdal, mapnik, openslide, libvips
 RUN \
     echo "`date` libxml" >> /build/log.txt && \
     export JOBS=`nproc` && \
     rm -rf libxml2* && \
-    # git clone --depth=1 --single-branch -b v`getver.py libxml2` -c advice.detachedHead=false https://github.com/GNOME/libxml2.git && \
-    git clone --depth=1 --single-branch -b v2.12.7 -c advice.detachedHead=false https://github.com/GNOME/libxml2.git && \
+    git clone --depth=1 --single-branch -b v`getver.py libxml2` -c advice.detachedHead=false https://github.com/GNOME/libxml2.git && \
     cd libxml2 && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DLIBXML2_WITH_TESTS=OFF -DLIBXML2_WITH_PYTHON=OFF -DLIBXML2_WITH_ICU=OFF -DLIBXML2_WITH_ICONV=ON && \
+    # Add legacy APIs so rasterlite will still work \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DLIBXML2_WITH_TESTS=OFF -DLIBXML2_WITH_PYTHON=OFF -DLIBXML2_WITH_ICU=OFF -DLIBXML2_WITH_ICONV=ON -DLIBXML2_WITH_LEGACY=ON -DLIBXML2_WITH_HTTP=ON && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig && \
@@ -2307,6 +2313,7 @@ RUN \
     git clone --depth=1 --single-branch -b `getver.py librsvg` -c advice.detachedHead=false https://github.com/GNOME/librsvg.git && \
     cd librsvg && \
     export LDFLAGS="$LDFLAGS,--no-as-needed,-ldl" && \
+    sed -i "s/'-U', //g" meson/makedef.py && \
     # Make the output library much smaller && \
     printf "[profile.release]\nlto = true" >> Cargo.toml && \
     meson setup --prefix=/usr/local --buildtype=release --optimization=3 -Dintrospection=disabled -Ddocs=disabled -Dtests=false _build && \
@@ -2662,7 +2669,7 @@ import re \n\
 path = "setup.py" \n\
 s = open(path).read() \n\
 # append .1 to version to make sure pip prefers this \n\
-s = re.sub(r"(version=\\"[^\\"]*)\\"", "\\\\1.1\\"", s) \n\
+s = re.sub(r"(version=\\"[^\\"]*)\\"", "\\\\1.'`getver.py bioformats`$'\\"", s) \n\
 open(path, "w").write(s)' && \
     pip wheel . --no-deps -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'python_bioformats*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \

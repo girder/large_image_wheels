@@ -231,6 +231,10 @@ Packages = {
         'filelist': 'https://ftp.gnu.org/pub/gnu/libiconv/',
         're': r'libiconv-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
     },
+    'libidn2': {
+        'filelist': 'https://ftp.gnu.org/gnu/libidn/',
+        're': r'libidn2-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
+    },
     'libimagequant': {
         'git': 'https://github.com/ImageOptim/libimagequant.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$',
