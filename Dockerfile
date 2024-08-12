@@ -78,7 +78,11 @@ RUN \
     ln -s /opt/python/* /opt/py/. && \
     # Enable all versions in boost as well \
     rm -rf /opt/py/cp36* && \
-    # javabridge doesn't work with 3.13 yet \
+    # We can't handle the no-gil variant yet \
+    rm -rf /opt/py/cp313-cp313t && \
+    # javabridge doesn't work with 3.13 yet (it looks like it might once \
+    # numpy is released, but not with a locally built numpy, even if we \
+    # locally build a numpy wheel) \
     rm -rf /opt/py/cp313* && \
     if [ "$PYPY" = true ]; then \
     echo "Only building pypy versions" && \
@@ -1868,11 +1872,11 @@ RUN \
 RUN \
     echo "`date` libopendrive" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b `getver.py libopendrive` -c advice.detachedHead=false https://github.com/pageldev/libOpenDRIVE.git && \
+    git clone --depth=1 --single-branch -b `getver.py libopendrive`-gdal -c advice.detachedHead=false https://github.com/DLR-TS/libOpenDRIVE.git && \
     cd libOpenDRIVE && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1903,7 +1907,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if false; then \
+    if true; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
@@ -1924,7 +1928,6 @@ RUN \
     -DMRSID_LIBRARY=/build/mrsid/Raster_DSDK/lib/libltidsdk.so \
     -DMRSID_INCLUDE_DIR=/build/mrsid/Raster_DSDK/include \
     -DGDAL_USE_LERC=ON \
-    -DSWIG_REGENERATE_PYTHON=ON \
     -DENABLE_DEFLATE64=OFF \
     2>&1 >../cmakelog.txt \
     && \
@@ -2133,9 +2136,11 @@ os.environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal")) \n\
 def bootstrap_env():""") \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
+import re \n\
 path = "pyproject.toml" \n\
 s = open(path).read() \n\
 s = s.replace(".beta", "") \n\
+s = re.sub("version = \\".*\\"", "version = \\"'`pkg-config --modversion libmapnik`$'\\"", s) \n\
 s = s.replace("authors", "dynamic = [\\"scripts\\"]\\nauthors") \n\
 open(path, "w").write(s)' && \
     sed -i 's/AsLongLong/AsLong/g' src/mapnik_value_converter.hpp && \

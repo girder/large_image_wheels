@@ -20,7 +20,8 @@ ls -al wheels
 rm -f wheels/*many*.whl
 docker run -v `pwd`/wheels:/opt/mount --rm --entrypoint bash girder/large_image_wheels -c 'cp --preserve=timestamps /io/wheelhouse/{pylibtiff,Glymur,GDAL,mapnik,openslide_python,pyvips,pylibmc,python_javabridge}*many* /opt/mount/. && cp --preserve=timestamps /io/wheelhouse/*bioformats*.whl /opt/mount/. && chown '`id -u`':'`id -g`' /opt/mount/*.whl'
 # rm -f wheels/*none*.whl
-cp --preserve=timestamps wheels/*.whl wheelhouse/.
+# cp --preserve=timestamps wheels/*.whl wheelhouse/.
+python3 copy_changed.py
 python3 make_index.py
 python3 make_index.py wheels
 ls -al wheels

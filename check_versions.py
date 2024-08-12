@@ -256,8 +256,8 @@ Packages = {
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libopendrive': {
-        'git': 'https://github.com/pageldev/libOpenDRIVE.git',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
+        'git': 'https://github.com/DLR-TS/libOpenDRIVE.git',
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))-gdal$',
     },
     'libpng': {
         'git': 'https://github.com/glennrp/libpng.git',
