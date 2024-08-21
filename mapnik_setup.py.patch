@@ -1,5 +1,5 @@
 diff --git a/setup.py b/setup.py
-index 9b73f01..98df3bc 100755
+index 1de707a34..c50f32116 100755
 --- a/setup.py
 +++ b/setup.py
 @@ -13,22 +13,16 @@ def check_output(args):
@@ -69,6 +69,6 @@ index 9b73f01..98df3bc 100755
       },
       ext_modules=ext_modules,
 +     entry_points={'console_scripts': ['%s=mapnik.bin:program' % name for name in os.listdir('packaging/mapnik/bin') if not name.endswith('.py')]},
-      #extras_require={"test": "pytest"},
       cmdclass={"build_ext": build_ext},
-      #zip_safe=False,
+      python_requires=">=3.7",
+ )

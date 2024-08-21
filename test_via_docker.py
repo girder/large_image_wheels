@@ -95,7 +95,8 @@ if __name__ == '__main__':
         if len(sys.argv) > 1 and sys.argv[1] not in container:
             continue
         entry = {'out': [], 'lock': threading.Lock(), 'status': 'queued', 'container': container}
-        result = pool.apply_async(test_container, (container.split()[0], entry, full, containers[container]))
+        result = pool.apply_async(
+            test_container, (container.split()[0], entry, full, containers[container]))
         entry['result'] = result
         results.append(entry)
     pool.close()

@@ -78,7 +78,7 @@ RUN \
     ln -s /opt/python/* /opt/py/. && \
     # Enable all versions in boost as well \
     rm -rf /opt/py/cp36* && \
-    # We can't handle the no-gil variant yet \
+    # We can't handle the no-gil variant yet (openslide-python fails) \
     rm -rf /opt/py/cp313-cp313t && \
     # javabridge doesn't work with 3.13 yet (it looks like it might once \
     # numpy is released, but not with a locally built numpy, even if we \
@@ -200,7 +200,9 @@ cd /build && \
 # # Make our own openssl so we don't depend on system libraries. \
 # RUN \
     echo "`date` openssl" >> /build/log.txt && \
-    git clone --depth=1 --single-branch -b openssl-`getver.py openssl` -c advice.detachedHead=false https://github.com/openssl/openssl.git openssl && \
+    # PINNED - 3.3.2 doesn't build with the perl repos present \
+    # git clone --depth=1 --single-branch -b openssl-`getver.py openssl` -c advice.detachedHead=false https://github.com/openssl/openssl.git openssl && \
+    git clone --depth=1 --single-branch -b openssl-3.3.1 -c advice.detachedHead=false https://github.com/openssl/openssl.git openssl && \
     cd openssl && \
     ./config --prefix=/usr/local --openssldir=/usr/local/ssl shared zlib && \
     make --silent -j ${JOBS} && \
@@ -355,14 +357,14 @@ RUN \
     ldconfig && \
     # Because we will recompress all wheels, we can create them with no \
     # compression to save some time \
-    sed -i 's/ZIP_DEFLATED/ZIP_STORED/g' /opt/_internal/pipx/venvs/auditwheel/lib/python3.10/site-packages/auditwheel/tools.py && \
+    sed -i 's/ZIP_DEFLATED/ZIP_STORED/g' /opt/_internal/pipx/venvs/auditwheel/lib/python3.12/site-packages/auditwheel/tools.py && \
     echo "`date` advancecomp" >> /build/log.txt
 
 RUN \
     echo "`date` auditwheel" >> /build/log.txt && \
     # vips doesn't work with auditwheel 3.2 since the copylib doesn't adjust \
     # rpaths the same as 3.1.1.  Revert that aspect of the behavior. \
-    sed -i 's/patcher.set_rpath(dest_path, dest_dir)/new_rpath = os.path.relpath(dest_dir, os.path.dirname(dest_path))\n        new_rpath = os.path.join('\''$ORIGIN'\'', new_rpath)\n        patcher.set_rpath(dest_path, new_rpath)/g' /opt/_internal/pipx/venvs/auditwheel/lib/python3.10/site-packages/auditwheel/repair.py && \
+    sed -i 's/patcher.set_rpath(dest_path, dest_dir)/new_rpath = os.path.relpath(dest_dir, os.path.dirname(dest_path))\n        new_rpath = os.path.join('\''$ORIGIN'\'', new_rpath)\n        patcher.set_rpath(dest_path, new_rpath)/g' /opt/_internal/pipx/venvs/auditwheel/lib/python3.12/site-packages/auditwheel/repair.py && \
     # Tell auditwheel not to whitelist libz.so, libiXext.so, etc. \
     # Do whitelist libjvm.so \
     python -c $'# \n\
@@ -955,7 +957,8 @@ path = "giscanner/meson.build" \n\
 s = open(path).read() \n\
 s = s[:s.index("install_subdir")] + s[s.index("flex"):] \n\
 open(path, "w").write(s)' && \
-    meson setup --prefix=/usr/local --buildtype=release --optimization=3 _build && \
+    sed -i 's/subdir('\''tests'\'')/#/g' meson.build && \
+    meson setup --prefix=/usr/local --buildtype=release --optimization=3 -Ddoctool=disabled -Dcairo=disabled _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -1706,7 +1709,8 @@ RUN \
     echo "`date` libgta" >> /build/log.txt
 
 # This is an old version of libecw.  I am uncertain that the licensing allows
-# for this to be used, and therefore is disabled for now.
+# for this to be used, and therefore is disabled for now.  Also, it appears to
+# be much slower than openjpeg.
 # RUN \
 #     echo "`date` libecw" >> /build/log.txt && \
 #     export JOBS=`nproc` && \
@@ -1714,6 +1718,8 @@ RUN \
 #     unzip libecwj.zip && \
 #     rm -f libecwj.zip && \
 #     cd libecwj2-3.3 && \
+#     curl -OLJ https://raw.githubusercontent.com/rouault/libecwj2-3.3-builds/main/libecwj2-3.3.patch && \
+#     patch -p 1 -u -i libecwj2-3.3.patch && \
 #     CXXFLAGS='-w' ./configure --silent --prefix=/usr/local && \
 #     make --silent -j ${JOBS} && \
 #     make --silent -j ${JOBS} install && \
@@ -2188,16 +2194,16 @@ RUN \
     python -c $'# \n\
 path = "openslide/lowlevel.py" \n\
 s = open(path).read().replace( \n\
-"""        return try_load([\'libopenslide.so.1\', \'libopenslide.so.0\'])""", \n\
-"""        try: \n\
-            import os \n\
-            libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath( \n\
-                __file__))), \'openslide_python.libs\')) \n\
-            libs = os.listdir(libpath) \n\
-            lib = [lib for lib in libs if lib.startswith(\'libopenslide\')][0] \n\
-            return try_load([lib]) \n\
-        except Exception: \n\
-            return try_load([\'libopenslide.so.1\', \'libopenslide.so.0\'])""") \n\
+"""            return try_load([\'libopenslide.so.1\', \'libopenslide.so.0\'])""", \n\
+"""            try: \n\
+                import os \n\
+                libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath( \n\
+                    __file__))), \'openslide_python.libs\')) \n\
+                libs = os.listdir(libpath) \n\
+                lib = [lib for lib in libs if lib.startswith(\'libopenslide\')][0] \n\
+                return try_load([lib]) \n\
+            except Exception: \n\
+                return try_load([\'libopenslide.so.1\', \'libopenslide.so.0\'])""") \n\
 open(path, "w").write(s)' && \
     mkdir openslide/bin && \
     find /build/openslide/_build/tools/ -executable -not -type d -exec bash -c 'cp --dereference /usr/local/bin/"$(basename {})" openslide/bin/.' \; && \
@@ -2609,8 +2615,13 @@ s = s.replace("entry_points={", \n\
 """entry_points={\'console_scripts\': [\'%s=javabridge.jvm.bin:program\' % name for name in os.listdir(\'javabridge/jvm/bin\') if not name.endswith(\'.py\')], """) \n\
 s = s.replace("""package_data={"javabridge": [""", \n\
 """package_data={"javabridge": [\'jvm/*\', \'jvm/*/*\', \'jvm/*/*/*\', \'jvm/*/*/*/*\', \'jvm/*/*/*/*/*\', """) \n\
-s = re.sub(r"(numpy)[>=.0-9]*", "numpy", s) \n\
-s = s.replace("Cython>=0.29.16", "Cython>=0.29.16,<3") \n\
+s = re.sub(r"(\'numpy)[^\']*", "\'numpy", s) \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
+import re \n\
+path = "pyproject.toml" \n\
+s = open(path).read() \n\
+s = re.sub(r"(numpy)[^\\"]*", "numpy", s) \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
 path = "javabridge/__init__.py" \n\
