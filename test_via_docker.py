@@ -13,6 +13,7 @@ containers = {
     'python:3.10-slim': [],
     'python:3.11-slim': [],
     'python:3.12-slim': [],
+    'python:3.13-rc-slim': [],
     # -- centos
     # See https://github.com/molinav/docker-pyenv for some additional images
     # 'molinav/pyenv:3.7-centos-7': [],

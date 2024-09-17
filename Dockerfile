@@ -83,7 +83,7 @@ RUN \
     # javabridge doesn't work with 3.13 yet (it looks like it might once \
     # numpy is released, but not with a locally built numpy, even if we \
     # locally build a numpy wheel) \
-    rm -rf /opt/py/cp313* && \
+    # rm -rf /opt/py/cp313* && \
     if [ "$PYPY" = true ]; then \
     echo "Only building pypy versions" && \
     rm -rf /opt/py/cp* && \
@@ -2579,6 +2579,9 @@ open(path, "w").write(s)' && \
     rm -rf ~/.cache && \
     echo "`date` pylibmc" >> /build/log.txt
 
+COPY python-javabridge.pyx.patch \
+    ./
+
 # python-javabridge needs a jvm to work; this bundles the jvm with the python
 # package.
 RUN \
@@ -2586,6 +2589,7 @@ RUN \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b v`getver.py python-javabridge` -c advice.detachedHead=false https://github.com/CellProfiler/python-javabridge.git && \
     cd python-javabridge && \
+    patch _javabridge.pyx ../python-javabridge.pyx.patch && \
     # Include java libraries \
     mkdir javabridge/jvm && \
     cp -r -L /usr/lib/jvm/java/* javabridge/jvm/. && \
@@ -2615,12 +2619,14 @@ s = s.replace("entry_points={", \n\
 """entry_points={\'console_scripts\': [\'%s=javabridge.jvm.bin:program\' % name for name in os.listdir(\'javabridge/jvm/bin\') if not name.endswith(\'.py\')], """) \n\
 s = s.replace("""package_data={"javabridge": [""", \n\
 """package_data={"javabridge": [\'jvm/*\', \'jvm/*/*\', \'jvm/*/*/*\', \'jvm/*/*/*/*\', \'jvm/*/*/*/*/*\', """) \n\
+s = re.sub(r"(\'Cython)[^\']*", "\'Cython", s) \n\
 s = re.sub(r"(\'numpy)[^\']*", "\'numpy", s) \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
 import re \n\
 path = "pyproject.toml" \n\
 s = open(path).read() \n\
+s = re.sub(r"(cython)<3", "cython", s) \n\
 s = re.sub(r"(numpy)[^\\"]*", "numpy", s) \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
@@ -2677,7 +2683,7 @@ RUN \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b v`getver.py python-bioformats` -c advice.detachedHead=false https://github.com/CellProfiler/python-bioformats.git && \
     cd python-bioformats && \
-    curl -LJ https://downloads.openmicroscopy.org/bio-formats/`getver.py bioformats`/artifacts/bioformats_package.jar -o bioformats/jars/bioformats_package.jar && \
+    curl -LJ https://github.com/ome/bioformats/releases/download/v`getver.py bioformats`/bioformats_package.jar && \
     # Recompress; saves 2.5% or so \
     advzip -k -z bioformats/jars/bioformats_package.jar && \
     python -c $'# \n\

@@ -31,7 +31,8 @@ for line in record:
         totals[key] = totals.get(key, 0) + (date - starts[key]).total_seconds()
         del starts[key]
 durations = [(val, key) for key, val in totals.items()]
-durations.sort()
+if len(sys.argv) <= 2:
+    durations.sort()
 for _, key in durations:
     print('%4.0f %s' % (totals[key], key))
 print('%4.0f %s' % (sum(totals.values()), 'total'))

@@ -37,6 +37,7 @@ pip cache purge || true
 #   pip install 'pywavelets<1.4'
 # fi
 # pip install libtiff openslide_python pyvips GDAL mapnik -f /wheels
+pip install 'pyproj; python_version >= "3.13"' --pre --extra-index-url https://pypi.anaconda.org/scientific-python-nightly-wheels/simple
 pip install 'pylibtiff; python_version < "3.8"' 'gdal; python_version < "3.8"' 'mapnik; python_version < "3.8"' --find-links https://girder.github.io/large_image_wheels
 echo 'Test installing pyvips and other dependencies from wheels via large_image'
 pip install 'large-image[openslide,gdal,mapnik,bioformats,memcached,tiff,openjpeg,vips,converter]' -f ${1:-/wheels}
@@ -60,8 +61,6 @@ if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 8)))'; then
   echo 'Test basic import of glymur'
   python -c 'import glymur'
   python -c 'import libtiff, openslide, pyvips, osgeo, mapnik, glymur, javabridge'
-elif python -c 'import sys;sys.exit(not (sys.version_info >= (3, 7)))'; then
-  python -c 'import openslide, pyvips, osgeo, mapnik, javabridge'
 else
   python -c 'import openslide, pyvips, osgeo, mapnik, javabridge'
 fi

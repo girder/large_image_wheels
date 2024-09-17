@@ -24,8 +24,8 @@ Packages = {
         're': r'armadillo-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)/download$',
     },
     'bioformats': {
-        'filelist': 'https://www.openmicroscopy.org/bio-formats/downloads/',
-        're': r'bio-formats/([0-9]+\.[0-9]+(|\.[0-9]+))/artifacts/bioformats_package.jar$',
+        'git': 'https://github.com/ome/bioformats.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'blosc': {
         'git': 'https://github.com/Blosc/c-blosc.git',

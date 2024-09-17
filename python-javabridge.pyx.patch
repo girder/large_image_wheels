@@ -1,0 +1,54 @@
+diff --git a/_javabridge.pyx b/_javabridge.pyx
+index cb89f15..c2682b3 100644
+--- a/_javabridge.pyx
++++ b/_javabridge.pyx
+@@ -26,7 +26,8 @@ if sys.version_info >= (3, 0, 0):
+ cdef extern from "Python.h":
+     ctypedef int Py_intptr_t
+     ctypedef unsigned long Py_ssize_t
+-    unicode PyUnicode_DecodeUTF16(char *s, Py_ssize_t size, char *errors, int *byteorder)
++    unicode PyUnicode_Decode(char *s, Py_ssize_t size, char *encoding, char *errors)
++
+     bint PyCapsule_CheckExact(object o)
+     void *PyCapsule_GetPointer(object o,char *name)
+ 
+@@ -400,16 +401,15 @@ def get_env():
+     
+ def jb_attach():
+     '''Attach to this thread's environment'''
+-    assert __vm is not None
+-    assert get_env() is None
+-    assert __vm.is_active()
++    if __vm is None or get_env() is not None or not __vm.is_active():
++        raise Exception('Failed')
+     set_thread_local("env", __vm.attach_as_daemon())
+     return get_env()
+     
+ def jb_detach():
+     '''Detach from this thread's environment'''
+-    assert __vm is not None
+-    assert get_env() is not None
++    if __vm is None or get_env() is None:
++        raise Exception('Failed')
+     set_thread_local("env", None)
+     __vm.detach()
+     
+@@ -538,7 +538,6 @@ cdef fill_values(orig_sig, args, jvalue **pvalues):
+         int i
+         JB_Object jbobject
+         JB_Class jbclass
+-        Py_UNICODE *usz
+ 
+     sig = orig_sig
+     values = <jvalue *>malloc(sizeof(jvalue)*len(args))
+@@ -1680,8 +1679,8 @@ cdef class JB_Env:
+         if <int>s.o == 0:
+             return None
+         chars = self.env[0].GetStringChars(self.env, s.o, NULL)
+-        result = PyUnicode_DecodeUTF16(
+-            <const char *>chars, nchars*2, "ignore", &byteorder)
++        result = PyUnicode_Decode(
++            <const char *>chars, nchars*2, "utf-16", "ignore")
+         self.env[0].ReleaseStringChars(self.env, s.o, chars)
+         return result
+ 
