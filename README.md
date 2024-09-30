@@ -41,7 +41,10 @@ This makes wheels for the main libraries:
 - python_javabridge
 - pyvips
 
-Currently, wheels are built for Python 3.7, 3.8, 3.9, 3.10, 3.11, 3.12.  Some libraries have older versions for older versions of Python that were built before support for those versions is ended.
+Currently, wheels are built for Python 3.8, 3.9, 3.10, 3.11, 3.12, 3.13, and for architectures x86_64 and aarch64.  Some libraries have older versions available for older versions of Python that were built before support for those versions was ended.
+
+This also builds some non-version specific libraries to ensure they have recent dependencies:
+- bioformats
 
 ## Extras
 
@@ -50,6 +53,8 @@ Various related executables are bundled with the Python packages.  These are add
 ## Issues
 
 In order to find the built libraries, this modifies how pylibtiff, openslide_python, and pyvips load those libraries.  The other libraries are patched in place.  There is probably a better way to do this.
+
+There are some differences in features exposed on different architectures; this is largely based on the source libraries and not on how they are built.
 
 ## Example Use
 

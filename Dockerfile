@@ -1,4 +1,6 @@
-FROM quay.io/pypa/manylinux2014_x86_64
+ARG baseimage
+FROM ${baseimage:-quay.io/pypa/manylinux2014_x86_64}
+# FROM quay.io/pypa/manylinux2014_x86_64
 # With docker build-kit, to debug a specific build step, use
 #   FROM quay.io/pypa/manylinux2014_x86_64 as working
 # and add just before the build step to debug
@@ -43,16 +45,8 @@ RUN \
     gperf \
     # for libdap \
     libuuid-devel \
-    # for librasterlite2 \
-    fcgi-devel \
-    # more support for GDAL \
-    json-c12-devel \
     # for mysql \
     ncurses-devel \
-    # needed for mysql to use newer versions of xz with mysql \
-    devtoolset-11-gcc \
-    devtoolset-11-gcc-c++ \
-    devtoolset-11-binutils \
     # for postrges \
     readline-devel \
     # for epsilon \
@@ -60,13 +54,36 @@ RUN \
     popt-devel \
     # for MrSID \
     tbb-devel \
-    # for netcdf \
-    hdf-devel \
     # for easier development \
     man \
     gtk-doc \
     vim-enhanced \
     && \
+    if [ "$AUDITWHEEL_ARCH" == "x86_64" ]; then \
+    yum install -y \
+    # for librasterlite2 \
+    fcgi-devel \
+    # more support for GDAL \
+    json-c12-devel \
+    # for netcdf \
+    hdf-devel \
+    # needed for mysql to use newer versions of xz with mysql \
+    devtoolset-11-gcc \
+    devtoolset-11-gcc-c++ \
+    devtoolset-11-binutils \
+    && true; \
+    elif [ "$AUDITWHEEL_ARCH" == "aarch64" ]; then \
+    yum install -y \
+    # more support for GDAL \
+    json-c-devel.aarch64 \
+    # needed for mysql to use newer versions of xz with mysql \
+    gcc-toolset-13-gcc \
+    gcc-toolset-13-gcc-c++ \
+    gcc-toolset-13-binutils \
+    gcc-toolset-13-annobin-annocheck \
+    gcc-toolset-13-annobin-plugin-gcc \
+    && true; \
+    fi && \
     yum clean all && \
     echo "`date` yum install" >> /build/log.txt
 
@@ -78,19 +95,15 @@ RUN \
     ln -s /opt/python/* /opt/py/. && \
     # Enable all versions in boost as well \
     rm -rf /opt/py/cp36* && \
+    rm -rf /opt/py/cp37* && \
     # We can't handle the no-gil variant yet (openslide-python fails) \
     rm -rf /opt/py/cp313-cp313t && \
-    # javabridge doesn't work with 3.13 yet (it looks like it might once \
-    # numpy is released, but not with a locally built numpy, even if we \
-    # locally build a numpy wheel) \
-    # rm -rf /opt/py/cp313* && \
     if [ "$PYPY" = true ]; then \
     echo "Only building pypy versions" && \
     rm -rf /opt/py/cp* && \
     true; \
     elif [ "$PYPY" = false ]; then \
     echo "Only building cpython versions" && \
-    # rm -rf /opt/py/pp39* && \
     rm -rf /opt/py/pp* && \
     true; \
     else \
@@ -135,6 +148,7 @@ COPY versions.txt \
     mapnik_projection.cpp.patch \
     mapnik_setup.py.patch \
     openslide-vendor-mirax.c.patch \
+     python-javabridge.pyx.patch \
     ./
 
 # Newer version of pkg-config than available in manylinux
@@ -161,7 +175,7 @@ ENV PKG_CONFIG=/usr/local/bin/pkg-config \
 # CMake - use a precompiled binary
 RUN \
     echo "`date` cmake" >> /build/log.txt && \
-    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v`getver.py cmake`/cmake-`getver.py cmake`-Linux-x86_64.tar.gz -L -o cmake.tar.gz && \
+    curl --retry 5 --silent https://github.com/Kitware/CMake/releases/download/v`getver.py cmake`/cmake-`getver.py cmake`-Linux-${AUDITWHEEL_ARCH}.tar.gz -L -o cmake.tar.gz && \
     tar -zxf cmake.tar.gz -C /usr/local --strip-components 1 && \
     rm -f cmake.tar.gz && \
     echo "`date` cmake" >> /build/log.txt
@@ -177,7 +191,7 @@ RUN \
     cd zlib && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DZLIB_BUILD_EXAMPLES=OFF && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DZLIB_BUILD_EXAMPLES=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -232,7 +246,7 @@ cd /build && \
     cd libssh2 && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DENABLE_ZLIB_COMPRESSION=ON -DBUILD_EXAMPLES=OFF -DBUILD_SHARED_LIBS=ON && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DENABLE_ZLIB_COMPRESSION=ON -DBUILD_EXAMPLES=OFF -DBUILD_SHARED_LIBS=ON && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -281,7 +295,7 @@ cd /build && \
     cd curl && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF -DBUILD_STATIC=OFF -DCURL_CA_FALLBACK=ON -DBUILD_LIBCURL_DOCS=OFF -DBUILD_MISC_DOCS=OFF && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF -DBUILD_STATIC=OFF -DCURL_CA_FALLBACK=ON -DBUILD_LIBCURL_DOCS=OFF -DBUILD_MISC_DOCS=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -307,7 +321,7 @@ RUN \
     cd zlib-ng && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DZLIB_COMPAT=ON -DZLIB_ENABLE_TESTS=OFF -DINSTALL_GTEST=OFF -DBUILD_GMOCK=OFF && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DZLIB_COMPAT=ON -DZLIB_ENABLE_TESTS=OFF -DINSTALL_GTEST=OFF -DBUILD_GMOCK=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -412,7 +426,7 @@ RUN \
 #     true; \
 #     fi && \
 #     if find /io/wheelhouse/ -name 'psutil*.whl' | grep .; then \
-#     find /io/wheelhouse/ -name 'psutil*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+#     find /io/wheelhouse/ -name 'psutil*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
 #     find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
 #     find /io/wheelhouse/ -name 'psutil*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
 #     ls -l /io/wheelhouse && \
@@ -428,7 +442,7 @@ RUN \
     cd libzip && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_EXAMPLES=OFF && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_EXAMPLES=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -457,7 +471,7 @@ RUN \
     cd openjpeg && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED=ON -DBUILD_STATIC=OFF && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_SHARED=ON -DBUILD_STATIC=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -471,7 +485,7 @@ RUN \
     cd libpng && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -500,7 +514,7 @@ cd /build && \
     cd zstd && \
     mkdir _build && \
     cd _build && \
-    cmake ../build/cmake -DCMAKE_BUILD_TYPE=Release -DZSTD_BUILD_STATIC=OFF -DZSTD_LZ4_SUPPORT=ON -DZSTD_LZMA_SUPPORT=ON -DZSTD_ZLIB_SUPPORT=ON -DZSTD_BUILD_PROGRAMS=OFF && \
+    cmake ../build/cmake -DCMAKE_BUILD_TYPE=MinSizeRel -DZSTD_BUILD_STATIC=OFF -DZSTD_LZ4_SUPPORT=ON -DZSTD_LZMA_SUPPORT=ON -DZSTD_ZLIB_SUPPORT=ON -DZSTD_BUILD_PROGRAMS=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -538,7 +552,7 @@ cd /build && \
     # webp encoding. \
     # mkdir _build && \
     # cd _build && \
-    # cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    # cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel && \
     ./configure --silent --prefix=/usr/local --enable-libwebpmux --enable-libwebpdecoder --enable-libwebpextras --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -561,12 +575,12 @@ RUN \
     # build 8-bit \
     mkdir _build8 && \
     cd _build8 && \
-    cmake .. -DWITH_12BIT=0 -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD=${SOURCE_DATE_EPOCH} && \
+    cmake .. -DWITH_12BIT=0 -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD=${SOURCE_DATE_EPOCH} && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     cd .. && \
     # build 12-bit in place \
-    cmake . -DWITH_12BIT=1 -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD=${SOURCE_DATE_EPOCH} && \
+    cmake . -DWITH_12BIT=1 -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD=${SOURCE_DATE_EPOCH} && \
     make clean && \
     make --silent -j ${JOBS} && \
     # don't install this; we reference it explicitly \
@@ -580,7 +594,7 @@ RUN \
     cd libdeflate && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -594,7 +608,7 @@ RUN \
     cd lerc && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -609,7 +623,7 @@ cd /build && \
     cd highway && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DHWY_ENABLE_EXAMPLES=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_CXX_FLAGS='-DVQSORT_SECURE_SEED=0' && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_TESTING=OFF -DHWY_ENABLE_EXAMPLES=OFF -DBUILD_SHARED_LIBS=ON -DCMAKE_CXX_FLAGS='-DVQSORT_SECURE_SEED=0' && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -624,7 +638,7 @@ cd /build && \
     cd openexr && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DOPENEXR_INSTALL_EXAMPLES=OFF -DOPENEXR_BUILD_EXAMPLES=OFF && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_TESTING=OFF -DOPENEXR_BUILD_EXAMPLES=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -639,7 +653,7 @@ cd /build && \
     cd brotli && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_TESTING=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -655,7 +669,7 @@ cd /build && \
     find . -name '.git' -exec rm -rf {} \+ && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DCMAKE_CXX_FLAGS='-fpermissive' -DJPEGXL_ENABLE_EXAMPLES=OFF -DJPEGXL_ENABLE_MANPAGES=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF -DHWY_ENABLE_INSTALL=OFF -DHWY_ENABLE_TESTS=OFF && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_TESTING=OFF -DCMAKE_CXX_FLAGS='-fpermissive' -DJPEGXL_ENABLE_EXAMPLES=OFF -DJPEGXL_ENABLE_MANPAGES=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF -DHWY_ENABLE_INSTALL=OFF -DHWY_ENABLE_TESTS=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -672,7 +686,7 @@ RUN \
     cd xz && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF && \
     true; else \
     ## But that breaks a bunch of packages \
     # curl --retry 5 --silent https://downloads.sourceforge.net/project/lzmautils/xz-`getver.py xz`.tar.gz -L -o xz.tar.gz && \
@@ -700,7 +714,7 @@ RUN \
     # two libjpeg versions \
     # mkdir _build && \
     # cd _build && \
-    # cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    # cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel && \
     # # -DJPEG_INCLUDE_DIR=/build/libjpeg-turbo -DJPEG_LIBRARY_RELEASE=/build/libjpeg-turbo/libjpeg.so && \
     ./autogen.sh || true && \
     # for reasons I don't understand, configure changes $ORIGIN to RIGIN (or, \
@@ -725,7 +739,7 @@ RUN \
     echo "`date` openjpeg again" >> /build/log.txt && \
     export JOBS=`nproc` && \
     cd openjpeg/_build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED=ON -DBUILD_STATIC=OFF && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_SHARED=ON -DBUILD_STATIC=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -807,7 +821,7 @@ open(path, "w").write(s)' && \
       "${PYBIN}/python" -c 'import libtiff' || true && \
       "${PYBIN}/pip" wheel --no-deps . -w /io/wheelhouse; \
     done && \
-    find /io/wheelhouse/ -name '*libtiff*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name '*libtiff*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
     find /io/wheelhouse/ -name '*libtiff*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name '*libtiff*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
@@ -864,7 +878,7 @@ open(path, "w").write(s)' && \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     find /opt/py -mindepth 1 -not -name '*p36-*' -a -not -name '*p37-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
-    find /io/wheelhouse/ -name 'Glymur*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'Glymur*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'Glymur*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'Glymur*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
@@ -1028,7 +1042,7 @@ RUN \
     cd fftw3 && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=OFF -DENABLE_AVX=ON -DENABLE_AVX2=ON -DENABLE_SSE=ON -DENABLE_SSE2=ON -DENABLE_THREADS=ON && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_TESTS=OFF -DENABLE_AVX=ON -DENABLE_AVX2=ON -DENABLE_SSE=ON -DENABLE_SSE2=ON -DENABLE_THREADS=ON && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1070,25 +1084,6 @@ RUN \
     echo "" > tools/build/src/user-config.jam && \
     echo "using mpi : /usr/local/lib ;" >> tools/build/src/user-config.jam && \
     # echo "using mpi ;" >> tools/build/src/user-config.jam && \
-    if [ "$PYPY" = true ]; then \
-    echo "using python : 3.7 : /opt/py/pp37-pypy37_pp73/bin/python : /opt/py/pp37-pypy37_pp73/include : /opt/py/pp37-pypy37_pp73/lib ;" >> tools/build/src/user-config.jam && \
-    echo "using python : 3.8 : /opt/py/pp38-pypy38_pp73/bin/python : /opt/py/pp38-pypy38_pp73/include/pypy3.8 : /opt/py/pp38-pypy38_pp73/lib/pypy3.8 ;" >> tools/build/src/user-config.jam && \
-    echo "using python : 3.9 : /opt/py/pp39-pypy39_pp73/bin/python : /opt/py/pp39-pypy39_pp73/include/pypy3.9 : /opt/py/pp39-pypy39_pp73/lib/pypy3.9 ;" >> tools/build/src/user-config.jam && \
-    echo "using python : 3.10 : /opt/py/pp310-pypy310_pp73/bin/python : /opt/py/pp310-pypy310_pp73/include/pypy3.10 : /opt/py/pp310-pypy310_pp73/lib/pypy3.10 ;" >> tools/build/src/user-config.jam && \
-    export PYTHON_LIST="3.7,3.8,3.9,3.10" && \
-    true; \
-    else \
-    echo "using python : 3.7 : /opt/py/cp37-cp37m/bin/python : /opt/py/cp37-cp37m/include/python3.7m : /opt/py/cp37-cp37m/lib ;" >> tools/build/src/user-config.jam && \
-    echo "using python : 3.8 : /opt/py/cp38-cp38/bin/python : /opt/py/cp38-cp38/include/python3.8 : /opt/py/cp38-cp38/lib ;" >> tools/build/src/user-config.jam && \
-    echo "using python : 3.9 : /opt/py/cp39-cp39/bin/python : /opt/py/cp39-cp39/include/python3.9 : /opt/py/cp39-cp39/lib ;" >> tools/build/src/user-config.jam && \
-    echo "using python : 3.10 : /opt/py/cp310-cp310/bin/python : /opt/py/cp310-cp310/include/python3.10 : /opt/py/cp310-cp310/lib ;" >> tools/build/src/user-config.jam && \
-    echo "using python : 3.11 : /opt/py/cp311-cp311/bin/python : /opt/py/cp311-cp311/include/python3.11 : /opt/py/cp311-cp311/lib ;" >> tools/build/src/user-config.jam && \
-    echo "using python : 3.12 : /opt/py/cp312-cp312/bin/python : /opt/py/cp312-cp312/include/python3.12 : /opt/py/cp312-cp312/lib ;" >> tools/build/src/user-config.jam && \
-    # echo "using python : 3.13 : /opt/py/cp313-cp313/bin/python : /opt/py/cp313-cp313/include/python3.13 : /opt/py/cp313-cp313/lib ;" >> tools/build/src/user-config.jam && \
-    export PYTHON_LIST="3.7,3.8,3.9,3.10,3.11,3.12" && \
-    # export PYTHON_LIST="3.7,3.8,3.9,3.10,3.11,3.12,3.13" && \
-    true; \
-    fi && \
     ./bootstrap.sh --prefix=/usr/local --with-toolset=gcc variant=release && \
     # Only build the libraries we need; building boost is slow \
     ./b2 -d1 -j ${JOBS} toolset=gcc variant=release link=shared --build-type=minimal \
@@ -1100,16 +1095,6 @@ RUN \
     --with-program_options \
     cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable -Wno-parentheses -Wno-maybe-uninitialized -Wno-attributes" \
     install && \
-    # --with-python \
-    # python="$PYTHON_LIST" \
-    # pypy \
-    # This conflicts with the non-pypy version \
-    # echo "" > tools/build/src/user-config.jam && \
-    # echo "using mpi ;" >> tools/build/src/user-config.jam && \
-    # echo "using python : 3.7 : /opt/py/pp37-pypy37_pp73/bin/python : /opt/py/pp37-pypy37_pp73/include : /opt/py/pp37-pypy37_pp73/lib ;" >> tools/build/src/user-config.jam && \
-    # ./bootstrap.sh --prefix=/usr/local --with-toolset=gcc variant=release && \
-    # ./b2 -d1 -j ${JOBS} toolset=gcc variant=release link=shared --build-type=minimal python=3.7 cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable -Wno-parentheses -Wno-maybe-uninitialized" install && \
-    # common \
     ldconfig && \
     echo "`date` boost" >> /build/log.txt
 
@@ -1136,7 +1121,7 @@ RUN \
 #     cd PROJ-data && \
 #     mkdir _build && \
 #     cd _build && \
-#     cmake .. -DCMAKE_BUILD_TYPE=Release && \
+#     cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel && \
 #     make dist && \
 #     echo "`date` proj-data" >> /build/log.txt
 
@@ -1152,7 +1137,7 @@ RUN \
     # cd .. && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_TESTING=OFF && \
     # these cmake commands appear to be identical to just running make, but \
     # are the recommended build process \
     cmake --build . -j ${JOBS} && \
@@ -1231,7 +1216,7 @@ open(path, "w").write(data)' && \
     if find /io/wheelhouse/ -name 'pyproj*.whl' | grep .; then \
     # Make sure all binaries have the execute flag \
     find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 bash -c 'mkdir /tmp/ptmp; pushd /tmp/ptmp; unzip ${0}; chmod a+x pyproj/bin/*; chmod a-x pyproj/bin/*.py; zip -r ${0} *; popd; rm -rf /tmp/ptmp' && \
-    find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'pyproj*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'pyproj*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'pyproj*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
@@ -1247,7 +1232,7 @@ RUN \
     cd minizip-ng && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=yes -DINSTALL_INC_DIR=/usr/local/include/minizip -DMZ_OPENSSL=yes && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_SHARED_LIBS=yes -DINSTALL_INC_DIR=/usr/local/include/minizip -DMZ_OPENSSL=yes && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1265,7 +1250,7 @@ RUN \
     cd libexpat/expat && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DEXPAT_BUILD_EXAMPLES=OFF -DEXPAT_BUILD_TESTS=OFF && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DEXPAT_BUILD_EXAMPLES=OFF -DEXPAT_BUILD_TESTS=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1274,24 +1259,27 @@ RUN \
 # CVS tool used by several libraries
 RUN \
     echo "`date` fossil" >> /build/log.txt && \
+    if [ "$AUDITWHEEL_ARCH" == "x86_64" ]; then \
     # fossil executable \
     curl --retry 5 --silent -L https://fossil-scm.org/home/uv/fossil-linux-x64-`getver.py fossil`.tar.gz -o fossil.tar.gz && \
     tar -zxf fossil.tar.gz && \
     mv fossil /usr/local/bin/. && \
     rm -f fossil.tar.gz && \
-    # # fossil from source \
-    # # Previously, we had to build fossil to allow it to work in our
-    # # environment.  The prebuilt binaries fail because they can't find any of
-    # # a list of versions of GLIBC.
-    # curl --retry 5 --silent -L https://fossil-scm.org/home/tarball/f48180f2ff3169651a725396d4f7d667c99a92873b9c3df7eee2f144be7a0721/fossil-src-2.17.tar.gz -o fossil.tar.gz && \
-    # mkdir fossil && \
-    # tar -zxf fossil.tar.gz -C fossil --strip-components 1 && \
-    # rm -f fossil.tar.gz && \
-    # cd fossil && \
-    # ./configure --prefix=/usr/local --disable-static && \
-    # make --silent -j ${JOBS} && \
-    # make --silent -j ${JOBS} install && \
-    # ldconfig && \
+    true; else \
+    # fossil from source \
+    # Previously, we had to build fossil to allow it to work in our
+    # environment.  The prebuilt binaries fail because they can't find any of
+    # a list of versions of GLIBC.
+    curl --retry 5 --silent -L https://fossil-scm.org/home/tarball/8be0372c1051043761320c8ea8669c3cf320c406e5fe18ad36b7be5f844ca73b/fossil-src-2.24.tar.gz -o fossil.tar.gz && \
+    mkdir fossil && \
+    tar -zxf fossil.tar.gz -C fossil --strip-components 1 && \
+    rm -f fossil.tar.gz && \
+    cd fossil && \
+    ./configure --prefix=/usr/local --disable-static && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    true; fi && \
     echo "`date` fossil" >> /build/log.txt
 
 # Used by gdal and mapnik.  Reads from xls, xlsx, and ods files
@@ -1303,7 +1291,7 @@ RUN \
     cd freexl && \
     fossil open ../freexl.fossil && \
     rm -f ../freexl.fossil && \
-    LIBS=-liconv ./configure --silent --prefix=/usr/local --disable-static && \
+    LIBS=-liconv ./configure --silent --prefix=/usr/local --disable-static --build=${AUDITWHEEL_ARCH}-unknown-linux-gnu && \
     LIBS=-liconv make -j ${JOBS} && \
     LIBS=-liconv make -j ${JOBS} install && \
     ldconfig && \
@@ -1317,7 +1305,7 @@ RUN \
     cd geos && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DGEOS_BUILD_DEVELOPER=NO -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF && \
+    cmake .. -DGEOS_BUILD_DEVELOPER=NO -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_TESTING=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1333,7 +1321,7 @@ RUN \
     mkdir _build && \
     cd _build && \
     # Add legacy APIs so rasterlite will still work \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DLIBXML2_WITH_TESTS=OFF -DLIBXML2_WITH_PYTHON=OFF -DLIBXML2_WITH_ICU=OFF -DLIBXML2_WITH_ICONV=ON -DLIBXML2_WITH_LEGACY=ON -DLIBXML2_WITH_HTTP=ON && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DLIBXML2_WITH_TESTS=OFF -DLIBXML2_WITH_PYTHON=OFF -DLIBXML2_WITH_ICU=OFF -DLIBXML2_WITH_ICONV=ON -DLIBXML2_WITH_LEGACY=ON -DLIBXML2_WITH_HTTP=ON -DLIBXML2_WITH_DEBUG=OFF -DLIBXML2_WITH_PROGRAMS=OFF && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig && \
@@ -1362,7 +1350,7 @@ RUN \
     fossil open ../libspatialite.fossil && \
     # fossil checkout -f d3aee83d3cbdd296 && \
     rm -f ../libspatialite.fossil && \
-    ./configure --silent --prefix=/usr/local --disable-examples --disable-static && \
+    ./configure --silent --prefix=/usr/local --disable-examples --disable-static --build=${AUDITWHEEL_ARCH}-unknown-linux-gnu && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1379,7 +1367,7 @@ RUN \
     # This could be done with cmake, but then librasterlite2 doesn't find it
     # mkdir _build && \
     # cd _build && \
-    # cmake .. -DCMAKE_BUILD_TYPE=Release -DWITH_JPEG=ON -DWITH_ZLIB=ON && \
+    # cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DWITH_JPEG=ON -DWITH_ZLIB=ON && \
     autoreconf -ifv && \
     ./configure --silent --prefix=/usr/local --with-zlib=yes --with-jpeg=yes --disable-static && \
     make --silent -j ${JOBS} && \
@@ -1460,8 +1448,8 @@ RUN \
     fossil open ../librasterlite2.fossil && \
     fossil checkout -f 9dd8217cb9 && \
     rm -f ../librasterlite2.fossil && \
-    # ./configure --silent --prefix=/usr/local --disable-static --disable-leptonica && \
-    ./configure --silent --prefix=/usr/local --disable-static && \
+    # ./configure --silent --prefix=/usr/local --disable-static --disable-leptonica --build=${AUDITWHEEL_ARCH}-unknown-linux-gnu && \
+    ./configure --silent --prefix=/usr/local --disable-static --build=${AUDITWHEEL_ARCH}-unknown-linux-gnu && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1491,7 +1479,8 @@ open(path, "wb").write(data)' && \
     # If we use cmake here, GDAL doesn't find the results properly \
     # mkdir _build && \
     # cd _build && \
-    # cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    # cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel && \
+    export CXXFLAGS="$CXXFLAGS -std=c++11" && \
     autoreconf -ifv && \
     ./configure --silent --prefix=/usr/local && \
     make --silent -j ${JOBS} && \
@@ -1508,7 +1497,7 @@ RUN \
     cd hdf4 && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DHDF4_BUILD_FORTRAN=OFF -DHDF4_ENABLE_NETCDF=OFF -DHDF4_ENABLE_Z_LIB_SUPPORT=ON -DHDF4_DISABLE_COMPILER_WARNINGS=ON -DCMAKE_INSTALL_PREFIX=/usr/local && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DHDF4_BUILD_FORTRAN=OFF -DHDF4_ENABLE_NETCDF=OFF -DHDF4_ENABLE_Z_LIB_SUPPORT=ON -DHDF4_DISABLE_COMPILER_WARNINGS=ON -DCMAKE_INSTALL_PREFIX=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1526,7 +1515,7 @@ RUN \
     # We need HDF5_ENABLE_PARALLEL=ON for parallel netcdf and \
     # HDF5_BUILD_CPP_LIB=ON for gdal, so we have to add ALLOW_UNSUPPORTED=ON \
     # to get both \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DDEFAULT_API_VERSION=v18 -DHDF5_BUILD_EXAMPLES=OFF -DHDF5_BUILD_FORTRAN=OFF -DHDF5_ENABLE_PARALLEL=ON -DHDF5_ENABLE_Z_LIB_SUPPORT=ON -DHDF5_BUILD_GENERATORS=ON -DHDF5_ENABLE_DIRECT_VFD=ON -DHDF5_BUILD_CPP_LIB=ON -DHDF5_DISABLE_COMPILER_WARNINGS=ON -DBUILD_TESTING=OFF -DZLIB_DIR=/usr/local/lib -DMPI_C_COMPILER=/usr/local/bin/mpicc -DMPI_C_HEADER_DIR=/usr/local/include -DMPI_mpi_LIBRARY=/usr/local/lib/libmpi.so -DMPI_C_LIB_NAMES=mpi -DHDF5_BUILD_DOC=OFF -DALLOW_UNSUPPORTED=ON -DCMAKE_INSTALL_PREFIX=/usr/local && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DDEFAULT_API_VERSION=v18 -DHDF5_BUILD_EXAMPLES=OFF -DHDF5_BUILD_FORTRAN=OFF -DHDF5_ENABLE_PARALLEL=ON -DHDF5_ENABLE_Z_LIB_SUPPORT=ON -DHDF5_BUILD_GENERATORS=ON -DHDF5_ENABLE_DIRECT_VFD=ON -DHDF5_BUILD_CPP_LIB=ON -DHDF5_DISABLE_COMPILER_WARNINGS=ON -DBUILD_TESTING=OFF -DZLIB_DIR=/usr/local/lib -DMPI_C_COMPILER=/usr/local/bin/mpicc -DMPI_C_HEADER_DIR=/usr/local/include -DMPI_mpi_LIBRARY=/usr/local/lib/libmpi.so -DMPI_C_LIB_NAMES=mpi -DHDF5_BUILD_DOC=OFF -DALLOW_UNSUPPORTED=ON -DCMAKE_INSTALL_PREFIX=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1561,7 +1550,7 @@ RUN \
     sed -i 's/format,strlen)/format,strlenn)/g' libnczarr/zutil.c && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DENABLE_EXAMPLES=OFF -DENABLE_PARALLEL4=ON -DUSE_PARALLEL=ON -DUSE_PARALLEL4=ON -DENABLE_HDF4=ON -DENABLE_PNETCDF=ON -DENABLE_BYTERANGE=ON -DENABLE_JNA=ON -DCMAKE_SHARED_LINKER_FLAGS=-ljpeg -DENABLE_TESTS=OFF -DENABLE_HDF4_FILE_TESTS=OFF -DENABLE_DAP=ON -DENABLE_HDF5=ON -DENABLE_NCZARR=ON && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DENABLE_EXAMPLES=OFF -DENABLE_PARALLEL4=ON -DUSE_PARALLEL=ON -DUSE_PARALLEL4=ON -DENABLE_HDF4=ON -DENABLE_PNETCDF=ON -DENABLE_BYTERANGE=ON -DENABLE_JNA=ON -DCMAKE_SHARED_LINKER_FLAGS=-ljpeg -DENABLE_TESTS=OFF -DENABLE_HDF4_FILE_TESTS=OFF -DENABLE_DAP=ON -DENABLE_HDF5=ON -DENABLE_NCZARR=ON && \
     # for hdf5 1_13, we might need to add \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -1569,10 +1558,13 @@ RUN \
     echo "`date` netcdf" >> /build/log.txt
 
 # Used by mysql.  Linux async i/o library
+# We can't use the version number here, because the source isn't properly
+# tagged
 RUN \
     echo "`date` libaio" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b libaio.`getver.py libaio` -c advice.detachedHead=false https://pagure.io/libaio.git && \
+    # git clone --depth=1 --single-branch -b libaio.`getver.py libaio` -c advice.detachedHead=false https://pagure.io/libaio.git && \
+    git clone --depth=1 --single-branch -c advice.detachedHead=false https://pagure.io/libaio.git && \
     cd libaio && \
     make prefix=/usr/local --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1597,7 +1589,7 @@ RUN \
     cd _build && \
     CFLAGS="$CFLAGS -ftls-model=global-dynamic" \
     CXXFLAGS="$CXXFLAGS -Wno-deprecated-declarations -ftls-model=global-dynamic" \
-    cmake .. -DBUILD_CONFIG=mysql_release -DBUILD_SHARED_LIBS=ON -DWITH_BOOST=`find ../boost/ -maxdepth 1 -name 'boost_*'` -DWITH_ZLIB=bundled -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DCMAKE_BUILD_TYPE=Release -DWITHOUT_SERVER=ON -DREPRODUCIBLE_BUILD=ON -DINSTALL_MYSQLTESTDIR="" && \
+    cmake .. -DBUILD_CONFIG=mysql_release -DBUILD_SHARED_LIBS=ON -DWITH_BOOST=`find ../../boost/ -maxdepth 1 -name 'boost_*'` -DWITH_ZLIB=bundled -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DCMAKE_BUILD_TYPE=MinSizeRel -DWITHOUT_SERVER=ON -DREPRODUCIBLE_BUILD=ON -DINSTALL_MYSQLTESTDIR="" && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     # reduce docker size \
@@ -1662,7 +1654,7 @@ RUN \
     cd cfitsio && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1702,7 +1694,7 @@ RUN \
     # ./configure --silent --prefix=/usr/local --disable-static && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DGTA_BUILD_DOCUMENTATION=OFF -DGTA_BUILD_STATIC_LIB=OFF && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=MinSizeRel -DGTA_BUILD_DOCUMENTATION=OFF -DGTA_BUILD_STATIC_LIB=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1734,7 +1726,7 @@ RUN \
     cd xerces-c && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -Dtranscoder=iconv && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -Dtranscoder=iconv && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1749,7 +1741,7 @@ RUN \
 #     cd OpenBLAS && \
 #     mkdir _build && \
 #     cd _build && \
-#     cmake .. -DUSE_OPENMP=True -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release && \
+#     cmake .. -DUSE_OPENMP=True -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=MinSizeRel && \
 #     make --silent -j ${JOBS} && \
 #     make --silent -j ${JOBS} install && \
 #     ldconfig && \
@@ -1762,7 +1754,7 @@ RUN \
 #     cd superlu && \
 #     mkdir _build && \
 #     cd _build && \
-#     cmake .. -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release -Denable_internal_blaslib=OFF -Denable_tests=OFF -DTPL_BLAS_LIBRARIES=/usr/local/lib64/libopenblas.so && \
+#     cmake .. -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=MinSizeRel -Denable_internal_blaslib=OFF -Denable_tests=OFF -DTPL_BLAS_LIBRARIES=/usr/local/lib64/libopenblas.so && \
 #     make --silent -j ${JOBS} && \
 #     make --silent -j ${JOBS} install && \
 #     ldconfig && \
@@ -1776,7 +1768,7 @@ RUN \
     cd lapack && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release -DTEST_FORTRAN_COMPILER=OFF && \
+    cmake .. -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=MinSizeRel -DTEST_FORTRAN_COMPILER=OFF -DCBLAS=ON && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1794,7 +1786,7 @@ RUN \
     cd armadillo && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib && \
+    cmake .. -DBUILD_SHARED_LIBS=True -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1803,8 +1795,10 @@ RUN \
 # Used by GDAL
 # PINNED VERSION - can't easily check the version
 # MrSID only works with gcc 4 or 5 unless we change it.
+# Not available on architectures other than x86_64 without more work
 RUN \
     echo "`date` mrsid" >> /build/log.txt && \
+    if [ "$AUDITWHEEL_ARCH" == "x86_64" ]; then \
     curl --retry 5 --silent http://bin.extensis.com/download/developer/MrSID_DSDK-9.5.4.4709-rhel6.x86-64.gcc531.tar.gz -L -o mrsid.tar.gz && \
     mkdir mrsid && \
     tar -zxf mrsid.tar.gz -C mrsid --strip-components 1 && \
@@ -1812,6 +1806,7 @@ RUN \
     sed -i 's/ && __GNUC__ <= 5//g' /build/mrsid/Raster_DSDK/include/lt_platform.h && \
     cp -n mrsid/Raster_DSDK/lib/* /usr/local/lib/. && \
     cp -n mrsid/Lidar_DSDK/lib/* /usr/local/lib/. && \
+    true; fi && \
     echo "`date` mrsid" >> /build/log.txt
 
 # Used by GDAL.  Block compression library
@@ -1822,7 +1817,7 @@ RUN \
     cd c-blosc && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED=ON -DBUILD_STATIC=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_FUZZERS=OFF -DBUILD_TESTS=OFF -DPREFER_EXTERNAL_LZ4=ON -DPREFER_EXTERNAL_ZLIB=ON -DPREFER_EXTERNAL_ZSTD=ON -DDEACTIVATE_SNAPPY=OFF && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_SHARED=ON -DBUILD_STATIC=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_FUZZERS=OFF -DBUILD_TESTS=OFF -DPREFER_EXTERNAL_LZ4=ON -DPREFER_EXTERNAL_ZLIB=ON -DPREFER_EXTERNAL_ZSTD=ON -DDEACTIVATE_SNAPPY=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1837,7 +1832,7 @@ RUN \
     cd libde265 && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED=ON -DBUILD_STATIC=OFF -DWITH_EXAMPLES=OFF && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_SHARED=ON -DBUILD_STATIC=OFF -DWITH_EXAMPLES=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1854,7 +1849,7 @@ RUN \
     cd libheif && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1868,7 +1863,7 @@ RUN \
     cd kealib && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1882,7 +1877,7 @@ RUN \
     cd libOpenDRIVE && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_POSITION_INDEPENDENT_CODE=ON && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1930,9 +1925,8 @@ RUN \
     (sed -i 's/>=3.8/>=3.7/g' swig/python/setup.py.in || true) && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release \
-    -DMRSID_LIBRARY=/build/mrsid/Raster_DSDK/lib/libltidsdk.so \
-    -DMRSID_INCLUDE_DIR=/build/mrsid/Raster_DSDK/include \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel \
+    $(if [ "$AUDITWHEEL_ARCH" == "x86_64" ]; then echo -n "-DMRSID_LIBRARY=/usr/local/lib/libltidsdk.so -DMRSID_INCLUDE_DIR=/build/mrsid/Raster_DSDK/include"; fi) \
     -DGDAL_USE_LERC=ON \
     -DENABLE_DEFLATE64=OFF \
     2>&1 >../cmakelog.txt \
@@ -2031,7 +2025,7 @@ open(path, "w").write(s)' && \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse; git clean -fxd build GDAL.egg-info' && \
-    find /io/wheelhouse/ -name 'GDAL*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'GDAL*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'GDAL*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'GDAL*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
@@ -2081,7 +2075,7 @@ RUN \
     cd _build && \
     CXXFLAGS="-Wno-unused-variable -Wno-unused-but-set-variable -Wno-attributes -Wno-unknown-pragmas -Wno-maybe-uninitialized -Wno-parentheses -std=c++17" \
     cmake .. \
-    -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=MinSizeRel \
     -DBUILD_BENCHMARK=OFF \
     -DBUILD_DEMO_CPP=OFF \
     -DBUILD_DEMO_VIEWER=OFF \
@@ -2154,18 +2148,29 @@ open(path, "w").write(s)' && \
     sed -i 's/\.def_property_readonly("symbolizers", \&rule::get_symbolizers)/.def_property_readonly("symbolizers", \&rule::get_symbolizers).def_property_readonly("symbols", \&rule::get_symbolizers)/g' src/mapnik_rule.cpp && \
     sed -i 's/handle.cast<mapnik::value_integer>();/handle.cast<mapnik::value_integer>();}else if (py::isinstance<py::none>(handle)) {/g' src/create_datasource.hpp && \
     sed -i 's/to_string3)/to_string3).def("tostring",\&to_string1).def("tostring",\&to_string2).def("tostring",\&to_string3)/g' src/mapnik_image.cpp && \
+    if [ "$AUDITWHEEL_ARCH" != "x86_64" ]; then sed -i 's/.def_static("face_names", &freetype_engine::face_names)/\/\/ .def_static("face_names", \&freetype_engine::face_names)/g' src/mapnik_font_engine.cpp; fi && \
     # Apply a patch and set variables to work with the cmake build of mapnik \
     git apply --stat --numstat --apply ../mapnik_setup.py.patch && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     find /opt/py -mindepth 1 -not -name '*p37-*' -print0 | xargs -n 1 -0 -P ${JOBS} bash -c 'export WORKDIR=/tmp/python-mapnik-`basename ${0}`; mkdir -p $WORKDIR; cp -r . $WORKDIR/.; pushd $WORKDIR; "${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && popd && rm -rf $WORKDIR' && \
-    find /io/wheelhouse/ -name 'mapnik*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'mapnik*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'mapnik*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'mapnik*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
     rm -rf ~/.cache && \
     echo "`date` python-mapnik" >> /build/log.txt
+
+# used by openslide, though maybe not until PR #605 is merged
+RUN \
+    echo "`date` jxrlib" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b v`getver.py jxrlib` -c advice.detachedHead=false https://github.com/4creators/jxrlib.git && \
+    cd jxrlib && \
+    DIR_INSTALL=/usr/local make install && \
+    ldconfig && \
+    echo "`date` jxrlib" >> /build/log.txt
 
 # PINNED VERSION - use master since last version is stale
 RUN \
@@ -2242,7 +2247,7 @@ open(path, "w").write(s)' && \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
-    find /io/wheelhouse/ -name 'openslide*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'openslide*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
@@ -2275,7 +2280,7 @@ RUN \
     cd nifti_clib && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release && \
+    cmake .. -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=MinSizeRel && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -2345,7 +2350,7 @@ RUN \
     cd libarchive && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_TESTING=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -2388,7 +2393,7 @@ RUN \
     cd matio && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     python -c $'# \n\
@@ -2498,7 +2503,7 @@ open(path, "w").write(s)' && \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse; git clean -fxd -e pyvips/bin' && \
-    find /io/wheelhouse/ -name 'pyvips*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'pyvips*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'pyvips*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'pyvips*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
@@ -2572,15 +2577,12 @@ import _pylibmc \n\
 """) \n\
 open(path, "w").write(s)' && \
     find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
-    find /io/wheelhouse/ -name 'pylibmc*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'pylibmc*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'pylibmc*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'pylibmc*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
     rm -rf ~/.cache && \
     echo "`date` pylibmc" >> /build/log.txt
-
-COPY python-javabridge.pyx.patch \
-    ./
 
 # python-javabridge needs a jvm to work; this bundles the jvm with the python
 # package.
@@ -2596,8 +2598,13 @@ RUN \
     # use a placeholder for the jar files to reduce the docker file size; \
     # they'll be restored later && \
     find javabridge/jvm -name '*.jar' -exec bash -c "echo placeholder > {}" \; && \
+    if [ -e javabridge/jvm/jre/lib/amd64 ]; then \
+    export ARCH="amd64"; \
+    elif [ -e javabridge/jvm/jre/lib/aarch64 ]; then \
+    export ARCH="aarch64"; \
+    fi && \
     # libsaproc.so is only used for debugging \
-    rm -f javabridge/jvm/jre/lib/amd64/libsaproc.so && \
+    rm -f javabridge/jvm/jre/lib/"${ARCH}"/libsaproc.so && \
     sed -i 's/env.exception_describe()/pass/g' javabridge/jutil.py && \
     # allow installing binaries \
     python -c $'# \n\
@@ -2639,10 +2646,11 @@ elif sys.platform.startswith(\'linux\'):""") \n\
 open(path, "w").write(s)' && \
     # use the java libraries we included \
     python -c $'# \n\
+import os \n\
 path = "javabridge/jutil.py" \n\
 s = open(path).read() \n\
 s = s.replace("import javabridge._javabridge as _javabridge", \n\
-"""libjvm_path = os.path.join(os.path.dirname(__file__), "jvm", "jre", "lib", "amd64", "server", "libjvm.so") \n\
+"""libjvm_path = os.path.join(os.path.dirname(__file__), "jvm", "jre", "lib", \\"""" + os.environ["ARCH"] + """\\" , "server", "libjvm.so") \n\
 if os.path.exists(libjvm_path): \n\
     import ctypes \n\
     ctypes.CDLL(libjvm_path) \n\
@@ -2656,18 +2664,19 @@ s = s.replace("jdk_dir = os.path.abspath(jdk_dir)", \n\
         if os.path.exists(jvm_path): \n\
             jdk_dir = jvm_path \n\
         jdk_dir = os.path.abspath(jdk_dir)""") \n\
+s = s.replace("arches = (", """arches = ("aarch64", """) \n\
 open(path, "w").write(s)' && \
     # export library paths so that auditwheel doesn't complain \
-    export LD_LIBRARY_PATH="/usr/lib/jvm/jre/lib/amd64/:/usr/lib/jvm/jre/lib/amd64/jli:/usr/lib/jvm/jre/lib/amd64/client:/usr/lib/jvm/jre/lib/amd64/server:$LD_LIBRARY_PATH" && \
+    export LD_LIBRARY_PATH="/usr/lib/jvm/jre/lib/${ARCH}/:/usr/lib/jvm/jre/lib/${ARCH}/jli:/usr/lib/jvm/jre/lib/${ARCH}/client:/usr/lib/jvm/jre/lib/${ARCH}/server:$LD_LIBRARY_PATH" && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
     find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf .eggs build' && \
-    find /io/wheelhouse/ -name 'python_javabridge*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat manylinux2014_x86_64 -w /io/wheelhouse && \
+    find /io/wheelhouse/ -name 'python_javabridge*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
     # auditwheel modifies the java libraries, but some of those have \
     # hard-coded relative paths, which doesn't work.  Replace them with the \
     # unmodified versions.  See https://stackoverflow.com/questions/55904261 \
-    find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} bash -c 'mkdir /tmp/ptmp$(basename ${0}) && pushd /tmp/ptmp$(basename ${0}) && unzip ${0} && mkdir so && cp -f -r -L javabridge/jvm/jre/lib/amd64/*.so so/. && cp -f -r -L /usr/lib/jvm/java/* javabridge/jvm/. && cp -f -r -L so/* javabridge/jvm/jre/lib/amd64/. && rm -rf so && find javabridge/jars -name '\''*.jar'\'' -exec strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v {} \; && rm javabridge/jvm/jre/lib/amd64/server/classes.jsa && fix_record.py && zip -r ${0} * && popd && rm -rf /tmp/ptmp$(basename ${0})' && \
+    find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} bash -c 'mkdir /tmp/ptmp$(basename ${0}) && pushd /tmp/ptmp$(basename ${0}) && unzip ${0} && mkdir so && cp -f -r -L javabridge/jvm/jre/lib/${ARCH}/*.so so/. && cp -f -r -L /usr/lib/jvm/java/* javabridge/jvm/. && cp -f -r -L so/* javabridge/jvm/jre/lib/${ARCH}/. && rm -rf so && find javabridge/jars -name '\''*.jar'\'' -exec strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v {} \; && rm javabridge/jvm/jre/lib/${ARCH}/server/classes.jsa && fix_record.py && zip -r ${0} * && popd && rm -rf /tmp/ptmp$(basename ${0})' && \
     find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'python_javabridge*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \

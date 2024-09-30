@@ -32,13 +32,7 @@ pip install --upgrade pip
 pip install --upgrade setuptools
 pip uninstall -y numpy scipy
 pip cache purge || true
-# echo 'Test installing all libraries from wheels'
-# if python -c 'import sys;sys.exit(not (sys.version_info[2] != (3, 7)))'; then
-#   pip install 'pywavelets<1.4'
-# fi
-# pip install libtiff openslide_python pyvips GDAL mapnik -f /wheels
-pip install 'pyproj; python_version >= "3.13"' --pre --extra-index-url https://pypi.anaconda.org/scientific-python-nightly-wheels/simple
-pip install 'pylibtiff; python_version < "3.8"' 'gdal; python_version < "3.8"' 'mapnik; python_version < "3.8"' --find-links https://girder.github.io/large_image_wheels
+
 echo 'Test installing pyvips and other dependencies from wheels via large_image'
 pip install 'large-image[openslide,gdal,mapnik,bioformats,memcached,tiff,openjpeg,vips,converter]' -f ${1:-/wheels}
 
@@ -55,26 +49,20 @@ python -c 'import javabridge'
 echo 'Test basic import of pylibmc'
 python -c 'import pylibmc'
 echo 'Test basic imports of all wheels'
-if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 8)))'; then
-  echo 'Test basic import of libtiff'
-  python -c 'import libtiff'
-  echo 'Test basic import of glymur'
-  python -c 'import glymur'
-  python -c 'import libtiff, openslide, pyvips, osgeo, mapnik, glymur, javabridge'
-else
-  python -c 'import openslide, pyvips, osgeo, mapnik, javabridge'
-fi
+echo 'Test basic import of libtiff'
+python -c 'import libtiff'
+echo 'Test basic import of glymur'
+python -c 'import glymur'
+python -c 'import libtiff, openslide, pyvips, osgeo, mapnik, glymur, javabridge'
 echo 'Time import of gdal'
 python -c 'import sys,time;s = time.time();from osgeo import gdal;sys.exit(0 if time.time()-s < 1 else ("Slow GDAL import %5.3fs" % (time.time() - s)))'
 
-if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 8)))'; then
 echo 'Test import of pyproj after mapnik'
 python <<EOF
 import mapnik
 import pyproj
 print(pyproj.Proj('+init=epsg:4326 +type=crs'))
 EOF
-fi
 
 echo 'Download an openslide file'
 curl --retry 5 -L -o sample.svs https://data.kitware.com/api/v1/file/5be43d9c8d777f217991e1c2/download
@@ -257,7 +245,6 @@ pprint.pprint({
 pprint.pprint(d.GetMetadata()['NITF_BLOCKA_FRFC_LOC_01'])
 EOF
 
-if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 8)))'; then
 echo 'Test import order with shapely, mapnik, and pyproj'
 if pip install shapely; then (
 python -c 'import shapely;import mapnik;import pyproj;print(pyproj.Proj("epsg:4326"))'
@@ -267,13 +254,11 @@ python -c 'import shapely;import pyproj;import mapnik;print(pyproj.Proj("epsg:43
 python -c 'import mapnik;import shapely;import pyproj;print(pyproj.Proj("epsg:4326"))'
 python -c 'import pyproj;import mapnik;import shapely;print(pyproj.Proj("epsg:4326"))'
 ); else echo 'no shapely available'; fi
-fi
 
 # pytorch 1.10 has issues with import order.  Specifically, if torch_cuda.so is
 # imported before gdal, gdal fails with the error:
 #   ImportError: /usr/lib/x86_64-linux-gnu/libstdc++.so.6: cannot allocate
 #   memory in static TLS block
-if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 8) and sys.version_info < (3, 12)))'; then
 echo 'Test import order with pytorch, gdal, and pyproj'
 if pip install 'torch<2'; then (
 python -c 'import osgeo.gdal;import torch;import pyproj;print(pyproj.Proj("epsg:4326"))'
@@ -283,15 +268,12 @@ python -c 'import pyproj;import torch;import osgeo.gdal;print(pyproj.Proj("epsg:
 python -c 'import osgeo.gdal;import pyproj;import torch;print(pyproj.Proj("epsg:4326"))'
 python -c 'import torch;import pyproj;import osgeo.gdal;print(pyproj.Proj("epsg:4326"))'
 ); else echo 'no pytorch available'; fi
-fi
 
 echo 'Test running executables'
-if python -c 'import sys;sys.exit(not (sys.version_info >= (3, 8)))'; then
 `python -c 'import os,sys,libtiff;sys.stdout.write(os.path.dirname(libtiff.__file__))'`/bin/tiffinfo landcover.tif
 tiffinfo landcover.tif
 `python -c 'import os,sys,glymur;sys.stdout.write(os.path.dirname(glymur.__file__))'`/bin/opj_dump -h | grep -q 'opj_dump utility from the OpenJPEG project'
 opj_dump -h | grep -q 'opj_dump utility from the OpenJPEG project'
-fi
 
 if slidetool --version; then
 `python -c 'import os,sys,openslide;sys.stdout.write(os.path.dirname(openslide.__file__))'`/bin/slidetool --version
@@ -311,7 +293,7 @@ gdal-config --formats
 gdal-config --formats | wc
 python <<EOF
 import os
-known = set('JPEG raw GTIFF MEM vrt Derived HFA SDTS NITF GXF AAIGrid CEOS SAR_CEOS XPM DTED JDEM Envisat ELAS FIT L1B RS2 ILWIS RMF Leveller SGI SRTMHGT IDRISI GSG ERS PALSARJaxa DIMAP GFF COSAR PDS ADRG COASP TSX Terragen BLX MSGN TIL R northwood SAGA XYZ HEIF ESRIC HF2 KMLSUPEROVERLAY CTG ZMap NGSGEOID IRIS MAP CALS SAFE SENTINEL2 PRF MRF WMTS GRIB BMP TGA STACTA BSB AIGrid USGSDEM AirSAR OZI PCIDSK SIGDEM RIK STACIT PDF PNG GIF WCS HTTP netCDF Zarr DAAS EEDA FITS HDF5 PLMOSAIC WMS OGCAPI GTA WEBP HDF4 Rasterlite MBTiles PostGISRaster JP2OpenJPEG EXR PCRaster JPEGXL MrSID MEM geojson TAB Shape KML VRT AVC GML CSV DGN GMT NTF S57 Tiger Geoconcept GeoRSS DXF PGDump GPSBabel EDIGEO SXF OpenFileGDB WAsP Selafin JML VDV FlatGeobuf MapML JSONFG MiraMon SDTS GPX GMLAS SVG CSW NAS PLSCENES SOSI WFS NGW Elastic Idrisi PDS SQLite GeoPackage OSM VFK MVT PMTiles AmigoCloud Carto ILI MySQL PG XLSX XLS CAD GTFS ODS LVBAG'.lower().split())
+known = set('JPEG raw GTIFF MEM vrt Derived HFA SDTS NITF GXF AAIGrid CEOS SAR_CEOS XPM DTED JDEM Envisat ELAS FIT L1B RS2 ILWIS RMF Leveller SGI SRTMHGT IDRISI GSG ERS PALSARJaxa DIMAP GFF COSAR PDS ADRG COASP TSX Terragen BLX MSGN TIL R northwood SAGA XYZ HEIF ESRIC HF2 KMLSUPEROVERLAY CTG ZMap NGSGEOID IRIS MAP CALS SAFE SENTINEL2 PRF MRF WMTS GRIB BMP TGA STACTA BSB AIGrid USGSDEM AirSAR OZI PCIDSK SIGDEM RIK STACIT PDF PNG GIF WCS HTTP netCDF Zarr DAAS EEDA FITS HDF5 PLMOSAIC WMS OGCAPI GTA WEBP HDF4 Rasterlite MBTiles PostGISRaster JP2OpenJPEG EXR PCRaster JPEGXL MEM geojson TAB Shape KML VRT AVC GML CSV DGN GMT NTF S57 Tiger Geoconcept GeoRSS DXF PGDump GPSBabel EDIGEO SXF OpenFileGDB WAsP Selafin JML VDV FlatGeobuf MapML JSONFG MiraMon SDTS GPX GMLAS SVG CSW NAS PLSCENES SOSI WFS NGW Elastic Idrisi PDS SQLite GeoPackage OSM VFK MVT PMTiles AmigoCloud Carto ILI MySQL PG XLSX XLS CAD GTFS ODS LVBAG'.lower().split())
 current = set(os.popen('gdal-config --formats').read().lower().split())
 print('New formats: %s' % ' '.join(sorted(current - known)))
 print('Missing formats: %s' % ' '.join(sorted(known - current)))
@@ -345,6 +327,8 @@ EOF
 echo 'test javabridge'
 java -version
 python -c 'import javabridge, bioformats;javabridge.start_vm(class_path=bioformats.JARS, run_headless=True);javabridge.kill_vm()'
+
+if [ $(arch) != "aarch64"]; then
 curl --retry 5 -L -o sample.czi https://data.kitware.com/api/v1/file/5f048d599014a6d84e005dfc/download
 echo 'Use large_image to read a czi file'
 python <<EOF
@@ -357,6 +341,7 @@ pprint.pprint(ti)
 print(ti['tile'].size)
 print(ti['tile'][:4,:4])
 EOF
+fi
 
 echo 'test javabridge with different encoding'
 java -version
@@ -372,7 +357,7 @@ print(ti['tile'].size)
 print(ti['tile'][:4,:4])
 EOF
 
-
+if [ $(arch) != "aarch64"] || python3 -c 'import sys;sys.exit(not (sys.version_info >= (3, 9)))'; then
 echo 'test with Django gis'
 pip install django
 python <<EOF
@@ -391,6 +376,7 @@ poly2 = poly.transform(trans, clone=True)
 print(poly2)
 sys.exit(str(poly)[10:]==str(poly2)[10:])
 EOF
+fi
 
 echo 'test openslide and pyvips rejecting a fluorescent leica image'
 # Ideally we would eventually support these here

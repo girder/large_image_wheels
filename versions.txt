@@ -17,7 +17,7 @@ fyba f17e23dfd894d2a63cda1dd706d66f8e6e33e255
 fyba-release 4.1.1
 gdal 3.9.2
 gdal-pypi 3.9.2
-gdal-sha d04e73dfbd01e7bccbc5f15dd2562d3744c7ad35
+gdal-sha 3a9bf855d02d5c536fca9bad4132275f1a4dfa66
 gdal-source 3.10.0
 gdk-pixbuf 2.42.12
 giflib 5.2.2
@@ -32,6 +32,7 @@ icu4c 75-1
 imagemagick 7.1.1-38
 jbigkit 2.1
 jpeg-xl 0.11.0
+jxrlib 2019.10.9
 kealib 1.5.3
 krb5 1.21.3
 lapack 3.12.0
@@ -67,13 +68,13 @@ libspatialite 39ad6f1ed3
 libssh2 1.11.0
 libtiff 4.7.0
 libtirpc 1-2-6
-libvips 8.15.3
+libvips 8.15.4
 libwebp 1.4.0
 libxcrypt 4.4.36
 libxml2 2.13.4
 libzip 1.11.1
 lz4 1.10.0
-manylinux2014 1748d9babe0f16ebd83706112a05fb946dfb9b679ec416b95c6a24753f3347f1
+manylinux2014 2ee3e1329ba3e85d783a4128b755803a2c7f7a42a5454464cc325df29e254b9e
 mapnik 379261434b5dec888843a3189676b5d460bec7a6
 mapnik-release 4.0.2
 matio 1.5.27
@@ -84,7 +85,7 @@ netcdf 4.9.2
 nifti 3.0.1
 ogdi 4_1_1
 openblas 0.3.28
-openexr 3.2.4
+openexr 3.3.0
 openjpeg 2.5.2
 openldap 2_6_8
 openmpi 4.1.6
@@ -107,8 +108,8 @@ pylibmc 1.6.3
 pylibtiff 0.6.1
 pylibtiff-pypi 0.4.2
 pylibtiff-sha e4e8a58d4c4f1bcfe87003590abd1d8931282942
-pyproj4 3.6.1
-pyproj4-pypi 3.6.1
+pyproj4 3.7.0
+pyproj4-pypi 3.7.0
 python-bioformats 4.1.0
 python-javabridge 4.0.4
 python-javabridge-pypi 4.0.4
@@ -121,7 +122,7 @@ strip-nondeterminism 0.042
 superlu 7.0.0
 util-linux 2.40.2
 xerces-c 3.2.5
-xz 5.6.2
+xz 5.6.3
 zlib 1.3.1
 zlib-ng 2.2.2
 zstd 1.5.6

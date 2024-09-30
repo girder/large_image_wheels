@@ -2,30 +2,19 @@
 
 import multiprocessing.pool
 import os
+import platform
 import subprocess
 import sys
 import threading
 
 containers = {
-    'python:3.7-slim': [],
     'python:3.8-slim': [],
     'python:3.9-slim': [],
     'python:3.10-slim': [],
     'python:3.11-slim': [],
     'python:3.12-slim': [],
     'python:3.13-rc-slim': [],
-    # -- centos
-    # See https://github.com/molinav/docker-pyenv for some additional images
-    # 'molinav/pyenv:3.7-centos-7': [],
-    'centos/python-38-centos7 3.8': [],
-    'molinav/pyenv:3.9-centos-7': [],
-    # -- opensuse
-    # 'molinav/pyenv:3.7-opensuse-15.3': [],
-    # 'molinav/pyenv:3.8-opensuse-15.3': [],
-    # 'molinav/pyenv:3.9-opensuse-15.3': [],
     # -- pypy
-    # 'pypy:3.7': [],
-    # 'pypy:3.8': [],
     # 'pypy:3.9': [],
     # 'pypy:3.10': [],
     # -- manylinux_2_28
@@ -34,7 +23,16 @@ containers = {
     'almalinux:8 3.11': ['yum install -y python3.11-pip'],
     # 'almalinux:8 3.12': ['yum install -y python3.12-pip'],
 }
-
+if platform.machine() not in {'aarch64', 'arm64'}:
+    containers.update({
+        # -- centos
+        # See https://github.com/molinav/docker-pyenv for some additional images
+        'centos/python-38-centos7 3.8': [],
+        'molinav/pyenv:3.9-centos-7': [],
+        # -- opensuse
+        # 'molinav/pyenv:3.8-opensuse-15.3': [],
+        # 'molinav/pyenv:3.9-opensuse-15.3': [],
+    })
 
 # Without parallelism, this is much simpler:
 # for container in containers:
