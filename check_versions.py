@@ -329,9 +329,14 @@ Packages = {
         'git': 'https://github.com/lz4/lz4.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
-    'manylinux2014': {
+    'manylinux2014_x86_64': {
         # See also https://github.com/pypa/manylinux
         'json': 'https://quay.io/api/v1/repository/pypa/manylinux2014_x86_64?includeTags=true',
+        'keys': lambda data: [data['tags']['latest']['manifest_digest']],
+        're': r':([0-9a-fA-F]+)$',
+    },
+    'manylinux_2_28_aarch64': {
+        'json': 'https://quay.io/api/v1/repository/pypa/manylinux_2_28_aarch64?includeTags=true',
         'keys': lambda data: [data['tags']['latest']['manifest_digest']],
         're': r':([0-9a-fA-F]+)$',
     },

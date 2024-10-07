@@ -13,7 +13,7 @@ containers = {
     'python:3.10-slim': [],
     'python:3.11-slim': [],
     'python:3.12-slim': [],
-    'python:3.13-rc-slim': [],
+    'python:3.13-slim': [],
     # -- pypy
     # 'pypy:3.9': [],
     # 'pypy:3.10': [],
