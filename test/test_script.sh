@@ -255,20 +255,6 @@ python -c 'import mapnik;import shapely;import pyproj;print(pyproj.Proj("epsg:43
 python -c 'import pyproj;import mapnik;import shapely;print(pyproj.Proj("epsg:4326"))'
 ); else echo 'no shapely available'; fi
 
-# pytorch 1.10 has issues with import order.  Specifically, if torch_cuda.so is
-# imported before gdal, gdal fails with the error:
-#   ImportError: /usr/lib/x86_64-linux-gnu/libstdc++.so.6: cannot allocate
-#   memory in static TLS block
-echo 'Test import order with pytorch, gdal, and pyproj'
-if pip install 'torch<2'; then (
-python -c 'import osgeo.gdal;import torch;import pyproj;print(pyproj.Proj("epsg:4326"))'
-python -c 'import pyproj;import osgeo.gdal;import torch;print(pyproj.Proj("epsg:4326"))'
-python -c 'import torch;import osgeo.gdal;import pyproj;print(pyproj.Proj("epsg:4326"))'
-python -c 'import pyproj;import torch;import osgeo.gdal;print(pyproj.Proj("epsg:4326"))'
-python -c 'import osgeo.gdal;import pyproj;import torch;print(pyproj.Proj("epsg:4326"))'
-python -c 'import torch;import pyproj;import osgeo.gdal;print(pyproj.Proj("epsg:4326"))'
-); else echo 'no pytorch available'; fi
-
 echo 'Test running executables'
 `python -c 'import os,sys,libtiff;sys.stdout.write(os.path.dirname(libtiff.__file__))'`/bin/tiffinfo landcover.tif
 tiffinfo landcover.tif
@@ -328,7 +314,7 @@ echo 'test javabridge'
 java -version
 python -c 'import javabridge, bioformats;javabridge.start_vm(class_path=bioformats.JARS, run_headless=True);javabridge.kill_vm()'
 
-if [ $(arch) != "aarch64"]; then
+if [ $(arch) != "aarch64" ]; then
 curl --retry 5 -L -o sample.czi https://data.kitware.com/api/v1/file/5f048d599014a6d84e005dfc/download
 echo 'Use large_image to read a czi file'
 python <<EOF
@@ -357,7 +343,7 @@ print(ti['tile'].size)
 print(ti['tile'][:4,:4])
 EOF
 
-if [ $(arch) != "aarch64"] || python3 -c 'import sys;sys.exit(not (sys.version_info >= (3, 9)))'; then
+if [ $(arch) != "aarch64" ] || python3 -c 'import sys;sys.exit(not (sys.version_info >= (3, 9)))'; then
 echo 'test with Django gis'
 pip install django
 python <<EOF

@@ -1921,8 +1921,6 @@ RUN \
     # - Common \
     cd gdal && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
-    (sed -i 's/>=3.8/>=3.7/g' swig/python/pyproject.toml || true) && \
-    (sed -i 's/>=3.8/>=3.7/g' swig/python/setup.py.in || true) && \
     mkdir _build && \
     cd _build && \
     cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel \
@@ -2231,11 +2229,8 @@ open(path, "w").write(s)' && \
     python -c $'# \n\
 path = "pyproject.toml" \n\
 s = open(path).read() \n\
-s = s.replace(">= 3.8", ">= 3.7") \n\
+s = s.replace(\'pyi"\', \'pyi", "bin/*"\') \n\
 s += """ \n\
-[tool.setuptools.package-data] \n\
-openslide = [\'bin/*\'] \n\
-\n\
 [project.scripts] \n\
 """ \n\
 import os \n\

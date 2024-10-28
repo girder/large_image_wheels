@@ -24,6 +24,8 @@ case "$1" in
         ;;
 esac
 docker pull "${baseimage}":latest
+## for testing, build locally via
+# docker build --force-rm --build-arg PYPY=false --build-arg baseimage=quay.io/pypa/manylinux2014_x86_64 .
 docker build --force-rm -t girder/large_image_wheels --build-arg PYPY=false --build-arg baseimage=${baseimage} .
 
 mkdir -p wheels
