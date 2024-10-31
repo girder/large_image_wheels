@@ -34,10 +34,8 @@ pip uninstall -y numpy scipy
 pip cache purge || true
 
 echo 'Test installing pyvips and other dependencies from wheels via large_image'
-pip install 'large-image[openslide,gdal,mapnik,bioformats,memcached,tiff,openjpeg,vips,converter]' -f ${1:-/wheels}
+pip install 'large-image[gdal,mapnik,bioformats,memcached,tiff,openjpeg,vips,converter]' -f ${1:-/wheels}
 
-echo 'Test basic import of openslide'
-python -c 'import openslide'
 echo 'Test basic import of gdal'
 python -c 'from osgeo import gdal'
 echo 'Test basic import of mapnik'
@@ -53,7 +51,7 @@ echo 'Test basic import of libtiff'
 python -c 'import libtiff'
 echo 'Test basic import of glymur'
 python -c 'import glymur'
-python -c 'import libtiff, openslide, pyvips, osgeo, mapnik, glymur, javabridge'
+python -c 'import libtiff, pyvips, osgeo, mapnik, glymur, javabridge'
 echo 'Time import of gdal'
 python -c 'import sys,time;s = time.time();from osgeo import gdal;sys.exit(0 if time.time()-s < 1 else ("Slow GDAL import %5.3fs" % (time.time() - s)))'
 
@@ -66,17 +64,7 @@ EOF
 
 echo 'Download an openslide file'
 curl --retry 5 -L -o sample.svs https://data.kitware.com/api/v1/file/5be43d9c8d777f217991e1c2/download
-echo 'Use large_image to read an openslide file'
-python <<EOF
-import large_image, pprint
-ts = large_image.getTileSource('sample.svs')
-pprint.pprint(ts.getMetadata())
-ti = ts.getSingleTile(tile_size=dict(width=1000, height=1000),
-                      scale=dict(magnification=20), tile_position=1000)
-pprint.pprint(ti)
-print(ti['tile'].size)
-print(ti['tile'][:4,:4])
-EOF
+
 echo 'Download a tiff file'
 curl --retry 5 -L -o sample.tif https://data.kitware.com/api/v1/file/5be43e398d777f217991e21f/download
 echo 'Use large_image to read a tiff file'
@@ -199,20 +187,6 @@ print(ti['tile'][:4,:4])
 tile = ts.getTile(1178, 1507, 12)
 pprint.pprint(repr(tile[1400:1440]))
 EOF
-echo 'Test that pyvips and openslide can both be imported, pyvips first'
-python <<EOF
-import pyvips, openslide
-pyvips.Image.new_from_file('sample_jp2.tif').write_to_file(
-  'sample_jp2_out.tif', compression='jpeg', Q=90, tile=True,
-  tile_width=256, tile_height=256, pyramid=True, bigtiff=True)
-EOF
-echo 'Test that pyvips and openslide can both be imported, openslide first'
-python <<EOF
-import openslide, pyvips
-pyvips.Image.new_from_file('sample_jp2.tif').write_to_file(
-  'sample_jp2_out.tif', compression='jpeg', Q=90, tile=True,
-  tile_width=256, tile_height=256, pyramid=True, bigtiff=True)
-EOF
 echo 'Test that pyvips and mapnik can both be imported, pyvips first'
 python <<EOF
 import pyvips, mapnik
@@ -260,14 +234,6 @@ echo 'Test running executables'
 tiffinfo landcover.tif
 `python -c 'import os,sys,glymur;sys.stdout.write(os.path.dirname(glymur.__file__))'`/bin/opj_dump -h | grep -q 'opj_dump utility from the OpenJPEG project'
 opj_dump -h | grep -q 'opj_dump utility from the OpenJPEG project'
-
-if slidetool --version; then
-`python -c 'import os,sys,openslide;sys.stdout.write(os.path.dirname(openslide.__file__))'`/bin/slidetool --version
-slidetool --version
-else
-`python -c 'import os,sys,openslide;sys.stdout.write(os.path.dirname(openslide.__file__))'`/bin/openslide-show-properties --version
-openslide-show-properties --version
-fi
 
 `python -c 'import os,sys,osgeo;sys.stdout.write(os.path.dirname(osgeo.__file__))'`/bin/gdalinfo --version
 gdalinfo --version
@@ -364,18 +330,11 @@ sys.exit(str(poly)[10:]==str(poly2)[10:])
 EOF
 fi
 
-echo 'test openslide and pyvips rejecting a fluorescent leica image'
+echo 'test pyvips rejecting a fluorescent leica image'
 # Ideally we would eventually support these here
 curl --retry 5 -L -o leica.scn https://data.kitware.com/api/v1/file/5cb8ba728d777f072b4b2663/download
 python <<EOF
-import openslide
 import pyvips
-
-try:
-  openslide.OpenSlide('leica.scn')
-  raise Exception('Surprise success')
-except openslide.lowlevel.OpenSlideError:
-  pass
 
 try:
   pyvips.Image.new_from_file('leica.scn')

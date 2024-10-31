@@ -2185,69 +2185,69 @@ RUN \
     ldconfig && \
     echo "`date` openslide" >> /build/log.txt
 
-RUN \
-    echo "`date` openslide-python" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    # Last version \
-    # git clone --depth=1 --single-branch -b v`getver.py openslide-python` -c advice.detachedHead=false https://github.com/openslide/openslide-python.git && \
-    # Master \
-    git clone --depth=1 --single-branch -c advice.detachedHead=false https://github.com/openslide/openslide-python.git && \
-    # Common \
-    cd openslide-python && \
-    python -c $'# \n\
-path = "openslide/lowlevel.py" \n\
-s = open(path).read().replace( \n\
-"""            return try_load([\'libopenslide.so.1\', \'libopenslide.so.0\'])""", \n\
-"""            try: \n\
-                import os \n\
-                libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath( \n\
-                    __file__))), \'openslide_python.libs\')) \n\
-                libs = os.listdir(libpath) \n\
-                lib = [lib for lib in libs if lib.startswith(\'libopenslide\')][0] \n\
-                return try_load([lib]) \n\
-            except Exception: \n\
-                return try_load([\'libopenslide.so.1\', \'libopenslide.so.0\'])""") \n\
-open(path, "w").write(s)' && \
-    mkdir openslide/bin && \
-    find /build/openslide/_build/tools/ -executable -not -type d -exec bash -c 'cp --dereference /usr/local/bin/"$(basename {})" openslide/bin/.' \; && \
-    strip openslide/bin/* --strip-unneeded -p -D && \
-    python -c $'# \n\
-path = "openslide/bin/__init__.py" \n\
-s = """import os \n\
-import sys \n\
-\n\
-def program(): \n\
-    path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0])) \n\
-    os.execv(path, sys.argv) \n\
-""" \n\
-open(path, "w").write(s)' && \
-    python -c $'# \n\
-path = "setup.py" \n\
-s = open(path).read().replace( \n\
-    "_convert.c\'", "_convert.c\'], libraries=[\'openslide\'") \n\
-open(path, "w").write(s)' && \
-    python -c $'# \n\
-path = "pyproject.toml" \n\
-s = open(path).read() \n\
-s = s.replace(\'pyi"\', \'pyi", "bin/*"\') \n\
-s += """ \n\
-[project.scripts] \n\
-""" \n\
-import os \n\
-for name in os.listdir(\'openslide/bin\'): \n\
-  if not name.endswith(\'.py\'): \n\
-    s += "%s = \'openslide.bin:program\'" % name \n\
-open(path, "w").write(s)' && \
-    # Strip libraries before building any wheels \
-    # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
-    find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
-    find /io/wheelhouse/ -name 'openslide*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
-    find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
-    find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
-    ls -l /io/wheelhouse && \
-    rm -rf ~/.cache && \
-    echo "`date` openslide-python" >> /build/log.txt
+# RUN \
+#     echo "`date` openslide-python" >> /build/log.txt && \
+#     export JOBS=`nproc` && \
+#     # Last version \
+#     # git clone --depth=1 --single-branch -b v`getver.py openslide-python` -c advice.detachedHead=false https://github.com/openslide/openslide-python.git && \
+#     # Master \
+#     git clone --depth=1 --single-branch -c advice.detachedHead=false https://github.com/openslide/openslide-python.git && \
+#     # Common \
+#     cd openslide-python && \
+#     python -c $'# \n\
+# path = "openslide/lowlevel.py" \n\
+# s = open(path).read().replace( \n\
+# """            return try_load([\'libopenslide.so.1\', \'libopenslide.so.0\'])""", \n\
+# """            try: \n\
+#                 import os \n\
+#                 libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath( \n\
+#                     __file__))), \'openslide_python.libs\')) \n\
+#                 libs = os.listdir(libpath) \n\
+#                 lib = [lib for lib in libs if lib.startswith(\'libopenslide\')][0] \n\
+#                 return try_load([lib]) \n\
+#             except Exception: \n\
+#                 return try_load([\'libopenslide.so.1\', \'libopenslide.so.0\'])""") \n\
+# open(path, "w").write(s)' && \
+#     mkdir openslide/bin && \
+#     find /build/openslide/_build/tools/ -executable -not -type d -exec bash -c 'cp --dereference /usr/local/bin/"$(basename {})" openslide/bin/.' \; && \
+#     strip openslide/bin/* --strip-unneeded -p -D && \
+#     python -c $'# \n\
+# path = "openslide/bin/__init__.py" \n\
+# s = """import os \n\
+# import sys \n\
+# \n\
+# def program(): \n\
+#     path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0])) \n\
+#     os.execv(path, sys.argv) \n\
+# """ \n\
+# open(path, "w").write(s)' && \
+#     python -c $'# \n\
+# path = "setup.py" \n\
+# s = open(path).read().replace( \n\
+#     "_convert.c\'", "_convert.c\'], libraries=[\'openslide\'") \n\
+# open(path, "w").write(s)' && \
+#     python -c $'# \n\
+# path = "pyproject.toml" \n\
+# s = open(path).read() \n\
+# s = s.replace(\'pyi"\', \'pyi", "bin/*"\') \n\
+# s += """ \n\
+# [project.scripts] \n\
+# """ \n\
+# import os \n\
+# for name in os.listdir(\'openslide/bin\'): \n\
+#   if not name.endswith(\'.py\'): \n\
+#     s += "%s = \'openslide.bin:program\'" % name \n\
+# open(path, "w").write(s)' && \
+#     # Strip libraries before building any wheels \
+#     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
+#     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
+#     find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+#     find /io/wheelhouse/ -name 'openslide*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
+#     find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
+#     find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
+#     ls -l /io/wheelhouse && \
+#     rm -rf ~/.cache && \
+#     echo "`date` openslide-python" >> /build/log.txt
 
 # VIPS
 

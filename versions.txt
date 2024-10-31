@@ -17,7 +17,7 @@ fyba b00ae60436bd24145df7006a211219f5fdef6011
 fyba-release 4.1.1
 gdal 3.9.3
 gdal-pypi 3.9.3
-gdal-sha 451f66b4e3f1b466d6a7e46f1509e7674e60071b
+gdal-sha f5eedd2a7e7622bffabcbd30d92c2aeb6d9526ec
 gdal-source 3.11.0
 gdk-pixbuf 2.42.12
 giflib 5.2.2
@@ -49,7 +49,7 @@ libffi 3.4.6
 libgeos 3.13.0
 libgeotiff 1.7.3
 libgta 1.2.1
-libheif 1.18.2
+libheif 1.19.1
 libhwy 1.2.0
 libiconv 1.17
 libidn2 2.3.7
@@ -72,10 +72,10 @@ libvips 8.16.0
 libwebp 1.4.0
 libxcrypt 4.4.36
 libxml2 2.13.4
-libzip 1.11.1
+libzip 1.11.2
 lz4 1.10.0
-manylinux2014_x86_64 1b6743f7785bd1630d5fc985c898b1ac46d64ad7a39173bbfc8ad2ba315a70cf
-manylinux_2_28_aarch64 cb1db85a790b40823ef937dbf57457081b50e3e1626dc1a84a94f0f318459f66
+manylinux2014_x86_64 016083a19da2a4889db06d8f0a4d195c0ff1d53033c07eb7223aabea243be501
+manylinux_2_28_aarch64 36bc7ddc8d27d8f48348181faad8507597ab7716e2cc69c34be4819209212ce4
 mapnik e7a2bacb5d70f9c5fe0941906ce19137c0928522
 mapnik-release 4.0.3
 matio 1.5.28
@@ -89,7 +89,7 @@ openblas 0.3.28
 openexr 3.3.1
 openjpeg 2.5.2
 openldap 2_6_8
-openmpi 4.1.6
+openmpi 4.1.7
 openslide 4.0.0
 openslide-python 1.4.1
 openslide-python-pypi 1.4.1
@@ -102,7 +102,7 @@ parallel-netcdf 1.13.0
 patchelf 0.18.0
 pixman 0.43.4
 pkg-config 0.29.2
-poppler 24.10.0
+poppler 24.11.0
 postgresql 17.0
 proj4 9.5.0
 pylibmc 1.6.3
