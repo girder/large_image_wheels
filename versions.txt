@@ -17,7 +17,7 @@ fyba b00ae60436bd24145df7006a211219f5fdef6011
 fyba-release 4.1.1
 gdal 3.9.3
 gdal-pypi 3.9.3
-gdal-sha 51b869872a37d346fed14526e0b92e22a405b29e
+gdal-sha 451f66b4e3f1b466d6a7e46f1509e7674e60071b
 gdal-source 3.11.0
 gdk-pixbuf 2.42.12
 giflib 5.2.2
@@ -78,7 +78,7 @@ manylinux2014_x86_64 1b6743f7785bd1630d5fc985c898b1ac46d64ad7a39173bbfc8ad2ba315
 manylinux_2_28_aarch64 cb1db85a790b40823ef937dbf57457081b50e3e1626dc1a84a94f0f318459f66
 mapnik e7a2bacb5d70f9c5fe0941906ce19137c0928522
 mapnik-release 4.0.3
-matio 1.5.27
+matio 1.5.28
 meson 1.6.0
 minizip 4.0.7
 mysql 9.1.0
@@ -91,10 +91,10 @@ openjpeg 2.5.2
 openldap 2_6_8
 openmpi 4.1.6
 openslide 4.0.0
-openslide-python 1.4.0
-openslide-python-pypi 1.4.0
-openslide-python-sha cd3216da22e174c7d3fd014d027e1b1b46937ff7
-openslide-sha fe6c12d419381eec05cf47981e57c80dbf713b82
+openslide-python 1.4.1
+openslide-python-pypi 1.4.1
+openslide-python-sha 602ddd8642e30d43cf5faaf27ee639b7ff1eb911
+openslide-sha 8bafcad21cdaf21220846d129599cc7c812d563a
 openssl 3.4.0
 orc 0.4.40
 pango 1.54.0
