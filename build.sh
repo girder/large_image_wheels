@@ -31,7 +31,7 @@ docker build --force-rm -t girder/large_image_wheels --build-arg PYPY=false --bu
 mkdir -p wheels
 ls -al wheels
 rm -f wheels/*.whl
-docker run -v `pwd`/wheels:/opt/mount --rm --entrypoint bash girder/large_image_wheels -c 'cp --preserve=timestamps /io/wheelhouse/{pylibtiff,Glymur,GDAL,mapnik,pyvips,pylibmc,python_javabridge}*many* /opt/mount/. && cp --preserve=timestamps /io/wheelhouse/*bioformats*.whl /opt/mount/. && chown '`id -u`':'`id -g`' /opt/mount/*.whl'
+docker run -v `pwd`/wheels:/opt/mount --rm --entrypoint bash girder/large_image_wheels -c 'cp --preserve=timestamps /io/wheelhouse/{pylibtiff,Glymur,GDAL,mapnik,openslide_python,pyvips,pylibmc,python_javabridge}*many* /opt/mount/. && cp --preserve=timestamps /io/wheelhouse/*bioformats*.whl /opt/mount/. && chown '`id -u`':'`id -g`' /opt/mount/*.whl'
 # rm -f wheels/*none*.whl
 # cp --preserve=timestamps wheels/*.whl wheelhouse/.
 if [ "$makeindex" == "true" ]; then

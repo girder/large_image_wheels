@@ -6,7 +6,7 @@ manylinux wheel files for girder/large_image dependencies.
 
 You can install from the wheels in this repository using a command like:
 ```
-pip install pylibtiff pyvips gdal mapnik glymur javabridge -f https://girder.github.io/large_image_wheels
+pip install pylibtiff openslide_python pyvips gdal mapnik glymur javabridge -f https://girder.github.io/large_image_wheels
 ```
 
 ## Building
@@ -35,12 +35,13 @@ This makes wheels for the main libraries:
 - GDAL
 - Glymur
 - mapnik
+- openslide_python
 - pylibmc
 - pylibtiff
 - python_javabridge
 - pyvips
 
-Currently, wheels are built for Python 3.8, 3.9, 3.10, 3.11, 3.12, 3.13, and for architectures x86_64 and aarch64.  Some libraries have older versions available for older versions of Python that were built before support for those versions was ended.  There are also some libraries from before their projects published binary wheels (openslide_python, psutil, pyproj, ujson).
+Currently, wheels are built for Python 3.8, 3.9, 3.10, 3.11, 3.12, 3.13, and for architectures x86_64 and aarch64.  Some libraries have older versions available for older versions of Python that were built before support for those versions was ended.  There are also some libraries from before their projects published binary wheels (psutil, pyproj, ujson).
 
 This also builds some non-version specific libraries to ensure they have recent dependencies:
 - bioformats
