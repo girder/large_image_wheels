@@ -17,7 +17,7 @@ fyba b00ae60436bd24145df7006a211219f5fdef6011
 fyba-release 4.1.1
 gdal 3.10.0
 gdal-pypi 3.10.0
-gdal-sha 48ddd5dc46249139263b5a1dea10c49007511b2d
+gdal-sha 971762d900faee5996faa667080cf69e67fd6ea4
 gdal-source 3.11.0
 gdk-pixbuf 2.42.12
 giflib 5.2.2
@@ -29,7 +29,7 @@ harfbuzz 10.1.0
 hdf4 4_2_16
 hdf5 1_14_3
 icu4c 76-1
-imagemagick 7.1.1-39
+imagemagick 7.1.1-40
 jbigkit 2.1
 jpeg-xl 0.11.0
 jxrlib 2019.10.9
@@ -74,8 +74,8 @@ libxcrypt 4.4.36
 libxml2 2.13.4
 libzip 1.11.2
 lz4 1.10.0
-manylinux2014_x86_64 016083a19da2a4889db06d8f0a4d195c0ff1d53033c07eb7223aabea243be501
-manylinux_2_28_aarch64 36bc7ddc8d27d8f48348181faad8507597ab7716e2cc69c34be4819209212ce4
+manylinux2014_x86_64 eaad8952789787308d8c9d0c60413ca0a4e43596496315c0872a1a86f2fbb590
+manylinux_2_28_aarch64 db38f0af4c7898b4b215770ac2071cb966ff2e3fdb1901cacefe4fdb4ea6521e
 mapnik bb3106d04fc2c0360857df9aeb2114f42eea55c8
 mapnik-release 4.0.3
 matio 1.5.28
@@ -114,7 +114,7 @@ pyproj4-pypi 3.7.0
 python-bioformats 4.1.0
 python-javabridge 4.0.4
 python-javabridge-pypi 4.0.4
-python-mapnik 7addcf9abb9d032b826e6298f499371b179e89fd
+python-mapnik 10315a6d898ed341f5df5975395f3dc67814ebf6
 python-mapnik-pypi 0.1
 pyvips 2.2.3
 pyvips-pypi 2.2.3

@@ -781,7 +781,11 @@ path = "libtiff/libtiff_ctypes.py" \n\
 s = open(path).read() \n\
 s = s.replace( \n\
 """    libtiff = None if lib is None else ctypes.cdll.LoadLibrary(lib)""", \n\
-"""    if lib is None: \n\
+"""    try: \n\
+        libtiff = None if lib is None else ctypes.cdll.LoadLibrary(lib) \n\
+    except Exception: \n\
+        lib = None \n\
+    if lib is None: \n\
         libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.realpath( \n\
             __file__)), ".libs")) \n\
         if not os.path.exists(libpath): \n\
@@ -797,8 +801,7 @@ s = s.replace( \n\
                 lib = pospath \n\
         except Exception: \n\
             pass \n\
-\n\
-    libtiff = None if lib is None else ctypes.cdll.LoadLibrary(lib)""") \n\
+        libtiff = None if lib is None else ctypes.cdll.LoadLibrary(lib)""") \n\
 s = s.replace("""print("Not trying""", """# print("Not trying""") \n\
 open(path, "w").write(s)' && \
     sed -i 's/'\''oldest-supported-numpy'\''/'\''oldest-supported-numpy; python_version < "3.9"'\'', '\''numpy; python_version >= "3.9"'\''/g' pyproject.toml && \
@@ -1908,7 +1911,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if true; then \
+    if false; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
@@ -2596,6 +2599,10 @@ RUN \
     patch _javabridge.pyx ../python-javabridge.pyx.patch && \
     # Include java libraries \
     mkdir javabridge/jvm && \
+    # remove debug symbols \
+    find /usr/lib/jvm/java/* -name '*.jar' -size +10240c -print0 | xargs -n 1 -0 -P ${JOBS} pack200 -G --repack && \
+    # make jars deterministic \
+    find /usr/lib/jvm/java/* -name '*.jar' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     cp -r -L /usr/lib/jvm/java/* javabridge/jvm/. && \
     # use a placeholder for the jar files to reduce the docker file size; \
     # they'll be restored later && \
@@ -2686,8 +2693,7 @@ open(path, "w").write(s)' && \
     echo "`date` python-javabridge" >> /build/log.txt
 
 # bioformats is a java reader/writer for images.  python-bioformats bundles the
-# jar and provides some interface to the java package through
-# python-javabridge.  We build it because we want a newer jar than is provided
+# jar and provides some interface to the java # python-javabridge.  We build it because we want a newer jar than is provided
 # by the public package
 RUN \
     echo "`date` python-bioformats" >> /build/log.txt && \
