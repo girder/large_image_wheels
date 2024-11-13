@@ -312,9 +312,10 @@ import os \n\
 os.environ["LD_LIBRARY_PATH"] = "/usr/lib64:" + os.environ["LD_LIBRARY_PATH"] \n\
 import sys""") \n\
 open(path, "w").write(s)' && \
-    echo "`date` curl" >> /build/log.txt
-
-RUN \
+    echo "`date` curl" >> /build/log.txt && \
+cd /build && \
+# \
+# RUN \
     echo "`date` zlib-ng" >> /build/log.txt && \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b `getver.py zlib-ng` -c advice.detachedHead=false https://github.com/zlib-ng/zlib-ng.git zlib-ng && \
@@ -446,9 +447,10 @@ RUN \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
-    echo "`date` libzip" >> /build/log.txt
-
-RUN \
+    echo "`date` libzip" >> /build/log.txt && \
+cd /build && \
+# \
+# RUN \
     echo "`date` lcms2" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
@@ -1004,7 +1006,7 @@ RUN \
 
 # Boost
 
-# Used by gdal, mapnik, openslide, libvips.  Unicode support
+# Used by mapnik.  Unicode support
 RUN \
     echo "`date` libiconv" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -1019,13 +1021,13 @@ RUN \
     ldconfig && \
     echo "`date` libiconv" >> /build/log.txt
 
-# Used by gdal, mapnik, openslide, libvips.  Unicode support
+# Used by mapnik.  Unicode support
 RUN \
     echo "`date` icu4c" >> /build/log.txt && \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b release-`getver.py icu4c` -c advice.detachedHead=false https://github.com/unicode-org/icu.git && \
     cd icu/icu4c/source && \
-    CFLAGS="$CFLAGS -DUNISTR_FROM_CHAR_EXPLICIT=explicit -DUNISTR_FROM_STRING_EXPLICIT=explicit -DU_CHARSET_IS_UTF8=1 -DU_NO_DEFAULT_INCLUDE_UTF_HEADERS=1 -DU_HIDE_OBSOLETE_UTF_OLD_H=1" ./configure --silent --prefix=/usr/local --disable-tests --disable-samples --with-data-packaging=library --disable-static && \
+    LDFLAGS="$LDFLAGS -Wl,--gc-sections" CFLAGS="$CFLAGS -Os -fdata-sections -ffunction-sections -DUNISTR_FROM_CHAR_EXPLICIT=explicit -DUNISTR_FROM_STRING_EXPLICIT=explicit -DU_CHARSET_IS_UTF8=1 -DU_NO_DEFAULT_INCLUDE_UTF_HEADERS=1 -DU_HIDE_OBSOLETE_UTF_OLD_H=1" ./configure --silent --prefix=/usr/local --disable-tests --disable-samples --with-data-packaging=library --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     # reduce docker size \
@@ -2604,6 +2606,7 @@ RUN \
     # make jars deterministic \
     find /usr/lib/jvm/java/* -name '*.jar' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     cp -r -L /usr/lib/jvm/java/* javabridge/jvm/. && \
+    find javabridge -name classes.jsa -delete && \
     # use a placeholder for the jar files to reduce the docker file size; \
     # they'll be restored later && \
     find javabridge/jvm -name '*.jar' -exec bash -c "echo placeholder > {}" \; && \
