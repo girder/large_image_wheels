@@ -74,6 +74,7 @@ RUN \
     && true; \
     elif [ "$AUDITWHEEL_ARCH" == "aarch64" ]; then \
     yum install -y \
+    perl-LWP-Protocol-https \
     # more support for GDAL \
     json-c-devel.aarch64 \
     # needed for mysql to use newer versions of xz with mysql \
@@ -214,9 +215,7 @@ cd /build && \
 # # Make our own openssl so we don't depend on system libraries. \
 # RUN \
     echo "`date` openssl" >> /build/log.txt && \
-    # PINNED - 3.3.2 doesn't build with the perl repos present \
-    # git clone --depth=1 --single-branch -b openssl-`getver.py openssl` -c advice.detachedHead=false https://github.com/openssl/openssl.git openssl && \
-    git clone --depth=1 --single-branch -b openssl-3.3.1 -c advice.detachedHead=false https://github.com/openssl/openssl.git openssl && \
+    git clone --depth=1 --single-branch -b openssl-`getver.py openssl` -c advice.detachedHead=false https://github.com/openssl/openssl.git openssl && \
     cd openssl && \
     ./config --prefix=/usr/local --openssldir=/usr/local/ssl shared zlib && \
     make --silent -j ${JOBS} && \
@@ -1058,16 +1057,23 @@ RUN \
 RUN \
     echo "`date` openmpi" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    # building from git is super slow
-    # git clone --depth=1 --single-branch -b v`getver.py openmpi` -c advice.detachedHead=false --recurse-submodules  https://github.com/open-mpi/ompi.git openmpi && \
-    # cd openmpi && \
-    # ./autogen.pl && \
+    export AUTOMAKE_JOBS=`nproc` && \
+    if true; then \
+    # building from git is super slow, though deleting the .git files speed it \
+    # up some.  The repo is more reliable, though \
+    git clone --depth=1 --single-branch -b v`getver.py openmpi` -c advice.detachedHead=false --recurse-submodules  https://github.com/open-mpi/ompi.git openmpi && \
+    cd openmpi && \
+    find . -name '.git' -exec rm -rf {} \+ && \
+    ./autogen.pl && \
+    true; else \
+    # building from tar files is faster \
     curl --retry 5 --silent https://download.open-mpi.org/release/open-mpi/v`getver.py openmpi 2`/openmpi-`getver.py openmpi`.tar.gz -L -o openmpi.tar.gz && \
     mkdir openmpi && \
     tar -zxf openmpi.tar.gz -C openmpi --strip-components 1 && \
     rm -f openmpi.tar.gz && \
     cd openmpi && \
-    ./configure --silent --prefix=/usr/local --disable-dependency-tracking --enable-silent-rules --disable-dlopen --disable-libompitrace --disable-opal-btl-usnic-unit-tests --disable-picky --disable-debug --disable-mem-profile --disable-mem-debug --disable-static --disable-mpi-java -disable-oshmem-profile && \
+    true; fi && \
+    ./configure --silent --prefix=/usr/local --disable-picky --disable-dependency-tracking --enable-silent-rules --disable-dlopen --disable-libompitrace --disable-opal-btl-usnic-unit-tests --disable-picky --disable-debug --disable-mem-profile --disable-mem-debug --disable-static --disable-mpi-java -disable-oshmem-profile && \
     # make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1635,10 +1641,13 @@ RUN \
     echo "`date` postgresql" >> /build/log.txt
 
 # Used by GDAL, mapnik, libvips.  PDF reader
+# PINNED.  Version 24.12.0 breaks some header rules when compiled with GDAL on
+# the aarch deployment
 RUN \
     echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    until timeout 60 git clone --depth=1 --single-branch -b poppler-`getver.py poppler` -c advice.detachedHead=false https://gitlab.freedesktop.org/poppler/poppler.git; do sleep 5; echo "retrying"; done && \
+    # until timeout 60 git clone --depth=1 --single-branch -b poppler-`getver.py poppler` -c advice.detachedHead=false https://gitlab.freedesktop.org/poppler/poppler.git; do sleep 5; echo "retrying"; done && \
+    until timeout 60 git clone --depth=1 --single-branch -b poppler-24.11.0 -c advice.detachedHead=false https://gitlab.freedesktop.org/poppler/poppler.git; do sleep 5; echo "retrying"; done && \
     cd poppler && \
     mkdir _build && \
     cd _build && \

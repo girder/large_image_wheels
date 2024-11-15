@@ -18,8 +18,8 @@ containers = {
     # 'pypy:3.9': [],
     # 'pypy:3.10': [],
     # -- manylinux_2_28
-    # 'almalinux:8 3.8': ['yum install -y python38-pip'],
-    # 'almalinux:8 3.9': ['yum install -y python39-pip'],
+    'almalinux:8 3.8': ['yum install -y python38-pip'],
+    'almalinux:8 3.9': ['yum install -y python39-pip'],
     'almalinux:8 3.11': ['yum install -y python3.11-pip'],
     # 'almalinux:8 3.12': ['yum install -y python3.12-pip'],
 }
@@ -27,8 +27,8 @@ if platform.machine() not in {'aarch64', 'arm64'}:
     containers.update({
         # -- centos
         # See https://github.com/molinav/docker-pyenv for some additional images
-        'centos/python-38-centos7 3.8': [],
-        'molinav/pyenv:3.9-centos-7': [],
+        # 'centos/python-38-centos7 3.8': [],
+        # 'molinav/pyenv:3.9-centos-7': [],
         # -- opensuse
         # 'molinav/pyenv:3.8-opensuse-15.3': [],
         # 'molinav/pyenv:3.9-opensuse-15.3': [],

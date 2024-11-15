@@ -399,10 +399,10 @@ Packages = {
     },
     'openmpi': {
         # building from git is too slow
-        # 'git': 'https://github.com/open-mpi/ompi.git',
-        # 're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
-        'filelist': 'https://www.open-mpi.org/software/ompi/v4.1/',
-        're': r'openmpi-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
+        'git': 'https://github.com/open-mpi/ompi.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+        # 'filelist': 'https://www.open-mpi.org/software/ompi/v5.0/',
+        # 're': r'openmpi-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
     },
     'openslide': {
         'git': 'https://github.com/openslide/openslide.git',
