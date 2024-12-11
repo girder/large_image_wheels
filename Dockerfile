@@ -135,9 +135,9 @@ RUN echo "/usr/local/lib64" > /etc/ld.so.conf.d/01-manylinux.conf && \
 # available by default.
 RUN \
     echo "`date` virtualenv" >> /build/log.txt && \
-    export PATH="/opt/python/cp38-cp38/bin:$PATH" && \
+    export PATH="/opt/python/cp39-cp39/bin:$PATH" && \
     pip3 install --no-cache-dir virtualenv && \
-    virtualenv -p python3.8 /venv && \
+    virtualenv -p python3.9 /venv && \
     echo "`date` virtualenv" >> /build/log.txt
 
 COPY getver.py fix_record.py /usr/local/bin/
@@ -566,25 +566,13 @@ RUN \
     export JOBS=`nproc` && \
     export CFLAGS="$CFLAGS -O3" && \
     export CXXFLAGS="$CXXFLAGS -O3" && \
-    # Needed for 2.1.90 \
-    # export CFLAGS="-g0 -O2 -DNDEBUG -fPIC" && \
-    curl --retry 5 --silent https://github.com/libjpeg-turbo/libjpeg-turbo/archive/`getver.py libjpeg-turbo`.tar.gz -L -o libjpeg-turbo.tar.gz && \
-    mkdir libjpeg-turbo && \
-    tar -zxf libjpeg-turbo.tar.gz -C libjpeg-turbo --strip-components 1 && \
-    rm -f libjpeg-turbo.tar.gz && \
+    git clone --depth=1 --single-branch -b `getver.py libjpeg-turbo` -c advice.detachedHead=false https://github.com/libjpeg-turbo/libjpeg-turbo.git && \
     cd libjpeg-turbo && \
-    # build 8-bit \
-    mkdir _build8 && \
-    cd _build8 && \
-    cmake .. -DWITH_12BIT=0 -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD=${SOURCE_DATE_EPOCH} && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD=${SOURCE_DATE_EPOCH} && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
-    cd .. && \
-    # build 12-bit in place \
-    cmake . -DWITH_12BIT=1 -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD=${SOURCE_DATE_EPOCH} && \
-    make clean && \
-    make --silent -j ${JOBS} && \
-    # don't install this; we reference it explicitly \
     echo "`date` libjpeg-turbo" >> /build/log.txt
 
 # Used in gdal, mapnik, libvips, openslide, glymur
@@ -724,9 +712,6 @@ RUN \
     export LDFLAGS="$LDFLAGS"',-rpath,OORIGIN' && \
     ./configure --prefix=/usr/local \
     --disable-static \
-    --enable-jpeg12 \
-    --with-jpeg12-include-dir=/build/libjpeg-turbo \
-    --with-jpeg12-lib=/build/libjpeg-turbo/libjpeg.so \
     | tee configure.output && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -753,7 +738,7 @@ RUN \
     git clone --depth=1 --single-branch -b v`getver.py pylibtiff` -c advice.detachedHead=false https://github.com/pearu/pylibtiff.git && \
     cd pylibtiff && \
     mkdir libtiff/bin && \
-    find /build/libtiff/tools/.libs/ -executable -type f -exec cp {} libtiff/bin/. \; && \
+    find /build/libtiff/tools/ -executable -not -type d -exec bash -c 'cp --dereference /usr/local/bin/"$(basename {})" libtiff/bin/.' \; && \
     strip libtiff/bin/* --strip-unneeded -p -D && \
     python -c $'# \n\
 path = "libtiff/bin/__init__.py" \n\
@@ -786,7 +771,7 @@ s = s.replace( \n\
         libtiff = None if lib is None else ctypes.cdll.LoadLibrary(lib) \n\
     except Exception: \n\
         lib = None \n\
-    if lib is None: \n\
+    if lib is None or True: \n\
         libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.realpath( \n\
             __file__)), ".libs")) \n\
         if not os.path.exists(libpath): \n\
@@ -795,9 +780,9 @@ s = s.replace( \n\
         if not os.path.exists(libpath): \n\
             libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath( \n\
                 __file__))), "pylibtiff.libs")) \n\
-        libs = os.listdir(libpath) \n\
         try: \n\
-            pospath = os.path.join(libpath, [lib for lib in libs if lib.startswith("libtiff-")][0]) \n\
+            libs = os.listdir(libpath) \n\
+            pospath = os.path.join(libpath, [flib for flib in libs if flib.startswith("libtiff-")][0]) \n\
             if os.path.exists(pospath): \n\
                 lib = pospath \n\
         except Exception: \n\
@@ -843,7 +828,7 @@ RUN \
     mkdir glymur/bin && \
     # Copy some jpeg tools \
     find /usr/local/bin -executable -type f -name 'opj_*' -exec cp {} glymur/bin/. \; && \
-    cp /build/libjpeg-turbo/_build8/{jpegtran,cjpeg,djpeg,rdjpgcom,wrjpgcom} glymur/bin/. && \
+    cp /build/libjpeg-turbo/_build/{jpegtran,cjpeg,djpeg,rdjpgcom,wrjpgcom} glymur/bin/. && \
     strip glymur/bin/* --strip-unneeded -p -D && \
     python -c $'# \n\
 path = "glymur/bin/__init__.py" \n\
@@ -1508,7 +1493,7 @@ RUN \
     cd hdf4 && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DHDF4_BUILD_FORTRAN=OFF -DHDF4_ENABLE_NETCDF=OFF -DHDF4_ENABLE_Z_LIB_SUPPORT=ON -DHDF4_DISABLE_COMPILER_WARNINGS=ON -DCMAKE_INSTALL_PREFIX=/usr/local && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DHDF4_BUILD_FORTRAN=OFF -DHDF4_ENABLE_NETCDF=OFF -DHDF4_ENABLE_Z_LIB_SUPPORT=ON -DHDF4_DISABLE_COMPILER_WARNINGS=ON -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1561,8 +1546,8 @@ RUN \
     sed -i 's/format,strlen)/format,strlenn)/g' libnczarr/zutil.c && \
     mkdir _build && \
     cd _build && \
+    CFLAGS="$CFLAGS -Wno-incompatible-pointer-types" \
     cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DENABLE_EXAMPLES=OFF -DENABLE_PARALLEL4=ON -DUSE_PARALLEL=ON -DUSE_PARALLEL4=ON -DENABLE_HDF4=ON -DENABLE_PNETCDF=ON -DENABLE_BYTERANGE=ON -DENABLE_JNA=ON -DCMAKE_SHARED_LINKER_FLAGS=-ljpeg -DENABLE_TESTS=OFF -DENABLE_HDF4_FILE_TESTS=OFF -DENABLE_DAP=ON -DENABLE_HDF5=ON -DENABLE_NCZARR=ON && \
-    # for hdf5 1_13, we might need to add \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1641,13 +1626,13 @@ RUN \
     echo "`date` postgresql" >> /build/log.txt
 
 # Used by GDAL, mapnik, libvips.  PDF reader
-# PINNED.  Version 24.12.0 breaks some header rules when compiled with GDAL on
-# the aarch deployment
+# PINNED: poppler 25.01.0 updates the version of clang it expects, which breaks
+# in the version available in manylinux2014
 RUN \
     echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    until timeout 60 git clone --depth=1 --single-branch -b poppler-24.12.0 -c advice.detachedHead=false https://gitlab.freedesktop.org/poppler/poppler.git; do sleep 5; echo "retrying"; done && \
     # until timeout 60 git clone --depth=1 --single-branch -b poppler-`getver.py poppler` -c advice.detachedHead=false https://gitlab.freedesktop.org/poppler/poppler.git; do sleep 5; echo "retrying"; done && \
-    until timeout 60 git clone --depth=1 --single-branch -b poppler-24.11.0 -c advice.detachedHead=false https://gitlab.freedesktop.org/poppler/poppler.git; do sleep 5; echo "retrying"; done && \
     cd poppler && \
     mkdir _build && \
     cd _build && \
@@ -2180,6 +2165,7 @@ RUN \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b v`getver.py jxrlib` -c advice.detachedHead=false https://github.com/4creators/jxrlib.git && \
     cd jxrlib && \
+    sed -i "s/CFLAGS=/CFLAGS=-Wno-implicit-function-declaration -Wno-incompatible-pointer-types /g" Makefile && \
     DIR_INSTALL=/usr/local make install && \
     ldconfig && \
     echo "`date` jxrlib" >> /build/log.txt
@@ -2534,6 +2520,7 @@ RUN \
     git clone --depth=1 --single-branch -b cyrus-sasl-`getver.py cyrus-sasl` -c advice.detachedHead=false https://github.com/cyrusimap/cyrus-sasl.git && \
     cd cyrus-sasl && \
     ./autogen.sh && \
+    CFLAGS="$CFLAGS -Wno-implicit-function-declaration" \
     ./configure --prefix=/usr/local --disable-static --disable-sample --enable-obsolete_cram_attr --enable-obsolete_digest_attr --enable-alwaystrue --enable-checkapop --enable-cram --enable-digest --enable-scram --enable-otp --enable-srp --enable-srp-setpass --enable-krb4 --enable-auth-sasldb --enable-httpform --enable-plain --enable-anon --enable-login --enable-ntlm --enable-passdss --enable-sql --enable-ldapdb --with-ldap && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -2610,8 +2597,8 @@ RUN \
     patch _javabridge.pyx ../python-javabridge.pyx.patch && \
     # Include java libraries \
     mkdir javabridge/jvm && \
-    # remove debug symbols \
-    find /usr/lib/jvm/java/* -name '*.jar' -size +10240c -print0 | xargs -n 1 -0 -P ${JOBS} pack200 -G --repack && \
+    # remove debug symbols.  Keep parallelism <= 4 because it can spike memory \
+    find /usr/lib/jvm/java/* -name '*.jar' -size +10240c -print0 | xargs -n 1 -0 -P $(( $JOBS < 4 ? $JOBS : 4 )) pack200 -G --repack && \
     # make jars deterministic \
     find /usr/lib/jvm/java/* -name '*.jar' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     cp -r -L /usr/lib/jvm/java/* javabridge/jvm/. && \
@@ -2692,7 +2679,11 @@ open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
+    if [ -e javabridge/jvm/jre/lib/amd64 ]; then \
     find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf .eggs build' && \
+    true; elif [ -e javabridge/jvm/jre/lib/aarch64 ]; then \
+    find /opt/py -mindepth 1 -not -name '*p38-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf .eggs build' && \
+    true; fi && \
     find /io/wheelhouse/ -name 'python_javabridge*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
     # auditwheel modifies the java libraries, but some of those have \
     # hard-coded relative paths, which doesn't work.  Replace them with the \

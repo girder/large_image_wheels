@@ -34,7 +34,11 @@ pip uninstall -y numpy scipy
 pip cache purge || true
 
 echo 'Test installing pyvips and other dependencies from wheels via large_image'
+if [ $(arch) != "aarch64" ] || python3 -c 'import sys;sys.exit(not (sys.version_info >= (3, 9)))'; then
 pip install 'large-image[openslide,gdal,mapnik,bioformats,memcached,tiff,openjpeg,vips,converter]' -f ${1:-/wheels}
+else
+pip install 'large-image[openslide,gdal,mapnik,memcached,tiff,openjpeg,vips,converter]' -f ${1:-/wheels}
+fi
 
 echo 'Test basic import of openslide'
 python -c 'import openslide'
@@ -44,8 +48,10 @@ echo 'Test basic import of mapnik'
 python -c 'import mapnik'
 echo 'Test basic import of pyvips'
 python -c 'import pyvips'
+if [ $(arch) != "aarch64" ] || python3 -c 'import sys;sys.exit(not (sys.version_info >= (3, 9)))'; then
 echo 'Test basic import of javabridge'
 python -c 'import javabridge'
+fi
 echo 'Test basic import of pylibmc'
 python -c 'import pylibmc'
 echo 'Test basic imports of all wheels'
@@ -53,7 +59,11 @@ echo 'Test basic import of libtiff'
 python -c 'import libtiff'
 echo 'Test basic import of glymur'
 python -c 'import glymur'
+if [ $(arch) != "aarch64" ] || python3 -c 'import sys;sys.exit(not (sys.version_info >= (3, 9)))'; then
 python -c 'import libtiff, openslide, pyvips, osgeo, mapnik, glymur, javabridge'
+else
+python -c 'import libtiff, openslide, pyvips, osgeo, mapnik, glymur'
+fi
 echo 'Time import of gdal'
 python -c 'import sys,time;s = time.time();from osgeo import gdal;sys.exit(0 if time.time()-s < 1 else ("Slow GDAL import %5.3fs" % (time.time() - s)))'
 
@@ -310,6 +320,8 @@ print(d)
 sys.exit(s == d)
 EOF
 
+if [ $(arch) != "aarch64" ] || python3 -c 'import sys;sys.exit(not (sys.version_info >= (3, 9)))'; then
+
 echo 'test javabridge'
 java -version
 python -c 'import javabridge, bioformats;javabridge.start_vm(class_path=bioformats.JARS, run_headless=True);javabridge.kill_vm()'
@@ -342,6 +354,8 @@ pprint.pprint(ti)
 print(ti['tile'].size)
 print(ti['tile'][:4,:4])
 EOF
+
+fi
 
 if [ $(arch) != "aarch64" ] || python3 -c 'import sys;sys.exit(not (sys.version_info >= (3, 9)))'; then
 echo 'test with Django gis'
