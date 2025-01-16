@@ -1388,7 +1388,7 @@ RUN \
 RUN \
     echo "`date` freetype" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    until timeout 60 git clone --depth=1 --single-branch -b VER-`getver.py freetype` -c advice.detachedHead=false --recurse-submodules -j ${JOBS} https://gitlab.freedesktop.org/freetype/freetype.git; do sleep 5; echo "retrying"; done && \
+    until timeout 60 git clone --depth=1 --single-branch -b VER-`getver.py freetype` -c advice.detachedHead=false --recurse-submodules -j ${JOBS} https://github.com/freetype/freetype.git; do sleep 5; echo "retrying"; done && \
     cd freetype && \
     meson setup --prefix=/usr/local --buildtype=release --optimization=3 _build && \
     cd _build && \
@@ -2595,6 +2595,7 @@ RUN \
     git clone --depth=1 --single-branch -b v`getver.py python-javabridge` -c advice.detachedHead=false https://github.com/CellProfiler/python-javabridge.git && \
     cd python-javabridge && \
     patch _javabridge.pyx ../python-javabridge.pyx.patch && \
+    sed -i 's/        return env.get_string_utf(result)/        try:\n            return env.get_string_utf(result)\n        except Exception:\n            return env.get_string(result)/g' javabridge/jutil.py && \
     # Include java libraries \
     mkdir javabridge/jvm && \
     # remove debug symbols.  Keep parallelism <= 4 because it can spike memory \

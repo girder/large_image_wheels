@@ -70,7 +70,7 @@ Packages = {
         're': r'fossil-linux-x64-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
     },
     'freetype': {
-        'git': 'https://gitlab.freedesktop.org/freetype/freetype.git',
+        'git': 'https://github.com/freetype/freetype.git',
         're': r'VER-([0-9]+\-[0-9]+(|\-[0-9]+))$',
     },
     'freexl': {
