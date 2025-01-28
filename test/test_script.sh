@@ -6,13 +6,13 @@ export OGR_CT_DEBUG=ON
 
 . /etc/profile || true
 
-if curl --version; then true; else
-  if apt-get --help; then
-    apt-get update
-    apt-get install -y curl
-  elif yum --help; then
+if curl --version 2>/dev/null >/dev/null; then true; else
+  if apt-get --help 2>/dev/null >/dev/null; then
+    apt-get update -q -q
+    apt-get install -y -q -q curl
+  elif yum --help 2>/dev/null >/dev/null; then
     yum install -y curl
-  elif zypper --help; then
+  elif zypper --help 2>/dev/null >/dev/null; then
     zypper install -y curl
   fi
 fi
@@ -75,7 +75,7 @@ print(pyproj.Proj('+init=epsg:4326 +type=crs'))
 EOF
 
 echo 'Download an openslide file'
-curl --retry 5 -L -o sample.svs https://data.kitware.com/api/v1/file/5be43d9c8d777f217991e1c2/download
+curl --silent --retry 5 -L -o sample.svs https://data.kitware.com/api/v1/file/5be43d9c8d777f217991e1c2/download
 echo 'Use large_image to read an openslide file'
 python <<EOF
 import large_image, pprint
@@ -85,10 +85,10 @@ ti = ts.getSingleTile(tile_size=dict(width=1000, height=1000),
                       scale=dict(magnification=20), tile_position=1000)
 pprint.pprint(ti)
 print(ti['tile'].size)
-print(ti['tile'][:4,:4])
+pprint.pprint(ti['tile'][:4,:4].tolist())
 EOF
 echo 'Download a tiff file'
-curl --retry 5 -L -o sample.tif https://data.kitware.com/api/v1/file/5be43e398d777f217991e21f/download
+curl --silent --retry 5 -L -o sample.tif https://data.kitware.com/api/v1/file/5be43e398d777f217991e21f/download
 echo 'Use large_image to read a tiff file'
 python <<EOF
 import large_image, pprint
@@ -98,10 +98,10 @@ ti = ts.getSingleTile(tile_size=dict(width=1000, height=1000),
                       scale=dict(magnification=20), tile_position=100)
 pprint.pprint(ti)
 print(ti['tile'].size)
-print(ti['tile'][:4,:4])
+pprint.pprint(ti['tile'][:4,:4].tolist())
 EOF
 echo 'Download a tiff file that requires a newer openjpeg'
-curl --retry 5 -L -o sample_jp2.tif https://data.kitware.com/api/v1/file/5be348568d777f21798fa1d1/download
+curl --silent --retry 5 -L -o sample_jp2.tif https://data.kitware.com/api/v1/file/5be348568d777f21798fa1d1/download
 echo 'Use large_image to read a tiff file that requires a newer openjpeg'
 python <<EOF
 import pyvips
@@ -114,17 +114,17 @@ pprint.pprint(ts.getMetadata())
 ti = ts.getSingleTile(tile_size=dict(width=1000, height=1000), tile_position=100)
 pprint.pprint(ti)
 print(ti['tile'].size)
-print(ti['tile'][:4,:4])
+pprint.pprint(ti['tile'][:4,:4].tolist())
 EOF
 echo 'Download a png file'
-curl --retry 5 -OJL https://github.com/girder/large_image/raw/master/test/test_files/yb10kx5ktrans.png
+curl --silent --retry 5 -OJL https://github.com/girder/large_image/raw/master/test/test_files/yb10kx5ktrans.png
 echo 'Open a png with pyvips'
 python <<EOF
 import pyvips
 pyvips.Image.new_from_file('yb10kx5ktrans.png')
 EOF
 echo 'Download a geotiff file'
-curl --retry 5 -L -o landcover.tif https://data.kitware.com/api/v1/file/5be43e848d777f217991e270/download
+curl --silent --retry 5 -L -o landcover.tif https://data.kitware.com/api/v1/file/5be43e848d777f217991e270/download
 echo 'Use gdal to open a geotiff file'
 python <<EOF
 from osgeo import gdal
@@ -153,21 +153,21 @@ echo 'Use large_image to read a geotiff file'
 python <<EOF
 import large_image, pprint
 ts = large_image.getTileSource('landcover.tif')
-pprint.pprint(ts.getMetadata())
+pprint.pprint({k: v if k != 'bands' else '<trimmed>' for k, v in ts.getMetadata().items()})
 ti = ts.getSingleTile(tile_size=dict(width=1000, height=1000), tile_position=200)
 pprint.pprint(ti)
 print(ti['tile'].size)
-print(ti['tile'][:4,:4])
+pprint.pprint(ti['tile'][:4,:4].tolist())
 EOF
 echo 'Use large_image to read a geotiff file with a projection'
 python <<EOF
 import large_image, pprint
 ts = large_image.getTileSource('landcover.tif', projection='EPSG:3857')
-pprint.pprint(ts.getMetadata())
+pprint.pprint({k: v if k != 'bands' else '<trimmed>' for k, v in ts.getMetadata().items()})
 ti = ts.getSingleTile(tile_size=dict(width=1000, height=1000), tile_position=100)
 pprint.pprint(ti)
 print(ti['tile'].size)
-print(ti['tile'][:4,:4])
+pprint.pprint(ti['tile'][:4,:4].tolist())
 tile = ts.getTile(1178, 1507, 12)
 pprint.pprint(repr(tile[1400:1440]))
 EOF
@@ -175,11 +175,11 @@ echo 'Use large_image to read a geotiff file with a projection via gdal'
 python <<EOF
 import large_image_source_gdal, pprint
 ts = large_image_source_gdal.GDALFileTileSource('landcover.tif', projection='EPSG:3857')
-pprint.pprint(ts.getMetadata())
+pprint.pprint({k: v if k != 'bands' else '<trimmed>' for k, v in ts.getMetadata().items()})
 ti = ts.getSingleTile(tile_size=dict(width=1000, height=1000), tile_position=100)
 pprint.pprint(ti)
 print(ti['tile'].size)
-print(ti['tile'][:4,:4])
+pprint.pprint(ti['tile'][:4,:4].tolist())
 tile = ts.getTile(1178, 1507, 12)
 pprint.pprint(repr(tile[1400:1440]))
 EOF
@@ -187,11 +187,11 @@ echo 'Use large_image to read a geotiff file with a projection via mapnik'
 python <<EOF
 import large_image_source_mapnik, pprint
 ts = large_image_source_mapnik.MapnikFileTileSource('landcover.tif', projection='EPSG:3857')
-pprint.pprint(ts.getMetadata())
+pprint.pprint({k: v if k != 'bands' else '<trimmed>' for k, v in ts.getMetadata().items()})
 ti = ts.getSingleTile(tile_size=dict(width=1000, height=1000), tile_position=100)
 pprint.pprint(ti)
 print(ti['tile'].size)
-print(ti['tile'][:4,:4])
+pprint.pprint(ti['tile'][:4,:4].tolist())
 tile = ts.getTile(1178, 1507, 12)
 pprint.pprint(repr(tile[1400:1440]))
 EOF
@@ -201,11 +201,11 @@ import large_image_source_mapnik, pprint
 ts = large_image_source_mapnik.MapnikFileTileSource('landcover.tif', projection='EPSG:3857', style={'band': 1, 'min': 0, 'max': 100,
                     'scheme': 'discrete',
                     'palette': 'matplotlib.Plasma_6'})
-pprint.pprint(ts.getMetadata())
+pprint.pprint({k: v if k != 'bands' else '<trimmed>' for k, v in ts.getMetadata().items()})
 ti = ts.getSingleTile(tile_size=dict(width=1000, height=1000), tile_position=100)
 pprint.pprint(ti)
 print(ti['tile'].size)
-print(ti['tile'][:4,:4])
+pprint.pprint(ti['tile'][:4,:4].tolist())
 tile = ts.getTile(1178, 1507, 12)
 pprint.pprint(repr(tile[1400:1440]))
 EOF
@@ -238,7 +238,7 @@ pyvips.Image.new_from_file('sample_jp2.tif').write_to_file(
   tile_width=256, tile_height=256, pyramid=True, bigtiff=True)
 EOF
 echo 'Download a somewhat bad nitf file'
-curl --retry 5 -L -o sample.ntf https://data.kitware.com/api/v1/file/5cee913e8d777f072bf1c47a/download
+curl --silent --retry 5 -L -o sample.ntf https://data.kitware.com/api/v1/file/5cee913e8d777f072bf1c47a/download
 echo 'Use gdal to open a nitf file'
 python <<EOF
 from osgeo import gdal
@@ -326,8 +326,11 @@ echo 'test javabridge'
 java -version
 python -c 'import javabridge, bioformats;javabridge.start_vm(class_path=bioformats.JARS, run_headless=True);javabridge.kill_vm()'
 
+echo 'Check bioformats version'
+python -c 'import large_image_source_bioformats;print(large_image_source_bioformats._getBioformatsVersion())'
+
 if [ $(arch) != "aarch64" ]; then
-curl --retry 5 -L -o sample.czi https://data.kitware.com/api/v1/file/5f048d599014a6d84e005dfc/download
+curl --silent --retry 5 -L -o sample.czi https://data.kitware.com/api/v1/file/5f048d599014a6d84e005dfc/download
 echo 'Use large_image to read a czi file'
 python <<EOF
 import large_image, pprint
@@ -337,7 +340,7 @@ ti = ts.getSingleTile(tile_size=dict(width=1000, height=1000),
                       scale=dict(magnification=20), tile_position=100)
 pprint.pprint(ti)
 print(ti['tile'].size)
-print(ti['tile'][:4,:4])
+pprint.pprint(ti['tile'][:4,:4].tolist())
 EOF
 fi
 
@@ -352,7 +355,7 @@ ti = ts.getSingleTile(tile_size=dict(width=1000, height=1000),
                       scale=dict(magnification=20), tile_position=100)
 pprint.pprint(ti)
 print(ti['tile'].size)
-print(ti['tile'][:4,:4])
+pprint.pprint(ti['tile'][:4,:4].tolist())
 EOF
 
 fi
@@ -380,7 +383,7 @@ fi
 
 echo 'test openslide and pyvips rejecting a fluorescent leica image'
 # Ideally we would eventually support these here
-curl --retry 5 -L -o leica.scn https://data.kitware.com/api/v1/file/5cb8ba728d777f072b4b2663/download
+curl --silent --retry 5 -L -o leica.scn https://data.kitware.com/api/v1/file/5cb8ba728d777f072b4b2663/download
 python <<EOF
 import openslide
 import pyvips
@@ -399,7 +402,7 @@ except pyvips.error.Error:
 EOF
 
 echo 'test an ome.tiff file'
-curl --retry 5 -L -o sample.ome.tif https://data.kitware.com/api/v1/file/5cb9c6288d777f072b4e85f0/download
+curl --silent --retry 5 -L -o sample.ome.tif https://data.kitware.com/api/v1/file/5cb9c6288d777f072b4e85f0/download
 python <<EOF
 import large_image_source_vips
 
@@ -412,7 +415,7 @@ tifftools dump sample.lzw.tif,1 | grep -q 'Predictor'
 vips tiffsave sample.ome.tif sample.jpeg.tif --tile --tile-width 256 --tile-height 256 --pyramid --bigtiff --compression jpeg --Q 90
 
 echo 'test libvips and webp'
-curl --retry 5 -L  -o d042-353.crop.small.float32.tif https://data.kitware.com/api/v1/file/6005cd112fa25629b9f98fca/download
+curl --silent --retry 5 -L  -o d042-353.crop.small.float32.tif https://data.kitware.com/api/v1/file/6005cd112fa25629b9f98fca/download
 python <<EOF
 import large_image_converter.__main__ as main
 
@@ -420,7 +423,7 @@ main.main(['d042-353.crop.small.float32.tif', '/tmp/outfloat.tiff', '--compressi
 EOF
 
 echo 'test libvips and jpeg'
-curl --retry 5 -L  -o d042-353.crop.small.float32.tif https://data.kitware.com/api/v1/file/6005cd112fa25629b9f98fca/download
+curl --silent --retry 5 -L  -o d042-353.crop.small.float32.tif https://data.kitware.com/api/v1/file/6005cd112fa25629b9f98fca/download
 python <<EOF
 import large_image_converter.__main__ as main
 

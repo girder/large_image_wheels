@@ -2704,7 +2704,7 @@ RUN \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b v`getver.py python-bioformats` -c advice.detachedHead=false https://github.com/CellProfiler/python-bioformats.git && \
     cd python-bioformats && \
-    curl -LJ https://github.com/ome/bioformats/releases/download/v`getver.py bioformats`/bioformats_package.jar && \
+    curl -LJ https://github.com/ome/bioformats/releases/download/v`getver.py bioformats`/bioformats_package.jar -o bioformats/jars/bioformats_package.jar && \
     # Recompress; saves 2.5% or so \
     advzip -k -z bioformats/jars/bioformats_package.jar && \
     python -c $'# \n\
