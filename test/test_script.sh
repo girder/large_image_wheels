@@ -415,7 +415,7 @@ tifftools dump sample.lzw.tif,1 | grep -q 'Predictor'
 vips tiffsave sample.ome.tif sample.jpeg.tif --tile --tile-width 256 --tile-height 256 --pyramid --bigtiff --compression jpeg --Q 90
 
 echo 'test libvips and webp'
-curl --silent --retry 5 -L  -o d042-353.crop.small.float32.tif https://data.kitware.com/api/v1/file/6005cd112fa25629b9f98fca/download
+curl --silent --retry 5 -L  -o d042-353.crop.small.float32.tif https://data.kitware.com/api/v1/file/hashsum/sha512/8b640e9adcd0b8aba794666027b80215964d075e76ca2ebebefc7e17c3cd79af7da40a40151e2a2ba0ae48969e54275cf69a3cfc1a2a6b87fbb0d186013e5489/download
 python <<EOF
 import large_image_converter.__main__ as main
 
@@ -423,7 +423,6 @@ main.main(['d042-353.crop.small.float32.tif', '/tmp/outfloat.tiff', '--compressi
 EOF
 
 echo 'test libvips and jpeg'
-curl --silent --retry 5 -L  -o d042-353.crop.small.float32.tif https://data.kitware.com/api/v1/file/6005cd112fa25629b9f98fca/download
 python <<EOF
 import large_image_converter.__main__ as main
 

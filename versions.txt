@@ -17,7 +17,7 @@ fyba b00ae60436bd24145df7006a211219f5fdef6011
 fyba-release 4.1.1
 gdal 3.10.1
 gdal-pypi 3.10.1
-gdal-sha 5c12fb8572d7999c1055803b527708b78856130e
+gdal-sha 86193bf5942fb63b91b06a18df78efc73a2d869b
 gdal-source 3.11.0
 gdk-pixbuf 2.42.12
 giflib 5.2.2
@@ -76,8 +76,8 @@ libzip 1.11.3
 lz4 1.10.0
 manylinux2014_x86_64 4ec6ff3b1ae6c9178820fea34c91eef74fdf73ef6c4be11bec9deea9ed288a6f
 manylinux_2_28_aarch64 3394f5f0684d7c22313ef435eba96cb37c11c9d1f6e5c4c8c7aff06983c02b23
-mapnik 9810d71d69b63ec506b85e1844697c2b0670c820
-mapnik-release 4.0.4
+mapnik ad6a7507d5ce0484e85da80ad2a27adb1e15b101
+mapnik-release 4.0.5
 matio 1.5.28
 meson 1.7.0
 minizip 4.0.8
