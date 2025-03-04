@@ -1,6 +1,6 @@
 advancecomp 2.6
 armadillo 14.4.0
-bioformats 8.1.0
+bioformats 8.1.1
 blosc 1.21.6
 boost 1.87.0
 cairo 1.18.2
@@ -17,7 +17,7 @@ fyba b00ae60436bd24145df7006a211219f5fdef6011
 fyba-release 4.1.1
 gdal 3.10.2
 gdal-pypi 3.10.2
-gdal-sha b18680a734a7ae7c128fadcdc34d63261600da5f
+gdal-sha fd803f4d797a34fdb73d84f50dcf6c75ccc50cea
 gdal-source 3.11.0
 gdk-pixbuf 2.42.12
 giflib 5.2.2
@@ -46,10 +46,10 @@ libdeflate 1.23
 libexif 0.6.25
 libexpat 2_6_4
 libffi 3.4.7
-libgeos 3.13.0
+libgeos 3.13.1
 libgeotiff 1.7.4
 libgta 1.2.1
-libheif 1.19.6
+libheif 1.19.7
 libhwy 1.2.0
 libiconv 1.18
 libidn2 2.3.7
@@ -102,7 +102,7 @@ parallel-netcdf 1.14.0
 patchelf 0.18.0
 pixman 0.44.2
 pkg-config 0.29.2
-poppler 25.02.0
+poppler 25.03.0
 postgresql 17.4
 proj4 9.5.1
 pylibmc 1.6.3
