@@ -145,11 +145,10 @@ COPY getver.py fix_record.py /usr/local/bin/
 # The openslide-vendor-mirax.c.patch allows girder's file layout to work with
 # mirax files and does no harm otherwise.
 COPY versions.txt \
-    glymur.setup.py \
     mapnik_projection.cpp.patch \
     mapnik_setup.py.patch \
     openslide-vendor-mirax.c.patch \
-     python-javabridge.pyx.patch \
+    python-javabridge.pyx.patch \
     ./
 
 # Newer version of pkg-config than available in manylinux
@@ -821,10 +820,7 @@ RUN \
     echo "`date` glymur" >> /build/log.txt && \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b v`getver.py glymur` -c advice.detachedHead=false https://github.com/quintusdias/glymur.git && \
-    # git clone https://github.com/quintusdias/glymur.git && \
     cd glymur && \
-    # version 0.9.3's commit \
-    # git checkout f4399d4e5e4fcb9e110e2af34515bcb08ff77053 && \
     mkdir glymur/bin && \
     # Copy some jpeg tools \
     find /usr/local/bin -executable -type f -name 'opj_*' -exec cp {} glymur/bin/. \; && \
@@ -861,12 +857,18 @@ path = "glymur/version.py" \n\
 s = open(path).read() \n\
 s = s.replace(\'"0.12.9"\', \'"0.12.9.post1"\') \n\
 open(path, "w").write(s)' && \
-    # Import a premade setup.py \
-    cp ../glymur.setup.py ./setup.py && rm -f setup.cfg && rm -f pyproject.toml && \
+    python -c $'# \n\
+import os \n\
+path = "setup.cfg" \n\
+s = open(path).read() \n\
+s = s.replace(\'*.j2k\', \'*.j2k\\n    bin/*\') \n\
+s = s.replace("console_scripts =", "console_scripts =" + "".join(["\\n\\t%s = glymur.bin:program" % name for name in os.listdir("glymur/bin") if not name.endswith(".py")])) \n\
+s = s.replace("python_requires = >=3.9", "python_requires = >=3.10") \n\
+open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    find /opt/py -mindepth 1 -not -name '*p36-*' -a -not -name '*p37-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    find /opt/py -mindepth 1 -not -name '*p38-*' -a -not -name '*p39-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     find /io/wheelhouse/ -name 'glymur*.whl' | while read file; do new_file=$(echo "$file" | sed 's|/glymur|/Glymur|'); mv "$file" "$new_file"; done && \
     find /io/wheelhouse/ -name 'Glymur*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'Glymur*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
