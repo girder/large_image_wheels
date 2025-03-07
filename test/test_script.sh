@@ -33,6 +33,10 @@ pip install --upgrade setuptools
 pip uninstall -y numpy scipy
 pip cache purge || true
 
+# Any packages where we aren't building for older python, just install previous
+# wheels to keep the testing consistent
+pip install 'glymur ; python_version < "3.10"' --find-links https://girder.github.io/large_image_wheels
+
 echo 'Test installing pyvips and other dependencies from wheels via large_image'
 if [ $(arch) != "aarch64" ] || python3 -c 'import sys;sys.exit(not (sys.version_info >= (3, 9)))'; then
 pip install 'large-image[openslide,gdal,mapnik,bioformats,memcached,tiff,openjpeg,vips,converter]' -f ${1:-/wheels}
