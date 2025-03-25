@@ -657,7 +657,7 @@ cd /build && \
     find . -name '.git' -exec rm -rf {} \+ && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_TESTING=OFF -DCMAKE_CXX_FLAGS='-fpermissive' -DJPEGXL_ENABLE_EXAMPLES=OFF -DJPEGXL_ENABLE_MANPAGES=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF -DHWY_ENABLE_INSTALL=OFF -DHWY_ENABLE_TESTS=OFF && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_TESTING=OFF -DCMAKE_CXX_FLAGS='-fpermissive' -DJPEGXL_ENABLE_EXAMPLES=OFF -DJPEGXL_ENABLE_MANPAGES=OFF -DJPEGXL_ENABLE_BENCHMARK=OFF -DHWY_ENABLE_INSTALL=OFF -DHWY_ENABLE_TESTS=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -864,6 +864,7 @@ s = open(path).read() \n\
 s = s.replace(\'*.j2k\', \'*.j2k\\n    bin/*\') \n\
 s = s.replace("console_scripts =", "console_scripts =" + "".join(["\\n\\t%s = glymur.bin:program" % name for name in os.listdir("glymur/bin") if not name.endswith(".py")])) \n\
 s = s.replace("python_requires = >=3.9", "python_requires = >=3.10") \n\
+s = s.replace("python_requires = >=3.11", "python_requires = >=3.10") \n\
 open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
@@ -1034,7 +1035,7 @@ RUN \
     cd fftw3 && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_TESTS=OFF -DENABLE_AVX=ON -DENABLE_AVX2=ON -DENABLE_SSE=ON -DENABLE_SSE2=ON -DENABLE_THREADS=ON && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_TESTS=OFF -DENABLE_AVX=ON -DENABLE_AVX2=ON -DENABLE_SSE=ON -DENABLE_SSE2=ON -DENABLE_THREADS=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1657,7 +1658,7 @@ RUN \
     cd cfitsio && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_POLICY_VERSION_MINIMUM=3.5 && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1820,7 +1821,7 @@ RUN \
     cd c-blosc && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_SHARED=ON -DBUILD_STATIC=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_FUZZERS=OFF -DBUILD_TESTS=OFF -DPREFER_EXTERNAL_LZ4=ON -DPREFER_EXTERNAL_ZLIB=ON -DPREFER_EXTERNAL_ZSTD=ON -DDEACTIVATE_SNAPPY=OFF && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_SHARED=ON -DBUILD_STATIC=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_FUZZERS=OFF -DBUILD_TESTS=OFF -DPREFER_EXTERNAL_LZ4=ON -DPREFER_EXTERNAL_ZLIB=ON -DPREFER_EXTERNAL_ZSTD=ON -DDEACTIVATE_SNAPPY=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1835,7 +1836,7 @@ RUN \
     cd libde265 && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_SHARED=ON -DBUILD_STATIC=OFF -DWITH_EXAMPLES=OFF && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_SHARED=ON -DBUILD_STATIC=OFF -DWITH_EXAMPLES=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -2144,6 +2145,7 @@ s = open(path).read() \n\
 s = s.replace(".beta", "") \n\
 s = re.sub("version = \\".*\\"", "version = \\"'`pkg-config --modversion libmapnik`$'\\"", s) \n\
 s = s.replace("authors", "dynamic = [\\"scripts\\"]\\nauthors") \n\
+s = s.replace("license = \\"LGPL-2.1-or-later\\"", "license = { text = \\"LGPL-2.1-or-later\\"}") \n\
 open(path, "w").write(s)' && \
     sed -i 's/AsLongLong/AsLong/g' src/mapnik_value_converter.hpp && \
     sed -i 's/\.def(py::self == py::self)/\/\/ .def(py::self == py::self)/g' src/mapnik_datasource.cpp && \
@@ -2357,7 +2359,7 @@ RUN \
     cd libarchive && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_TESTING=OFF && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_TESTING=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
