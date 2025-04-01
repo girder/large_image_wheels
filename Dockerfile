@@ -853,18 +853,23 @@ s = s.replace("    path = find_library(libname)", \n\
             pass""") \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
-path = "glymur/version.py" \n\
-s = open(path).read() \n\
-s = s.replace(\'"0.12.9"\', \'"0.12.9.post1"\') \n\
-open(path, "w").write(s)' && \
-    python -c $'# \n\
 import os \n\
-path = "setup.cfg" \n\
+path = "pyproject.toml" \n\
 s = open(path).read() \n\
-s = s.replace(\'*.j2k\', \'*.j2k\\n    bin/*\') \n\
-s = s.replace("console_scripts =", "console_scripts =" + "".join(["\\n\\t%s = glymur.bin:program" % name for name in os.listdir("glymur/bin") if not name.endswith(".py")])) \n\
-s = s.replace("python_requires = >=3.9", "python_requires = >=3.10") \n\
-s = s.replace("python_requires = >=3.11", "python_requires = >=3.10") \n\
+s = s.replace("jpeg2jp2 = \'glymur.command_line:jpeg2jp2\'", "jpeg2jp2 = \'glymur.command_line:jpeg2jp2\'" + "".join(["\\n%s = \'glymur.bin:program\'" % name for name in os.listdir("glymur/bin") if not name.endswith(".py")])) \n\
+s = s.replace("requires-python = \'>=3.11\'", "requires-python = \'>=3.10\'") \n\
+s += """ \n\
+[tool.setuptools] \n\
+include-package-data = true \n\
+ \n\
+[tool.setuptools.package-data] \n\
+glymur = [ \n\
+    "data/*.jp2", \n\
+    "data/*.jpx", \n\
+    "data/*.j2k", \n\
+    "bin/*", \n\
+] \n\
+""" \n\
 open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
@@ -2308,7 +2313,7 @@ RUN \
     export PATH="$HOME/.cargo/bin:$PATH" && \
     git clone --depth=1 --single-branch -b `getver.py libimagequant` -c advice.detachedHead=false https://github.com/ImageOptim/libimagequant.git && \
     cd libimagequant/imagequant-sys && \
-    cargo install cargo-c && \
+    cargo install cargo-c --locked && \
     cargo cinstall && \
     ldconfig && \
     # rust leaves huge build artifacts that aren't useful to us \
