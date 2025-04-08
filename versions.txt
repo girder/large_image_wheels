@@ -15,9 +15,9 @@ freetype 2-13-3
 freexl 106b174596
 fyba b00ae60436bd24145df7006a211219f5fdef6011
 fyba-release 4.1.1
-gdal 3.10.2
-gdal-pypi 3.10.2
-gdal-sha ecd914511ba70b4278cc233b97caca1afc9a6e05
+gdal 3.10.3
+gdal-pypi 3.10.3
+gdal-sha 922276f7d15a6f626de617b7134728f318e896cc
 gdal-source 3.11.0
 gdk-pixbuf 2.42.12
 giflib 5.2.2
