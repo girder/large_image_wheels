@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import shutil
+import subprocess
 import sys
 import zipfile
 
@@ -14,7 +15,12 @@ import zipfile
 for name in sorted(os.listdir('wheels')):
     if not name.endswith('.whl'):
         continue
+    committed = set(subprocess.check_output(
+        ['git', '-C', 'wheelhouse', 'ls-tree', '-r', 'HEAD', '--name-only']
+    ).decode().strip().split('\n'))
     if name in os.listdir('wheelhouse'):
+        if 'GDAL' not in name and name in committed:
+            continue
         z1 = zipfile.ZipFile(os.path.join('wheels', name))
         z2 = zipfile.ZipFile(os.path.join('wheelhouse', name))
         if len(z1.infolist()) == len(z2.infolist()):

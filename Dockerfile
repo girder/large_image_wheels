@@ -854,6 +854,7 @@ s = s.replace("    path = find_library(libname)", \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
 import os \n\
+import re \n\
 path = "pyproject.toml" \n\
 s = open(path).read() \n\
 s = s.replace("jpeg2jp2 = \'glymur.command_line:jpeg2jp2\'", "jpeg2jp2 = \'glymur.command_line:jpeg2jp2\'" + "".join(["\\n%s = \'glymur.bin:program\'" % name for name in os.listdir("glymur/bin") if not name.endswith(".py")])) \n\
@@ -870,6 +871,7 @@ glymur = [ \n\
     "bin/*", \n\
 ] \n\
 """ \n\
+s = re.sub(r"(version = \')(\\d+\\.\\d+\\.\\d+)((?:post\\d+)?)(\')", r"\\1\\2.1\\3\\4", s) \n\
 open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
@@ -1592,6 +1594,9 @@ RUN \
     touch storage/ndb/CMakeLists.txt && \
     mkdir _build && \
     cd _build && \
+    if [ -e "/opt/rh/devtoolset-11/enable" ]; then \
+    . /opt/rh/devtoolset-11/enable; \
+    fi && \
     CFLAGS="$CFLAGS -ftls-model=global-dynamic" \
     CXXFLAGS="$CXXFLAGS -Wno-deprecated-declarations -ftls-model=global-dynamic" \
     cmake .. -DBUILD_CONFIG=mysql_release -DBUILD_SHARED_LIBS=ON -DWITH_BOOST=`find ../../boost/ -maxdepth 1 -name 'boost_*'` -DWITH_ZLIB=bundled -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DCMAKE_BUILD_TYPE=MinSizeRel -DWITHOUT_SERVER=ON -DREPRODUCIBLE_BUILD=ON -DINSTALL_MYSQLTESTDIR="" && \
@@ -1634,7 +1639,6 @@ RUN \
     ldconfig && \
     echo "`date` postgresql" >> /build/log.txt
 
-# PINNED - poppler 25.02 breaks GDAL
 # Used by GDAL, mapnik, libvips.  PDF reader
 RUN \
     echo "`date` poppler" >> /build/log.txt && \
@@ -1917,7 +1921,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if true; then \
+    if false; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
@@ -2148,7 +2152,7 @@ import re \n\
 path = "pyproject.toml" \n\
 s = open(path).read() \n\
 s = s.replace(".beta", "") \n\
-s = re.sub("version = \\".*\\"", "version = \\"'`pkg-config --modversion libmapnik`$'\\"", s) \n\
+s = re.sub("version = \\".*\\"", "version = \\"'`pkg-config --modversion libmapnik`.1$'\\"", s) \n\
 s = s.replace("authors", "dynamic = [\\"scripts\\"]\\nauthors") \n\
 s = s.replace("license = \\"LGPL-2.1-or-later\\"", "license = { text = \\"LGPL-2.1-or-later\\"}") \n\
 open(path, "w").write(s)' && \
@@ -2255,12 +2259,12 @@ s += """ \n\
 import os \n\
 for name in os.listdir(\'openslide/bin\'): \n\
   if not name.endswith(\'.py\'): \n\
-    s += "%s = \'openslide.bin:program\'" % name \n\
+    s += "%s = \'openslide.bin:program\'\\n" % name \n\
 open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    find /opt/py -mindepth 1 -not -name '*p38-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     find /io/wheelhouse/ -name 'openslide*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
@@ -2493,6 +2497,12 @@ open(path, "w").write(s)' && \
     cp /usr/local/bin/magick pyvips/bin/. && \
     strip pyvips/bin/* --strip-unneeded -p -D && \
     python -c $'# \n\
+import re \n\
+path = "pyvips/version.py" \n\
+s = open(path).read() \n\
+s = re.sub(r"__version__ = \'(.+?)\'", lambda match: f"__version__ = \'{match.group(1)}.1\'", s) \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
 path = "pyvips/bin/__init__.py" \n\
 s = """import os \n\
 import sys \n\
@@ -2512,6 +2522,21 @@ import os""").replace( \n\
         include_package_data=True, \n\
         package_data={\'pyvips\': [\'bin/*\']}, \n\
         entry_points={\'console_scripts\': [\'%s=pyvips.bin:program\' % name for name in os.listdir(\'pyvips/bin\') if not name.endswith(\'.py\')]},""") \n\
+open(path, "w").write(s)' && \
+    python -c $'# \n\
+path = "pyproject.toml" \n\
+s = open(path).read() \n\
+s = s.replace("include-package-data = false", "include-package-data = true") \n\
+s += """ \n\
+[tool.setuptools.package-data] \n\
+pyvips = ["bin/*"] \n\
+\n\
+[project.scripts] \n\
+""" \n\
+import os \n\
+for name in os.listdir(\'pyvips/bin\'): \n\
+  if not name.endswith(\'.py\'): \n\
+    s += "%s = \'pyvips.bin:program\'\\n" % name \n\
 open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
@@ -2579,6 +2604,7 @@ RUN \
     find /usr/local/lib/sasl2 -name '*.so' -exec cp {} src/pylibmc/sasl2/. \; && \
     sed -i 's/"memcached"/"memcached","sasl2"/g' setup.py && \
     sed -i 's/packages=/package_data={"pylibmc":["sasl2\/*"]},include_package_data=True,packages=/g' setup.py && \
+    sed -i 's/version=version/version=version + ".1"/g' setup.py && \
     python -c $'# \n\
 path = "src/pylibmc/__init__.py" \n\
 s = open(path).read().replace( \n\
@@ -2649,6 +2675,7 @@ s = s.replace("""package_data={"javabridge": [""", \n\
 """package_data={"javabridge": [\'jvm/*\', \'jvm/*/*\', \'jvm/*/*/*\', \'jvm/*/*/*/*\', \'jvm/*/*/*/*/*\', """) \n\
 s = re.sub(r"(\'Cython)[^\']*", "\'Cython", s) \n\
 s = re.sub(r"(\'numpy)[^\']*", "\'numpy", s) \n\
+s = re.sub(r\'(version="[^"]*)"\', "\\\\1.1\\"", s) \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
 import re \n\
