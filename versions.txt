@@ -17,7 +17,7 @@ fyba b00ae60436bd24145df7006a211219f5fdef6011
 fyba-release 4.1.1
 gdal 3.10.3
 gdal-pypi 3.10.3
-gdal-sha 188cea533dc418e8687f094c9eb2e0c9b7b1f4b1
+gdal-sha adcb70a4ba4748dc1f359bfc7a19e9bf80f76189
 gdal-source 3.11.0
 gdk-pixbuf 2.42.12
 giflib 5.2.2
@@ -25,7 +25,7 @@ glib 2.84.1
 glymur 0.14.1post2
 glymur-pypi 0.14.1.post1
 gobject-introspection 1.84.0
-harfbuzz 11.1.0
+harfbuzz 11.2.0
 hdf4 4_2_16
 hdf5 1_14_3
 icu4c 77-1
@@ -79,7 +79,7 @@ manylinux_2_28_aarch64 f21d6280b446acd1e5c90f9bc2b752043728a934a585a0528d85c27f1
 mapnik d9d4288bea04c5ef9925c03db353cf5f308e06ad
 mapnik-release 4.0.7
 matio 1.5.28
-meson 1.7.2
+meson 1.8.0
 minizip 4.0.9
 mysql 9.3.0
 netcdf 4.9.3
@@ -91,9 +91,9 @@ openjpeg 2.5.3
 openldap 2_6_9
 openmpi 5.0.7
 openslide 4.0.0
-openslide-python 1.4.1
-openslide-python-pypi 1.4.1
-openslide-python-sha 4632262d659739f6d20a7e657e2825c3e345477c
+openslide-python 1.4.2
+openslide-python-pypi 1.4.2
+openslide-python-sha abd51f60987d42d2cde44aa947eecbec7279c6e5
 openslide-sha 5229dc078504a746631a19b535988c59c5574251
 openssl 3.5.0
 orc 0.4.41
