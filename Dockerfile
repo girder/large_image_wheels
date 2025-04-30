@@ -99,6 +99,7 @@ RUN \
     rm -rf /opt/py/cp37* && \
     # We can't handle the no-gil variant yet (openslide-python fails) \
     rm -rf /opt/py/cp313-cp313t && \
+    rm -rf /opt/py/cp314* && \
     if [ "$PYPY" = true ]; then \
     echo "Only building pypy versions" && \
     rm -rf /opt/py/cp* && \
@@ -1921,7 +1922,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if false; then \
+    if true; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
