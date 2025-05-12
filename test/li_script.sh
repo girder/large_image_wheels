@@ -26,6 +26,6 @@ cd large_image
 sed -i 's/https:\/\/girder.github.io\/large_image_wheels/\/wheels/g' tox.ini
 
 tox -e docs,flake8
-tox -e core-py38,core-py39,core-py310,core-py311,core-py312 -- -k 'not memcached'
+tox -e core-py38,core-py39,core-py310,core-py311,core-py312,core-py313 -- -k 'not memcached'
 
 set +e

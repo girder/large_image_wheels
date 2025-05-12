@@ -7,6 +7,7 @@ import zipfile
 
 # Copy any wheels in the ./wheels directory to the ./wheelhouse directory IF
 # - the file doesn't exist in the destintation
+# For GDAL only IF
 # - the zip files contain a different number of internal file entries
 # - the internal file entries differ in name
 # - any of the CRC checksums of the internal file entries differ EXCEPT for

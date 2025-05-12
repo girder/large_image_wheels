@@ -97,7 +97,7 @@ RUN \
     # Enable all versions in boost as well \
     rm -rf /opt/py/cp36* && \
     rm -rf /opt/py/cp37* && \
-    # We can't handle the no-gil variant yet (openslide-python fails) \
+    # We can't handle the no-gil variant yet (pyproj and lxml don't work yet) \
     rm -rf /opt/py/cp313-cp313t && \
     rm -rf /opt/py/cp314* && \
     if [ "$PYPY" = true ]; then \
@@ -1922,7 +1922,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if true; then \
+    if false; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
@@ -2183,7 +2183,7 @@ RUN \
     git clone --depth=1 --single-branch -b v`getver.py jxrlib` -c advice.detachedHead=false https://github.com/4creators/jxrlib.git && \
     cd jxrlib && \
     sed -i "s/CFLAGS=/CFLAGS=-Wno-implicit-function-declaration -Wno-incompatible-pointer-types /g" Makefile && \
-    DIR_INSTALL=/usr/local make install && \
+    DIR_INSTALL=/usr/local SHARED=1 make install && \
     ldconfig && \
     echo "`date` jxrlib" >> /build/log.txt
 
@@ -2194,6 +2194,7 @@ RUN \
     export AUTOMAKE_JOBS=`nproc` && \
     git clone https://github.com/openslide/openslide && \
     cd openslide && \
+    git pull --rebase https://github.com/iewchen/openslide zeiss-czi-jxr && \
     patch src/openslide-vendor-mirax.c ../openslide-vendor-mirax.c.patch && \
     meson setup --prefix=/usr/local --buildtype=release --optimization=3 _build && \
     cd _build && \
@@ -2243,12 +2244,14 @@ open(path, "w").write(s)' && \
 path = "setup.py" \n\
 s = open(path).read().replace( \n\
     "_convert.c\'", "_convert.c\'], libraries=[\'openslide\'") \n\
+s = s.replace("_abi3 = sys.version_info >= (3, 11)", "_abi3 = sys.version_info >= (3, 11) and getattr(sys.flags, \'gil\', 1)") \n\
 open(path, "w").write(s)' && \
+    # Adding .2 to version to indicate we are adding jpxl czi support \
     python -c $'# \n\
 import re \n\
 path = "openslide/_version.py" \n\
 s = open(path).read() \n\
-s = re.sub(r"(__version__ = \'[^\']*)\'", "\\\\1.1\'", s) \n\
+s = re.sub(r"(__version__ = \'[^\']*)\'", "\\\\1.2\'", s) \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
 path = "pyproject.toml" \n\

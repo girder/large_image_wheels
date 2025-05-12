@@ -17,7 +17,7 @@ fyba b00ae60436bd24145df7006a211219f5fdef6011
 fyba-release 4.1.1
 gdal 3.11.0
 gdal-pypi 3.11.0
-gdal-sha 8130fe444e226c16ad63d47ff5f3a5c44794ca5a
+gdal-sha 66caf04e191a133921a6120ed8c2a2b5080cdc29
 gdal-source 3.12.0
 gdk-pixbuf 2.42.12
 giflib 5.2.2
@@ -25,7 +25,7 @@ glib 2.84.1
 glymur 0.14.1post2
 glymur-pypi 0.14.1.post1
 gobject-introspection 1.84.0
-harfbuzz 11.2.0
+harfbuzz 11.2.1
 hdf4 4_2_16
 hdf5 1_14_3
 icu4c 77-1
@@ -71,11 +71,11 @@ libtirpc 1-2-6
 libvips 8.16.1
 libwebp 1.5.0
 libxcrypt 4.4.38
-libxml2 2.14.2
+libxml2 2.14.3
 libzip 1.11.3
 lz4 1.10.0
-manylinux2014_x86_64 680f3b5c19d91aa0d0fa26c02a82e6af424e1d409979e62a01b9a70a62dbae9d
-manylinux_2_28_aarch64 bf538d1fdaf777802c0598ec54b3665f19f3a9120aeb7eca1c2cd1ec55688ebe
+manylinux2014_x86_64 85163c5bd58c92f6b807eba43f6c3f8bde101efa7400c59dda2ed9282ad78bf2
+manylinux_2_28_aarch64 2a30d47867a8c43be750424b451f19ae3f3f8932bb713e4065b297a641922266
 mapnik 3eaf993e618d7b40c3b80d127c26c845139c2965
 mapnik-release 4.0.7
 matio 1.5.28
@@ -108,7 +108,7 @@ proj4 9.6.0
 pylibmc 1.6.3
 pylibtiff 0.6.1
 pylibtiff-pypi 0.4.2
-pylibtiff-sha e4e8a58d4c4f1bcfe87003590abd1d8931282942
+pylibtiff-sha f7b03f69c4376eebae0002e44df88dc6fc20b064
 pyproj4 3.7.1
 pyproj4-pypi 3.7.1
 python-bioformats 4.1.0
