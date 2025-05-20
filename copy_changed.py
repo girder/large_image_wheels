@@ -13,14 +13,19 @@ import zipfile
 # - any of the CRC checksums of the internal file entries differ EXCEPT for
 #   the records for RECORD and WHEEL.  These can change when only the version
 #   of setuptools changes, which isn't a significant change.
-for name in sorted(os.listdir('wheels')):
+for name in sorted(os.listdir('wheels')):  # noqa
     if not name.endswith('.whl'):
         continue
     committed = set(subprocess.check_output(
         ['git', '-C', 'wheelhouse', 'ls-tree', '-r', 'HEAD', '--name-only']
     ).decode().strip().split('\n'))
+    if 'GDAL' in name:
+        current_ver = [line.strip().split()[1] for line in open(
+            'versions.txt').readlines() if line.startswith('gdal ')][0]
+        if f'-{current_ver}.' not in name:
+            continue
     if name in os.listdir('wheelhouse'):
-        if 'GDAL' not in name and name in committed:
+        if name in committed:
             continue
         z1 = zipfile.ZipFile(os.path.join('wheels', name))
         z2 = zipfile.ZipFile(os.path.join('wheelhouse', name))

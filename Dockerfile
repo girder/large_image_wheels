@@ -1339,8 +1339,8 @@ RUN \
 RUN \
     echo "`date` librttopo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b librttopo-`getver.py librttopo` -c advice.detachedHead=false https://git.osgeo.org/gitea/rttopo/librttopo.git && \
-    cd librttopo && \
+    git clone --depth=1 --single-branch -b librttopo-`getver.py librttopo` -c advice.detachedHead=false https://gitlab.com/rttopo/rttopo.git && \
+    cd rttopo && \
     ./autogen.sh && \
     ./configure --prefix=/usr/local --disable-static && \
     make -j ${JOBS} && \
@@ -1930,10 +1930,14 @@ RUN \
     # checkout out the recorded sha and prune to a depth of 1 \
     git -C gdal checkout `getver.py gdal-sha` && \
     git -C gdal gc --prune=all && \
-    # sed -i 's/define GDAL_VERSION_MINOR    4/define GDAL_VERSION_MINOR    5/g' gdal/gcore/gdal_version.h.in && \
     true; fi && \
     # - Common \
     cd gdal && \
+    sed -i 's/define GDAL_VERSION_BUILD    0/define GDAL_VERSION_BUILD    1/g' gcore/gdal_version.h.in && \
+    sed -i 's/dev/.1dev/g' gcore/gdal_version.h.in && \
+    sed -i 's/\([0-9]\)$/\1.1/g' VERSION && \
+    sed -i 's/if library_version_num < gdal_python_version/if False/g' swig/python/setup.py.in && \
+    # sed -i 's/set(GDAL_PYTHON_VERSION "${GDAL_VERSION_NO_DEV_SUFFIX}")/set(GDAL_PYTHON_VERSION "${GDAL_VERSION_NO_DEV_SUFFIX}.1")/g' swig/python/CMakeLists.txt && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
     mkdir _build && \
     cd _build && \

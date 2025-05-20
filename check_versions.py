@@ -285,7 +285,8 @@ Packages = {
         're': r'/([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$',
     },
     'librttopo': {
-        'git': 'https://git.osgeo.org/gitea/rttopo/librttopo.git',
+        # 'git': 'https://git.osgeo.org/gitea/rttopo/librttopo.git',
+        'git': 'https://gitlab.com/rttopo/rttopo.git',
         're': r'librttopo-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libspatialite': {
