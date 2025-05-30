@@ -45,6 +45,9 @@ if __name__ == '__main__':
         help='A prefix to add to links.  This defaults to None if path is '
         'anything other than gh-pages.  Otherwise, this defaults to '
         '"https://github.com/girder/large_image_wheels/raw/".')
+    parser.add_argument(
+        '-a', '--append', action='store_true',
+        help='Modify an existing file.')
     args = parser.parse_args()
 
     path = args.path or 'gh-pages'
@@ -64,6 +67,13 @@ if __name__ == '__main__':
 
     wheels = sorted(wheels)
     maxnamelen = max(len(name) for name, url in wheels)
+    if args.append:
+        existing = open(os.path.join(path, indexName)).read()
+        if 'large_image_wheels' in existing:
+            raise Exception('index.html has already been modified')
+        existing = existing.replace('Simple Package Repository', 'large_image_wheels')
+        existing = existing.replace('<body>', '<body>\n<h1>large_image_wheels</h1>')
+        template = existing.replace('</body>', '<pre>\n%LINKS%\n</pre>\n</body>')
     index = template.replace('%LINKS%', '\n'.join([
         link % (
             prefix, url, get_sha256(wpath, url), name, name,

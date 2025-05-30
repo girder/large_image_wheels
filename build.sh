@@ -36,7 +36,12 @@ docker run -v `pwd`/wheels:/opt/mount --rm --entrypoint bash girder/large_image_
 # cp --preserve=timestamps wheels/*.whl wheelhouse/.
 if [ "$makeindex" == "true" ]; then
   python3 copy_changed.py
-  python3 make_index.py
+  pushd gh-pages
+  python3 -m simple503 -B https://github.com/girder/large_image_wheels/raw/wheelhouse ../wheelhouse .
+  mv *.whl* ../wheelhouse/.
+  sed -i 's!https://github.com/girder/large_image_wheels/raw/wheelhouse/!!g' index.html
+  python3 make_index.py --append
+  popd
 fi
 python3 make_index.py wheels
 ls -al wheels

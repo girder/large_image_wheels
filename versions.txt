@@ -5,7 +5,7 @@ blosc 1.21.6
 boost 1.88.0
 cairo 1.18.4
 cmake 4.0.2
-curl 8_14_0
+curl 8_14_1
 cyrus-sasl 2.1.28
 fftw3 3.3.10
 fitsio 4.6.2
@@ -17,7 +17,7 @@ fyba b00ae60436bd24145df7006a211219f5fdef6011
 fyba-release 4.1.1
 gdal 3.11.0
 gdal-pypi 3.11.0
-gdal-sha 5831d99db791b059fed92c3fc01ce0c112ee79d3
+gdal-sha 37899e8970e44fef0261a5678f5619dbe526cf45
 gdal-source 3.12.0
 gdk-pixbuf 2.42.12
 giflib 5.2.2
@@ -39,7 +39,7 @@ lapack 3.12.1
 lcms2 2.17
 lerc 4.0.0
 libaio 0-3-107.1
-libarchive 3.8.0
+libarchive 3.8.1
 libbrotli 1.1.0
 libde265 1.0.16
 libdeflate 1.24
@@ -74,10 +74,10 @@ libxcrypt 4.4.38
 libxml2 2.14.3
 libzip 1.11.4
 lz4 1.10.0
-manylinux2014_x86_64 4a95a1cd5c3232a5d1cb87b3745f53ff951bea9c5363adf76477bdfbebbe6d18
-manylinux_2_28_aarch64 4f179cff75bfc3d91a74af8429f14f0b55a7250dd1cd5111b171655e575a9d3e
-mapnik b708c0ac1054bc00f46f6846f9a09f0f9b0e667e
-mapnik-release 4.0.7
+manylinux2014_x86_64 91abc73af21a8dbb81bbfc7c16517c6523e9a1d92c6ef77613041faab2cea609
+manylinux_2_28_aarch64 f3f844b2f9bf79d543be4063ce999fcf933f324ef017a01303c591945a0474a0
+mapnik 203d6f01b0a64e445e8df15d2cb2dfbca8f1089f
+mapnik-release 4.1.0
 matio 1.5.28
 meson 1.8.1
 minizip 4.0.10
@@ -89,7 +89,7 @@ openblas 0.3.29
 openexr 3.3.3
 openjpeg 2.5.3
 openldap 2_6_10
-openmpi 5.0.7
+openmpi 5.0.8
 openslide 4.0.0
 openslide-python 1.4.2
 openslide-python-pypi 1.4.2
@@ -102,9 +102,9 @@ parallel-netcdf 1.14.0
 patchelf 0.18.0
 pixman 0.46.0
 pkg-config 0.29.2
-poppler 25.05.0
+poppler 25.06.0
 postgresql 17.5
-proj4 9.6.0
+proj4 9.6.1
 pylibmc 1.6.3
 pylibtiff 0.6.1
 pylibtiff-pypi 0.4.2
@@ -118,7 +118,7 @@ python-mapnik 9f36dafbd1d0d80fe6b08e0607437a831d471c73
 python-mapnik-pypi 0.1
 pyvips 3.0.0
 pyvips-pypi 3.0.0
-sqlite 2025.3490200
+sqlite 2025.3500000
 strip-nondeterminism 0.45.0
 superlu 7.0.1
 util-linux 2.41

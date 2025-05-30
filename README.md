@@ -98,6 +98,8 @@ If these wheels were published under alternate names, they could be published to
 
 Using `--find-links` seems like the best choice of these options.  Downstream packages can list the expected modules in `install_requires`.  Installation doesn't become any harder for platforms without wheels, and custom-built libraries are supported.
 
+Newer versions usually have an extra `.1` added to the original python package's version number to ensure that pip and other installers will resolve to our published wheel uniquely.
+
 ## Special use cases
 
 ### GeoDjango
