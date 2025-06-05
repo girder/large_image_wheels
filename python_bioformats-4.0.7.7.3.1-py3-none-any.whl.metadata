@@ -1,0 +1,31 @@
+Metadata-Version: 2.1
+Name: python-bioformats
+Version: 4.0.7.7.3.1
+Summary: Read and write life sciences file formats
+Home-page: http://github.com/CellProfiler/python-bioformats/
+Author: Lee Kamentsky
+Author-email: leek@broadinstitute.org
+License: GPL License
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: License :: OSI Approved :: GNU General Public License v2 (GPLv2)
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Java
+Classifier: Topic :: Scientific/Engineering :: Bio-Informatics
+Classifier: Topic :: Multimedia :: Graphics :: Graphics Conversion
+License-File: LICENSE
+License-File: COPYING
+Requires-Dist: boto3>=1.14.23
+Requires-Dist: future>=0.18.2
+Requires-Dist: python-javabridge==4.0.3
+Provides-Extra: test
+Requires-Dist: pytest<4,>=3.3.2; extra == "test"
+
+Python-bioformats is a Python wrapper for Bio-Formats, a standalone Java library for reading
+    and writing life sciences image file formats. Bio-Formats is capable of parsing both pixels and metadata for a
+    large number of formats, as well as writing to several formats. Python-bioformats uses the python-javabridge to
+    start a Java virtual machine from Python and interact with it. Python-bioformats was developed for and is used by
+    the cell image analysis software CellProfiler (cellprofiler.org).  While we are gratified that others
+    outside the CellProfiler team find it useful, we maintain python-bioformats essentially for the CellProfiler project 
+    and **cannot currently guarantee support for other users.** Please consider visiting our forum at forum.image.sc for 
+    additional support help.

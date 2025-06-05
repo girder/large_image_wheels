@@ -1,0 +1,32 @@
+Metadata-Version: 2.4
+Name: Glymur
+Version: 0.14.0.post1
+Home-page: https://github.com/quintusdias/glymur
+Author: 'John Evans'
+Author-email: "John Evans" <jevans667cc@proton.me>
+License: 'MIT'
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: Implementation :: CPython
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Intended Audience :: Science/Research
+Classifier: Operating System :: OS Independent
+Classifier: Topic :: Scientific/Engineering
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE.txt
+Requires-Dist: numpy
+Requires-Dist: lxml
+Requires-Dist: imageio
+Requires-Dist: packaging
+Provides-Extra: test
+Requires-Dist: pytest; extra == "test"
+Requires-Dist: pillow; extra == "test"
+Requires-Dist: scikit-image; extra == "test"
+Dynamic: license-file
+
+
+**glymur** contains a Python interface to the OpenJPEG library which
+allows one to read and write JPEG 2000 files.

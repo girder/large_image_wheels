@@ -1,0 +1,29 @@
+Metadata-Version: 2.1
+Name: pylibtiff
+Version: 0.5.0
+Summary: PyLibTiff: a Python tiff library.
+Home-page: https://github.com/pearu/pylibtiff
+Author: Pearu Peterson
+Author-email: pearu.peterson@gmail.com
+License: https://github.com/pearu/pylibtiff/blob/master/LICENSE
+Platform: All
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved
+Classifier: Programming Language :: Python
+Classifier: Topic :: Scientific/Engineering
+Classifier: Topic :: Software Development
+Classifier: Operating System :: Microsoft :: Windows
+Classifier: Operating System :: POSIX
+Classifier: Operating System :: Unix
+Classifier: Operating System :: MacOS
+Requires: numpy
+License-File: LICENSE
+Requires-Dist: numpy
+
+PyLibTiff? is a Python package that provides the following modules:
+
+   libtiff - a wrapper of C libtiff library using ctypes.
+   tiff - a numpy.memmap view of tiff files.
+
+

@@ -1,0 +1,36 @@
+Metadata-Version: 2.1
+Name: Glymur
+Version: 0.9.2
+Summary: Tools for accessing JPEG2000 files
+Home-page: https://github.com/quintusdias/glymur
+Author: John Evans
+Author-email: john.g.evans.ne@gmail.com
+License: MIT
+Platform: UNKNOWN
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: Implementation :: CPython
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Operating System :: MacOS
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Operating System :: Microsoft :: Windows :: Windows XP
+Classifier: Intended Audience :: Science/Research
+Classifier: Intended Audience :: Information Technology
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Dist: lxml
+Requires-Dist: numpy
+Requires-Dist: setuptools
+
+glymur: a Python interface for JPEG 2000
+=========================================
+
+**glymur** contains a Python interface to the OpenJPEG library which
+allows one to read and write JPEG 2000 files.  **glymur** works on
+Python 3.6 and 3.7.
+
+Please read the docs, https://glymur.readthedocs.org/en/latest/
+
+
