@@ -40,8 +40,8 @@ if [ "$makeindex" == "true" ]; then
   python3 -m simple503 -B https://github.com/girder/large_image_wheels/raw/wheelhouse ../wheelhouse .
   mv *.whl* ../wheelhouse/.
   sed -i 's!https://github.com/girder/large_image_wheels/raw/wheelhouse/!!g' index.html
-  python3 make_index.py --append
   popd
+  python3 make_index.py --append
 fi
 python3 make_index.py wheels
 ls -al wheels

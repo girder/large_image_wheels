@@ -159,6 +159,7 @@ RUN \
     export AUTOMAKE_JOBS=`nproc` && \
     until timeout 60 git clone --depth=1 --single-branch -b pkg-config-`getver.py pkg-config` -c advice.detachedHead=false https://gitlab.freedesktop.org/pkg-config/pkg-config.git; do sleep 5; echo "retrying"; done && \
     cd pkg-config && \
+    sed -i 's/m4_copy/m4_copy_force/g' glib/m4macros/glib-gettext.m4 && \
     ./autogen.sh && \
     ./configure --silent --prefix=/usr/local --with-internal-glib --disable-host-tool --disable-static && \
     make --silent -j ${JOBS} && \
@@ -2461,7 +2462,7 @@ RUN \
     cd libvips && \
     # Allow using VIPS_TMPDIR for the temp directory \
     sed -i 's/tmpd;/tmpd;if ((tmpd=g_getenv("VIPS_TMPDIR"))) return(tmpd);/g' libvips/iofuncs/util.c && \
-    sed -i 's/cfg_var.set('\''HAVE_TARGET_CLONES'\'', '\''1'\'')/# cfg_var.set('\''HAVE_TARGET_CLONES'\'', '\''1'\'')/g' meson.build && \
+    sed -i 's/cfg_var.set('\''HAVE_TARGET_CLONES'\''/# cfg_var.set('\''HAVE_TARGET_CLONES'\''/g' meson.build && \
     export LDFLAGS="$LDFLAGS"',-rpath,$ORIGIN -lstdc++' && \
     meson setup --prefix=/usr/local --buildtype=release _build -Dmodules=disabled -Dexamples=false -Dnifti-prefix-dir=/usr/local 2>&1 >meson_config.txt && \
     cd _build && \
