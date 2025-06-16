@@ -56,8 +56,9 @@ Packages = {
         're': r'fftw-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
     },
     'fitsio': {
-        'filelist': 'https://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/',
-        're': r'^cfitsio-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
+        # 'filelist': 'https://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/',
+        'git': 'https://github.com/HEASARC/cfitsio.git',
+        're': r'cfitsio-([0-9]+\.[0-9]+(|\.[0-9]+))$',
         # 'insecure': True,
     },
     'fontconfig': {
@@ -102,10 +103,6 @@ Packages = {
             re.search(r'define GDAL_VERSION_MINOR[ ]+([0-9]+)', data)[1] + '.' +
             re.search(r'define GDAL_VERSION_REV[ ]+([0-9]+)', data)[1]
         ],
-    },
-    'gdk-pixbuf': {
-        'git': 'https://github.com/GNOME/gdk-pixbuf.git',
-        're': r'\/([0-9]+\.[0-8][0-9]*(|\.[0-9]+)(|\.[0-9]+))$',
     },
     'giflib': {
         'filelist': 'https://sourceforge.net/projects/giflib/files/',

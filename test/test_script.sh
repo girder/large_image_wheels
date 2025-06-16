@@ -37,6 +37,7 @@ pip cache purge || true
 # wheels to keep the testing consistent
 pip install 'openslide_python ; python_version < "3.9"' --find-links https://girder.github.io/large_image_wheels
 pip install 'gdal ; python_version < "3.9"' --find-links https://girder.github.io/large_image_wheels
+pip install 'lxml<6 ; python_version < "3.9"' 
 pip install 'glymur ; python_version < "3.10"' --find-links https://girder.github.io/large_image_wheels
 
 echo 'Test installing pyvips and other dependencies from wheels via large_image'

@@ -218,7 +218,7 @@ cd /build && \
     echo "`date` openssl" >> /build/log.txt && \
     git clone --depth=1 --single-branch -b openssl-`getver.py openssl` -c advice.detachedHead=false https://github.com/openssl/openssl.git openssl && \
     cd openssl && \
-    ./config --prefix=/usr/local --openssldir=/usr/local/ssl shared zlib && \
+    ./config --prefix=/usr/local --openssldir=/usr/local/ssl shared zlib no-tests && \
     make --silent -j ${JOBS} && \
     # using "all install_sw" rather than "install" to avoid installing docs \
     make --silent -j ${JOBS} all install_sw && \
@@ -460,10 +460,11 @@ cd /build && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
-    echo "`date` lcms2" >> /build/log.txt
-
-# Used by libtiff, gdal, mapnik, openslide, glymur
-RUN \
+    echo "`date` lcms2" >> /build/log.txt && \
+cd /build && \
+# \
+# Used by libtiff, gdal, mapnik, openslide, glymur \
+# RUN \
     echo "`date` openjpeg" >> /build/log.txt && \
     export JOBS=`nproc` && \
     curl --retry 5 --silent https://github.com/uclouvain/openjpeg/archive/v`getver.py openjpeg`.tar.gz -L -o openjpeg.tar.gz && \
@@ -988,19 +989,6 @@ open(path, "w").write(s)' && \
     ldconfig && \
     echo "`date` gobject-introspection" >> /build/log.txt
 
-# Used by openslide and libvips
-RUN \
-    echo "`date` gdk-pixbuf" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b `getver.py gdk-pixbuf` -c advice.detachedHead=false https://github.com/GNOME/gdk-pixbuf.git && \
-    cd gdk-pixbuf && \
-    meson setup --prefix=/usr/local --buildtype=release --optimization=3 -Dbuiltin_loaders=all -Dman=False -Dinstalled_tests=False _build && \
-    cd _build && \
-    ninja -j ${JOBS} && \
-    ninja -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` gdk-pixbuf" >> /build/log.txt
-
 # Boost
 
 # Used by mapnik.  Unicode support
@@ -1359,6 +1347,8 @@ RUN \
     fossil open ../libspatialite.fossil && \
     # fossil checkout -f d3aee83d3cbdd296 && \
     rm -f ../libspatialite.fossil && \
+    export CFLAGS="$CFLAGS -Os" && \
+    export CXXFLAGS="$CXXFLAGS -Os" && \
     ./configure --silent --prefix=/usr/local --disable-examples --disable-static --build=${AUDITWHEEL_ARCH}-unknown-linux-gnu && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -1662,10 +1652,11 @@ RUN \
 RUN \
     echo "`date` fitsio" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent -k https://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/cfitsio-`getver.py fitsio`.tar.gz -L -o cfitsio.tar.gz && \
-    mkdir cfitsio && \
-    tar -zxf cfitsio.tar.gz -C cfitsio --strip-components 1 && \
-    rm -f cfitsio.tar.gz && \
+    # curl --retry 5 --silent -k https://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/cfitsio-`getver.py fitsio`.tar.gz -L -o cfitsio.tar.gz && \
+    # mkdir cfitsio && \
+    # tar -zxf cfitsio.tar.gz -C cfitsio --strip-components 1 && \
+    # rm -f cfitsio.tar.gz && \
+    git clone --depth=1 --single-branch -b cfitsio-`getver.py fitsio` -c advice.detachedHead=false https://github.com/HEASARC/cfitsio.git && \
     cd cfitsio && \
     mkdir _build && \
     cd _build && \
@@ -2464,6 +2455,7 @@ RUN \
     sed -i 's/tmpd;/tmpd;if ((tmpd=g_getenv("VIPS_TMPDIR"))) return(tmpd);/g' libvips/iofuncs/util.c && \
     sed -i 's/cfg_var.set('\''HAVE_TARGET_CLONES'\''/# cfg_var.set('\''HAVE_TARGET_CLONES'\''/g' meson.build && \
     export LDFLAGS="$LDFLAGS"',-rpath,$ORIGIN -lstdc++' && \
+    sed -i 's/g_logv("tiff2vips", G_LOG_LEVEL_WARNING, fmt, ap);/\/\/g_logv("tiff2vips", G_LOG_LEVEL_WARNING, fmt, ap);/g' libvips/foreign/tiff2vips.c && \
     meson setup --prefix=/usr/local --buildtype=release _build -Dmodules=disabled -Dexamples=false -Dnifti-prefix-dir=/usr/local 2>&1 >meson_config.txt && \
     cd _build && \
     ninja -j ${JOBS} && \
