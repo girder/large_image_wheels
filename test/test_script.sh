@@ -36,7 +36,8 @@ pip cache purge || true
 # Any packages where we aren't building for older python, just install previous
 # wheels to keep the testing consistent
 pip install 'openslide_python ; python_version < "3.9"' --find-links https://girder.github.io/large_image_wheels
-pip install 'gdal ; python_version < "3.9"' --find-links https://girder.github.io/large_image_wheels
+pip install 'gdal < 3.11; python_version < "3.9"' --find-links https://girder.github.io/large_image_wheels
+pip install 'mapnik < 4.1.1; python_version < "3.9"' --find-links https://girder.github.io/large_image_wheels
 pip install 'lxml<6 ; python_version < "3.9"' 
 pip install 'glymur ; python_version < "3.10"' --find-links https://girder.github.io/large_image_wheels
 
@@ -260,6 +261,13 @@ pprint.pprint({
   'RasterCount': d.RasterCount,
   })
 pprint.pprint(d.GetMetadata()['NITF_BLOCKA_FRFC_LOC_01'])
+EOF
+echo 'Download an rgba geotiff'
+curl --silent --retry 5 -L -o rgba_geotiff.tiff https://data.kitware.com/api/v1/file/6862d7564263e86bc81ba30d/download
+echo 'Use large_image and gdal to open an rgba geotiff'
+python <<EOF
+import large_image
+print(large_image.open('rgba_geotiff.tiff'))
 EOF
 
 echo 'Test import order with shapely, mapnik, and pyproj'

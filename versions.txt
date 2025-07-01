@@ -15,9 +15,9 @@ freetype 2-13-3
 freexl 106b174596
 fyba b00ae60436bd24145df7006a211219f5fdef6011
 fyba-release 4.1.1
-gdal 3.11.0
-gdal-pypi 3.11.0
-gdal-sha 0caff7ec590b4f86c8d0227311cec024c9eea04d
+gdal 3.11.1
+gdal-pypi 3.11.1
+gdal-sha 7f5d61e2cded28bb0e6db25c2515a8ec962ac173
 gdal-source 3.12.0
 giflib 5.2.2
 glib 2.85.1
@@ -48,7 +48,7 @@ libffi 3.5.1
 libgeos 3.13.1
 libgeotiff 1.7.4
 libgta 1.2.1
-libheif 1.19.8
+libheif 1.20.0
 libhwy 1.2.0
 libiconv 1.18
 libidn2 2.3.8
@@ -92,9 +92,9 @@ openmpi 5.0.8
 openslide 4.0.0
 openslide-python 1.4.2
 openslide-python-pypi 1.4.2
-openslide-python-sha abd51f60987d42d2cde44aa947eecbec7279c6e5
+openslide-python-sha 0acabb02da55a082d45b381cde9665a3291c7309
 openslide-sha 8fa7110f8290e15f4bb023225150d85032a190d6
-openssl 3.5.0
+openssl 3.5.1
 orc 0.4.41
 pango 1.56.4
 parallel-netcdf 1.14.0
