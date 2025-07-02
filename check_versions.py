@@ -392,7 +392,8 @@ Packages = {
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'openldap': {
-        'git': 'https://git.openldap.org/openldap/openldap.git',
+        # 'git': 'https://git.openldap.org/openldap/openldap.git',
+        'git': 'https://github.com/openldap/openldap.git',
         're': r'OPENLDAP_REL_ENG_([0-9]+_[0-9]+(|_[0-9]+))$',
     },
     'openmpi': {

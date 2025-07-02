@@ -1,0 +1,796 @@
+diff --git a/.github/workflows/c.yaml b/.github/workflows/c.yaml
+index 40c5eb1..e6bfa9e 100644
+--- a/.github/workflows/c.yaml
++++ b/.github/workflows/c.yaml
+@@ -45,6 +45,7 @@ jobs:
+             python3-requests python3-pyyaml \
+             cairo-devel \
+             glib2-devel \
++            jxrlib-devel \
+             libdicom-devel \
+             libjpeg-turbo-devel \
+             libpng-devel \
+@@ -166,6 +167,7 @@ jobs:
+                 cairo \
+                 glib \
+                 jpeg-turbo \
++                jxrlib \
+                 libdicom \
+                 libpng \
+                 libtiff \
+@@ -214,6 +216,7 @@ jobs:
+                     $python python${pyver}-requests python${pyver}-pyyaml \
+                     cairo-devel \
+                     glib2-devel \
++                    jxrlib-devel \
+                     libdicom-devel \
+                     libjpeg-turbo-devel \
+                     libpng-devel \
+@@ -256,6 +259,7 @@ jobs:
+                     libcairo2-dev$arch \
+                     libglib2.0-dev$arch \
+                     $jpeg$arch \
++                    libjxr-dev$arch \
+                     libopenjp2-7-dev$arch \
+                     libpng-dev$arch \
+                     libsqlite3-dev$arch \
+diff --git a/meson.build b/meson.build
+index 1cce6dc..feeac63 100644
+--- a/meson.build
++++ b/meson.build
+@@ -175,6 +175,64 @@ valgrind_dep = dependency(
+   required : false,
+ )
+ 
++jxr_dep = dependency(
++  'libjxr',
++  required : false,
++)
++if not jxr_dep.found()
++  # called jxrlib on macOS
++  jxr_dep = dependency(
++    'jxrlib',
++    required : false,
++  )
++endif
++
++# Workaround for Debian < Bookworm, Ubuntu < 22.04LTS, and Fedora. They miss
++# pkg-config file
++if not jxr_dep.found()
++  fs = import('fs')
++  jxr_includedirs = ['/usr/include/jxrlib/']  # Linux
++  has_jxr_includedir = false
++  foreach d : jxr_includedirs
++    if not fs.is_dir(d)
++      continue
++    endif
++
++    if cc.has_header(
++      'JXRGlue.h',
++      include_directories : include_directories(d),
++    )
++      jxr_includedir = d
++      has_jxr_includedir = true
++      break
++    endif
++  endforeach
++
++  jxr_libdirs = [
++    '/usr/lib/i386-linux-gnu/',
++    '/usr/lib/x86_64-linux-gnu/',
++    '/usr/lib/lib64/',
++    '/usr/lib64/',
++  ]
++  jxr_lib_dep = cc.find_library(
++    'jxrglue',
++    dirs : jxr_libdirs,
++    required : false,
++  )
++  if has_jxr_includedir and jxr_lib_dep.found()
++    jxr_dep = declare_dependency(
++      compile_args : ['-D__ANSI__', '-DDISABLE_PERF_MEASUREMENT'],
++      include_directories : [jxr_includedir],
++      dependencies : jxr_lib_dep,
++      link_args : ['-ljpegxr', '-ljxrglue'],
++    )
++  endif
++endif
++
++if jxr_dep.found()
++  conf.set('HAVE_LIBJXR', 1)
++endif
++
+ doxygen = find_program(
+   'doxygen',
+   required : get_option('doc'),
+diff --git a/src/meson.build b/src/meson.build
+index 676e5fe..01f63d3 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -48,6 +48,7 @@ openslide_sources = files(
+   'openslide-decode-dicom.c',
+   'openslide-decode-jp2k.c',
+   'openslide-decode-jpeg.c',
++  'openslide-decode-jxr.c',
+   'openslide-decode-png.c',
+   'openslide-decode-sqlite.c',
+   'openslide-decode-tiff.c',
+@@ -57,6 +58,7 @@ openslide_sources = files(
+   'openslide-file.c',
+   'openslide-grid.c',
+   'openslide-hash.c',
++  'openslide-image.c',
+   'openslide-jdatasrc.c',
+   'openslide-util.c',
+   'openslide-vendor-aperio.c',
+@@ -94,6 +96,7 @@ libopenslide = library(
+     tiff_dep,
+     openjpeg_dep,
+     jpeg_dep,
++    jxr_dep,
+     png_dep,
+     zlib_dep,
+     zstd_dep,
+diff --git a/src/openslide-decode-jxr.c b/src/openslide-decode-jxr.c
+new file mode 100644
+index 0000000..ce7ac08
+--- /dev/null
++++ b/src/openslide-decode-jxr.c
+@@ -0,0 +1,218 @@
++/*
++ *  OpenSlide, a library for reading whole slide image files
++ *
++ *  Copyright (c) 2007-2015 Carnegie Mellon University
++ *  Copyright (c) 2011 Google, Inc.
++ *  Copyright (c) 2015 Benjamin Gilbert
++ *  All rights reserved.
++ *
++ *  OpenSlide is free software: you can redistribute it and/or modify
++ *  it under the terms of the GNU Lesser General Public License as
++ *  published by the Free Software Foundation, version 2.1.
++ *
++ *  OpenSlide is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU Lesser General Public License for more details.
++ *
++ *  You should have received a copy of the GNU Lesser General Public
++ *  License along with OpenSlide. If not, see
++ *  <http://www.gnu.org/licenses/>.
++ *
++ */
++
++#include <string.h>
++#include <config.h>
++#include <glib.h>
++
++#include "openslide-private.h"
++#include "openslide-image.h"
++#include "openslide-decode-jxr.h"
++
++#ifdef HAVE_LIBJXR
++#include <JXRGlue.h>
++
++static struct wmp_err_msg {
++  ERR id;
++  char *msg;
++} msgs[] = {
++  {WMP_errFail, "WMP_errFail"},
++  {WMP_errNotYetImplemented, "WMP_errNotYetImplemented"},
++  {WMP_errAbstractMethod, "WMP_errAbstractMethod"},
++  {WMP_errOutOfMemory, "WMP_errOutOfMemory"},
++  {WMP_errFileIO, "WMP_errFileIO"},
++  {WMP_errBufferOverflow, "WMP_errBufferOverflow"},
++  {WMP_errInvalidParameter, "WMP_errInvalidParameter"},
++  {WMP_errInvalidArgument, "WMP_errInvalidArgument"},
++  {WMP_errUnsupportedFormat, "WMP_errUnsupportedFormat"},
++  {WMP_errIncorrectCodecVersion, "WMP_errIncorrectCodecVersion"},
++  {WMP_errIndexNotFound, "WMP_errIndexNotFound"},
++  {WMP_errOutOfSequence, "WMP_errOutOfSequence"},
++  {WMP_errNotInitialized, "WMP_errNotInitialized"},
++  {WMP_errMustBeMultipleOf16LinesUntilLastCall, "WMP_errMustBeMultipleOf16LinesUntilLastCall"},
++  {WMP_errPlanarAlphaBandedEncRequiresTempFile, "WMP_errPlanarAlphaBandedEncRequiresTempFile"},
++  {WMP_errAlphaModeCannotBeTranscoded, "WMP_errAlphaModeCannotBeTranscoded"},
++  {WMP_errIncorrectCodecSubVersion, "WMP_errIncorrectCodecSubVersion"},
++  {0, NULL}
++};
++
++static void print_err(ERR jerr, GError **err) {
++  struct wmp_err_msg *p = &msgs[0];
++  if (jerr >= 0) {
++    return;
++  }
++  while ((p++)->msg) {
++    if (p->id == jerr) {
++      g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
++                  "JXR decode error: %s", p->msg);
++      break;
++    }
++  }
++}
++
++static guint get_bits_per_pixel(const PKPixelFormatGUID *pixel_format) {
++  PKPixelInfo pixel_info;
++
++  pixel_info.pGUIDPixFmt = pixel_format;
++  PixelFormatLookup(&pixel_info, LOOKUP_FORWARD);
++  return pixel_info.cbitUnit;
++}
++
++bool _openslide_jxr_decode_buf(const void *src, int64_t src_len, uint32_t *dst,
++                               int64_t dst_len, GError **err) {
++  struct WMPStream *pStream = NULL;
++  PKImageDecode *pDecoder = NULL;
++  PKFormatConverter *pConverter = NULL;
++  ERR jerr;
++  PKPixelFormatGUID fmt;
++  PKRect rect = {0, 0, 0, 0};
++  g_autofree uint8_t *unjxr = NULL;
++
++  CreateWS_Memory(&pStream, (void *) src, src_len);
++  // IID_PKImageWmpDecode is the only supported decoder PKIID
++  jerr = PKCodecFactory_CreateCodec(&IID_PKImageWmpDecode, (void **) &pDecoder);
++  if (jerr < 0) {
++    // jxrlib uses lots of goto
++    goto Cleanup;
++  }
++
++  jerr = pDecoder->Initialize(pDecoder, pStream);
++  if (jerr < 0) {
++    goto Cleanup;
++  }
++
++  pDecoder->GetSize(pDecoder, &rect.Width, &rect.Height);
++  int64_t out_len = rect.Width * rect.Height * 4;
++  // JXR tile size may be incorrect in czi directory entries
++  g_assert(out_len <= dst_len);
++
++  pDecoder->GetPixelFormat(pDecoder, &fmt);
++  PKPixelFormatGUID fmt_out;
++  void (*convert)(uint8_t *, size_t, uint32_t *);
++  if (IsEqualGUID(&fmt, &GUID_PKPixelFormat24bppBGR)) {
++    fmt_out = GUID_PKPixelFormat24bppBGR;
++    convert = _openslide_bgr24_to_argb32;
++  } else if (IsEqualGUID(&fmt, &GUID_PKPixelFormat48bppRGB)) {
++    /* Although the format called 48bppRGB in JXR, its color order is BGR for
++     * czi. Use 48bppRGB as it is and prefer openslide function for converting
++     * to argb32.
++     */
++    fmt_out = GUID_PKPixelFormat48bppRGB;
++    convert = _openslide_bgr48_to_argb32;
++  } else if (IsEqualGUID(&fmt, &GUID_PKPixelFormat8bppGray)) {
++    g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
++                "GUID_PKPixelFormat8bppGray is not supported");
++    goto Cleanup;
++  } else if (IsEqualGUID(&fmt, &GUID_PKPixelFormat16bppGray)) {
++    g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
++                "GUID_PKPixelFormat16bppGray is not supported");
++    goto Cleanup;
++  } else {
++    g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
++                "Currently only support GUID_PKPixelFormat24bppBGR and "
++                "GUID_PKPixelFormat48bppRGB");
++    goto Cleanup;
++  }
++
++  uint32_t stride =
++      rect.Width *
++      ((MAX(get_bits_per_pixel(&fmt), get_bits_per_pixel(&fmt_out)) + 7) / 8);
++  int64_t unjxr_len = stride * rect.Height;
++  unjxr = g_try_malloc(unjxr_len);
++  if (!unjxr) {
++    g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
++                "Couldn't allocate %" PRId64 " bytes for decoding JXR",
++                unjxr_len);
++    return false;
++  }
++
++  // Create color converter
++  jerr = PKCodecFactory_CreateFormatConverter(&pConverter);
++  if (jerr < 0) {
++    goto Cleanup;
++  }
++
++  jerr = pConverter->Initialize(pConverter, pDecoder, NULL, fmt_out);
++  if (jerr < 0) {
++    goto Cleanup;
++  }
++
++  jerr = pConverter->Copy(pConverter, &rect, unjxr, stride);
++  if (jerr < 0) {
++    goto Cleanup;
++  }
++
++  convert(unjxr, unjxr_len, dst);
++
++Cleanup:
++  print_err(jerr, err);
++  CloseWS_Memory(&pStream);
++  pDecoder->Release(&pDecoder);
++  pConverter->Release(&pConverter);
++
++  return (jerr < 0) ? false : true;
++}
++
++#endif  /* end of HAVE_LIBJXR */
++
++static bool short_header_flag(uint8_t *data) {
++  return data[10] & 0x80;
++}
++
++/* parse jpeg xr header to get width and height */
++bool _openslide_jxr_dim(const void *data, size_t data_len, uint32_t *width,
++                        uint32_t *height) {
++  uint8_t *p = (uint8_t *) data;
++  uint8_t *s = NULL;
++  /* locate beginning of JXR image stream instead of parsing IFD. Cannot use
++   * strstr() because there may be many zeros before WMPHOTO magic. */
++  for (size_t i = 0; i < (data_len - 8); i++, p++) {
++    if (*(p + 0) == 'W' && *(p + 1) == 'M' && *(p + 2) == 'P' &&
++        *(p + 3) == 'H' && *(p + 4) == 'O' && *(p + 5) == 'T' &&
++        *(p + 6) == 'O' && *(p + 7) == '\0') {
++
++      s = p;
++      break;
++    }
++  }
++
++  if (s == NULL) {
++    g_warning("JPEG XR magic WMPHOTO not found");
++    return false;
++  }
++
++  uint32_t width1, height1; /* width, height minus 1 */
++  if (short_header_flag(s)) {
++    /* per JXR doc: u(n) unsigned integer using n bits, where MSB is the left
++     * most bit. */
++    width1 = GUINT16_FROM_BE(*(uint16_t *) (s + 12));
++    height1 = GUINT16_FROM_BE(*(uint16_t *) (s + 14));
++  } else {
++    width1 = GUINT32_FROM_BE(*(uint32_t *) (s + 12));
++    height1 = GUINT32_FROM_BE(*(uint32_t *) (s + 16));
++  }
++
++  *width = width1 + 1;
++  *height = height1 + 1;
++  return true;
++}
+diff --git a/src/openslide-decode-jxr.h b/src/openslide-decode-jxr.h
+new file mode 100644
+index 0000000..c2b24b8
+--- /dev/null
++++ b/src/openslide-decode-jxr.h
+@@ -0,0 +1,33 @@
++/*
++ *  OpenSlide, a library for reading whole slide image files
++ *
++ *  Copyright (c) 2007-2013 Carnegie Mellon University
++ *  All rights reserved.
++ *
++ *  OpenSlide is free software: you can redistribute it and/or modify
++ *  it under the terms of the GNU Lesser General Public License as
++ *  published by the Free Software Foundation, version 2.1.
++ *
++ *  OpenSlide is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU Lesser General Public License for more details.
++ *
++ *  You should have received a copy of the GNU Lesser General Public
++ *  License along with OpenSlide. If not, see
++ *  <http://www.gnu.org/licenses/>.
++ *
++ */
++
++#ifndef OPENSLIDE_OPENSLIDE_DECODE_JXR_H_
++#define OPENSLIDE_OPENSLIDE_DECODE_JXR_H_
++
++#include <stdint.h>
++
++
++bool _openslide_jxr_decode_buf(const void *src, int64_t src_len, uint32_t *dst,
++                               int64_t dst_len, GError **err);
++
++bool _openslide_jxr_dim(const void *data, size_t data_len, uint32_t *width,
++                        uint32_t *height);
++#endif
+diff --git a/src/openslide-image.c b/src/openslide-image.c
+new file mode 100644
+index 0000000..c59519a
+--- /dev/null
++++ b/src/openslide-image.c
+@@ -0,0 +1,23 @@
++#include <config.h>
++#include "openslide-image.h"
++
++
++void _openslide_bgr24_to_argb32(uint8_t *src, size_t src_len, uint32_t *dst) {
++  // one 24-bit pixel at a time
++  for (size_t i = 0; i < src_len; i += 3, src += 3) {
++    *dst++ = (0xFF000000 |
++              (uint32_t)(src[0]) |
++              ((uint32_t)(src[1]) << 8) |
++              ((uint32_t)(src[2]) << 16));
++  }
++}
++
++void _openslide_bgr48_to_argb32(uint8_t *src, size_t src_len, uint32_t *dst) {
++  // one 48-bit pixel at a time
++  for (size_t i = 0; i < src_len; i += 6, src += 6) {
++    *dst++ = (0xFF000000 |
++              (uint32_t)(src[1]) |
++              ((uint32_t)(src[3]) << 8) |
++              ((uint32_t)(src[5]) << 16));
++  }
++}
+diff --git a/src/openslide-image.h b/src/openslide-image.h
+new file mode 100644
+index 0000000..3d70ed7
+--- /dev/null
++++ b/src/openslide-image.h
+@@ -0,0 +1,10 @@
++#ifndef OPENSLIDE_OPENSLIDE_IMAGE_H_
++#define OPENSLIDE_OPENSLIDE_IMAGE_H_
++#include <stdio.h>
++#include <inttypes.h>
++
++void _openslide_bgr24_to_argb32(uint8_t *src, size_t src_len, uint32_t *dst);
++void _openslide_bgr48_to_argb32(uint8_t *src, size_t src_len, uint32_t *dst);
++
++
++#endif
+diff --git a/src/openslide-vendor-zeiss.c b/src/openslide-vendor-zeiss.c
+index 7276830..224ce17 100644
+--- a/src/openslide-vendor-zeiss.c
++++ b/src/openslide-vendor-zeiss.c
+@@ -28,9 +28,12 @@
+  *
+  */
+ 
++#include <config.h>
+ #include "openslide-private.h"
+ #include "openslide-decode-jpeg.h"
+ #include "openslide-decode-xml.h"
++#include "openslide-image.h"
++#include "openslide-decode-jxr.h"
+ 
+ #include <glib.h>
+ #include <math.h>
+@@ -39,7 +42,6 @@
+ #include <string.h>
+ 
+ #define CZI_GUID_LEN 16
+-#define CZI_SUBBLK_HDR_LEN 288
+ 
+ static const char SID_ZISRAWATTDIR[] = "ZISRAWATTDIR";
+ static const char SID_ZISRAWDIRECTORY[] = "ZISRAWDIRECTORY";
+@@ -245,6 +247,7 @@ struct czi_subblk {
+   int64_t downsample_i;
+   int32_t pixel_type;
+   int32_t compression;
++  int32_t dir_entry_len;
+   // higher z-index overlaps a lower z-index
+   int32_t x, y, z;
+   uint32_t w, h;
+@@ -261,6 +264,7 @@ struct czi {
+   int64_t subblk_dir_pos;
+   int64_t meta_pos;
+   int64_t att_dir_pos;
++  int64_t zen_version;  // ZEN software version
+   int32_t w;
+   int32_t h;
+   int32_t nscene;
+@@ -338,26 +342,6 @@ static bool check_magic(const void *found, const char *expected,
+   return true;
+ }
+ 
+-static void bgr24_to_argb32(uint8_t *src, size_t src_len, uint32_t *dst) {
+-  // one 24-bit pixel at a time
+-  for (size_t i = 0; i < src_len; i += 3, src += 3) {
+-    *dst++ = (0xFF000000 |
+-              (uint32_t)(src[0]) |
+-              ((uint32_t)(src[1]) << 8) |
+-              ((uint32_t)(src[2]) << 16));
+-  }
+-}
+-
+-static void bgr48_to_argb32(uint8_t *src, size_t src_len, uint32_t *dst) {
+-  // one 48-bit pixel at a time
+-  for (size_t i = 0; i < src_len; i += 6, src += 6) {
+-    *dst++ = (0xFF000000 |
+-              (uint32_t)(src[1]) |
+-              ((uint32_t)(src[3]) << 8) |
+-              ((uint32_t)(src[5]) << 16));
+-  }
+-}
+-
+ static bool czi_read_raw(struct _openslide_file *f, int64_t pos, int64_t len,
+                          int32_t compression, int32_t pixel_type,
+                          uint32_t *dst, int32_t w, int32_t h,
+@@ -367,11 +351,11 @@ static bool czi_read_raw(struct _openslide_file *f, int64_t pos, int64_t len,
+   int bytes_per_pixel;
+   switch (pixel_type) {
+   case PT_BGR24:
+-    convert = bgr24_to_argb32;
++    convert = _openslide_bgr24_to_argb32;
+     bytes_per_pixel = 3;
+     break;
+   case PT_BGR48:
+-    convert = bgr48_to_argb32;
++    convert = _openslide_bgr48_to_argb32;
+     bytes_per_pixel = 6;
+     break;
+   default:
+@@ -485,6 +469,36 @@ static bool czi_read_raw(struct _openslide_file *f, int64_t pos, int64_t len,
+   return true;
+ }
+ 
++#ifdef HAVE_LIBJXR
++static bool czi_read_jxr(struct _openslide_file *f, int64_t pos, int64_t len,
++                         uint32_t *dst, int64_t dst_len, GError **err) {
++  g_autofree uint8_t *file_data = g_try_malloc(len);
++  if (!file_data) {
++    g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
++                "Couldn't allocate %" PRId64 " bytes for image data", len);
++    return false;
++  }
++  if (!freadn_to_buf(f, pos, file_data, len, err)) {
++    g_prefix_error(err, "Couldn't read image data: ");
++    return false;
++  }
++
++  return _openslide_jxr_decode_buf(file_data, len, dst, dst_len, err);
++}
++#endif
++
++/* get data offset by parsing a buffer contains subblock header */
++static int64_t get_subblock_data_offset(char *buf, size_t len,
++                                        struct czi_subblk *sb) {
++  g_assert(len >= sizeof(struct zisraw_subblk_hdr));
++  struct zisraw_subblk_hdr *hdr = (struct zisraw_subblk_hdr *) buf;
++  int64_t offset_dir_entry = 16;
++  // segment before metadata has minimum length 256
++  int64_t offset_meta = MAX(256, offset_dir_entry + sb->dir_entry_len);
++  return sizeof(struct zisraw_seg_hdr) + offset_meta +
++         GINT32_FROM_LE(hdr->meta_size);
++}
++
+ // dst must be sb->w * sb->h * 4 bytes
+ static bool read_subblk(struct _openslide_file *f, int64_t zisraw_offset,
+                         struct czi_subblk *sb, uint32_t *dst, GError **err) {
+@@ -498,8 +512,8 @@ static bool read_subblk(struct _openslide_file *f, int64_t zisraw_offset,
+     return false;
+   }
+ 
+-  int64_t data_pos = zisraw_offset + sb->file_pos + CZI_SUBBLK_HDR_LEN +
+-                     GINT32_FROM_LE(hdr.meta_size);
++  int64_t data_pos = zisraw_offset + sb->file_pos +
++                     get_subblock_data_offset((char *) &hdr, sizeof(hdr), sb);
+   int64_t data_size = GINT64_FROM_LE(hdr.data_size);
+   switch (sb->compression) {
+   case COMP_NONE:
+@@ -507,6 +521,12 @@ static bool read_subblk(struct _openslide_file *f, int64_t zisraw_offset,
+   case COMP_ZSTD1:
+     return czi_read_raw(f, data_pos, data_size, sb->compression, sb->pixel_type,
+                         dst, sb->w, sb->h, err);
++
++#ifdef HAVE_LIBJXR
++  case COMP_JXR:
++    return czi_read_jxr(f, data_pos, data_size, dst, sb->w * sb->h * 4, err);
++#endif
++
+   default:
+     g_assert_not_reached();
+   }
+@@ -661,6 +681,10 @@ static bool read_dim_entry(struct czi_subblk *sb, char **p, size_t *avail,
+   } else if (g_str_equal(name, "M")) {
+     // mosaic tile index in drawing stack; highest number is frontmost
+     sb->z = start;
++  } else if (g_str_equal(name, "B")) {
++    // nothing to do
++    // Block index in segmented experiments. Not sure its meaning. It has
++    // been dropped. Ignore B dimension enables OpenSlide read old CZI files.
+   } else {
+     g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
+                 "Unrecognized subblock dimension \"%s\"", name);
+@@ -669,6 +693,40 @@ static bool read_dim_entry(struct czi_subblk *sb, char **p, size_t *avail,
+   return true;
+ }
+ 
++static bool read_tile_size_from_jxr(struct _openslide_file *f, struct czi *czi,
++                                    GError **err) {
++  struct czi_subblk *sb;
++  int64_t data_offset;
++  uint32_t w;
++  uint32_t h;
++  static const int buf_len = 512;
++  char buf[buf_len];
++  for (int i = 0; i < czi->nsubblk; i++) {
++    sb = &czi->subblks[i];
++    if (sb->compression != COMP_JXR) {
++      continue;
++    }
++
++    if (!freadn_to_buf(f, sb->file_pos, buf, buf_len, err)) {
++      return false;
++    }
++
++    data_offset =
++        get_subblock_data_offset(buf, sizeof(struct zisraw_subblk_hdr), sb);
++    memset(buf, 0, buf_len);
++    if (!freadn_to_buf(f, sb->file_pos + data_offset, buf, buf_len, err)) {
++      return false;
++    }
++
++    if (_openslide_jxr_dim(buf, buf_len, &w, &h) &&
++        (w != sb->w || h != sb->h)) {
++      sb->w = w;
++      sb->h = h;
++    }
++  }
++  return true;
++}
++
+ static bool read_dir_entry(struct czi_subblk *sb, char **p, size_t *avail,
+                            GError **err) {
+   const size_t len = sizeof(struct zisraw_dir_entry_dv);
+@@ -695,6 +753,9 @@ static bool read_dir_entry(struct czi_subblk *sb, char **p, size_t *avail,
+       return false;
+     }
+   }
++
++  sb->dir_entry_len = sizeof(struct zisraw_dir_entry_dv) + ndim * 20;
++
+   if (!sb->w || !sb->h) {
+     g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
+                 "Missing X or Y dimension in directory entry");
+@@ -926,6 +987,29 @@ static void add_xml_props(openslide_t *osr, xmlDoc *doc, GPtrArray *path,
+   g_ptr_array_remove_index(path, path->len - 1);
+ }
+ 
++/* parse version number such as 3.5.093.8 into major ver * 1000 + minor ver */
++static int64_t parse_zen_version(const char *s, GError **err) {
++  GMatchInfo *match_info;
++  // accept version number with or without minor version
++  GRegex *re = g_regex_new("(\\d+)(?:\\.(\\d+))?", 0, 0, NULL);
++  g_regex_match(re, s, 0, &match_info);
++  int64_t major = 0;
++  int64_t minor = 0;
++  if (g_match_info_matches(match_info)) {
++    g_autofree gchar *smajor = g_match_info_fetch(match_info, 1);
++    g_autofree gchar *sminor = g_match_info_fetch(match_info, 2);
++    if ((smajor && !_openslide_parse_int64(smajor, &major)) ||
++        (sminor && !_openslide_parse_int64(sminor, &minor))) {
++      g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
++                  "Couldn't parse ZEN software version");
++    }
++  }
++
++  g_match_info_free(match_info);
++  g_regex_unref(re);
++  return major * 1000 + minor;
++}
++
+ // parse XML, set CZI parameters and OpenSlide properties
+ static bool parse_xml_set_prop(openslide_t *osr, struct czi *czi,
+                                const char *xml, GError **err) {
+@@ -987,6 +1071,10 @@ static bool parse_xml_set_prop(openslide_t *osr, struct czi *czi,
+     }
+   }
+ 
++  const char *zen_version =
++    g_hash_table_lookup(osr->properties, "zeiss.Information.Application.Version");
++  czi->zen_version = parse_zen_version(zen_version, err);
++
+   const char *size_x =
+     g_hash_table_lookup(osr->properties, "zeiss.Information.Image.SizeX");
+   const char *size_y =
+@@ -1155,6 +1243,7 @@ static bool validate_subblk(const struct czi_subblk *sb, GError **err) {
+   case COMP_NONE:
+   case COMP_ZSTD0:
+   case COMP_ZSTD1:
++  case COMP_JXR:
+     break;
+   default:
+     if (sb->compression >= 0 &&
+@@ -1393,6 +1482,20 @@ static bool zeiss_open(openslide_t *osr, const char *filename,
+     return false;
+   }
+ 
++  /* The tile size stored in subblock directory entry may be wrong if
++   * compressed with JPEG XR. See
++   * https://forum.image.sc/t/would-anyone-have-a-palm-czi-example-file/85900/11
++   *
++   * Parsing tile size from JXR image stream generates lots of small random
++   * reads, which slows down CZI file opening significantly, if the slide
++   * file is not on a fast storage.
++   *
++   * Only do it if ZEN software version < 2.0 (a wild guess).
++   */
++  if (czi->zen_version < 2000 && !read_tile_size_from_jxr(f, czi, err)) {
++    return false;
++  }
++
+   int64_t max_downsample;
+   if (!read_scenes_set_prop(osr, czi, &max_downsample, err)) {
+     return false;
+diff --git a/test/cases/mosaic.ini b/test/cases/mosaic.ini
+index 3757fb4..fa46b17 100644
+--- a/test/cases/mosaic.ini
++++ b/test/cases/mosaic.ini
+@@ -119,3 +119,13 @@ y = 2100
+ base = Zeiss/Zeiss-5-SlidePreview-Zstd1-HiLo.czi
+ x = 100
+ y = 200
++
++[Zeiss CZI JXR]
++base = Zeiss/Zeiss-5-JXR.czi
++x = 3800
++y = 2100
++
++[Zeiss CZI JXR 48bits]
++base = Zeiss/Zeiss-5-SlidePreview-JXR.czi
++x = 100
++y = 200
+diff --git a/test/cases/slides.yaml b/test/cases/slides.yaml
+index 6861fb4..0a24a31 100644
+--- a/test/cases/slides.yaml
++++ b/test/cases/slides.yaml
+@@ -36,5 +36,7 @@ Trestle/CMU-1.zip:                     d52070d474de8cdaf3a6e2934dff077b0aee6e957
+ Ventana/OS-2.bif:                      8c0bcfe258574e1ec5640d280f9c5b664b76840f52b9cdcd321ec690c113dbd2
+ 
+ Zeiss/Zeiss-5-Uncompressed.czi:        5c794c0a118e11a1061e246786c0da8dc0492befa5d48f42353816c043d87999
++Zeiss/Zeiss-5-JXR.czi:                 c202ddf7b0bd473cdbe29977aee07c10c207077779485c0b1f876e8c00da77f7
+ Zeiss/Zeiss-5-SlidePreview-Zstd0.czi:  920c10f45b781591d7a46759e692e18e14278c2d41b069b518f81fda0748dd22
+ Zeiss/Zeiss-5-SlidePreview-Zstd1-HiLo.czi: fd5cea806a557954e2ff63c2eb0dd23c83fe05d4900aac9d81a4af2a412288b0
++Zeiss/Zeiss-5-SlidePreview-JXR.czi:    f15d2ac93d97516feb44d072710e1ede49a8fe13e5ff4b81e661f14757906062
+diff --git a/test/cases/zeiss-czi-jxr-48bits/config.yaml b/test/cases/zeiss-czi-jxr-48bits/config.yaml
+new file mode 100644
+index 0000000..cd2e4b8
+--- /dev/null
++++ b/test/cases/zeiss-czi-jxr-48bits/config.yaml
+@@ -0,0 +1,5 @@
++base: Zeiss/Zeiss-5-SlidePreview-JXR.czi
++slide: Zeiss-5-SlidePreview-JXR.czi
++success: true
++primary: true
++vendor: zeiss
+diff --git a/test/cases/zeiss-czi-jxr/config.yaml b/test/cases/zeiss-czi-jxr/config.yaml
+new file mode 100644
+index 0000000..202ec58
+--- /dev/null
++++ b/test/cases/zeiss-czi-jxr/config.yaml
+@@ -0,0 +1,21 @@
++base: Zeiss/Zeiss-5-JXR.czi
++slide: Zeiss-5-JXR.czi
++success: true
++vendor: zeiss
++primary: true
++properties:
++  openslide.objective-power: "10"
++  openslide.quickhash-1: d19b163338ea6eadc54497599ce2d151aa615319fb2b6c1394152722989222c9
++  openslide.vendor: zeiss
++  # XML attribute; path contains list item; value is used as path component
++  "zeiss.AttachmentInfos.Label:1.Id": "Label:1"
++  # XML element; path contains multiple list items
++  "zeiss.AttachmentInfos.Label:1.Label.Barcodes.Barcode:1.Content": "066648"
++  # XML attribute in a different enumerated subtree, not used as path component
++  "zeiss.DisplaySetting.Channels.Channel:0.Name": Bright
++  # XML attribute in a different enumerated subtree, used to extract objective
++  # power
++  zeiss.Information.Image.ObjectiveSettings.ObjectiveRef.Id: "Objective:1"
++  # XML element in a different enumerated subtree; Scaling.Items is a
++  # hardcoded special case
++  zeiss.Scaling.Items.X.Value: "3.4591494502960332E-07"
+diff --git a/test/clang.supp b/test/clang.supp
+index 2c1584b..b158e46 100644
+--- a/test/clang.supp
++++ b/test/clang.supp
+@@ -7,6 +7,7 @@ fun:jpeg_random_access_src
+ fun:my_output_message
+ fun:_openslide_jpeg_stdio_src
+ fun:_openslide_xml_char_free
++fun:_openslide_jxr_decode_buf
+ 
+ [unsigned-integer-overflow]
+ # unsigned overflow isn't UB but we check for it, and ignore cases where

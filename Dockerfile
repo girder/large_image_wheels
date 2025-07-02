@@ -148,6 +148,7 @@ COPY getver.py fix_record.py /usr/local/bin/
 COPY versions.txt \
     mapnik_projection.cpp.patch \
     mapnik_setup.py.patch \
+    openslide-iewchen-zeiss-czi-jxr.patch \
     openslide-vendor-mirax.c.patch \
     python-javabridge.pyx.patch \
     ./
@@ -228,7 +229,7 @@ cd /build && \
 # \
 # RUN \
     echo "`date` openldap" >> /build/log.txt && \
-    until timeout 60 git clone --depth=1 --single-branch -b OPENLDAP_REL_ENG_`getver.py openldap` -c advice.detachedHead=false https://git.openldap.org/openldap/openldap.git; do sleep 5; echo "retrying"; done && \
+    until timeout 60 git clone --depth=1 --single-branch -b OPENLDAP_REL_ENG_`getver.py openldap` -c advice.detachedHead=false https://github.com/openldap/openldap.git; do sleep 5; echo "retrying"; done && \
     cd openldap && \
     # Don't build tests or docs \
     sed -i 's/ tests doc//g' Makefile.in && \
@@ -377,28 +378,26 @@ RUN \
 
 RUN \
     echo "`date` auditwheel" >> /build/log.txt && \
-    # vips doesn't work with auditwheel 3.2 since the copylib doesn't adjust \
-    # rpaths the same as 3.1.1.  Revert that aspect of the behavior. \
-    sed -i 's/patcher.set_rpath(dest_path, dest_dir)/new_rpath = os.path.relpath(dest_dir, os.path.dirname(dest_path))\n        new_rpath = os.path.join('\''$ORIGIN'\'', new_rpath)\n        patcher.set_rpath(dest_path, new_rpath)/g' /opt/_internal/pipx/venvs/auditwheel/lib/python3.12/site-packages/auditwheel/repair.py && \
     # Tell auditwheel not to whitelist libz.so, libiXext.so, etc. \
     # Do whitelist libjvm.so \
     python -c $'# \n\
 import os \n\
-path = os.popen("find /opt/_internal -name manylinux-policy.json").read().strip() \n\
-data = open(path).read().replace( \n\
-    "libz.so.1", "Xlibz.so.1").replace( \n\
-    "ZLIB", "XXZLIB").replace( \n\
-    "libXext.so.6", "XlibXext.so.6").replace( \n\
-    "libXrender.so.1", "XlibXrender.so.1").replace( \n\
-    "libX11.so.6", "XlibX11.so.6").replace( \n\
-    "libSM.so.6", "XlibSM.so.6").replace( \n\
-    "libICE.so.6", "XlibICE.so.6").replace( \n\
-    "libexpat.so.1", "Xlibexpat.so.1").replace( \n\
-    "libgobject-2.0.so.0", "Xlibgobject-2.0.so.0").replace( \n\
-    "libgthread-2.0.so.0", "Xlibgthread-2.0.so.0").replace( \n\
-    "libglib-2.0.so.0", "Xlibglib-2.0.so.0").replace( \n\
-    "XlibXext.so.6", "libjvm.so") \n\
-open(path, "w").write(data)' && \
+for line in os.popen("find / -xdev -name manylinux-policy.json").readlines(): \n\
+    path = line.strip() \n\
+    data = open(path).read().replace( \n\
+        "libz.so.1", "Xlibz.so.1").replace( \n\
+        "ZLIB", "XXZLIB").replace( \n\
+         "libXext.so.6", "XlibXext.so.6").replace( \n\
+        "libXrender.so.1", "XlibXrender.so.1").replace( \n\
+        "libX11.so.6", "XlibX11.so.6").replace( \n\
+        "libSM.so.6", "XlibSM.so.6").replace( \n\
+        "libICE.so.6", "XlibICE.so.6").replace( \n\
+        "libexpat.so.1", "Xlibexpat.so.1").replace( \n\
+        "libgobject-2.0.so.0", "Xlibgobject-2.0.so.0").replace( \n\
+        "libgthread-2.0.so.0", "Xlibgthread-2.0.so.0").replace( \n\
+        "libglib-2.0.so.0", "Xlibglib-2.0.so.0").replace( \n\
+        "XlibXext.so.6", "libjvm.so") \n\
+    open(path, "w").write(data)' && \
     echo "`date` auditwheel" >> /build/log.txt
 
 # Use an older version of numpy -- we can work with newer versions, but have to
@@ -2158,6 +2157,7 @@ open(path, "w").write(s)' && \
     sed -i 's/\.def_property_readonly("symbolizers", \&rule::get_symbolizers)/.def_property_readonly("symbolizers", \&rule::get_symbolizers).def_property_readonly("symbols", \&rule::get_symbolizers)/g' src/mapnik_rule.cpp && \
     sed -i 's/handle.cast<mapnik::value_integer>();/handle.cast<mapnik::value_integer>();}else if (py::isinstance<py::none>(handle)) {/g' src/create_datasource.hpp && \
     sed -i 's/to_string3)/to_string3).def("tostring",\&to_string1).def("tostring",\&to_string2).def("tostring",\&to_string3)/g' src/mapnik_image.cpp && \
+    sed -i 's/"pybind11 >= 2.13.5"/"pybind11 >= 2.13.5,<3"/g' pyproject.toml && \
     if [ "$AUDITWHEEL_ARCH" != "x86_64" ]; then sed -i 's/.def_static("face_names", &freetype_engine::face_names)/\/\/ .def_static("face_names", \&freetype_engine::face_names)/g' src/mapnik_font_engine.cpp; fi && \
     # Apply a patch and set variables to work with the cmake build of mapnik \
     git apply --stat --numstat --apply ../mapnik_setup.py.patch && \
@@ -2190,8 +2190,12 @@ RUN \
     export AUTOMAKE_JOBS=`nproc` && \
     git clone https://github.com/openslide/openslide && \
     cd openslide && \
-    git pull --rebase https://github.com/iewchen/openslide zeiss-czi-jxr && \
-    patch src/openslide-vendor-mirax.c ../openslide-vendor-mirax.c.patch && \
+    git checkout `getver.py openslide-sha` && \
+    # This had been \
+    # git pull --rebase https://github.com/iewchen/openslide zeiss-czi-jxr && \
+    # but that needs rebasing \
+    git apply ../openslide-iewchen-zeiss-czi-jxr.patch && \
+    git apply ../openslide-vendor-mirax.c.patch && \
     meson setup --prefix=/usr/local --buildtype=release --optimization=3 _build && \
     cd _build && \
     ninja -j ${JOBS} && \
