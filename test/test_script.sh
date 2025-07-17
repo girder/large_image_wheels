@@ -35,10 +35,6 @@ pip cache purge || true
 
 # Any packages where we aren't building for older python, just install previous
 # wheels to keep the testing consistent
-pip install 'openslide_python ; python_version < "3.9"' --find-links https://girder.github.io/large_image_wheels
-pip install 'gdal < 3.11; python_version < "3.9"' --find-links https://girder.github.io/large_image_wheels
-pip install 'mapnik < 4.1.1; python_version < "3.9"' --find-links https://girder.github.io/large_image_wheels
-pip install 'lxml<6 ; python_version < "3.9"' 
 pip install 'glymur ; python_version < "3.10"' --find-links https://girder.github.io/large_image_wheels
 
 echo 'Test installing pyvips and other dependencies from wheels via large_image'

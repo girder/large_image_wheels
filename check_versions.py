@@ -184,6 +184,10 @@ Packages = {
         'git': 'https://github.com/libarchive/libarchive.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
+    'libavif': {
+        'git': 'https://github.com/AOMediaCodec/libavif.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
     'libbrotli': {
         'git': 'https://github.com/google/brotli.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
@@ -338,7 +342,7 @@ Packages = {
         'keys': lambda data: [data['tags']['latest']['manifest_digest']],
         're': r':([0-9a-fA-F]+)$',
     },
-    'mapnik': {
+    'mapnik-sha': {
         'gitsha': 'https://github.com/mapnik/mapnik.git',
     },
     'mapnik-release': {
@@ -358,10 +362,10 @@ Packages = {
     },
     # MrSID's listing of versions is behind an agreement page, which prevents
     # easily checking the version.
-    # 'mrsid': {
-    #     'filelist': 'https://www.extensis.com/support/developers',
-    #     're': r'MrSID_DSDK-([0-9]+\.[0-9]+(|\.[0-9]+(|\.[0-9]+)))-rhel6.x86-64.gcc531.tar.gz$',
-    # },
+    'mrsid': {
+        'filelist': 'https://www.extensis.com/support/developers-sdk-version-downloads',
+        're': r'MrSID_DSDK-([0-9]+\.[0-9]+(|\.[0-9]+(|\.[0-9]+)))-rhel[0-9]+.x86-64.gcc[0-9]+\.(tar\.gz|zip)$',
+    },
     'mysql': {
         'filelist': 'https://dev.mysql.com/downloads/mysql/?tpl=version&os=src',
         # 're': r'mysql-boost-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)(&|$)',
@@ -468,6 +472,10 @@ Packages = {
     #     'git': 'https://github.com/giampaolo/psutil.git',
     #     're': r'release-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     # },
+    'pugixml': {
+        'git': 'https://github.com/zeux/pugixml.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
     'pylibmc': {
         'git': 'https://github.com/lericson/pylibmc.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
@@ -493,7 +501,7 @@ Packages = {
         'git': 'https://github.com/CellProfiler/python-bioformats.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
-    'python-mapnik': {
+    'python-mapnik-sha': {
         'gitsha': 'https://github.com/mapnik/python-mapnik.git',
     },
     'python-mapnik-pypi': {

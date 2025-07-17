@@ -9,7 +9,6 @@ import sys
 import threading
 
 containers = {
-    'python:3.8-slim': {},
     'python:3.9-slim': {},
     'python:3.10-slim': {},
     'python:3.11-slim': {},
@@ -27,26 +26,30 @@ containers = {
                   'packages': 'build-essential libffi-dev libproj-dev '
                   'proj-bin libxml2-dev libxmlsec1-dev'},
     },
+    'liw/python:3.14': {
+        'skip': True,
+        'build': {'base': 'debian:stable-slim', 'python': '3.14',
+                  'packages': 'build-essential libffi-dev'}},
     # -- pypy
     'pypy:3.9': {'skip': True},
     'pypy:3.10': {'skip': True},
     # -- manylinux_2_28
-    'almalinux:8 3.8': {'subcmds': ['yum install -y python38-pip']},
     'almalinux:8 3.9': {'subcmds': ['yum install -y python39-pip']},
     'liw/almapython:3.10': {'build': {'base': 'almalinux:8', 'python': '3.10'}},
     'almalinux:8 3.11': {'subcmds': ['yum install -y python3.11-pip']},
     # 'almalinux:8 3.12': {'subcmds': ['yum install -y python3.12-pip']},
     'liw/almapython:3.12': {'build': {'base': 'almalinux:8', 'python': '3.12'}},
     'liw/almapython:3.13': {'build': {'base': 'almalinux:8', 'python': '3.13'}},
+    'liw/almapython:3.14': {
+        'skip': True,
+        'build': {'base': 'almalinux:8', 'python': '3.14'}},
 }
 if platform.machine() not in {'aarch64', 'arm64'}:
     containers.update({
         # -- centos
         # See https://github.com/molinav/docker-pyenv for some additional images
-        # 'centos/python-38-centos7 3.8': {},
         # 'molinav/pyenv:3.9-centos-7': {},
         # -- opensuse
-        # 'molinav/pyenv:3.8-opensuse-15.3': {},
         # 'molinav/pyenv:3.9-opensuse-15.3': {},
     })
 

@@ -8,10 +8,10 @@ set -e
 export makeindex=true
 case "$1" in
     x86_64)
-        export baseimage=quay.io/pypa/manylinux2014_x86_64
+        export baseimage=quay.io/pypa/manylinux2014_x86_64:sha256:`getver.py manylinux2014_x86_64`
         ;;
     aarch64 | arm64)
-        export baseimage=quay.io/pypa/manylinux_2_28_aarch64
+        export baseimage=quay.io/pypa/manylinux_2_28_aarch64:sha256:`getver.py manylinux_2_28_aarch64`
         export makeindex=false
         ;;
     *)
@@ -23,7 +23,7 @@ case "$1" in
         fi
         ;;
 esac
-docker pull "${baseimage}":latest
+# docker pull "${baseimage}":latest
 ## for testing, build locally via
 # docker build --force-rm --build-arg PYPY=false --build-arg baseimage=quay.io/pypa/manylinux2014_x86_64 .
 docker build --force-rm -t girder/large_image_wheels --build-arg PYPY=false --build-arg baseimage=${baseimage} .

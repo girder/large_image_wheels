@@ -54,6 +54,7 @@ RUN \
     popt-devel \
     # for MrSID \
     tbb-devel \
+    bsdtar \
     # for easier development \
     man \
     gtk-doc \
@@ -97,9 +98,11 @@ RUN \
     # Enable all versions in boost as well \
     rm -rf /opt/py/cp36* && \
     rm -rf /opt/py/cp37* && \
+    rm -rf /opt/py/cp38* && \
     # We can't handle the no-gil variant yet (pyproj and lxml don't work yet) \
     rm -rf /opt/py/cp313-cp313t && \
     rm -rf /opt/py/cp314* && \
+    # rm -rf /opt/py/cp314-cp314t* && \
     if [ "$PYPY" = true ]; then \
     echo "Only building pypy versions" && \
     rm -rf /opt/py/cp* && \
@@ -523,6 +526,7 @@ cd /build && \
     echo "`date` zstd" >> /build/log.txt && \
 cd /build && \
 # \
+# Used by libtiff (it finds the static libraries and headers) \
 # RUN \
     echo "`date` jbigkit" >> /build/log.txt && \
     export JOBS=`nproc` && \
@@ -535,7 +539,7 @@ cd /build && \
 path = "Makefile" \n\
 s = open(path).read().replace("-O2 ", "-O2 -fPIC ") \n\
 open(path, "w").write(s)' && \
-    make --silent -j ${JOBS} && \
+    CFLAGS="$CFLAGS -fPIC" make --silent -j ${JOBS} && \
     cp {libjbig,pbmtools}/*.{o,so,a} /usr/local/lib/. || true && \
     cp libjbig/*.h /usr/local/include/. && \
     ldconfig && \
@@ -878,7 +882,7 @@ open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    find /opt/py -mindepth 1 -not -name '*p38-*' -a -not -name '*p39-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    find /opt/py -mindepth 1 -not -name '*p39-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     find /io/wheelhouse/ -name 'glymur*.whl' | while read file; do new_file=$(echo "$file" | sed 's|/glymur|/Glymur|'); mv "$file" "$new_file"; done && \
     find /io/wheelhouse/ -name 'Glymur*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'Glymur*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
@@ -1528,6 +1532,7 @@ RUN \
     export AUTOMAKE_JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b checkpoint.`getver.py parallel-netcdf` -c advice.detachedHead=false https://github.com/Parallel-NetCDF/PnetCDF && \
     cd PnetCDF && \
+    sed -i 's/LT_PREREQ(\[2.5.4\])/LT_PREREQ([2.4.6])/g' configure.ac && \
     autoreconf -ifv && \
     ./configure --silent --prefix=/usr/local --enable-shared --disable-fortran --enable-thread-safe --disable-static && \
     make --silent -j ${JOBS} && \
@@ -1798,16 +1803,21 @@ RUN \
     echo "`date` armadillo" >> /build/log.txt
 
 # Used by GDAL
-# PINNED VERSION - can't easily check the version
-# MrSID only works with gcc 4 or 5 unless we change it.
+# PINNED - MrSID 9.5.4 only works with gcc 4 or 5 unless we change it.  9.5.5
+# doesn't seem to work directly with this manylinux variant
 # Not available on architectures other than x86_64 without more work
 RUN \
     echo "`date` mrsid" >> /build/log.txt && \
     if [ "$AUDITWHEEL_ARCH" == "x86_64" ]; then \
-    curl --retry 5 --silent http://bin.extensis.com/download/developer/MrSID_DSDK-9.5.4.4709-rhel6.x86-64.gcc531.tar.gz -L -o mrsid.tar.gz && \
+    curl --retry 5 --silent https://bin.extensis.com/download/developer/MrSID_DSDK-9.5.4.4709-rhel6.x86-64.gcc531.tar.gz -L -o mrsid.tar.gz && \
+    # curl --retry 5 --silent https://bin.extensis.com/download/developer/MrSID_DSDK-`getver.py mrsid`-rhel9.x86-64.gcc1131.zip -L -o mrsid.zip && \
+    # true; else  \
+    # curl --retry 5 --silent https://bin.extensis.com/download/developer/MrSID_DSDK-`getver.py mrsid`-darwin22.universal.clang140.zip -L -o mrsid.zip && \
     mkdir mrsid && \
-    tar -zxf mrsid.tar.gz -C mrsid --strip-components 1 && \
-    rm -f mrsid.tar.gz && \
+    bsdtar -zxf mrsid.tar.gz -C mrsid --strip-components 1 && \
+    rm -f mrsid.zip && \
+    # bsdtar -zxf mrsid.zip -C mrsid --strip-components 1 && \
+    # rm -f mrsid.tar.gz && \
     sed -i 's/ && __GNUC__ <= 5//g' /build/mrsid/Raster_DSDK/include/lt_platform.h && \
     cp -n mrsid/Raster_DSDK/lib/* /usr/local/lib/. && \
     cp -n mrsid/Lidar_DSDK/lib/* /usr/local/lib/. && \
@@ -1874,11 +1884,27 @@ RUN \
     ldconfig && \
     echo "`date` kealib" >> /build/log.txt
 
+# # Used by OpenDRIVE 0.6.1
+# RUN \
+#     echo "`date` pugixml" >> /build/log.txt && \
+#     export JOBS=`nproc` && \
+#     git clone --depth=1 --single-branch -b v`getver.py pugixml` -c advice.detachedHead=false https://github.com/zeux/pugixml.git && \
+#     cd pugixml && \
+#     mkdir _build && \
+#     cd _build && \
+#     cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel && \
+#     make --silent -j ${JOBS} && \
+#     make --silent -j ${JOBS} install && \
+#     ldconfig && \
+#     echo "`date` pugixml" >> /build/log.txt
+
 # Used by GDAL
+# PINNED - version 0.6.1-gdal requires external pugixml and some other work
 RUN \
     echo "`date` libopendrive" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b `getver.py libopendrive`-gdal -c advice.detachedHead=false https://github.com/DLR-TS/libOpenDRIVE.git && \
+    # git clone --depth=1 --single-branch -b `getver.py libopendrive`-gdal -c advice.detachedHead=false https://github.com/DLR-TS/libOpenDRIVE.git && \
+    git clone --depth=1 --single-branch -b 0.6.0-gdal -c advice.detachedHead=false https://github.com/DLR-TS/libOpenDRIVE.git && \
     cd libOpenDRIVE && \
     mkdir _build && \
     cd _build && \
@@ -1913,7 +1939,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if true; then \
+    if false; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
@@ -2031,7 +2057,7 @@ open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    find /opt/py -mindepth 1 -not -name '*p38-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse; git clean -fxd build GDAL.egg-info' && \
+    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse; git clean -fxd build GDAL.egg-info' && \
     find /io/wheelhouse/ -name 'gdal*.whl' | while read file; do new_file=$(echo "$file" | sed 's|/gdal|/GDAL|'); mv "$file" "$new_file"; done && \
     find /io/wheelhouse/ -name 'GDAL*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'GDAL*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
@@ -2054,19 +2080,28 @@ RUN \
     ldconfig && \
     echo "`date` harfbuzz" >> /build/log.txt
 
+# Used by mapnik
+RUN \
+    echo "`date` libavif" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b v`getver.py libavif` -c advice.detachedHead=false https://github.com/AOMediaCodec/libavif.git && \
+    cd libavif && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DAVIF_LIBYUV=LOCAL && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` libavif" >> /build/log.txt
+
 # PINNED VERSION - use master since last version is stale
 RUN \
     echo "`date` mapnik" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export HEAVY_JOBS=`nproc` && \
-    # Master \
-    git clone --depth=1 --single-branch -c advice.detachedHead=false --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
+    git clone --depth=1000 --single-branch -c advice.detachedHead=false --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
     cd mapnik && \
-    # Specific checkout \
-    # git clone --depth=1000 --single-branch -c advice.detachedHead=false --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
-    # cd mapnik && \
-    # git checkout 34bb44e49050196fbf5a37426b0e0b7c9fd4fdda && \
-    # Common \
+    git checkout `getver.py mapnik-sha` && \
     git apply --stat --numstat --apply ../mapnik_projection.cpp.patch && \
     sed -i 's/PJ_LOG_ERROR/PJ_LOG_NONE/g' src/*.cpp && \
     find include -name '*.hpp' -exec sed -i 's:boost/spirit/include/phoenix_operator.hpp:boost/phoenix/operator.hpp:g' {} \; && \
@@ -2100,14 +2135,9 @@ RUN \
 RUN \
     echo "`date` python-mapnik" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    # master \
-    git clone --depth=1 --single-branch -c advice.detachedHead=false --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/python-mapnik.git && \
+    git clone --depth=100 --single-branch -c advice.detachedHead=false --quiet -j ${JOBS} https://github.com/mapnik/python-mapnik.git && \
     cd python-mapnik && \
-    # specific checkout \
-    # git clone --depth=100 --single-branch -c advice.detachedHead=false --quiet -j ${JOBS} https://github.com/mapnik/python-mapnik.git && \
-    # cd python-mapnik && \
-    # git checkout a2c2a86eec954b42d7f00093da03807d0834b1b4 && \
-    # common \
+    git checkout `getver.py python-mapnik-sha` && \
     find . -name '.git' -exec rm -rf {} \+ && \
     # Copy the mapnik input sources and fonts to the python path and add them \
     # via setup.py.  Modify the paths.py file that gets created to refer to \
@@ -2157,14 +2187,13 @@ open(path, "w").write(s)' && \
     sed -i 's/\.def_property_readonly("symbolizers", \&rule::get_symbolizers)/.def_property_readonly("symbolizers", \&rule::get_symbolizers).def_property_readonly("symbols", \&rule::get_symbolizers)/g' src/mapnik_rule.cpp && \
     sed -i 's/handle.cast<mapnik::value_integer>();/handle.cast<mapnik::value_integer>();}else if (py::isinstance<py::none>(handle)) {/g' src/create_datasource.hpp && \
     sed -i 's/to_string3)/to_string3).def("tostring",\&to_string1).def("tostring",\&to_string2).def("tostring",\&to_string3)/g' src/mapnik_image.cpp && \
-    sed -i 's/"pybind11 >= 2.13.5"/"pybind11 >= 2.13.5,<3"/g' pyproject.toml && \
     if [ "$AUDITWHEEL_ARCH" != "x86_64" ]; then sed -i 's/.def_static("face_names", &freetype_engine::face_names)/\/\/ .def_static("face_names", \&freetype_engine::face_names)/g' src/mapnik_font_engine.cpp; fi && \
     # Apply a patch and set variables to work with the cmake build of mapnik \
     git apply --stat --numstat --apply ../mapnik_setup.py.patch && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    find /opt/py -mindepth 1 -not -name '*p38-*' -print0 | xargs -n 1 -0 -P ${JOBS} bash -c 'export WORKDIR=/tmp/python-mapnik-`basename ${0}`; mkdir -p $WORKDIR; cp -r . $WORKDIR/.; pushd $WORKDIR; "${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && popd && rm -rf $WORKDIR' && \
+    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P ${JOBS} bash -c 'export WORKDIR=/tmp/python-mapnik-`basename ${0}`; mkdir -p $WORKDIR; cp -r . $WORKDIR/.; pushd $WORKDIR; "${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && popd && rm -rf $WORKDIR' && \
     find /io/wheelhouse/ -name 'mapnik*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'mapnik*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'mapnik*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
@@ -2268,7 +2297,7 @@ open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    find /opt/py -mindepth 1 -not -name '*p38-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     find /io/wheelhouse/ -name 'openslide*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
@@ -2641,8 +2670,8 @@ RUN \
     sed -i 's/        return env.get_string_utf(result)/        try:\n            return env.get_string_utf(result)\n        except Exception:\n            return env.get_string(result)/g' javabridge/jutil.py && \
     # Include java libraries \
     mkdir javabridge/jvm && \
-    # remove debug symbols.  Keep parallelism <= 4 because it can spike memory \
-    find /usr/lib/jvm/java/* -name '*.jar' -size +10240c -print0 | xargs -n 1 -0 -P $(( $JOBS < 4 ? $JOBS : 4 )) pack200 -G --repack && \
+    # remove debug symbols.  Keep parallelism <= 3 because it can spike memory \
+    find /usr/lib/jvm/java/* -name '*.jar' -size +10240c -print0 | xargs -n 1 -0 -P $(( $JOBS < 3 ? $JOBS : 3 )) pack200 -G --repack && \
     # make jars deterministic \
     find /usr/lib/jvm/java/* -name '*.jar' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     cp -r -L /usr/lib/jvm/java/* javabridge/jvm/. && \
@@ -2727,7 +2756,7 @@ open(path, "w").write(s)' && \
     if [ -e javabridge/jvm/jre/lib/amd64 ]; then \
     find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf .eggs build' && \
     true; elif [ -e javabridge/jvm/jre/lib/aarch64 ]; then \
-    find /opt/py -mindepth 1 -not -name '*p38-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf .eggs build' && \
+    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf .eggs build' && \
     true; fi && \
     find /io/wheelhouse/ -name 'python_javabridge*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
     # auditwheel modifies the java libraries, but some of those have \
