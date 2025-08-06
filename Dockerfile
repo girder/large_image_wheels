@@ -1,8 +1,8 @@
 ARG baseimage
-FROM ${baseimage:-quay.io/pypa/manylinux2014_x86_64}
-# FROM quay.io/pypa/manylinux2014_x86_64
+FROM ${baseimage:-quay.io/pypa/manylinux_2_28_x86_64}
+# FROM quay.io/pypa/manylinux_2_28_x86_64
 # With docker build-kit, to debug a specific build step, use
-#   FROM quay.io/pypa/manylinux2014_x86_64 as working
+#   FROM quay.io/pypa/manylinux_2_28_x86_64 as working
 # and add just before the build step to debug
 #   FROM working
 # Then do
@@ -26,6 +26,8 @@ RUN \
     SDL-devel \
     chrpath \
     # for javabridge \
+    # bioformats is built using java 1.8, so moving to a newer jvm may fail \
+    # as their jar package fails when running jdeps on it from newer versions \
     java-1.8.0-openjdk-devel \
     zip \
     # for glib2 \
@@ -59,31 +61,26 @@ RUN \
     man \
     gtk-doc \
     vim-enhanced \
-    && \
-    if [ "$AUDITWHEEL_ARCH" == "x86_64" ]; then \
-    yum install -y \
-    # for librasterlite2 \
-    fcgi-devel \
-    # more support for GDAL \
-    json-c12-devel \
-    # for netcdf \
-    hdf-devel \
-    # needed for mysql to use newer versions of xz with mysql \
-    devtoolset-11-gcc \
-    devtoolset-11-gcc-c++ \
-    devtoolset-11-binutils \
-    && true; \
-    elif [ "$AUDITWHEEL_ARCH" == "aarch64" ]; then \
-    yum install -y \
-    perl-LWP-Protocol-https \
-    # more support for GDAL \
-    json-c-devel.aarch64 \
     # needed for mysql to use newer versions of xz with mysql \
     gcc-toolset-13-gcc \
     gcc-toolset-13-gcc-c++ \
     gcc-toolset-13-binutils \
     gcc-toolset-13-annobin-annocheck \
     gcc-toolset-13-annobin-plugin-gcc \
+    # more support for GDAL \
+    json-c-devel \
+    # for strip-nondeterminism \
+    perl-LWP-Protocol-https \
+    && \
+    if [ "$AUDITWHEEL_ARCH" == "x86_64" ]; then \
+    yum install -y \
+    # for librasterlite2 \
+    fcgi-devel \
+    # for netcdf \
+    hdf-devel \
+    && true; \
+    elif [ "$AUDITWHEEL_ARCH" == "aarch64" ]; then \
+    true \
     && true; \
     fi && \
     yum clean all && \
@@ -806,7 +803,7 @@ open(path, "w").write(s)' && \
     git config --global user.email "you@example.com" && \
     git config --global user.name "Your Name" && \
     git commit -a --amend -m x && \
-    git tag `getver.py pylibtiff`.1 && \
+    git tag `getver.py pylibtiff`.`getver.py libtiff` && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
@@ -923,7 +920,7 @@ RUN \
 # Build tool
 RUN \
     echo "`date` meson" >> /build/log.txt && \
-    pip install --no-cache-dir meson && \
+    pip install --no-cache-dir meson==`getver.py meson` && \
     echo "`date` meson" >> /build/log.txt
 
 # Used by openslide, libvips, and mapnik
@@ -1270,7 +1267,7 @@ RUN \
     # Previously, we had to build fossil to allow it to work in our
     # environment.  The prebuilt binaries fail because they can't find any of
     # a list of versions of GLIBC.
-    curl --retry 5 --silent -L https://fossil-scm.org/home/tarball/8be0372c1051043761320c8ea8669c3cf320c406e5fe18ad36b7be5f844ca73b/fossil-src-2.24.tar.gz -o fossil.tar.gz && \
+    curl --retry 5 --silent -L https://fossil-scm.org/home/tarball/1205ec86cb5508e94b90698db2900997fe5c9db62429c67ac6fdc03d59aa2782/fossil-src-2.26.tar.gz -o fossil.tar.gz && \
     mkdir fossil && \
     tar -zxf fossil.tar.gz -C fossil --strip-components 1 && \
     rm -f fossil.tar.gz && \
@@ -2024,6 +2021,9 @@ if "console_scripts" not in data: data = data.replace( \n\
     entry_points={\'console_scripts\': [\'%s=osgeo.bin:program\' % name for name in os.listdir(\'osgeo/bin\') if not name.endswith(\'.py\')]},""") \n\
 data = data.replace("    python_requires=\'>=3.6.0\',", "") \n\
 open(path, "w").write(data)' && \
+    # Importing libraries in different orders can lead to cryptic TLS (thread \
+    # local storage) errors.  Import stdc++ before others seems to \
+    # prevent this from happening \
     python -c $'# \n\
 path = "osgeo/__init__.py" \n\
 s = open(path).read().replace( \n\
@@ -2048,6 +2048,11 @@ _libs = { \n\
 } \n\
 GDAL_LIBRARY_PATH = _libs["libgdal"] \n\
 GEOS_LIBRARY_PATH = _libs["libgeos_c"] \n\
+import ctypes \n\
+try: \n\
+    ctypes.CDLL(ctypes.util.find_library("stdc++"), mode=ctypes.RTLD_GLOBAL) \n\
+except Exception: \n\
+    pass \n\
 """) \n\
 open(path, "w").write(s)' && \
     # Copy python ports of c utilities to scripts so they get bundled.
@@ -2111,6 +2116,7 @@ RUN \
     sed -i 's:#include <algorithm>:#include <algorithm>\n#include <boost/algorithm/string.hpp>:g' plugins/input/csv/csv_utils.cpp && \
     sed -i 's/  xmlError\*/  const xmlError \*/g' src/libxml2_loader.cpp && \
     sed -i 's:#include <mapnik/image_util.hpp>:#define PSTL_USE_PARALLEL_POLICIES 0\n#define _GLIBCXX_USE_TBB_PAR_BACKEND 0\n#include <mapnik/image_util.hpp>:g' src/image_util.cpp && \
+    sed -i 's/  OGRSpatialReference\* srs_ref/  const OGRSpatialReference* srs_ref/g' plugins/input/ogr/ogr_datasource.cpp && \
     find . -name '.git' -exec rm -rf {} \+ && \
     # Keeps the docker smaller \
     rm -rf demo test && mkdir test && mkdir demo && touch test/CMakeLists.txt && touch demo/CMakeLists.txt && \
@@ -2118,13 +2124,16 @@ RUN \
     cd _build && \
     CXXFLAGS="-Wno-unused-variable -Wno-unused-but-set-variable -Wno-attributes -Wno-unknown-pragmas -Wno-maybe-uninitialized -Wno-parentheses -std=c++17" \
     cmake .. \
-    -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=MinSizeRel \
+    -DBUILD_SHARED_LIBS=ON \
+    -DCMAKE_BUILD_TYPE=MinSizeRel \
     -DBUILD_BENCHMARK=OFF \
     -DBUILD_DEMO_CPP=OFF \
     -DBUILD_DEMO_VIEWER=OFF \
     -DBUILD_TESTING=OFF \
     -DCMAKE_INSTALL_LIBDIR=lib \
     -DFONTS_INSTALL_DIR=/usr/local/lib/mapnik/fonts \
+    -DCMAKE_POLICY_DEFAULT_CMP0167=OLD \
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     && \
     # Common build process \
     make --silent -j ${JOBS} && \
@@ -2188,6 +2197,27 @@ open(path, "w").write(s)' && \
     sed -i 's/handle.cast<mapnik::value_integer>();/handle.cast<mapnik::value_integer>();}else if (py::isinstance<py::none>(handle)) {/g' src/create_datasource.hpp && \
     sed -i 's/to_string3)/to_string3).def("tostring",\&to_string1).def("tostring",\&to_string2).def("tostring",\&to_string3)/g' src/mapnik_image.cpp && \
     if [ "$AUDITWHEEL_ARCH" != "x86_64" ]; then sed -i 's/.def_static("face_names", &freetype_engine::face_names)/\/\/ .def_static("face_names", \&freetype_engine::face_names)/g' src/mapnik_font_engine.cpp; fi && \
+    sed -i 's/.def_static("face_names", &freetype_engine::face_names)/\/\/ .def_static("face_names", \&freetype_engine::face_names)/g' src/mapnik_font_engine.cpp && \
+    # Importing libraries in different orders can lead to cryptic TLS (thread \
+    # local storage) errors.  Import stdc++ and gdal before others seems to \
+    # prevent this from happening \
+    python -c $'# \n\
+path = "packaging/mapnik/__init__.py" \n\
+s = open(path).read().replace("import warnings", \n\
+"""import warnings \n\
+import ctypes \n\
+try: \n\
+    ctypes.CDLL(ctypes.util.find_library("stdc++"), mode=ctypes.RTLD_GLOBAL) \n\
+except Exception: \n\
+    pass \n\
+libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath( \n\
+    __file__))), \'mapnik.libs\')) \n\
+if os.path.exists(libpath): \n\
+    libs = os.listdir(libpath) \n\
+    libgdalpath = [lib for lib in libs if lib.startswith(\'libgdal\')][0] \n\
+    ctypes.cdll.LoadLibrary(os.path.join(libpath, libgdalpath)) \n\
+""") \n\
+open(path, "w").write(s)' && \
     # Apply a patch and set variables to work with the cmake build of mapnik \
     git apply --stat --numstat --apply ../mapnik_setup.py.patch && \
     # Strip libraries before building any wheels \
@@ -2534,7 +2564,7 @@ open(path, "w").write(s)' && \
 import re \n\
 path = "pyvips/version.py" \n\
 s = open(path).read() \n\
-s = re.sub(r"__version__ = \'(.+?)\'", lambda match: f"__version__ = \'{match.group(1)}.1\'", s) \n\
+s = re.sub(r"__version__ = \'(.+?)\'", lambda match: f"__version__ = \'{match.group(1)}.'`getver.py libvips`$'\'", s) \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
 path = "pyvips/bin/__init__.py" \n\
@@ -2670,8 +2700,9 @@ RUN \
     sed -i 's/        return env.get_string_utf(result)/        try:\n            return env.get_string_utf(result)\n        except Exception:\n            return env.get_string(result)/g' javabridge/jutil.py && \
     # Include java libraries \
     mkdir javabridge/jvm && \
-    # remove debug symbols.  Keep parallelism <= 3 because it can spike memory \
-    find /usr/lib/jvm/java/* -name '*.jar' -size +10240c -print0 | xargs -n 1 -0 -P $(( $JOBS < 3 ? $JOBS : 3 )) pack200 -G --repack && \
+    # remove debug symbols.  We can't safely parellelize this because pack200 \
+    # is thread-dangerous \
+    find /usr/lib/jvm/java/* -name '*.jar' -size +10240c -exec pack200 -G --repack {} \; && \
     # make jars deterministic \
     find /usr/lib/jvm/java/* -name '*.jar' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     cp -r -L /usr/lib/jvm/java/* javabridge/jvm/. && \
@@ -2753,11 +2784,7 @@ open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    if [ -e javabridge/jvm/jre/lib/amd64 ]; then \
     find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf .eggs build' && \
-    true; elif [ -e javabridge/jvm/jre/lib/aarch64 ]; then \
-    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf .eggs build' && \
-    true; fi && \
     find /io/wheelhouse/ -name 'python_javabridge*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
     # auditwheel modifies the java libraries, but some of those have \
     # hard-coded relative paths, which doesn't work.  Replace them with the \
@@ -2770,8 +2797,8 @@ open(path, "w").write(s)' && \
     echo "`date` python-javabridge" >> /build/log.txt
 
 # bioformats is a java reader/writer for images.  python-bioformats bundles the
-# jar and provides some interface to the java # python-javabridge.  We build it because we want a newer jar than is provided
-# by the public package
+# jar and provides some interface to the java via python-javabridge.  We build
+# it because we want a newer jar than is provided by the public package
 RUN \
     echo "`date` python-bioformats" >> /build/log.txt && \
     export JOBS=`nproc` && \
