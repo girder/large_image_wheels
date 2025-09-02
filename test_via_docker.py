@@ -19,17 +19,25 @@ containers = {
         'build': {'base': 'debian:stable-slim', 'python': '3.13',
                   'packages': 'build-essential libffi-dev'}},
     # Currently, we can't run our expected tests in freethreaded python because
-    # pyproj and lxml don't build without more work
+    # lxml doesn't build without more work
     'liw/python:3.13t': {
-        'skip': True,
+        # 'skip': True,
+        'skip': platform.machine() in {'aarch64', 'arm64'},
         'build': {'base': 'debian:stable-slim', 'python': '3.13t',
                   'packages': 'build-essential libffi-dev libproj-dev '
                   'proj-bin libxml2-dev libxmlsec1-dev'},
     },
     'liw/python:3.14': {
-        'skip': True,
+        'skip': platform.machine() in {'aarch64', 'arm64'},
         'build': {'base': 'debian:stable-slim', 'python': '3.14',
                   'packages': 'build-essential libffi-dev'}},
+    'liw/python:3.14t': {
+        # 'skip': True,
+        'skip': platform.machine() in {'aarch64', 'arm64'},
+        'build': {'base': 'debian:stable-slim', 'python': '3.14t',
+                  'packages': 'build-essential libffi-dev libproj-dev '
+                  'proj-bin libxml2-dev libxmlsec1-dev'},
+    },
     # -- pypy
     'pypy:3.9': {'skip': True},
     'pypy:3.10': {'skip': True},
@@ -40,9 +48,16 @@ containers = {
     # 'almalinux:8 3.12': {'subcmds': ['yum install -y python3.12-pip']},
     'liw/almapython:3.12': {'build': {'base': 'almalinux:8', 'python': '3.12'}},
     'liw/almapython:3.13': {'build': {'base': 'almalinux:8', 'python': '3.13'}},
+    'liw/almapython:3.13t': {
+        # 'skip': True,
+        'build': {'base': 'almalinux:8', 'python': '3.13t'}},
     'liw/almapython:3.14': {
-        'skip': True,
-        'build': {'base': 'almalinux:8', 'python': '3.14'}},
+        'build': {'base': 'almalinux:8', 'python': '3.14'},
+        'subcmds': ['yum install -y libffi-devel gcc']},
+    'liw/almapython:3.14t': {
+        # 'skip': True,
+        'build': {'base': 'almalinux:8', 'python': '3.14'},
+        'subcmds': ['yum install -y libffi-devel gcc']},
 }
 if platform.machine() not in {'aarch64', 'arm64'}:
     containers.update({

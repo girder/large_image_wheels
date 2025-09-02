@@ -96,9 +96,8 @@ RUN \
     rm -rf /opt/py/cp36* && \
     rm -rf /opt/py/cp37* && \
     rm -rf /opt/py/cp38* && \
-    # We can't handle the no-gil variant yet (pyproj and lxml don't work yet) \
-    rm -rf /opt/py/cp313-cp313t && \
-    rm -rf /opt/py/cp314* && \
+    # We can't handle the no-gil variant yet (lxml doesn't work yet) \
+    # rm -rf /opt/py/cp313-cp313t && \
     # rm -rf /opt/py/cp314-cp314t* && \
     if [ "$PYPY" = true ]; then \
     echo "Only building pypy versions" && \
@@ -1267,7 +1266,7 @@ RUN \
     # Previously, we had to build fossil to allow it to work in our
     # environment.  The prebuilt binaries fail because they can't find any of
     # a list of versions of GLIBC.
-    curl --retry 5 --silent -L https://fossil-scm.org/home/tarball/1205ec86cb5508e94b90698db2900997fe5c9db62429c67ac6fdc03d59aa2782/fossil-src-2.26.tar.gz -o fossil.tar.gz && \
+    curl --retry 5 --silent -L https://github.com/drhsqlite/fossil-mirror/archive/refs/tags/version-`getver.py fossil`.tar.gz -o fossil.tar.gz && \
     mkdir fossil && \
     tar -zxf fossil.tar.gz -C fossil --strip-components 1 && \
     rm -f fossil.tar.gz && \
@@ -1936,7 +1935,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if false; then \
+    if true; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
@@ -2811,8 +2810,11 @@ RUN \
 import re \n\
 path = "setup.py" \n\
 s = open(path).read() \n\
-# append .1 to version to make sure pip prefers this \n\
-s = re.sub(r"(version=\\"[^\\"]*)\\"", "\\\\1.'`getver.py bioformats`$'\\"", s) \n\
+# append bioformats jar version to version to make sure pip prefers this \n\
+s = re.sub(r"(version=\\"[^\\"]*)\\"", "\\\\1.'`getver.py bioformats`.1$'\\",\\n    python_requires=\\">=3.9\\",", s) \n\
+# remove future from requires; it is not required for any python version we \
+# handle and avoids a CVE \
+s = s.replace("\\"future>=0.18.2\\",", "") \n\
 open(path, "w").write(s)' && \
     pip wheel . --no-deps -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'python_bioformats*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \

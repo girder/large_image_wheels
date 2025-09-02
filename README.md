@@ -41,7 +41,7 @@ This makes wheels for the main libraries:
 - python_javabridge
 - pyvips
 
-Currently, wheels are built for Python 3.9, 3.10, 3.11, 3.12, 3.13, and for architectures x86_64 and aarch64.  Some libraries have older versions available for older versions of Python that were built before support for those versions was ended.  There are also some libraries from before their projects published binary wheels (psutil, pyproj, ujson).
+Currently, wheels are built for Python 3.9, 3.10, 3.11, 3.12, 3.13, 3.14 and for architectures x86_64 and aarch64.  Some wheels are also being built for 3.13t and 3.14t.  Some libraries have older versions available for older versions of Python that were built before support for those versions was ended.  There are also some libraries from before their projects published binary wheels (psutil, pyproj, ujson).
 
 This also builds some non-version specific libraries to ensure they have recent dependencies:
 - bioformats
