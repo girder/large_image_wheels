@@ -2047,14 +2047,14 @@ _libs = { \n\
 } \n\
 GDAL_LIBRARY_PATH = _libs["libgdal"] \n\
 GEOS_LIBRARY_PATH = _libs["libgeos_c"] \n\
-import ctypes \n\
+import ctypes.util \n\
 try: \n\
     ctypes.CDLL(ctypes.util.find_library("stdc++"), mode=ctypes.RTLD_GLOBAL) \n\
 except Exception: \n\
     pass \n\
 """) \n\
 open(path, "w").write(s)' && \
-    # Copy python ports of c utilities to scripts so they get bundled.
+    # Copy python ports of c utilities to scripts so they get bundled. \
     mkdir scripts && \
     cp gdal-utils/osgeo_utils/samples/gdalinfo.py scripts/gdalinfo.py && \
     cp gdal-utils/osgeo_utils/samples/ogrinfo.py scripts/ogrinfo.py && \
@@ -2186,7 +2186,7 @@ import re \n\
 path = "pyproject.toml" \n\
 s = open(path).read() \n\
 s = s.replace(".beta", "") \n\
-s = re.sub("version = \\".*\\"", "version = \\"'`pkg-config --modversion libmapnik`.1$'\\"", s) \n\
+s = re.sub("\\nversion = \\".*\\"", "\\nversion = \\"'`pkg-config --modversion libmapnik`.1$'\\"", s) \n\
 s = s.replace("authors", "dynamic = [\\"scripts\\"]\\nauthors") \n\
 s = s.replace("license = \\"LGPL-2.1-or-later\\"", "license = { text = \\"LGPL-2.1-or-later\\"}") \n\
 open(path, "w").write(s)' && \
@@ -2204,7 +2204,7 @@ open(path, "w").write(s)' && \
 path = "packaging/mapnik/__init__.py" \n\
 s = open(path).read().replace("import warnings", \n\
 """import warnings \n\
-import ctypes \n\
+import ctypes.util \n\
 try: \n\
     ctypes.CDLL(ctypes.util.find_library("stdc++"), mode=ctypes.RTLD_GLOBAL) \n\
 except Exception: \n\
@@ -2430,7 +2430,7 @@ RUN \
     cd libarchive && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_TESTING=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_TESTING=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -2508,7 +2508,6 @@ RUN \
     echo "`date` libvips" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # version \
-    # git clone --depth=1 --single-branch -b v8.15.0 -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
     git clone --depth=1 --single-branch -b v`getver.py libvips` -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
     # master \
     # git clone -c advice.detachedHead=false https://github.com/libvips/libvips.git && \
@@ -2518,6 +2517,7 @@ RUN \
     sed -i 's/cfg_var.set('\''HAVE_TARGET_CLONES'\''/# cfg_var.set('\''HAVE_TARGET_CLONES'\''/g' meson.build && \
     export LDFLAGS="$LDFLAGS"',-rpath,$ORIGIN -lstdc++' && \
     sed -i 's/g_logv("tiff2vips", G_LOG_LEVEL_WARNING, fmt, ap);/\/\/g_logv("tiff2vips", G_LOG_LEVEL_WARNING, fmt, ap);/g' libvips/foreign/tiff2vips.c && \
+    sed -i 's/g_logv(G_LOG_DOMAIN, G_LOG_LEVEL_WARNING, fmt, ap);/\/\/g_logv(G_LOG_DOMAIN, G_LOG_LEVEL_WARNING, fmt, ap);/g' libvips/foreign/tiff2vips.c && \
     meson setup --prefix=/usr/local --buildtype=release _build -Dmodules=disabled -Dexamples=false -Dnifti-prefix-dir=/usr/local 2>&1 >meson_config.txt && \
     cd _build && \
     ninja -j ${JOBS} && \

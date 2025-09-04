@@ -13,13 +13,13 @@ set -u
 # $([ $(arch) != "aarch64" ] || python3 -c 'import sys;sys.exit(not (sys.version_info >= (3, 9)))')
 TEST_BIOFORMATS=true
 TEST_GDAL=true
-TEST_GLYMUR=$(python3 -c 'import sys, sysconfig;sys.exit(not (sys.version_info >= (3, 10) and sysconfig.get_config_var("Py_GIL_DISABLED") != 1))' && echo true || echo false)
+TEST_GLYMUR=$(python3 -c 'import sys, sysconfig;sys.exit(sys.version_info < (3, 10) or sysconfig.get_config_var("Py_GIL_DISABLED") == 1)' && echo true || echo false)
 TEST_JAVABRIDGE=true
 TEST_MAPNIK=true
 TEST_OPENSLIDE=true
 TEST_PYLIBMC=true
 TEST_PYLIBTIFF=true
-TEST_PYVIPS=$(python3 -c 'import sys, sysconfig;sys.exit(not (sysconfig.get_config_var("Py_GIL_DISABLED") != 1))' && echo true || echo false)
+TEST_PYVIPS=$(python3 -c 'import sys, sysconfig;sys.exit(sysconfig.get_config_var("Py_GIL_DISABLED") == 1 and sys.version_info < (3, 14))' && echo true || echo false)
 
 if curl --version 2>/dev/null >/dev/null; then true; else
   if apt-get --help 2>/dev/null >/dev/null; then
@@ -158,8 +158,17 @@ print(ti['tile'].size)
 pprint.pprint(ti['tile'][:4,:4].tolist())
 EOF
 fi
+
 if $TEST_PYVIPS; then
-echo 'Use large_image to read a tiff file that requires a newer openjpeg'
+  echo 'Check that pyvips has the Image.dzsave method'
+  python <<EOF
+import pyvips
+print(pyvips.Image.black(10,10).dzsave)
+EOF
+fi
+
+if $TEST_PYVIPS; then
+  echo 'Use large_image to read a tiff file that requires a newer openjpeg'
   python <<EOF
 import pyvips
 pyvips.Image.new_from_file('sample_jp2.tif').write_to_file(
