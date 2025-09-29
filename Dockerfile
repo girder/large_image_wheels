@@ -1089,6 +1089,8 @@ RUN \
     --with-atomic \
     --with-system \
     --with-program_options \
+    --with-url \
+    --with-context \
     cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable -Wno-parentheses -Wno-maybe-uninitialized -Wno-attributes" \
     install && \
     ldconfig && \

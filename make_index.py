@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import os
+import sys
 import time
 
 indexName = 'index.html'
@@ -17,10 +18,16 @@ template = """<!DOCTYPE html>
 </body>
 """
 link = '<a href="%s%s#sha256=%s" download="%s">%s</a>%s%s%11d'
+linknosha = '<a href="%s%s" download="%s">%s</a>%s%s%11d'
 
 
-def get_sha256(path, name):
+def get_sha256(path, name, verbose):
     sha256 = hashlib.sha256()
+    if args.verbose >= 2:
+        print(f'Getting sha256 for {name}')
+    elif args.verbose >= 1:
+        sys.stdout.write(f'sha256: {name[:71]}\r')
+        sys.stdout.flush()
     with open(os.path.join(path, name), 'rb') as fptr:
         while True:
             data = fptr.read(1024 ** 2)
@@ -48,6 +55,11 @@ if __name__ == '__main__':
     parser.add_argument(
         '-a', '--append', action='store_true',
         help='Modify an existing file.')
+    parser.add_argument(
+        '--no-sha', action='store_true',
+        help='Do not include sha256 in links.')
+    parser.add_argument(
+        '--verbose', '-v', action='count', default=0, help='Increase verbosity')
     args = parser.parse_args()
 
     path = args.path or 'gh-pages'
@@ -68,18 +80,34 @@ if __name__ == '__main__':
     wheels = sorted(wheels)
     maxnamelen = max(len(name) for name, url in wheels)
     if args.append:
+        if args.verbose >= 2:
+            print(f'Appending to {indexName}')
         existing = open(os.path.join(path, indexName)).read()
         if 'large_image_wheels' in existing:
             raise Exception('index.html has already been modified')
         existing = existing.replace('Simple Package Repository', 'large_image_wheels')
         existing = existing.replace('<body>', '<body>\n<h1>large_image_wheels</h1>')
         template = existing.replace('</body>', '<pre>\n%LINKS%\n</pre>\n</body>')
-    index = template.replace('%LINKS%', '\n'.join([
-        link % (
-            prefix, url, get_sha256(wpath, url), name, name,
-            ' ' * (maxnamelen + 3 - len(name)),
-            time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(os.path.getmtime(
-                os.path.join(wpath, name)))),
-            os.path.getsize(os.path.join(wpath, name)),
-        ) for name, url in wheels]))
+    if not args.no_sha:
+        index = template.replace('%LINKS%', '\n'.join([
+            link % (
+                prefix, url, get_sha256(wpath, url, args.verbose), name, name,
+                ' ' * (maxnamelen + 3 - len(name)),
+                time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(os.path.getmtime(
+                    os.path.join(wpath, name)))),
+                os.path.getsize(os.path.join(wpath, name)),
+            ) for name, url in wheels]))
+        if args.verbose == 1:
+            sys.stdout.write((' ' * 79) + '\r')
+    else:
+        index = template.replace('%LINKS%', '\n'.join([
+            linknosha % (
+                prefix, url, name, name,
+                ' ' * (maxnamelen + 3 - len(name)),
+                time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(os.path.getmtime(
+                    os.path.join(wpath, name)))),
+                os.path.getsize(os.path.join(wpath, name)),
+            ) for name, url in wheels]))
+    if args.verbose >= 1:
+        print(f'Writing {indexName}')
     open(os.path.join(path, indexName), 'w').write(index)
