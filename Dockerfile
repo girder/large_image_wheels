@@ -270,6 +270,7 @@ cd /build && \
 cd /build && \
     echo "`date` libidn2" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    curl --retry 5 --silent https://ftpmirror.gnu.org/gnu/libidn/libidn2-`getver.py libidn2`.tar.gz -L -o libidn2.tar.gz || \
     curl --retry 5 --silent https://ftp.gnu.org/gnu/libidn/libidn2-`getver.py libidn2`.tar.gz -L -o libidn2.tar.gz && \
     mkdir libidn2 && \
     tar -zxf libidn2.tar.gz -C libidn2 --strip-components 1 && \
@@ -994,6 +995,7 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` libiconv" >> /build/log.txt && \
     export JOBS=`nproc` && \
+    curl --retry 5 --silent https://ftpmirror.gnu.org/gnu/libiconv/libiconv-`getver.py libiconv`.tar.gz -L -o libiconv.tar.gz || \
     curl --retry 5 --silent https://ftp.gnu.org/pub/gnu/libiconv/libiconv-`getver.py libiconv`.tar.gz -L -o libiconv.tar.gz && \
     mkdir libiconv && \
     tar -zxf libiconv.tar.gz -C libiconv --strip-components 1 && \

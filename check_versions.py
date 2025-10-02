@@ -233,11 +233,13 @@ Packages = {
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libiconv': {
-        'filelist': 'https://ftp.gnu.org/pub/gnu/libiconv/',
+        'altfilelist': 'https://ftp.gnu.org/pub/gnu/libiconv/',
+        'filelist': 'https://ftpmirror.gnu.org/gnu/libiconv/',
         're': r'libiconv-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
     },
     'libidn2': {
-        'filelist': 'https://ftp.gnu.org/gnu/libidn/',
+        'altfilelist': 'https://ftp.gnu.org/gnu/libidn/',
+        'filelist': 'https://ftpmirror.gnu.org/gnu/libidn/',
         're': r'libidn2-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
     },
     'libimagequant': {
@@ -364,7 +366,7 @@ Packages = {
     # easily checking the version.
     'mrsid': {
         'filelist': 'https://www.extensis.com/support/developers-sdk-version-downloads',
-        're': r'MrSID_DSDK-([0-9]+\.[0-9]+(|\.[0-9]+(|\.[0-9]+)))-rhel[0-9]+.x86-64.gcc[0-9]+\.(tar\.gz|zip)$',
+        're': r'MrSID_DSDK-([0-9]+\.[0-9]+(|\.[0-9]+(|\.[0-9]+)))-rhel[0-9]+.x86-64.gcc[0-9]+\.(tar\.gz|zip)$',  # noqa
     },
     'mysql': {
         'filelist': 'https://dev.mysql.com/downloads/mysql/?tpl=version&os=src',
@@ -613,7 +615,7 @@ def getSession(new=False):
     return session
 
 
-def getUrl(url, pkginfo):
+def getUrl(url, pkginfo, fallback=None):
     """
     Use a session to get a url.  If it fails, retry with a new session.  If
     that fails, retry without a session.
@@ -624,10 +626,22 @@ def getUrl(url, pkginfo):
     except Exception:
         pass
     try:
+        if verbose >= 2:
+            print(f'retry {url}')
         return getSession(True).get(url, **param)
     except Exception:
         pass
-    return requests.get(url, **param)
+    try:
+        if verbose >= 2:
+            print(f'retry without session {url}')
+        return requests.get(url, **param)
+    except Exception:
+        if fallback:
+            if verbose >= 2:
+                print(f'retry fallback {url}')
+            return getUrl(fallback, pkginfo)
+        else:
+            raise
 
 
 # This can be imported into Chrome
@@ -658,7 +672,7 @@ for pkg in sorted(Packages):  # noqa
         entries = None
         versions = None
         if 'filelist' in pkginfo:
-            data = getUrl(pkginfo['filelist'], pkginfo).text
+            data = getUrl(pkginfo['filelist'], pkginfo, pkginfo.get('altfilelist')).text
             if verbose >= 2:
                 print(pkg, 'filelist data', data)
             data = data.replace('<A ', '<a ').replace('HREF="', 'href="')
