@@ -113,6 +113,8 @@ echo 'Download an openslide file'
 curl --silent --retry 5 -L -o sample.svs https://data.kitware.com/api/v1/file/5be43d9c8d777f217991e1c2/download
 echo 'Download a tiff file'
 curl --silent --retry 5 -L -o sample.tif https://data.kitware.com/api/v1/file/5be43e398d777f217991e21f/download
+echo 'Download another tiff file'
+curl --silent --retry 5 -L -o sample.ptif https://data.kitware.com/api/v1/file/57b345d28d777f126827dc26/download
 echo 'Download a tiff file that requires a newer openjpeg'
 curl --silent --retry 5 -L -o sample_jp2.tif https://data.kitware.com/api/v1/file/5be348568d777f21798fa1d1/download
 echo 'Download a png file'
@@ -146,11 +148,19 @@ pprint.pprint(ti['tile'][:4,:4].tolist())
 EOF
 fi
 if $TEST_PYLIBTIFF; then
-  echo 'Use large_image to read a tiff file'
+  echo 'Use large_image to read a tiff, then another tiff file'
   python <<EOF
 import large_image, pprint
 ts = large_image.getTileSource('sample.tif')
 pprint.pprint(ts.getMetadata())
+ti = ts.getSingleTile(tile_size=dict(width=1000, height=1000),
+                      scale=dict(magnification=20), tile_position=100)
+pprint.pprint(ti)
+print(ti['tile'].size)
+pprint.pprint(ti['tile'][:4,:4].tolist())
+
+ts = large_image.getTileSource('sample.ptif')
+pprint.pprint(ts.metadata)
 ti = ts.getSingleTile(tile_size=dict(width=1000, height=1000),
                       scale=dict(magnification=20), tile_position=100)
 pprint.pprint(ti)

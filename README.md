@@ -104,20 +104,22 @@ Newer versions usually have an extra `.1` added to the original python package's
 
 ### GeoDjango
 
-GeoDjango expects libgdal and libgeos_c to be in standard locations.  These libraries can be installed by installing the GDAL wheel.  Starting with GDAL 3.1.2, the `osgeo` module from these wheels exposes two values that can be used to tell Django where these libraries are located.  Specifically, Django can be configured using these values::
+GeoDjango expects libgdal and libgeos_c to be in standard locations.  These libraries can be installed by installing the GDAL wheel.  Starting with GDAL 3.1.2, the `osgeo` module from these wheels exposes two values that can be used to tell Django where these libraries are located.  Specifically, Django can be configured using these values:
+```
+import osgeo
 
-  import osgeo
-
-  django.conf.settings.configure()
-  django.conf.settings.GDAL_LIBRARY_PATH = osgeo.GDAL_LIBRARY_PATH
-  django.conf.settings.GEOS_LIBRARY_PATH = osgeo.GEOS_LIBRARY_PATH
+django.conf.settings.configure()
+django.conf.settings.GDAL_LIBRARY_PATH = osgeo.GDAL_LIBRARY_PATH
+django.conf.settings.GEOS_LIBRARY_PATH = osgeo.GEOS_LIBRARY_PATH
+```
 
 Inside a Django application's `settings.py` file, this is somewhat simpler::
+```
+import osgeo
 
-  import osgeo
-
-  GDAL_LIBRARY_PATH = osgeo.GDAL_LIBRARY_PATH
-  GEOS_LIBRARY_PATH = osgeo.GEOS_LIBRARY_PATH
+DAL_LIBRARY_PATH = osgeo.GDAL_LIBRARY_PATH
+EOS_LIBRARY_PATH = osgeo.GEOS_LIBRARY_PATH
+```
 
 ## Future Work
 
@@ -129,7 +131,7 @@ Inside a Django application's `settings.py` file, this is somewhat simpler::
 
   A variety of executables are bundled with the wheels in appropriate `bin` directories.  There are additional tools that could be added.  If there is a specific need for an executable that hasn't been included, please create an issue for it.
 
-- Automate releases
+- Fully automate releases
 
   The wheels should be published from a successful CI run rather than from a user commit.
 
