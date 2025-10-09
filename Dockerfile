@@ -560,7 +560,21 @@ cd /build && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
-    echo "`date` libwebp" >> /build/log.txt
+    echo "`date` libwebp" >> /build/log.txt && \
+cd /build && \
+# \
+# RUN \
+    echo "`date` json-c" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b json-c-`getver.py json-c` -c advice.detachedHead=false https://github.com/json-c/json-c.git && \
+    cd json-c && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_POLICY_VERSION_MINIMUM=3.5 && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` json-c" >> /build/log.txt
 
 # Used in gdal, mapnik, libvips, openslide, glymur, python-javabridge
 RUN \
@@ -1951,10 +1965,10 @@ RUN \
     # - Common \
     cd gdal && \
     sed -i 's/define GDAL_VERSION_BUILD    0/define GDAL_VERSION_BUILD    1/g' gcore/gdal_version.h.in && \
-    sed -i 's/dev/.1dev/g' gcore/gdal_version.h.in && \
-    sed -i 's/\([0-9]\)$/\1.1/g' VERSION && \
+    # use .2 as a suffix \
+    sed -i 's/dev/.2dev/g' gcore/gdal_version.h.in && \
+    sed -i 's/\([0-9]\)$/\1.2/g' VERSION && \
     sed -i 's/if library_version_num < gdal_python_version/if False/g' swig/python/setup.py.in && \
-    # sed -i 's/set(GDAL_PYTHON_VERSION "${GDAL_VERSION_NO_DEV_SUFFIX}")/set(GDAL_PYTHON_VERSION "${GDAL_VERSION_NO_DEV_SUFFIX}.1")/g' swig/python/CMakeLists.txt && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
     mkdir _build && \
     cd _build && \

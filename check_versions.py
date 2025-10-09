@@ -152,6 +152,10 @@ Packages = {
         'git': 'https://github.com/libjxl/libjxl.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
+    'json-c': {
+        'git': 'https://github.com/json-c/json-c.git',
+        're': r'json-c-([0-9]+\.[0-9]+(|-[0-9]+))$',
+    },
     'jxrlib': {
         'git': 'https://github.com/4creators/jxrlib.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',

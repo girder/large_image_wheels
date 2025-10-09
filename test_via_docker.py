@@ -14,6 +14,7 @@ containers = {
     'python:3.11-slim': {},
     'python:3.12-slim': {},
     'python:3.13-slim': {},
+    'python:3.14-slim': {},
     'liw/python:3.13': {
         'skip': True,
         'build': {'base': 'debian:stable-slim', 'python': '3.13',
@@ -28,7 +29,7 @@ containers = {
                   'proj-bin libxml2-dev libxmlsec1-dev'},
     },
     'liw/python:3.14': {
-        'skip': platform.machine() in {'aarch64', 'arm64'},
+        'skip': True,
         'build': {'base': 'debian:stable-slim', 'python': '3.14',
                   'packages': 'build-essential libffi-dev'}},
     'liw/python:3.14t': {
