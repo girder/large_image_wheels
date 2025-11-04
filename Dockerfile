@@ -1953,7 +1953,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if false; then \
+    if true; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
@@ -1964,8 +1964,8 @@ RUN \
     true; fi && \
     # - Common \
     cd gdal && \
-    sed -i 's/define GDAL_VERSION_BUILD    0/define GDAL_VERSION_BUILD    1/g' gcore/gdal_version.h.in && \
-    # use .2 as a suffix \
+    # use .2 as a suffix (3 spots) \
+    sed -i 's/define GDAL_VERSION_BUILD    0/define GDAL_VERSION_BUILD    2/g' gcore/gdal_version.h.in && \
     sed -i 's/dev/.2dev/g' gcore/gdal_version.h.in && \
     sed -i 's/\([0-9]\)$/\1.2/g' VERSION && \
     sed -i 's/if library_version_num < gdal_python_version/if False/g' swig/python/setup.py.in && \

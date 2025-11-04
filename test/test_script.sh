@@ -50,7 +50,7 @@ pip cache purge || true
 
 echo 'Test installing pyvips and other dependencies from wheels via large_image'
 if $TEST_BIOFORMATS && $TEST_JAVABRIDGE; then pip install 'large-image[bioformats]' -f ${1:-/wheels}; fi
-if $TEST_GDAL; then pip install 'large-image[gdal]' -f ${1:-/wheels}; fi
+if $TEST_GDAL; then pip install --no-index -f ${1:-/wheels} gdal; pip install 'large-image[gdal]' -f ${1:-/wheels}; fi
 if $TEST_GLYMUR; then pip install 'large-image[openjpeg]' -f ${1:-/wheels}; fi
 if $TEST_MAPNIK; then pip install 'large-image[mapnik]' -f ${1:-/wheels}; fi
 if $TEST_OPENSLIDE; then pip install 'large-image[openslide]' -f ${1:-/wheels}; fi
