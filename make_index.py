@@ -2,6 +2,7 @@
 
 import argparse
 import hashlib
+import multiprocessing
 import os
 import sys
 import time
@@ -24,10 +25,10 @@ linknosha = '<a href="%s%s" download="%s">%s</a>%s%s%11d'
 def get_sha256(path, name, verbose):
     sha256 = hashlib.sha256()
     if args.verbose >= 2:
-        print(f'Getting sha256 for {name}')
+         print(f'Getting sha256 for {name}')
     elif args.verbose >= 1:
-        sys.stdout.write(f'sha256: {name[:71]}\r')
-        sys.stdout.flush()
+         sys.stdout.write(f'sha256: {name[:71]}\r')
+         sys.stdout.flush()
     with open(os.path.join(path, name), 'rb') as fptr:
         while True:
             data = fptr.read(1024 ** 2)
@@ -89,14 +90,17 @@ if __name__ == '__main__':
         existing = existing.replace('<body>', '<body>\n<h1>large_image_wheels</h1>')
         template = existing.replace('</body>', '<pre>\n%LINKS%\n</pre>\n</body>')
     if not args.no_sha:
+        with multiprocessing.Pool() as pool:
+            shas = list(pool.starmap(get_sha256, [
+                (wpath, url, args.verbose) for name, url in wheels]))
         index = template.replace('%LINKS%', '\n'.join([
             link % (
-                prefix, url, get_sha256(wpath, url, args.verbose), name, name,
+                prefix, url, shas[idx], name, name,
                 ' ' * (maxnamelen + 3 - len(name)),
                 time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(os.path.getmtime(
                     os.path.join(wpath, name)))),
                 os.path.getsize(os.path.join(wpath, name)),
-            ) for name, url in wheels]))
+            ) for idx, (name, url) in enumerate(wheels)]))
         if args.verbose == 1:
             sys.stdout.write((' ' * 79) + '\r')
     else:
