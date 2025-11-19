@@ -104,7 +104,7 @@ Newer versions usually have an extra `.1` added to the original python package's
 
 ### GeoDjango
 
-GeoDjango expects libgdal and libgeos_c to be in standard locations.  These libraries can be installed by installing the GDAL wheel.  Starting with GDAL 3.1.2, the `osgeo` module from these wheels exposes two values that can be used to tell Django where these libraries are located.  Specifically, Django can be configured using these values:
+GeoDjango expects libgdal and libgeos_c to be in standard locations.  These libraries can be installed by installing the GDAL wheel.  Starting with GDAL 3.1.2, the `osgeo` module from these wheels exposes two values that can be used [to tell Django where these libraries are located](https://docs.djangoproject.com/en/5.2/ref/contrib/gis/install/geolibs/).  Specifically, Django can be configured using these values:
 ```
 import osgeo
 
