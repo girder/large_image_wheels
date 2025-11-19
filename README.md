@@ -117,8 +117,8 @@ Inside a Django application's `settings.py` file, this is somewhat simpler::
 ```
 import osgeo
 
-DAL_LIBRARY_PATH = osgeo.GDAL_LIBRARY_PATH
-EOS_LIBRARY_PATH = osgeo.GEOS_LIBRARY_PATH
+GDAL_LIBRARY_PATH = osgeo.GDAL_LIBRARY_PATH
+GEOS_LIBRARY_PATH = osgeo.GEOS_LIBRARY_PATH
 ```
 
 ## Future Work
