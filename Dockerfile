@@ -1953,7 +1953,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if true; then \
+    if false; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
@@ -1964,10 +1964,10 @@ RUN \
     true; fi && \
     # - Common \
     cd gdal && \
-    # use .2 as a suffix (3 spots) \
-    sed -i 's/define GDAL_VERSION_BUILD    0/define GDAL_VERSION_BUILD    2/g' gcore/gdal_version.h.in && \
-    sed -i 's/dev/.2dev/g' gcore/gdal_version.h.in && \
-    sed -i 's/\([0-9]\)$/\1.2/g' VERSION && \
+    # use .1 as a suffix (3 spots) \
+    sed -i 's/define GDAL_VERSION_BUILD    0/define GDAL_VERSION_BUILD    1/g' gcore/gdal_version.h.in && \
+    sed -i 's/dev/.1dev/g' gcore/gdal_version.h.in && \
+    sed -i 's/\([0-9]\)$/\1.1/g' VERSION && \
     sed -i 's/if library_version_num < gdal_python_version/if False/g' swig/python/setup.py.in && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
     mkdir _build && \
@@ -2322,12 +2322,12 @@ s = open(path).read().replace( \n\
     "_convert.c\'", "_convert.c\'], libraries=[\'openslide\'") \n\
 s = s.replace("_abi3 = sys.version_info >= (3, 11)", "_abi3 = sys.version_info >= (3, 11) and getattr(sys.flags, \'gil\', 1)") \n\
 open(path, "w").write(s)' && \
-    # Adding .2 to version to indicate we are adding jpxl czi support \
+    # Adding .1 to version \
     python -c $'# \n\
 import re \n\
 path = "openslide/_version.py" \n\
 s = open(path).read() \n\
-s = re.sub(r"(__version__ = \'[^\']*)\'", "\\\\1.2\'", s) \n\
+s = re.sub(r"(__version__ = \'[^\']*)\'", "\\\\1.1\'", s) \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
 path = "pyproject.toml" \n\
@@ -2344,7 +2344,7 @@ open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    find /opt/py -mindepth 1 -not -name '*p39-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     find /io/wheelhouse/ -name 'openslide*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
