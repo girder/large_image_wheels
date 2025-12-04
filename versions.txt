@@ -4,7 +4,7 @@ bioformats 8.3.0
 blosc 1.21.6
 boost 1.89.0
 cairo 1.18.4
-cmake 4.2.0
+cmake 4.2.1
 curl 8_17_0
 cyrus-sasl 2.1.28
 fftw3 3.3.10
@@ -17,7 +17,7 @@ fyba b00ae60436bd24145df7006a211219f5fdef6011
 fyba-release 4.1.1
 gdal 3.12.0
 gdal-pypi 3.12.0.post1
-gdal-sha bb35cac602db627e6f14d864d4d5e8369fe19173
+gdal-sha 025c9cb5280ac8e1c3d177dca1c50185fc15d557
 gdal-source 3.13.0
 giflib 5.2.2
 glib 2.87.0
@@ -28,7 +28,7 @@ harfbuzz 12.2.0
 hdf4 4_2_16
 hdf5 1_14_3
 icu4c 77-1
-imagemagick 7.1.2-9
+imagemagick 7.1.2-10
 jbigkit 2.1
 jpeg-xl 0.11.1
 json-c 0.18-20240915
@@ -59,7 +59,7 @@ libjpeg-turbo 3.1.2
 libmemcached 1.0.19
 libnsl 2.0.1
 libopendrive 0.6.1
-libpng 1.6.51
+libpng 1.6.53
 libpsl 0.21.5
 librasterlite2 00cef3dac9
 libraw 0.21.4
@@ -75,12 +75,12 @@ libxcrypt 4.5.2
 libxml2 2.15.1
 libzip 1.11.4
 lz4 1.10.0
-manylinux_2_28_aarch64 374283a94cceae2daa5ae53dca90d60bf6299b87fb5467eb5ca6a147d92acaf7
-manylinux_2_28_x86_64 1b5ff2cb5db011c42a203df728968165dc380f0f773679b1da533357c931cfd1
+manylinux_2_28_aarch64 38a57eb409aae39c75ba069fb51ad04ffe150d3c1547efe8cfdf47b3b7e3a60f
+manylinux_2_28_x86_64 a658c70bfc08efa30156ef84775cfea959662cf0be52abab50b3b36ea8906784
 mapnik-release 4.1.4
 mapnik-sha 9fae6a6eb88425d06542e272a74f3ede5141b0d4
 matio 1.5.29
-meson 1.9.1
+meson 1.10.0
 minizip 4.0.10
 mrsid 9.5.5.5244
 mysql 9.5.0
@@ -119,8 +119,8 @@ python-javabridge 4.0.4
 python-javabridge-pypi 4.0.4
 python-mapnik-pypi 0.1
 python-mapnik-sha 4b51d57911dc6a1a9f35c62c681fbdeb56fc69d4
-pyvips 3.0.0
-pyvips-pypi 3.0.0
+pyvips 3.1.0
+pyvips-pypi 3.1.0
 sqlite 2025.3510100
 strip-nondeterminism 0.45.0
 superlu 7.0.1
