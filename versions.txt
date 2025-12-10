@@ -17,7 +17,7 @@ fyba b00ae60436bd24145df7006a211219f5fdef6011
 fyba-release 4.1.1
 gdal 3.12.0
 gdal-pypi 3.12.0.post1
-gdal-sha 025c9cb5280ac8e1c3d177dca1c50185fc15d557
+gdal-sha d6e655b4f2f4657f2000bde85f2f285fd97224be
 gdal-source 3.13.0
 giflib 5.2.2
 glib 2.87.0
@@ -96,7 +96,7 @@ openslide 4.0.0
 openslide-python 1.4.3
 openslide-python-pypi 1.4.3
 openslide-python-sha b0cc36bca68170a6e88b2e418d820dde39539359
-openslide-sha 8ba00a7572ab8797ba219516e8dad1c9f53eac95
+openslide-sha 0ae1d367f42d7ad6bb0bf493db907dba3cacd56c
 openssl 3.6.0
 orc 0.4.41
 pango 1.57.0
@@ -119,8 +119,8 @@ python-javabridge 4.0.4
 python-javabridge-pypi 4.0.4
 python-mapnik-pypi 0.1
 python-mapnik-sha 4b51d57911dc6a1a9f35c62c681fbdeb56fc69d4
-pyvips 3.1.0
-pyvips-pypi 3.1.0
+pyvips 3.1.1
+pyvips-pypi 3.1.1
 sqlite 2025.3510100
 strip-nondeterminism 0.45.0
 superlu 7.0.1
