@@ -1,16 +1,16 @@
 diff --git a/.github/workflows/c.yaml b/.github/workflows/c.yaml
-index 6802971..163d23e 100644
+index 0039578..73be0e5 100644
 --- a/.github/workflows/c.yaml
 +++ b/.github/workflows/c.yaml
-@@ -51,6 +51,7 @@ jobs:
-             python3-requests python3-pyyaml \
+@@ -50,6 +50,7 @@ jobs:
+             gcc git-core meson pkg-config \
              cairo-devel \
              glib2-devel \
 +            jxrlib-devel \
              libdicom-devel \
              libjpeg-turbo-devel \
              libpng-devel \
-@@ -182,6 +183,7 @@ jobs:
+@@ -179,6 +180,7 @@ jobs:
                  cairo \
                  glib \
                  jpeg-turbo \
@@ -18,15 +18,15 @@ index 6802971..163d23e 100644
                  libdicom \
                  libpng \
                  libtiff \
-@@ -231,6 +233,7 @@ jobs:
-                     python${pyver}-requests python${pyver}-pyyaml \
+@@ -219,6 +221,7 @@ jobs:
+                     $python \
                      cairo-devel \
                      glib2-devel \
 +                    jxrlib-devel \
                      libdicom-devel \
                      libjpeg-turbo-devel \
                      libpng-devel \
-@@ -269,6 +272,7 @@ jobs:
+@@ -256,6 +259,7 @@ jobs:
                      libcairo2-dev$arch \
                      libglib2.0-dev$arch \
                      $jpeg$arch \
@@ -35,11 +35,11 @@ index 6802971..163d23e 100644
                      libpng-dev$arch \
                      libsqlite3-dev$arch \
 diff --git a/meson.build b/meson.build
-index 6270e75..3d208f9 100644
+index 346f801..6a635d6 100644
 --- a/meson.build
 +++ b/meson.build
-@@ -178,6 +178,64 @@ valgrind_dep = dependency(
-   required : false,
+@@ -173,6 +173,64 @@ dicom_dep = dependency(
+   version : '>=1.2.0',
  )
  
 +jxr_dep = dependency(
@@ -100,11 +100,11 @@ index 6270e75..3d208f9 100644
 +  conf.set('HAVE_LIBJXR', 1)
 +endif
 +
- doxygen = find_program(
-   'doxygen',
-   required : get_option('doc'),
+ # Dependency checks
+ if jpeg_dep.type_name() != 'internal' and not cc.has_function(
+   'jpeg_mem_src',
 diff --git a/src/meson.build b/src/meson.build
-index 821fc3b..266e06c 100644
+index 2332d55..d87b5ab 100644
 --- a/src/meson.build
 +++ b/src/meson.build
 @@ -48,6 +48,7 @@ openslide_sources = files(

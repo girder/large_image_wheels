@@ -1,8 +1,8 @@
 advancecomp 2.6
-armadillo 15.2.2
+armadillo 15.2.3
 bioformats 8.3.0
 blosc 1.21.6
-boost 1.89.0
+boost 1.90.0
 cairo 1.18.4
 cmake 4.2.1
 curl 8_17_0
@@ -17,7 +17,7 @@ fyba b00ae60436bd24145df7006a211219f5fdef6011
 fyba-release 4.1.1
 gdal 3.12.0
 gdal-pypi 3.12.0.post1
-gdal-sha d6e655b4f2f4657f2000bde85f2f285fd97224be
+gdal-sha efd5027e893dabc39a11e4bd12e92331f1155247
 gdal-source 3.13.0
 giflib 5.2.2
 glib 2.87.0
@@ -28,7 +28,7 @@ harfbuzz 12.2.0
 hdf4 4_2_16
 hdf5 1_14_3
 icu4c 77-1
-imagemagick 7.1.2-10
+imagemagick 7.1.2-11
 jbigkit 2.1
 jpeg-xl 0.11.1
 json-c 0.18-20240915
@@ -55,7 +55,7 @@ libhwy 1.3.0
 libiconv 1.18
 libidn2 2.3.8
 libimagequant 4.4.1
-libjpeg-turbo 3.1.2
+libjpeg-turbo 3.1.3
 libmemcached 1.0.19
 libnsl 2.0.1
 libopendrive 0.6.1
@@ -69,14 +69,14 @@ libspatialite 39ad6f1ed3
 libssh2 1.11.1
 libtiff 4.7.1
 libtirpc 1-2-6
-libvips 8.17.3
+libvips 8.18.0
 libwebp 1.6.0
 libxcrypt 4.5.2
 libxml2 2.15.1
 libzip 1.11.4
 lz4 1.10.0
-manylinux_2_28_aarch64 38a57eb409aae39c75ba069fb51ad04ffe150d3c1547efe8cfdf47b3b7e3a60f
-manylinux_2_28_x86_64 a658c70bfc08efa30156ef84775cfea959662cf0be52abab50b3b36ea8906784
+manylinux_2_28_aarch64 1c428544d9db0567ae2d99ce72f3f754d12c0a60702064fd8ed5f12c50c4d19e
+manylinux_2_28_x86_64 e40c7e3b275203c1322cd0445cff9fbc56d482282bfff67bbebdbc630eeff6a3
 mapnik-release 4.1.4
 mapnik-sha 9fae6a6eb88425d06542e272a74f3ede5141b0d4
 matio 1.5.29
@@ -95,8 +95,8 @@ openmpi 5.0.9
 openslide 4.0.0
 openslide-python 1.4.3
 openslide-python-pypi 1.4.3
-openslide-python-sha b0cc36bca68170a6e88b2e418d820dde39539359
-openslide-sha 0ae1d367f42d7ad6bb0bf493db907dba3cacd56c
+openslide-python-sha 523fbb665316c6b2da39ef0683e6ccbbcdbb68bb
+openslide-sha 48ce67703cac2f12b4c520236004b63eba1cb875
 openssl 3.6.0
 orc 0.4.41
 pango 1.57.0
@@ -124,7 +124,7 @@ pyvips-pypi 3.1.1
 sqlite 2025.3510100
 strip-nondeterminism 0.45.0
 superlu 7.0.1
-util-linux 2.41.2
+util-linux 2.41.3
 xerces-c 3.3.0
 xz 5.8.1
 zlib 1.3.1
