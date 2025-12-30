@@ -1953,7 +1953,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if false; then \
+    if true; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
@@ -2133,7 +2133,6 @@ RUN \
     sed -i 's:#include <algorithm>:#include <algorithm>\n#include <boost/algorithm/string.hpp>:g' plugins/input/csv/csv_utils.cpp && \
     sed -i 's/  xmlError\*/  const xmlError \*/g' src/libxml2_loader.cpp && \
     sed -i 's:#include <mapnik/image_util.hpp>:#define PSTL_USE_PARALLEL_POLICIES 0\n#define _GLIBCXX_USE_TBB_PAR_BACKEND 0\n#include <mapnik/image_util.hpp>:g' src/image_util.cpp && \
-    sed -i 's/  OGRSpatialReference\* srs_ref/  const OGRSpatialReference* srs_ref/g' plugins/input/ogr/ogr_datasource.cpp && \
     find . -name '.git' -exec rm -rf {} \+ && \
     # Keeps the docker smaller \
     rm -rf demo test && mkdir test && mkdir demo && touch test/CMakeLists.txt && touch demo/CMakeLists.txt && \
