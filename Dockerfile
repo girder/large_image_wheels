@@ -1928,6 +1928,20 @@ RUN \
     ldconfig && \
     echo "`date` libopendrive" >> /build/log.txt
 
+# Used by GDAL, mapnik
+RUN \
+    echo "`date` libavif" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b v`getver.py libavif` -c advice.detachedHead=false https://github.com/AOMediaCodec/libavif.git && \
+    cd libavif && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DAVIF_LIBYUV=LOCAL && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` libavif" >> /build/log.txt
+
 # PINNED VERSION - use master
 # This build doesn't support everything.
 # Unsupported without more work or investigation:
@@ -1953,7 +1967,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if true; then \
+    if false; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
@@ -1976,6 +1990,7 @@ RUN \
     $(if [ "$AUDITWHEEL_ARCH" == "x86_64" ]; then echo -n "-DMRSID_LIBRARY=/usr/local/lib/libltidsdk.so -DMRSID_INCLUDE_DIR=/build/mrsid/Raster_DSDK/include"; fi) \
     -DGDAL_USE_LERC=ON \
     -DENABLE_DEFLATE64=OFF \
+    -DGDAL_USE_PUBLICDECOMPWT=ON \
     2>&1 >../cmakelog.txt \
     && \
     make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings -Wno-stringop-overflow -Wno-ignored-qualifiers" && \
@@ -2101,20 +2116,6 @@ RUN \
     ninja -j ${JOBS} install && \
     ldconfig && \
     echo "`date` harfbuzz" >> /build/log.txt
-
-# Used by mapnik
-RUN \
-    echo "`date` libavif" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py libavif` -c advice.detachedHead=false https://github.com/AOMediaCodec/libavif.git && \
-    cd libavif && \
-    mkdir _build && \
-    cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DAVIF_LIBYUV=LOCAL && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` libavif" >> /build/log.txt
 
 # PINNED VERSION - use master since last version is stale
 RUN \
@@ -2454,10 +2455,12 @@ RUN \
     echo "`date` libarchive" >> /build/log.txt
 
 # Used by ImageMagick, though I don't see the library being bundled by libvips
+# PINNED - ImageMagick doesn't work with 0.22.0
 RUN \
     echo "`date` libraw" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b `getver.py libraw` -c advice.detachedHead=false https://github.com/LibRaw/LibRaw.git && \
+    # git clone --depth=1 --single-branch -b `getver.py libraw` -c advice.detachedHead=false https://github.com/LibRaw/LibRaw.git && \
+    git clone --depth=1 --single-branch -b 0.21.5 -c advice.detachedHead=false https://github.com/LibRaw/LibRaw.git && \
     cd LibRaw && \
     autoreconf -ifv && \
     ./configure --silent --prefix=/usr/local --disable-static && \
