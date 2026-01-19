@@ -2455,12 +2455,10 @@ RUN \
     echo "`date` libarchive" >> /build/log.txt
 
 # Used by ImageMagick, though I don't see the library being bundled by libvips
-# PINNED - ImageMagick doesn't work with 0.22.0
 RUN \
     echo "`date` libraw" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    # git clone --depth=1 --single-branch -b `getver.py libraw` -c advice.detachedHead=false https://github.com/LibRaw/LibRaw.git && \
-    git clone --depth=1 --single-branch -b 0.21.5 -c advice.detachedHead=false https://github.com/LibRaw/LibRaw.git && \
+    git clone --depth=1 --single-branch -b `getver.py libraw` -c advice.detachedHead=false https://github.com/LibRaw/LibRaw.git && \
     cd LibRaw && \
     autoreconf -ifv && \
     ./configure --silent --prefix=/usr/local --disable-static && \

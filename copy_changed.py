@@ -24,6 +24,11 @@ for name in sorted(os.listdir('wheels')):  # noqa
             'versions.txt').readlines() if line.startswith('gdal ')][0]
         if f'-{current_ver}.' not in name:
             continue
+    if 'mapnik' in name:
+        current_ver = [line.strip().split()[1] for line in open(
+            'versions.txt').readlines() if line.startswith('mapnik-release')][0]
+        if f'-{current_ver}.' not in name:
+            continue
     if name in os.listdir('wheelhouse'):
         if name in committed:
             continue
