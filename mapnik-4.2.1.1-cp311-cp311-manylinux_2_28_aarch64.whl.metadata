@@ -1,0 +1,19 @@
+Metadata-Version: 2.4
+Name: mapnik
+Version: 4.2.1.1
+Summary: Python bindings for Mapnik
+Author-email: Artem Pavlenko <artem@mapnik.org>
+Maintainer-email: Artem Pavlenko <artem@mapnik.org>
+License: LGPL-2.1-or-later
+Project-URL: Homepage, https://mapnik.org
+Project-URL: Documentation, https://github.com/mapnik/python-mapnik/wiki
+Project-URL: Repository, https://github.com/mapnik/python-mapnik
+Project-URL: Bug Tracker, https://github.com/mapnik/python-mapnik/issues
+Project-URL: Changelog, https://github.com/mapnik/python-mapnik/blob/master/CHANGELOG.md
+Keywords: mapnik,beautiful maps,cartography,python-mapnik
+Classifier: Development Status :: 4 - Beta
+Requires-Python: >=3.9
+License-File: COPYING
+License-File: AUTHORS.md
+Dynamic: license-file
+Dynamic: requires-python
