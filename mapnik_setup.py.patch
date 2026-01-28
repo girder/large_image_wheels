@@ -1,5 +1,5 @@
 diff --git a/setup.py b/setup.py
-index 24ca0ec5e..4fc5223fc 100755
+index 1833ef9fe..f9edb6cbc 100755
 --- a/setup.py
 +++ b/setup.py
 @@ -13,15 +13,8 @@ def check_output(args):
@@ -65,7 +65,7 @@ index 24ca0ec5e..4fc5223fc 100755
  
  if sys.platform == 'darwin':
       pass
-@@ -118,21 +115,19 @@ ext_modules = [
+@@ -118,15 +115,16 @@ ext_modules = [
  ]
  
  if os.environ.get("CC", False) == False:
@@ -77,17 +77,18 @@ index 24ca0ec5e..4fc5223fc 100755
  
  setup(
       name="mapnik",
+      packages=find_namespace_packages(where="packaging"),
       package_dir={"": "packaging"},
--     packages=["mapnik",
--               "mapnik/printing",
--               "mapnik/bin",
--               "mapnik/lib",
--               "mapnik/lib.mapnik.fonts",
--               "mapnik/lib.mapnik.input"],
-+     package_data={
+      package_data={
 +	  'mapnik': ['lib/*.*', 'lib/*/*/*', 'share/*/*', 'input/*', 'fonts/*', 'proj/*', 'gdal/*', 'bin/*'],
-+     },
-      include_package_data=True,
+           "mapnik.bin": ["*"],
+           "mapnik.lib": ["libmapnik*"],
+           "mapnik.lib.mapnik.fonts":["*"],
+@@ -136,7 +134,9 @@ setup(
+           "mapnik.bin": ["mapnik-config"],
+           "mapnik.lib": ["*.a"]
+      },
++     include_package_data=True,
       ext_modules=ext_modules,
 +     entry_points={'console_scripts': ['%s=mapnik.bin:program' % name for name in os.listdir('packaging/mapnik/bin') if not name.endswith('.py')]},
       cmdclass={"build_ext": build_ext},

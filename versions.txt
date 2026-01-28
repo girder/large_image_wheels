@@ -4,7 +4,7 @@ bioformats 8.4.0
 blosc 1.21.6
 boost 1.90.0
 cairo 1.18.4
-cmake 4.2.2
+cmake 4.2.3
 curl 8_18_0
 cyrus-sasl 2.1.28
 fftw3 3.3.10
@@ -17,7 +17,7 @@ fyba b00ae60436bd24145df7006a211219f5fdef6011
 fyba-release 4.1.1
 gdal 3.12.1
 gdal-pypi 3.12.1
-gdal-sha cb76cc450bd97e214f3b2122cb784908a37daab9
+gdal-sha f3d0f4063d572cf8d2ed3795afcb892096a295e3
 gdal-source 3.13.0
 giflib 5.2.2
 glib 2.87.2
@@ -77,8 +77,8 @@ libzip 1.11.4
 lz4 1.10.0
 manylinux_2_28_aarch64 8f867419714b063692bcd339f43a93d17eb1319fd964d5bc53a664da63085b7e
 manylinux_2_28_x86_64 8fd2c025a456ae384a5f18504481368e8da463afc82d971dc5717550187baa94
-mapnik-release 4.2.0
-mapnik-sha 48219e570df115bd3229fadc8cec8ca7f643783b
+mapnik-release 4.2.1
+mapnik-sha cb1e226cc35eec86bb317816dc7942562f548aaa
 matio 1.5.30
 meson 1.10.1
 minizip 4.1.0
@@ -97,7 +97,7 @@ openslide-python 1.4.3
 openslide-python-pypi 1.4.3
 openslide-python-sha 523fbb665316c6b2da39ef0683e6ccbbcdbb68bb
 openslide-sha 48ce67703cac2f12b4c520236004b63eba1cb875
-openssl 3.6.0
+openssl 3.6.1
 orc 0.4.41
 pango 1.57.0
 parallel-netcdf 1.14.1
@@ -118,7 +118,7 @@ python-bioformats 4.1.0
 python-javabridge 4.0.4
 python-javabridge-pypi 4.0.4
 python-mapnik-pypi 0.1
-python-mapnik-sha 4b51d57911dc6a1a9f35c62c681fbdeb56fc69d4
+python-mapnik-sha 34d055f701a61c998457328b20dd9921b2f779a9
 pyvips 3.1.1
 pyvips-pypi 3.1.1
 sqlite 2026.3510200
