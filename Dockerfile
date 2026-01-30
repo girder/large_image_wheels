@@ -13,6 +13,9 @@ WORKDIR /build
 
 RUN \
     echo "`date` yum install" >> /build/log.txt && \
+    find /etc/apt/sources.list.d -type f -exec sed -i 's|http://|https://|g' {} \+ 2>/dev/null || true && \
+    sed -i -e 's/^mirrorlist=/#mirrorlist=/' -e 's|^# baseurl=|baseurl=|' /etc/yum.repos.d/almalinux*.repo 2>/dev/null || true && \
+    find /etc/yum.repos.d -type f -exec sed -i 's|http://|https://|g' {} \+ 2>/dev/null || true && \
     yum install -y \
     # for strip-nondeterminism \
     cpanminus \
@@ -516,7 +519,7 @@ cd /build && \
     cd zstd && \
     mkdir _build && \
     cd _build && \
-    cmake ../build/cmake -DCMAKE_BUILD_TYPE=MinSizeRel -DZSTD_BUILD_STATIC=OFF -DZSTD_LZ4_SUPPORT=ON -DZSTD_LZMA_SUPPORT=ON -DZSTD_ZLIB_SUPPORT=ON -DZSTD_BUILD_PROGRAMS=OFF && \
+    cmake ../build/cmake -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_SHARED_LIBS=ON -DZSTD_BUILD_STATIC=OFF -DZSTD_BUILD_PROGRAMS=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -681,28 +684,14 @@ cd /build && \
     echo "`date` jpeg-xl" >> /build/log.txt
 
 # Used by mysql, gdal, mapnik, openslide, libtiff, glymur
-# PINNED to work with MySQL and with libvips
 RUN \
     echo "`date` xz" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    ## It'd be better to use the most recent \
-    if false; then \
     git clone --depth=1 --single-branch -b v`getver.py xz` -c advice.detachedHead=false https://github.com/tukaani-project/xz.git && \
     cd xz && \
     mkdir _build && \
     cd _build && \
     cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF && \
-    true; else \
-    ## But that breaks a bunch of packages \
-    # curl --retry 5 --silent https://downloads.sourceforge.net/project/lzmautils/xz-`getver.py xz`.tar.gz -L -o xz.tar.gz && \
-    curl --retry 5 --silent https://downloads.sourceforge.net/project/lzmautils/xz-5.2.6.tar.gz -L -o xz.tar.gz && \
-    mkdir xz && \
-    tar -zxf xz.tar.gz -C xz --strip-components 1 && \
-    rm -f xz.tar.gz && \
-    cd xz && \
-    ./configure --silent --prefix=/usr/local --disable-static && \
-    true; fi && \
-    ## This is in common \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \

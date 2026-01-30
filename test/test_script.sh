@@ -21,6 +21,11 @@ TEST_PYLIBMC=true
 TEST_PYLIBTIFF=true
 TEST_PYVIPS=$(python3 -c 'import sys, sysconfig;sys.exit(sysconfig.get_config_var("Py_GIL_DISABLED") == 1 and sys.version_info < (3, 14))' && echo true || echo false)
 
+find /etc/apt/sources.list.d -type f -exec sed -i 's|http://|https://|g' {} \+ 2>/dev/null || true
+sed -i -e 's/^mirrorlist=/#mirrorlist=/' -e 's|^# baseurl=|baseurl=|' /etc/yum.repos.d/almalinux*.repo 2>/dev/null || true
+find /etc/yum.repos.d -type f -exec sed -i 's|http://|https://|g' {} \+ 2>/dev/null || true
+find /etc/zypp/repos.d -type f -exec sed -i 's|http://|https://|g' {} \+  2>/dev/null || true
+
 if curl --version 2>/dev/null >/dev/null; then true; else
   if apt-get --help 2>/dev/null >/dev/null; then
     apt-get update -q -q

@@ -17,12 +17,12 @@ fyba b00ae60436bd24145df7006a211219f5fdef6011
 fyba-release 4.1.1
 gdal 3.12.1
 gdal-pypi 3.12.1
-gdal-sha f3d0f4063d572cf8d2ed3795afcb892096a295e3
+gdal-sha 7acac4265a1d17998e89664d479443bd4e3ea960
 gdal-source 3.13.0
 giflib 5.2.2
 glib 2.87.2
-glymur 0.14.6
-glymur-pypi 0.14.6
+glymur 0.14.7
+glymur-pypi 0.14.7
 gobject-introspection 1.86.0
 harfbuzz 12.3.2
 hdf4 4_2_16
@@ -34,7 +34,7 @@ jpeg-xl 0.11.1
 json-c 0.18-20240915
 jxrlib 2019.10.9
 kealib 1.6.2
-krb5 1.22.1
+krb5 1.22.2
 lapack 3.12.1
 lcms2 2.18
 lerc 4.0.0
@@ -45,7 +45,7 @@ libbrotli 1.2.0
 libde265 1.0.16
 libdeflate 1.25
 libexif 0.6.25
-libexpat 2_7_3
+libexpat 2_7_4
 libffi 3.5.2
 libgeos 3.14.1
 libgeotiff 1.7.4
@@ -75,8 +75,8 @@ libxcrypt 4.5.2
 libxml2 2.15.1
 libzip 1.11.4
 lz4 1.10.0
-manylinux_2_28_aarch64 8f867419714b063692bcd339f43a93d17eb1319fd964d5bc53a664da63085b7e
-manylinux_2_28_x86_64 8fd2c025a456ae384a5f18504481368e8da463afc82d971dc5717550187baa94
+manylinux_2_28_aarch64 03da1d5e39ecfab550ddf04fa2296c207ee949f3129e949c5fe6e766bb32310b
+manylinux_2_28_x86_64 ecf4653624b1c165e0b99696b7c2339086858d68fee02be44488149dfb1c5583
 mapnik-release 4.2.1
 mapnik-sha cb1e226cc35eec86bb317816dc7942562f548aaa
 matio 1.5.30
@@ -90,7 +90,7 @@ ogdi 4_1_1
 openblas 0.3.31
 openexr 3.4.4
 openjpeg 2.5.4
-openldap 2_6_10
+openldap 2_6_12
 openmpi 5.0.9
 openslide 4.0.0
 openslide-python 1.4.3
@@ -128,5 +128,5 @@ util-linux 2.41.3
 xerces-c 3.3.0
 xz 5.8.2
 zlib 1.3.1
-zlib-ng 2.3.2
+zlib-ng 2.3.3
 zstd 1.5.7

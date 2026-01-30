@@ -43,9 +43,9 @@ containers = {
     'pypy:3.9': {'skip': True},
     'pypy:3.10': {'skip': True},
     # -- manylinux_2_28
-    'almalinux:8 3.9': {'subcmds': ['yum install -y python39-pip']},
+    'almalinux:8 3.9': {'subcmds': ['sed -i -e \'s/^mirrorlist=/#mirrorlist=/\' -e \'s|^# baseurl=|baseurl=|\' /etc/yum.repos.d/almalinux*.repo', 'yum install -y python39-pip']},  # noqa
     'liw/almapython:3.10': {'build': {'base': 'almalinux:8', 'python': '3.10'}},
-    'almalinux:8 3.11': {'subcmds': ['yum install -y python3.11-pip']},
+    'almalinux:8 3.11': {'subcmds': ['sed -i -e \'s/^mirrorlist=/#mirrorlist=/\' -e \'s|^# baseurl=|baseurl=|\' /etc/yum.repos.d/almalinux*.repo', 'yum install -y python3.11-pip']},  # noqa
     # 'almalinux:8 3.12': {'subcmds': ['yum install -y python3.12-pip']},
     'liw/almapython:3.12': {'build': {'base': 'almalinux:8', 'python': '3.12'}},
     'liw/almapython:3.13': {'build': {'base': 'almalinux:8', 'python': '3.13'}},
@@ -54,11 +54,11 @@ containers = {
         'build': {'base': 'almalinux:8', 'python': '3.13t'}},
     'liw/almapython:3.14': {
         'build': {'base': 'almalinux:8', 'python': '3.14'},
-        'subcmds': ['yum install -y libffi-devel gcc']},
+        'subcmds': ['sed -i -e \'s/^mirrorlist=/#mirrorlist=/\' -e \'s|^# baseurl=|baseurl=|\' /etc/yum.repos.d/almalinux*.repo', 'yum install -y libffi-devel gcc']},  # noqa
     'liw/almapython:3.14t': {
         # 'skip': True,
         'build': {'base': 'almalinux:8', 'python': '3.14'},
-        'subcmds': ['yum install -y libffi-devel gcc']},
+        'subcmds': ['sed -i -e \'s/^mirrorlist=/#mirrorlist=/\' -e \'s|^# baseurl=|baseurl=|\' /etc/yum.repos.d/almalinux*.repo', 'yum install -y libffi-devel gcc']},  # noqa
 }
 if platform.machine() not in {'aarch64', 'arm64'}:
     containers.update({
