@@ -1639,10 +1639,12 @@ RUN \
     echo "`date` postgresql" >> /build/log.txt
 
 # Used by GDAL, mapnik, libvips.  PDF reader
+# PINNED - GDAL hasn't followed a change to 26.02.0
 RUN \
     echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    until timeout 60 git clone --depth=1 --single-branch -b poppler-`getver.py poppler` -c advice.detachedHead=false https://gitlab.freedesktop.org/poppler/poppler.git; do sleep 5; echo "retrying"; done && \
+    # until timeout 60 git clone --depth=1 --single-branch -b poppler-`getver.py poppler` -c advice.detachedHead=false https://gitlab.freedesktop.org/poppler/poppler.git; do sleep 5; echo "retrying"; done && \
+    until timeout 60 git clone --depth=1 --single-branch -b poppler-26.01.0 -c advice.detachedHead=false https://gitlab.freedesktop.org/poppler/poppler.git; do sleep 5; echo "retrying"; done && \
     cd poppler && \
     mkdir _build && \
     cd _build && \
@@ -1895,7 +1897,7 @@ RUN \
 #     cd pugixml && \
 #     mkdir _build && \
 #     cd _build && \
-#     cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel && \
+#     cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib && \
 #     make --silent -j ${JOBS} && \
 #     make --silent -j ${JOBS} install && \
 #     ldconfig && \
@@ -1956,7 +1958,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if false; then \
+    if true; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
@@ -2197,7 +2199,7 @@ s = re.sub("\\nversion = \\".*\\"", "\\nversion = \\"'`pkg-config --modversion l
 s = s.replace("authors", "dynamic = [\\"scripts\\"]\\nauthors") \n\
 s = s.replace("license = \\"LGPL-2.1-or-later\\"", "license = { text = \\"LGPL-2.1-or-later\\"}") \n\
 open(path, "w").write(s)' && \
-    sed -i 's/AsLongLong/AsLong/g' src/mapnik_value_converter.hpp && \
+    # sed -i 's/AsLongLong/AsLong/g' src/mapnik_value_converter.hpp && \
     sed -i 's/\.def(py::self == py::self)/\/\/ .def(py::self == py::self)/g' src/mapnik_datasource.cpp && \
     sed -i 's/\.def_property_readonly("symbolizers", \&rule::get_symbolizers)/.def_property_readonly("symbolizers", \&rule::get_symbolizers).def_property_readonly("symbols", \&rule::get_symbolizers)/g' src/mapnik_rule.cpp && \
     sed -i 's/handle.cast<mapnik::value_integer>();/handle.cast<mapnik::value_integer>();}else if (py::isinstance<py::none>(handle)) {/g' src/create_datasource.hpp && \
