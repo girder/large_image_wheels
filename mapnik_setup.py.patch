@@ -1,16 +1,26 @@
 diff --git a/setup.py b/setup.py
-index a72565629..c6bae7f98 100755
+index 7afa9e5..780ba70 100755
 --- a/setup.py
 +++ b/setup.py
-@@ -13,15 +13,8 @@ def check_output(args):
+@@ -1,6 +1,6 @@
+ #! /usr/bin/env python3
+ 
+-from pybind11.setup_helpers import Pybind11Extension, build_ext, ParallelCompile, naive_recompile
++from pybind11.setup_helpers import Pybind11Extension, build_ext
+ from setuptools import setup, find_namespace_packages
+ import sys, subprocess, os, glob
+ 
+@@ -12,17 +12,8 @@ def check_output(args):
       return output.rstrip('\n')
  
  linkflags = []
 -bin_path = os.path.join(check_output([mapnik_config, '--prefix']),'bin')
 -lib_path = os.path.join(check_output([mapnik_config, '--prefix']),'lib')
+-icu_data = check_output([mapnik_config, '--icu-data'])
+-proj_lib = check_output([mapnik_config, '--proj-lib'])
+-gdal_data = check_output([mapnik_config, '--gdal-data'])
+-
 -linkflags.extend(check_output([mapnik_config, '--libs']).split(' '))
--linkflags.extend(check_output([mapnik_config, '--ldflags']).split(' '))
--linkflags.extend(check_output([mapnik_config, '--dep-libs']).split(' '))
 -linkflags.extend([
 -    '-lmapnik-wkt',
 -    '-lmapnik-json',
@@ -20,7 +30,7 @@ index a72565629..c6bae7f98 100755
  
  # Remove symlinks
  if os.path.islink('packaging/mapnik/bin') :
-@@ -33,34 +26,28 @@ f_paths = open('packaging/mapnik/paths.py', 'w')
+@@ -34,50 +25,28 @@ f_paths = open('packaging/mapnik/paths.py', 'w')
  f_paths.write('import os\n')
  f_paths.write('\n')
  
@@ -33,7 +43,7 @@ index a72565629..c6bae7f98 100755
 -else:
 -     if not os.path.exists('packaging/mapnik/bin'):
 -          os.symlink(bin_path, 'packaging/mapnik/bin')
--     if not os.path.exists('packaging/mapnik/lib') :
+-     if not os.path.exists('packaging/mapnik/lib'):
 -          os.symlink(lib_path, 'packaging/mapnik/lib')
 -     else:
 -          names = (name for name in os.listdir(lib_path) if os.path.isfile(os.path.join(lib_path, name)))
@@ -43,6 +53,22 @@ index a72565629..c6bae7f98 100755
 -          input_plugin_path = check_output([mapnik_config, '--input-plugins'])
 -          if not os.path.exists('packaging/mapnik/lib/mapnik/input'):
 -               os.symlink(input_plugin_path, 'packaging/mapnik/lib/mapnik/input')
+-     if not os.path.exists('packaging/mapnik/share'):
+-          os.mkdir('packaging/mapnik/share')
+-     if not os.path.exists('packaging/mapnik/share/icu'):
+-          os.mkdir('packaging/mapnik/share/icu')
+-     result = glob.glob(os.path.join(icu_data,'*.dat'))
+-     if len(result) == 1:
+-          icu_dat_file = os.path.basename(result[0])
+-          if not os.path.exists(os.path.join('packaging/mapnik/share/icu',icu_dat_file)):
+-               os.symlink(result[0], os.path.join('packaging/mapnik/share/icu',icu_dat_file))
+-     else:
+-          print("Error: can't locate ICU data file")
+-          sys.exit(1)
+-     if not os.path.exists('packaging/mapnik/share/gdal'):
+-          os.symlink(gdal_data, 'packaging/mapnik/share/gdal')
+-     if not os.path.exists('packaging/mapnik/share/proj'):
+-          os.symlink(gdal_data, 'packaging/mapnik/share/proj')
 -     f_paths.write("mapniklibpath = os.path.join(os.path.dirname(__file__), 'lib')\n")
 -     f_paths.write("inputpluginspath = os.path.join(os.path.dirname(__file__), 'lib/mapnik/input')\n")
 -     f_paths.write("fontscollectionpath = os.path.join(os.path.dirname(__file__), 'lib/mapnik/fonts')\n")
@@ -75,7 +101,7 @@ index a72565629..c6bae7f98 100755
  
  if sys.platform == 'darwin':
       pass
-@@ -128,9 +115,9 @@ ext_modules = [
+@@ -145,18 +114,17 @@ ext_modules = [
  ]
  
  if os.environ.get("CC", False) == False:
@@ -85,9 +111,10 @@ index a72565629..c6bae7f98 100755
 -    os.environ["CXX"] = check_output([mapnik_config, '--cxx'])
 +    os.environ["CXX"] = 'c++'
  
+-ParallelCompile("NUM_JOBS", needs_recompile=naive_recompile).install()
  setup(
       name="mapnik",
-@@ -138,7 +125,7 @@ setup(
+      include_package_data=True,
       packages=find_namespace_packages(where="packaging"),
       package_dir={"": "packaging"},
       package_data={
@@ -96,7 +123,7 @@ index a72565629..c6bae7f98 100755
            "mapnik.bin": ["*"],
            "mapnik.lib": ["libmapnik*"],
            "mapnik.lib.mapnik.fonts":["*"],
-@@ -149,5 +136,6 @@ setup(
+@@ -170,5 +138,6 @@ setup(
            "mapnik.lib": ["*.a"]
       },
       ext_modules=ext_modules,

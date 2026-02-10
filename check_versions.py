@@ -105,7 +105,7 @@ Packages = {
         ],
     },
     'giflib': {
-        'filelist': 'https://sourceforge.net/projects/giflib/files/',
+        'filelist': 'https://sourceforge.net/projects/giflib/files/giflib-6.x',
         're': r'giflib-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.gz\/download',
     },
     'glib': {
@@ -368,10 +368,10 @@ Packages = {
     },
     # MrSID's listing of versions is behind an agreement page, which prevents
     # easily checking the version.
-    'mrsid': {
-        'filelist': 'https://www.extensis.com/support/developers-sdk-version-downloads',
-        're': r'MrSID_DSDK-([0-9]+\.[0-9]+(|\.[0-9]+(|\.[0-9]+)))-rhel[0-9]+.x86-64.gcc[0-9]+\.(tar\.gz|zip)$',  # noqa
-    },
+    # 'mrsid': {
+    #     'filelist': 'https://www.extensis.com/support/developers-sdk-version-downloads',
+    #     're': r'MrSID_DSDK-([0-9]+\.[0-9]+(|\.[0-9]+(|\.[0-9]+)))-rhel[0-9]+.x86-64.gcc[0-9]+\.(tar\.gz|zip)$',  # noqa
+    # },
     'mysql': {
         'filelist': 'https://dev.mysql.com/downloads/mysql/?tpl=version&os=src',
         # 're': r'mysql-boost-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)(&|$)',
@@ -552,14 +552,12 @@ Packages = {
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'xz': {
-        # 'git': 'https://github.com/tukaani-project/xz.git',
-        # 're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
-        'filelist': 'https://sourceforge.net/projects/lzmautils/files/',
-        're': r'xz-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.gz\/download',
+        'git': 'https://github.com/tukaani-project/xz.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'zlib': {
-        'filelist': 'https://zlib.net/',
-        're': r'zlib-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
+        'git': 'https://github.com/madler/zlib.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'zlib-ng': {
         'git': 'https://github.com/zlib-ng/zlib-ng.git',
@@ -567,8 +565,7 @@ Packages = {
     },
     'zstd': {
         'git': 'https://github.com/facebook/zstd.git',
-        're': r'v([0-4]+\.[0-9]+(|\.[0-9]+))$',
-        # 're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
 }
 

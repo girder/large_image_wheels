@@ -189,14 +189,11 @@ RUN \
 RUN \
     echo "`date` zlib" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://zlib.net/zlib-`getver.py zlib`.tar.gz -L -o zlib.tar.gz && \
-    mkdir zlib && \
-    tar -zxf zlib.tar.gz -C zlib --strip-components 1 && \
-    rm -f zlib.tar.gz && \
+    git clone --depth=1 --single-branch -b v`getver.py zlib` -c advice.detachedHead=false https://github.com/madler/zlib.git && \
     cd zlib && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DZLIB_BUILD_EXAMPLES=OFF && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DZLIB_BUILD_TESTING=OFF -DCMAKE_INSTALL_LIBDIR=lib && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -500,7 +497,7 @@ cd /build && \
 # RUN \
     echo "`date` giflib" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://sourceforge.net/projects/giflib/files/giflib-`getver.py giflib`.tar.gz/download -L -o giflib.tar.gz && \
+    curl --retry 5 --silent https://gigenet.dl.sourceforge.net/project/giflib/giflib-6.x/giflib-`getver.py giflib`.tar.gz -L -o giflib.tar.gz && \
     mkdir giflib && \
     tar -zxf giflib.tar.gz -C giflib --strip-components 1 && \
     rm -f giflib.tar.gz && \
@@ -1262,7 +1259,9 @@ RUN \
 # CVS tool used by several libraries
 RUN \
     echo "`date` fossil" >> /build/log.txt && \
-    if [ "$AUDITWHEEL_ARCH" == "x86_64" ]; then \
+    if false; then \
+    # We could periodically check if the pre-built binaries work anywhere \
+    # if [ "$AUDITWHEEL_ARCH" == "x86_64" ]; then \
     # fossil executable \
     curl --retry 5 --silent -L https://fossil-scm.org/home/uv/fossil-linux-x64-`getver.py fossil`.tar.gz -o fossil.tar.gz && \
     tar -zxf fossil.tar.gz && \
@@ -1270,9 +1269,9 @@ RUN \
     rm -f fossil.tar.gz && \
     true; else \
     # fossil from source \
-    # Previously, we had to build fossil to allow it to work in our
-    # environment.  The prebuilt binaries fail because they can't find any of
-    # a list of versions of GLIBC.
+    # In some environment, we have to build fossil to allow it to work.  The
+    # prebuilt binaries fail because they can't find any of a list of versions
+    # of GLIBC.
     curl --retry 5 --silent -L https://github.com/drhsqlite/fossil-mirror/archive/refs/tags/version-`getver.py fossil`.tar.gz -o fossil.tar.gz && \
     mkdir fossil && \
     tar -zxf fossil.tar.gz -C fossil --strip-components 1 && \
@@ -1502,7 +1501,7 @@ RUN \
     cd hdf4 && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DHDF4_BUILD_FORTRAN=OFF -DHDF4_ENABLE_NETCDF=OFF -DHDF4_ENABLE_Z_LIB_SUPPORT=ON -DHDF4_DISABLE_COMPILER_WARNINGS=ON -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr/local && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DHDF4_BUILD_FORTRAN=OFF -DHDF4_ENABLE_NETCDF=OFF -DHDF4_ENABLE_Z_LIB_SUPPORT=ON -DHDF4_DISABLE_COMPILER_WARNINGS=ON -DBUILD_TESTING=OFF -DZLIB_DIR=/usr/local/lib64 -DCMAKE_INSTALL_PREFIX=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1852,7 +1851,7 @@ RUN \
     cd libde265 && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_SHARED=ON -DBUILD_STATIC=OFF -DWITH_EXAMPLES=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_SHARED=ON -DBUILD_STATIC=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_CXX_FLAGS=-pthread -DCMAKE_EXE_LINKER_FLAGS=-pthread -DENABLE_SDL=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1958,7 +1957,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if true; then \
+    if false; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
@@ -2199,8 +2198,8 @@ s = re.sub("\\nversion = \\".*\\"", "\\nversion = \\"'`pkg-config --modversion l
 s = s.replace("authors", "dynamic = [\\"scripts\\"]\\nauthors") \n\
 s = s.replace("license = \\"LGPL-2.1-or-later\\"", "license = { text = \\"LGPL-2.1-or-later\\"}") \n\
 open(path, "w").write(s)' && \
-    # sed -i 's/AsLongLong/AsLong/g' src/mapnik_value_converter.hpp && \
     sed -i 's/\.def(py::self == py::self)/\/\/ .def(py::self == py::self)/g' src/mapnik_datasource.cpp && \
+    sed -i 's/std::vector<std::string> plugin_directories()/std::string plugin_directories()/g' src/mapnik_datasource.cpp && \
     sed -i 's/\.def_property_readonly("symbolizers", \&rule::get_symbolizers)/.def_property_readonly("symbolizers", \&rule::get_symbolizers).def_property_readonly("symbols", \&rule::get_symbolizers)/g' src/mapnik_rule.cpp && \
     sed -i 's/handle.cast<mapnik::value_integer>();/handle.cast<mapnik::value_integer>();}else if (py::isinstance<py::none>(handle)) {/g' src/create_datasource.hpp && \
     sed -i 's/to_string3)/to_string3).def("tostring",\&to_string1).def("tostring",\&to_string2).def("tostring",\&to_string3)/g' src/mapnik_image.cpp && \
@@ -2354,7 +2353,7 @@ RUN \
     tar -zxf orc.tar.gz -C orc --strip-components 1 && \
     rm -f orc.tar.gz && \
     cd orc && \
-    meson setup --prefix=/usr/local --buildtype=release --optimization=3 -Dgtk_doc=disabled -Dtests=disabled -Dexamples=disabled -Dbenchmarks=disabled _build && \
+    meson setup --prefix=/usr/local --buildtype=release --optimization=3 -Dtests=disabled -Dexamples=disabled -Dbenchmarks=disabled _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
