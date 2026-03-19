@@ -1,6 +1,6 @@
 advancecomp 2.6
 armadillo 15.2.4
-bioformats 8.4.0
+bioformats 8.5.0
 blosc 1.21.6
 boost 1.90.0
 cairo 1.18.4
@@ -17,14 +17,14 @@ fyba b00ae60436bd24145df7006a211219f5fdef6011
 fyba-release 4.1.1
 gdal 3.12.2
 gdal-pypi 3.12.2
-gdal-sha 561534206e1e8007cf9ee1512560b2cdfe3c4d42
+gdal-sha cfc1a3eee8c9d0f734d94e4d790ed1eacede2ded
 gdal-source 3.13.0
 giflib 6.1.2
 glib 2.88.0
 glymur 0.14.7
 glymur-pypi 0.14.7
 gobject-introspection 1.86.0
-harfbuzz 13.1.1
+harfbuzz 13.2.0
 hdf4 4_2_16
 hdf5 1_14_3
 icu4c 77-1
