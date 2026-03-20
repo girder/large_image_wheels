@@ -155,8 +155,18 @@ COPY versions.txt \
     python-javabridge.pyx.patch \
     ./
 
-# Newer version of pkg-config than available in manylinux
 RUN \
+    echo "`date` autoconf" >> /build/log.txt && \
+    curl -OLJ https://ftp.gnu.org/gnu/autoconf/autoconf-2.72.tar.gz && \
+    tar -zxvf autoconf-2.72.tar.gz && \
+    cd autoconf-2.72 && \
+    ./configure && \
+    make install && \
+    echo "`date` autoconf" >> /build/log.txt && \
+cd /build && \
+# Newer version of pkg-config than available in manylinux
+# \
+# RUN \
     echo "`date` pkg-config" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
@@ -1638,12 +1648,11 @@ RUN \
     echo "`date` postgresql" >> /build/log.txt
 
 # Used by GDAL, mapnik, libvips.  PDF reader
-# PINNED - GDAL hasn't followed a change to 26.02.0
 RUN \
     echo "`date` poppler" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    # until timeout 60 git clone --depth=1 --single-branch -b poppler-`getver.py poppler` -c advice.detachedHead=false https://gitlab.freedesktop.org/poppler/poppler.git; do sleep 5; echo "retrying"; done && \
-    until timeout 60 git clone --depth=1 --single-branch -b poppler-26.01.0 -c advice.detachedHead=false https://gitlab.freedesktop.org/poppler/poppler.git; do sleep 5; echo "retrying"; done && \
+    until timeout 60 git clone --depth=1 --single-branch -b poppler-`getver.py poppler` -c advice.detachedHead=false https://gitlab.freedesktop.org/poppler/poppler.git; do sleep 5; echo "retrying"; done && \
+    # until timeout 60 git clone --depth=1 --single-branch -b poppler-26.01.0 -c advice.detachedHead=false https://gitlab.freedesktop.org/poppler/poppler.git; do sleep 5; echo "retrying"; done && \
     cd poppler && \
     mkdir _build && \
     cd _build && \
@@ -1957,7 +1966,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if true; then \
+    if false; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
