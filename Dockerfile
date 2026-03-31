@@ -2203,6 +2203,7 @@ import re \n\
 path = "pyproject.toml" \n\
 s = open(path).read() \n\
 s = s.replace(".beta", "") \n\
+s = s.replace("pybind11 >= 3.0.2", "pybind11 == 3.0.2") \n\
 s = re.sub("\\nversion = \\".*\\"", "\\nversion = \\"'`pkg-config --modversion libmapnik`.1$'\\"", s) \n\
 s = s.replace("authors", "dynamic = [\\"scripts\\"]\\nauthors") \n\
 s = s.replace("license = \\"LGPL-2.1-or-later\\"", "license = { text = \\"LGPL-2.1-or-later\\"}") \n\
