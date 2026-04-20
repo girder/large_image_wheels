@@ -224,9 +224,11 @@ cd /build && \
 cd /build && \
 # \
 # # Make our own openssl so we don't depend on system libraries. \
+# PINNED - openldap doesn't handle version 4.x yet \
 # RUN \
     echo "`date` openssl" >> /build/log.txt && \
-    git clone --depth=1 --single-branch -b openssl-`getver.py openssl` -c advice.detachedHead=false https://github.com/openssl/openssl.git openssl && \
+    # git clone --depth=1 --single-branch -b openssl-`getver.py openssl` -c advice.detachedHead=false https://github.com/openssl/openssl.git openssl && \
+    git clone --depth=1 --single-branch -b openssl-3.6.2 -c advice.detachedHead=false https://github.com/openssl/openssl.git openssl && \
     cd openssl && \
     ./config --prefix=/usr/local --openssldir=/usr/local/ssl shared zlib no-tests && \
     make --silent -j ${JOBS} && \
@@ -1043,7 +1045,11 @@ RUN \
     cd fftw3 && \
     mkdir _build && \
     cd _build && \
+    if [ "$AUDITWHEEL_ARCH" == "x86_64" ]; then \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_TESTS=OFF -DENABLE_AVX=ON -DENABLE_AVX2=ON -DENABLE_SSE=ON -DENABLE_SSE2=ON -DENABLE_THREADS=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_C_FLAGS="-mavx2 -mfma -D__AVX2__" && \
+    true; else \
     cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_TESTS=OFF -DENABLE_AVX=ON -DENABLE_AVX2=ON -DENABLE_SSE=ON -DENABLE_SSE2=ON -DENABLE_THREADS=ON -DCMAKE_POLICY_VERSION_MINIMUM=3.5 && \
+    true; fi && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1099,7 +1105,6 @@ RUN \
     --with-thread \
     --with-regex \
     --with-atomic \
-    --with-system \
     --with-program_options \
     --with-url \
     --with-context \
@@ -1240,9 +1245,10 @@ RUN \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b `getver.py minizip` -c advice.detachedHead=false https://github.com/zlib-ng/minizip-ng.git && \
     cd minizip-ng && \
+    sed -i 's/message(STATUS "Using PPMD")/message(STATUS "Using PPMD")\nadd_compile_options(-fPIC)/g' CMakeLists.txt && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_SHARED_LIBS=yes -DINSTALL_INC_DIR=/usr/local/include/minizip -DMZ_OPENSSL=yes && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_SHARED_LIBS=yes -DMZ_OPENSSL=yes && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1968,7 +1974,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if false; then \
+    if true; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
