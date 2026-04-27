@@ -1,5 +1,5 @@
 diff --git a/src/openslide-vendor-mirax.c b/src/openslide-vendor-mirax.c
-index 35b2abd..cc97fac 100644
+index 7e37d9e..1798594 100644
 --- a/src/openslide-vendor-mirax.c
 +++ b/src/openslide-vendor-mirax.c
 @@ -32,6 +32,7 @@
@@ -10,7 +10,7 @@ index 35b2abd..cc97fac 100644
  
  #include <glib.h>
  #include <stdlib.h>
-@@ -141,6 +142,7 @@ enum image_format {
+@@ -139,6 +140,7 @@ enum image_format {
    FORMAT_JPEG,
    FORMAT_PNG,
    FORMAT_BMP,
@@ -18,7 +18,7 @@ index 35b2abd..cc97fac 100644
  };
  
  struct slide_zoom_level_section {
-@@ -172,6 +174,7 @@ struct image {
+@@ -170,6 +172,7 @@ struct image {
    int32_t fileno;
    int32_t start_in_file;
    int32_t imageno;   // used only for cache lookup
@@ -26,7 +26,7 @@ index 35b2abd..cc97fac 100644
    int refcount;
  };
  
-@@ -249,6 +252,24 @@ static uint32_t *read_image(openslide_t *osr,
+@@ -247,6 +250,24 @@ static uint32_t *read_image(openslide_t *osr,
                                        dest, w, h,
                                        err);
      break;
@@ -51,11 +51,22 @@ index 35b2abd..cc97fac 100644
    default:
      g_assert_not_reached();
    }
-@@ -401,6 +422,17 @@ static bool mirax_detect(const char *filename, struct _openslide_tifflike *tl,
+@@ -400,6 +421,28 @@ static bool mirax_detect(const char *filename, struct _openslide_tifflike *tl,
      g_strndup(filename, strlen(filename) - strlen(MRXS_EXT));
    g_autofree char *slidedat_path =
      g_build_filename(dirname, SLIDEDAT_INI, NULL);
 +  if (!_openslide_fexists(slidedat_path, &tmp_err)) {
++    g_autofree char *filedir = g_path_get_dirname(filename);
++    g_autofree char *flat_slidedat_path =
++      g_build_filename(filedir, SLIDEDAT_INI, NULL);
++    if (_openslide_fexists(flat_slidedat_path, &tmp_err)) {
++      return true;
++    }
++    if (tmp_err != NULL) {
++      g_propagate_prefixed_error(err, tmp_err, "Testing whether %s exists: ",
++                                 SLIDEDAT_INI);
++      return false;
++    }	  
 +    g_autofree char *basename = g_path_get_dirname(filename);
 +    if (basename) {
 +      if (g_str_has_suffix(basename, MRXS_EXT)) {
@@ -69,7 +80,7 @@ index 35b2abd..cc97fac 100644
    if (!_openslide_fexists(slidedat_path, &tmp_err)) {
      if (tmp_err != NULL) {
        g_propagate_prefixed_error(err, tmp_err, "Testing whether %s exists: ",
-@@ -833,6 +865,7 @@ static bool process_hier_data_pages_from_indexfile(struct _openslide_file *f,
+@@ -832,6 +875,7 @@ static bool process_hier_data_pages_from_indexfile(struct _openslide_file *f,
  	g_autoptr(image) image = g_new0(struct image, 1);
  	image->fileno = fileno;
  	image->start_in_file = offset;
@@ -77,7 +88,7 @@ index 35b2abd..cc97fac 100644
  	image->imageno = image_number++;
  	image->refcount = 1;
  
-@@ -976,6 +1009,8 @@ static enum image_format parse_image_format(const char *name, GError **err) {
+@@ -975,6 +1019,8 @@ static enum image_format parse_image_format(const char *name, GError **err) {
      return FORMAT_PNG;
    } else if (!strcmp(name, "BMP24")) {
      return FORMAT_BMP;
@@ -86,7 +97,7 @@ index 35b2abd..cc97fac 100644
    } else {
      g_set_error(err, OPENSLIDE_ERROR, OPENSLIDE_ERROR_FAILED,
                  "Unrecognized image format: %s", name);
-@@ -1362,8 +1397,10 @@ static int get_associated_image_nonhier_offset(GKeyFile *keyfile,
+@@ -1361,8 +1407,10 @@ static int get_associated_image_nonhier_offset(GKeyFile *keyfile,
    // verify image format
    // we have only ever seen JPEG
    if (parse_image_format(format, NULL) != FORMAT_JPEG) {
@@ -97,7 +108,7 @@ index 35b2abd..cc97fac 100644
      return -1;
    }
  
-@@ -1376,10 +1413,22 @@ static bool mirax_open(openslide_t *osr, const char *filename,
+@@ -1375,10 +1423,33 @@ static bool mirax_open(openslide_t *osr, const char *filename,
    // get directory from filename
    g_autofree char *dirname =
      g_strndup(filename, strlen(filename) - strlen(MRXS_EXT));
@@ -106,10 +117,21 @@ index 35b2abd..cc97fac 100644
 +  g_autofree char *slidedat_path2 =
 +    g_build_filename(dirname, SLIDEDAT_INI, NULL);
 +  if (!_openslide_fexists(slidedat_path2, &tmp_err)) {
-+    g_free(dirname);
-+    g_autofree char *basename = g_path_get_dirname(filename);
-+    dirname = g_strndup(basename, strlen(basename) - strlen(MRXS_EXT));
-+    girder_paths = true;
++    g_autofree char *filedir = g_path_get_dirname(filename);
++    g_autofree char *flat_slidedat_path =
++      g_build_filename(filedir, SLIDEDAT_INI, NULL);
++    if (_openslide_fexists(flat_slidedat_path, &tmp_err)) {
++      g_free(dirname);
++      dirname = g_strdup(filedir);
++    } else if (tmp_err != NULL) {
++      g_propagate_error(err, tmp_err);
++      return false;
++    } else {	  
++      g_free(dirname);
++      g_autofree char *basename = g_path_get_dirname(filename);
++      dirname = g_strndup(basename, strlen(basename) - strlen(MRXS_EXT));
++      girder_paths = true;
++    }
 +  }
  
    // first, check slidedat
@@ -121,7 +143,7 @@ index 35b2abd..cc97fac 100644
    // hash the slidedat
    if (!_openslide_hash_file(quickhash1, slidedat_path, err)) {
      return false;
-@@ -1412,7 +1461,7 @@ static bool mirax_open(openslide_t *osr, const char *filename,
+@@ -1411,7 +1482,7 @@ static bool mirax_open(openslide_t *osr, const char *filename,
    READ_KEY_OR_FAIL(objective_magnification, slidedat, GROUP_GENERAL,
                     KEY_OBJECTIVE_MAGNIFICATION, integer);
  
@@ -130,7 +152,7 @@ index 35b2abd..cc97fac 100644
    int image_divisions =
      g_key_file_get_integer(slidedat, GROUP_GENERAL,
                             KEY_CAMERA_IMAGE_DIVISIONS_PER_SIDE, &tmp_err);
-@@ -1502,7 +1551,7 @@ static bool mirax_open(openslide_t *osr, const char *filename,
+@@ -1501,7 +1572,7 @@ static bool mirax_open(openslide_t *osr, const char *filename,
      g_autofree char *key = g_strdup_printf(KEY_d_FILE, i);
      g_autofree char *name = NULL;
      READ_KEY_OR_FAIL(name, slidedat, GROUP_DATAFILE, key, value);
@@ -139,7 +161,7 @@ index 35b2abd..cc97fac 100644
    }
  
    // load data from all slide_zoom_level_section_names sections
-@@ -1627,7 +1676,7 @@ static bool mirax_open(openslide_t *osr, const char *filename,
+@@ -1626,7 +1697,7 @@ static bool mirax_open(openslide_t *osr, const char *filename,
    */
  
    // read indexfile

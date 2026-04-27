@@ -14,7 +14,7 @@ set -u
 TEST_BIOFORMATS=true
 TEST_GDAL=true
 TEST_GLYMUR=$(python3 -c 'import sys, sysconfig;sys.exit(sys.version_info < (3, 10) or sysconfig.get_config_var("Py_GIL_DISABLED") == 1)' && echo true || echo false)
-TEST_JAVABRIDGE=true
+TEST_JAVABRIDGE=$(python3 -c 'import sys, sysconfig;sys.exit(sysconfig.get_config_var("Py_GIL_DISABLED") == 1 and sys.version_info < (3, 14))' && echo true || echo false)
 TEST_MAPNIK=true
 TEST_OPENSLIDE=$(python3 -c 'import sys, sysconfig;sys.exit(sys.version_info < (3, 10))' && echo true || echo false)
 TEST_PYLIBMC=true
@@ -138,6 +138,8 @@ echo 'Download an ome.tiff file'
 curl --silent --retry 5 -L -o sample.ome.tif https://data.kitware.com/api/v1/file/5cb9c6288d777f072b4e85f0/download
 echo 'Download a webp compressed file'
 curl --silent --retry 5 -L  -o d042-353.crop.small.float32.tif https://data.kitware.com/api/v1/file/hashsum/sha512/8b640e9adcd0b8aba794666027b80215964d075e76ca2ebebefc7e17c3cd79af7da40a40151e2a2ba0ae48969e54275cf69a3cfc1a2a6b87fbb0d186013e5489/download
+echo 'Download a MIRAX (mrxs) file'
+curl --silent --retry 5 -L  -o mrxs.zip https://data.kitware.com/api/v1/file/hashsum/sha512/c5195f2740e92e4375c5011c4dd34d9b3e8524166ba1478ead95ad1a9207b10f3a27488ee3c7f55c6ff3b9412618d48f5dfd0a45e4f776b30c872b9ed1ab30d3/download
 
 if $TEST_OPENSLIDE; then
   echo 'Use large_image to read an openslide file'
@@ -518,6 +520,23 @@ if $TEST_PYVIPS; then
 import large_image_source_vips
 
 large_image_source_vips.open('sample.ome.tif')
+EOF
+fi
+
+echo 'test a flattened mrxs file'
+if $TEST_OPENSLIDE; then
+  mkdir mrxs
+  python <<EOF
+import os
+import zipfile
+
+import large_image_source_openslide
+
+with zipfile.ZipFile('mrxs.zip') as z:
+    [open(os.path.join('mrxs', os.path.basename(f)), 'wb').write(z.read(f)) for f in z.namelist() if not f.endswith('/')]
+ts = large_image_source_openslide.open('mrxs/Mirax2-Fluorescence-1.mrxs')
+assert ts.sizeX == 10487
+assert ts.sizeY == 13350
 EOF
 fi
 

@@ -102,6 +102,7 @@ RUN \
     # We can't handle the no-gil variant yet (lxml doesn't work yet) \
     # rm -rf /opt/py/cp313-cp313t && \
     # rm -rf /opt/py/cp314-cp314t* && \
+    rm -rf /opt/py/cp315* && \
     if [ "$PYPY" = true ]; then \
     echo "Only building pypy versions" && \
     rm -rf /opt/py/cp* && \
@@ -2335,7 +2336,7 @@ open(path, "w").write(s)' && \
 import re \n\
 path = "openslide/_version.py" \n\
 s = open(path).read() \n\
-s = re.sub(r"(__version__ = \'[^\']*)\'", "\\\\1.1\'", s) \n\
+s = re.sub(r"(__version__ = \'[^\']*)\'", "\\\\1.2\'", s) \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
 path = "pyproject.toml" \n\
