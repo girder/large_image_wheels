@@ -140,6 +140,8 @@ echo 'Download a webp compressed file'
 curl --silent --retry 5 -L  -o d042-353.crop.small.float32.tif https://data.kitware.com/api/v1/file/hashsum/sha512/8b640e9adcd0b8aba794666027b80215964d075e76ca2ebebefc7e17c3cd79af7da40a40151e2a2ba0ae48969e54275cf69a3cfc1a2a6b87fbb0d186013e5489/download
 echo 'Download a MIRAX (mrxs) file'
 curl --silent --retry 5 -L  -o mrxs.zip https://data.kitware.com/api/v1/file/hashsum/sha512/c5195f2740e92e4375c5011c4dd34d9b3e8524166ba1478ead95ad1a9207b10f3a27488ee3c7f55c6ff3b9412618d48f5dfd0a45e4f776b30c872b9ed1ab30d3/download
+echo 'Download a jp2 file'
+curl --silent --retry 5 -L  -o erdas_foo.jp2 https://github.com/OSGeo/gdal/raw/master/autotest/gdrivers/data/jpeg2000/erdas_foo.jp2
 
 if $TEST_OPENSLIDE; then
   echo 'Use large_image to read an openslide file'
@@ -345,11 +347,23 @@ pprint.pprint(d.GetMetadata()['NITF_BLOCKA_FRFC_LOC_01'])
 EOF
 fi
 
-echo 'Use large_image and gdal to open an rgba geotiff'
+if $TEST_GDAL; then
+  echo 'Use large_image and gdal to open an rgba geotiff'
 python <<EOF
 import large_image
 print(large_image.open('rgba_geotiff.tiff'))
 EOF
+fi
+
+if $TEST_GDAL && $TEST_MAPNIK; then
+  echo 'Use large_image and gdal to open a jp2 after importing mapnik'
+python <<EOF
+import large_image_source_mapnik
+import large_image_source_gdal
+ts = large_image_source_gdal.open('erdas_foo.jp2')
+print(repr(ts.getThumbnail()))
+EOF
+fi
 
 if $TEST_MAPNIK; then
   echo 'Test import order with shapely, mapnik, and pyproj'

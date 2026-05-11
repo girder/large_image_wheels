@@ -95,12 +95,9 @@ RUN \
     echo "`date` rm python versions" >> /build/log.txt && \
     mkdir /opt/py && \
     ln -s /opt/python/* /opt/py/. && \
-    # Enable all versions in boost as well \
-    rm -rf /opt/py/cp36* && \
-    rm -rf /opt/py/cp37* && \
+    # Disable old versions \
     rm -rf /opt/py/cp38* && \
     # We can't handle the no-gil variant yet (lxml doesn't work yet) \
-    # rm -rf /opt/py/cp313-cp313t && \
     # rm -rf /opt/py/cp314-cp314t* && \
     rm -rf /opt/py/cp315* && \
     if [ "$PYPY" = true ]; then \
