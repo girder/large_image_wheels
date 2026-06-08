@@ -1972,7 +1972,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if true; then \
+    if false; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
@@ -2276,8 +2276,8 @@ RUN \
     # This had been \
     # git pull --rebase https://github.com/iewchen/openslide zeiss-czi-jxr && \
     # but that needs rebasing \
-    git apply ../openslide-iewchen-zeiss-czi-jxr.patch && \
-    git apply ../openslide-vendor-mirax.c.patch && \
+    git am ../openslide-iewchen-zeiss-czi-jxr.patch && \
+    git am ../openslide-vendor-mirax.c.patch && \
     meson setup --prefix=/usr/local --buildtype=release --optimization=3 _build && \
     cd _build && \
     ninja -j ${JOBS} && \
@@ -2333,7 +2333,7 @@ open(path, "w").write(s)' && \
 import re \n\
 path = "openslide/_version.py" \n\
 s = open(path).read() \n\
-s = re.sub(r"(__version__ = \'[^\']*)\'", "\\\\1.2\'", s) \n\
+s = re.sub(r"(__version__ = \'[^\']*)\'", "\\\\1.1\'", s) \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
 path = "pyproject.toml" \n\

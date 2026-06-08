@@ -1,3 +1,13 @@
+From e4fb894ff78b81886bd473b93ac451d1a842859b Mon Sep 17 00:00:00 2001
+From: Your Name <you@example.com>
+Date: Mon, 8 Jun 2026 12:56:22 +0000
+Subject: [PATCH] openslide-vendor-mirax.c
+
+Add support for JPEG2000 compression; handle path differences
+---
+ src/openslide-vendor-mirax.c | 79 ++++++++++++++++++++++++++++++++++--
+ 1 file changed, 75 insertions(+), 4 deletions(-)
+
 diff --git a/src/openslide-vendor-mirax.c b/src/openslide-vendor-mirax.c
 index 00326b6..c2e40b9 100644
 --- a/src/openslide-vendor-mirax.c
@@ -170,3 +180,6 @@ index 00326b6..c2e40b9 100644
    g_autoptr(_openslide_file) indexfile = _openslide_fopen(index_path, err);
    if (!indexfile) {
      return false;
+-- 
+2.54.0
+

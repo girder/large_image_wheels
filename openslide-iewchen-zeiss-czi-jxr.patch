@@ -1,5 +1,33 @@
+From f5c302900c39c8605ea1479a8e552c6e2d15ae94 Mon Sep 17 00:00:00 2001
+From: Your Name <you@example.com>
+Date: Mon, 8 Jun 2026 12:36:06 +0000
+Subject: [PATCH] iewchen-zeiss-czi-jxr
+
+Add support for CZI JXR compression
+---
+ .github/workflows/c.yaml                    |   4 +
+ meson.build                                 |  58 ++++++
+ src/meson.build                             |   3 +
+ src/openslide-decode-jxr.c                  | 218 ++++++++++++++++++++
+ src/openslide-decode-jxr.h                  |  33 +++
+ src/openslide-image.c                       |  23 +++
+ src/openslide-image.h                       |  10 +
+ src/openslide-vendor-zeiss.c                | 153 +++++++++++---
+ test/cases/mosaic.ini                       |  10 +
+ test/cases/slides.yaml                      |   2 +
+ test/cases/zeiss-czi-jxr-48bits/config.yaml |   5 +
+ test/cases/zeiss-czi-jxr/config.yaml        |  21 ++
+ test/clang.supp                             |   1 +
+ 13 files changed, 516 insertions(+), 25 deletions(-)
+ create mode 100644 src/openslide-decode-jxr.c
+ create mode 100644 src/openslide-decode-jxr.h
+ create mode 100644 src/openslide-image.c
+ create mode 100644 src/openslide-image.h
+ create mode 100644 test/cases/zeiss-czi-jxr-48bits/config.yaml
+ create mode 100644 test/cases/zeiss-czi-jxr/config.yaml
+
 diff --git a/.github/workflows/c.yaml b/.github/workflows/c.yaml
-index b207351..b9c155d 100644
+index b099f7d..5cb0293 100644
 --- a/.github/workflows/c.yaml
 +++ b/.github/workflows/c.yaml
 @@ -50,6 +50,7 @@ jobs:
@@ -35,11 +63,11 @@ index b207351..b9c155d 100644
                      libpng-dev$arch \
                      libsqlite3-dev$arch \
 diff --git a/meson.build b/meson.build
-index 346f801..6a635d6 100644
+index 1a0f194..9d545f5 100644
 --- a/meson.build
 +++ b/meson.build
 @@ -173,6 +173,64 @@ dicom_dep = dependency(
-   version : '>=1.2.0',
+   version : '>=1.3.0',
  )
  
 +jxr_dep = dependency(
@@ -104,7 +132,7 @@ index 346f801..6a635d6 100644
  if jpeg_dep.type_name() != 'internal' and not cc.has_function(
    'jpeg_mem_src',
 diff --git a/src/meson.build b/src/meson.build
-index 17c81a1..4854b2f 100644
+index 889fbb9..e3aa662 100644
 --- a/src/meson.build
 +++ b/src/meson.build
 @@ -48,6 +48,7 @@ openslide_sources = files(
@@ -123,7 +151,7 @@ index 17c81a1..4854b2f 100644
    'openslide-jdatasrc.c',
    'openslide-util.c',
    'openslide-vendor-aperio.c',
-@@ -98,6 +100,7 @@ libopenslide = library(
+@@ -99,6 +101,7 @@ libopenslide = library(
      tiff_dep,
      openjpeg_dep,
      jpeg_dep,
@@ -440,7 +468,7 @@ index 0000000..3d70ed7
 +
 +#endif
 diff --git a/src/openslide-vendor-zeiss.c b/src/openslide-vendor-zeiss.c
-index 1512742..46c2636 100644
+index 011edc5..eb800f8 100644
 --- a/src/openslide-vendor-zeiss.c
 +++ b/src/openslide-vendor-zeiss.c
 @@ -28,9 +28,12 @@
@@ -685,7 +713,7 @@ index 1512742..46c2636 100644
    const char *size_x =
      g_hash_table_lookup(osr->properties, "zeiss.Information.Image.SizeX");
    const char *size_y =
-@@ -1143,6 +1231,7 @@ static bool validate_subblk(const struct czi_subblk *sb, GError **err) {
+@@ -1152,6 +1240,7 @@ static bool validate_subblk(const struct czi_subblk *sb, GError **err) {
    case COMP_NONE:
    case COMP_ZSTD0:
    case COMP_ZSTD1:
@@ -693,7 +721,7 @@ index 1512742..46c2636 100644
      break;
    default:
      if (sb->compression >= 0 &&
-@@ -1382,6 +1471,20 @@ static bool zeiss_open(openslide_t *osr, const char *filename,
+@@ -1391,6 +1480,20 @@ static bool zeiss_open(openslide_t *osr, const char *filename,
      return false;
    }
  
@@ -715,10 +743,10 @@ index 1512742..46c2636 100644
    if (!read_scenes_set_prop(osr, czi, &max_downsample, err)) {
      return false;
 diff --git a/test/cases/mosaic.ini b/test/cases/mosaic.ini
-index 0da5926..5ba3239 100644
+index 48eb452..57f9144 100644
 --- a/test/cases/mosaic.ini
 +++ b/test/cases/mosaic.ini
-@@ -134,3 +134,13 @@ y = 2100
+@@ -145,3 +145,13 @@ y = 2100
  base = Zeiss/Zeiss-5-SlidePreview-Zstd1-HiLo.czi
  x = 100
  y = 200
@@ -733,10 +761,10 @@ index 0da5926..5ba3239 100644
 +x = 100
 +y = 200
 diff --git a/test/cases/slides.yaml b/test/cases/slides.yaml
-index 863547a..859b1e9 100644
+index 56ae5e8..1c40777 100644
 --- a/test/cases/slides.yaml
 +++ b/test/cases/slides.yaml
-@@ -41,5 +41,7 @@ Trestle/CMU-1.zip:                     d52070d474de8cdaf3a6e2934dff077b0aee6e957
+@@ -45,5 +45,7 @@ Trestle/CMU-1.zip:                     d52070d474de8cdaf3a6e2934dff077b0aee6e957
  Ventana/OS-2.bif:                      8c0bcfe258574e1ec5640d280f9c5b664b76840f52b9cdcd321ec690c113dbd2
  
  Zeiss/Zeiss-5-Uncompressed.czi:        5c794c0a118e11a1061e246786c0da8dc0492befa5d48f42353816c043d87999
@@ -794,3 +822,6 @@ index 2c1584b..b158e46 100644
  
  [unsigned-integer-overflow]
  # unsigned overflow isn't UB but we check for it, and ignore cases where
+-- 
+2.54.0
+
