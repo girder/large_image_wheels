@@ -17,7 +17,7 @@ fyba b00ae60436bd24145df7006a211219f5fdef6011
 fyba-release 4.1.1
 gdal 3.13.1
 gdal-pypi 3.13.1
-gdal-sha 757e9f7317c00f41abe1fb2850f80f07e5fcaedd
+gdal-sha 8f90c316b35873fe8590188045761282992670bc
 gdal-source 3.14.0
 giflib 6.1.3
 glib 2.89.0
@@ -69,7 +69,7 @@ libspatialite 39ad6f1ed3
 libssh2 1.11.1
 libtiff 4.7.1
 libtirpc 1-2-6
-libvips 8.18.2
+libvips 8.18.3
 libwebp 1.6.0
 libxcrypt 4.5.2
 libxml2 2.15.3
@@ -94,9 +94,9 @@ openmpi 5.0.10
 openslide 4.0.1
 openslide-python 1.4.6
 openslide-python-pypi 1.4.6
-openslide-python-sha f2017561cc30575791ce35c4b5cf88dfaf9e9e59
-openslide-sha fe79a9713bef2bfd64bbfefd15704060764b1274
-openssl 4.0.0
+openslide-python-sha e1931b1aa05716fbf937e2227dd79230f0d44190
+openslide-sha d960b226a5012c66f9c481ce7e48d40aa18f9e0d
+openssl 4.0.1
 orc 0.4.42
 pango 1.57.1
 parallel-netcdf 1.14.1
