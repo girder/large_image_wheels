@@ -136,6 +136,10 @@ Packages = {
         'git': 'https://github.com/HDFGroup/hdf5.git',
         're': r'hdf5-([0-9]+_[0-9]+(|_[0-9]+))$',
     },
+    'highfive': {
+        'git': 'https://github.com/highfive-devs/highfive.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
     'icu4c': {
         'git': 'https://github.com/unicode-org/icu.git',
         're': r'release-([0-9]+-[0-9]+(|-[0-9]+))$',

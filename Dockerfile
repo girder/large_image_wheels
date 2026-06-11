@@ -357,7 +357,7 @@ RUN \
     echo "`date` patchelf" >> /build/log.txt && \
     export JOBS=`nproc` && \
     # git clone --depth=1 --single-branch -b `getver.py patchelf` -c advice.detachedHead=false https://github.com/NixOS/patchelf && \
-    git clone --depth=1 --single-branch -b 0.16.1 -c advice.detachedHead=false https://github.com/NixOS/patchelf && \
+    git clone --depth=1 --single-branch -b 0.19.1 -c advice.detachedHead=false https://github.com/NixOS/patchelf && \
     cd patchelf && \
     ./bootstrap.sh && \
     ./configure --silent --prefix=/usr/local && \
@@ -590,13 +590,13 @@ cd /build && \
 RUN \
     echo "`date` libjpeg-turbo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    export CFLAGS="$CFLAGS -O3" && \
+    export CFLAGS="$CFLAGS -O3 -fPIC -lm" && \
     export CXXFLAGS="$CXXFLAGS -O3" && \
     git clone --depth=1 --single-branch -b `getver.py libjpeg-turbo` -c advice.detachedHead=false https://github.com/libjpeg-turbo/libjpeg-turbo.git && \
     cd libjpeg-turbo && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD=${SOURCE_DATE_EPOCH} && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INSTALL_PREFIX=/usr/local -DENABLE_STATIC=OFF -DBUILD=${SOURCE_DATE_EPOCH} && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     echo "`date` libjpeg-turbo" >> /build/log.txt
@@ -1533,7 +1533,7 @@ RUN \
     # We need HDF5_ENABLE_PARALLEL=ON for parallel netcdf and \
     # HDF5_BUILD_CPP_LIB=ON for gdal, so we have to add ALLOW_UNSUPPORTED=ON \
     # to get both \
-    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DDEFAULT_API_VERSION=v18 -DHDF5_BUILD_EXAMPLES=OFF -DHDF5_BUILD_FORTRAN=OFF -DHDF5_ENABLE_PARALLEL=ON -DHDF5_ENABLE_Z_LIB_SUPPORT=ON -DHDF5_BUILD_GENERATORS=ON -DHDF5_ENABLE_DIRECT_VFD=ON -DHDF5_BUILD_CPP_LIB=ON -DHDF5_DISABLE_COMPILER_WARNINGS=ON -DBUILD_TESTING=OFF -DZLIB_DIR=/usr/local/lib -DMPI_C_COMPILER=/usr/local/bin/mpicc -DMPI_C_HEADER_DIR=/usr/local/include -DMPI_mpi_LIBRARY=/usr/local/lib/libmpi.so -DMPI_C_LIB_NAMES=mpi -DHDF5_BUILD_DOC=OFF -DALLOW_UNSUPPORTED=ON -DCMAKE_INSTALL_PREFIX=/usr/local && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DDEFAULT_API_VERSION=v18 -DHDF5_BUILD_EXAMPLES=OFF -DHDF5_BUILD_FORTRAN=OFF -DHDF5_ENABLE_PARALLEL=ON -DHDF5_ENABLE_Z_LIB_SUPPORT=ON -DHDF5_BUILD_GENERATORS=ON -DHDF5_ENABLE_DIRECT_VFD=ON -DHDF5_BUILD_CPP_LIB=ON -DHDF5_DISABLE_COMPILER_WARNINGS=ON -DBUILD_TESTING=OFF -DZLIB_DIR=/usr/local/lib -DMPI_C_COMPILER=/usr/local/bin/mpicc -DMPI_C_HEADER_DIR=/usr/local/include -DMPI_mpi_LIBRARY=/usr/local/lib/libmpi.so -DMPI_C_LIB_NAMES=mpi -DHDF5_BUILD_DOC=OFF -DALLOW_UNSUPPORTED=ON -DHDF5_ENABLE_THREADSAFE=ON -DCMAKE_INSTALL_PREFIX=/usr/local && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1887,8 +1887,23 @@ RUN \
     ldconfig && \
     echo "`date` libheif" >> /build/log.txt
 
-# Used by GDAL
+# Used by Kealib
 RUN \
+    echo "`date` highfive" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b v`getver.py highfive` -c advice.detachedHead=false --recurse-submodules -j ${JOBS} https://github.com/highfive-devs/highfive.git && \
+    cd highfive && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DHIGHFIVE_UNIT_TESTS=OFF -DHIGHFIVE_BUILD_DOCS=OFF -DHIGHFIVE_EXAMPLES=OFF && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` highfive" >> /build/log.txt && \
+cd /build && \
+# \
+# Used by GDAL \
+# RUN \
     echo "`date` kealib" >> /build/log.txt && \
     export JOBS=`nproc` && \
     git clone --depth=1 --single-branch -b kealib-`getver.py kealib` -c advice.detachedHead=false https://github.com/ubarsc/kealib.git && \
@@ -2762,15 +2777,16 @@ s = s.replace("entry_points={", \n\
 s = s.replace("""package_data={"javabridge": [""", \n\
 """package_data={"javabridge": [\'jvm/*\', \'jvm/*/*\', \'jvm/*/*/*\', \'jvm/*/*/*/*\', \'jvm/*/*/*/*/*\', """) \n\
 s = re.sub(r"(\'Cython)[^\']*", "\'Cython", s) \n\
-s = re.sub(r"(\'numpy)[^\']*", "\'numpy", s) \n\
+s = re.sub(r"(\'numpy)[^\']*", "\'numpy>=2", s) \n\
 s = re.sub(r\'(version="[^"]*)"\', "\\\\1.1\\"", s) \n\
+s = s.replace("extra_link_args=extra_link_args", "extra_link_args=extra_link_args,define_macros=[(\\"NPY_TARGET_VERSION\\", \\"NPY_2_0_API_VERSION\\"),]") \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
 import re \n\
 path = "pyproject.toml" \n\
 s = open(path).read() \n\
 s = re.sub(r"(cython)<3", "cython", s) \n\
-s = re.sub(r"(numpy)[^\\"]*", "numpy", s) \n\
+s = re.sub(r"(numpy)[^\\"]*", "numpy>=2", s) \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
 path = "javabridge/__init__.py" \n\
@@ -2807,7 +2823,7 @@ open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf .eggs build' && \
+    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf .eggs build _*.c' && \
     find /io/wheelhouse/ -name 'python_javabridge*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
     # auditwheel modifies the java libraries, but some of those have \
     # hard-coded relative paths, which doesn't work.  Replace them with the \
