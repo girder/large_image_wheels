@@ -1,3 +1,46 @@
+From 32d87a612e91bc04a406669e58d511c91a940336 Mon Sep 17 00:00:00 2001
+From: Your Name <you@example.com>
+Date: Wed, 22 Jul 2026 12:16:40 +0000
+Subject: [PATCH] Various fixes for wheel builds
+
+---
+ packaging/mapnik/__init__.py | 17 ++++++++
+ setup.py                     | 85 ++++++++++++------------------------
+ src/create_datasource.hpp    |  2 +-
+ src/mapnik_datasource.cpp    |  2 +-
+ src/mapnik_font_engine.cpp   |  2 +-
+ src/mapnik_image.cpp         |  2 +-
+ src/mapnik_rule.cpp          |  2 +-
+ 7 files changed, 49 insertions(+), 63 deletions(-)
+
+diff --git a/packaging/mapnik/__init__.py b/packaging/mapnik/__init__.py
+index 1fb21c7..64cea4f 100644
+--- a/packaging/mapnik/__init__.py
++++ b/packaging/mapnik/__init__.py
+@@ -39,6 +39,23 @@ Several things happen when you do:
+ import itertools
+ import os
+ import warnings
++import ctypes.util
++try:
++    ctypes.CDLL(ctypes.util.find_library("stdc++"), mode=ctypes.RTLD_GLOBAL)
++except Exception:
++    pass
++libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(
++    __file__))), 'mapnik.libs'))
++if os.path.exists(libpath):
++    libs = os.listdir(libpath)
++    libgdalpath = [lib for lib in libs if lib.startswith('libgdal')][0]
++    ctypes.cdll.LoadLibrary(os.path.join(libpath, libgdalpath))
++
++
++
++localpath = os.path.dirname(os.path.abspath( __file__ ))
++os.environ.setdefault("PROJ_DATA", os.path.join(localpath, "proj"))
++os.environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal"))
+ 
+ def bootstrap_env():
+     """
 diff --git a/setup.py b/setup.py
 index 7afa9e5..780ba70 100755
 --- a/setup.py
@@ -130,3 +173,69 @@ index 7afa9e5..780ba70 100755
 +     entry_points={'console_scripts': ['%s=mapnik.bin:program' % name for name in os.listdir('packaging/mapnik/bin') if not name.endswith('.py')]},
       cmdclass={"build_ext": build_ext},
  )
+diff --git a/src/create_datasource.hpp b/src/create_datasource.hpp
+index b6b5bfc..d3f2c02 100644
+--- a/src/create_datasource.hpp
++++ b/src/create_datasource.hpp
+@@ -54,7 +54,7 @@ inline std::shared_ptr<mapnik::datasource> create_datasource(py::kwargs const& k
+         }
+         else if (py::isinstance<py::int_>(handle))
+         {
+-            params[key] = handle.cast<mapnik::value_integer>();
++            params[key] = handle.cast<mapnik::value_integer>();}else if (py::isinstance<py::none>(handle)) {
+         }
+         else
+         {
+diff --git a/src/mapnik_datasource.cpp b/src/mapnik_datasource.cpp
+index 8d614a2..80a1174 100644
+--- a/src/mapnik_datasource.cpp
++++ b/src/mapnik_datasource.cpp
+@@ -155,7 +155,7 @@ void export_datasource(py::module& m)
+         .def("parameters", &parameters_impl,
+              "The configuration parameters of the data source. "
+              "These vary depending on the type of data source.")
+-        .def(py::self == py::self)
++        // .def(py::self == py::self)
+         .def("__iter__",
+              [](datasource const& ds) {
+                  mapnik::query q(ds.envelope());
+diff --git a/src/mapnik_font_engine.cpp b/src/mapnik_font_engine.cpp
+index 5fdcfed..9a78122 100644
+--- a/src/mapnik_font_engine.cpp
++++ b/src/mapnik_font_engine.cpp
+@@ -36,6 +36,6 @@ void export_font_engine(py::module const& m)
+     py::class_<freetype_engine>(m, "FontEngine")
+         .def_static("register_font", &freetype_engine::register_font)
+         .def_static("register_fonts", &freetype_engine::register_fonts)
+-        .def_static("face_names", &freetype_engine::face_names)
++        // .def_static("face_names", &freetype_engine::face_names)
+         ;
+ }
+diff --git a/src/mapnik_image.cpp b/src/mapnik_image.cpp
+index b66f29f..3c69271 100644
+--- a/src/mapnik_image.cpp
++++ b/src/mapnik_image.cpp
+@@ -432,7 +432,7 @@ void export_image(py::module const& m)
+         .def("clear",&clear)
+         .def("to_string",&to_string1)
+         .def("to_string",&to_string2)
+-        .def("to_string",&to_string3)
++        .def("to_string",&to_string3).def("tostring",&to_string1).def("tostring",&to_string2).def("tostring",&to_string3)
+         .def("save", &save_to_file1)
+         .def("save", &save_to_file2)
+         .def("save", &save_to_file3)
+diff --git a/src/mapnik_rule.cpp b/src/mapnik_rule.cpp
+index 16407b5..bd8d3e8 100644
+--- a/src/mapnik_rule.cpp
++++ b/src/mapnik_rule.cpp
+@@ -78,6 +78,6 @@ void export_rule(py::module const& m)
+         .def("set_also", &rule::set_also)
+         .def("has_also", &rule::has_also_filter)
+         .def("active", &rule::active)
+-        .def_property_readonly("symbolizers", &rule::get_symbolizers)
++        .def_property_readonly("symbolizers", &rule::get_symbolizers).def_property_readonly("symbols", &rule::get_symbolizers)
+         ;
+ }
+-- 
+2.55.0
+

@@ -147,7 +147,7 @@ COPY getver.py fix_record.py /usr/local/bin/
 # mirax files and does no harm otherwise.
 COPY versions.txt \
     mapnik_projection.cpp.patch \
-    mapnik_setup.py.patch \
+    python-mapnik.patch \
     openslide-iewchen-zeiss-czi-jxr.patch \
     openslide-vendor-mirax.c.patch \
     python-javabridge.pyx.patch \
@@ -1987,7 +1987,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if false; then \
+    if true; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
@@ -2184,6 +2184,7 @@ RUN \
     git clone --depth=100 --single-branch -c advice.detachedHead=false --quiet -j ${JOBS} https://github.com/mapnik/python-mapnik.git && \
     cd python-mapnik && \
     git checkout `getver.py python-mapnik-sha` && \
+    git am /build/python-mapnik.patch && \
     find . -name '.git' -exec rm -rf {} \+ && \
     # Copy the mapnik input sources and fonts to the python path and add them \
     # via setup.py.  Modify the paths.py file that gets created to refer to \
@@ -2209,17 +2210,6 @@ def program(): \n\
 """ \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
-path = "packaging/mapnik/__init__.py" \n\
-s = open(path).read().replace( \n\
-    "def bootstrap_env():", \n\
-""" \n\
-localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
-os.environ.setdefault("PROJ_DATA", os.path.join(localpath, "proj")) \n\
-os.environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal")) \n\
-\n\
-def bootstrap_env():""") \n\
-open(path, "w").write(s)' && \
-    python -c $'# \n\
 import re \n\
 path = "pyproject.toml" \n\
 s = open(path).read() \n\
@@ -2229,39 +2219,12 @@ s = re.sub("\\nversion = \\".*\\"", "\\nversion = \\"'`pkg-config --modversion l
 s = s.replace("authors", "dynamic = [\\"scripts\\"]\\nauthors") \n\
 s = s.replace("license = \\"LGPL-2.1-or-later\\"", "license = { text = \\"LGPL-2.1-or-later\\"}") \n\
 open(path, "w").write(s)' && \
-    sed -i 's/\.def(py::self == py::self)/\/\/ .def(py::self == py::self)/g' src/mapnik_datasource.cpp && \
-    sed -i 's/std::vector<std::string> plugin_directories()/std::string plugin_directories()/g' src/mapnik_datasource.cpp && \
-    sed -i 's/\.def_property_readonly("symbolizers", \&rule::get_symbolizers)/.def_property_readonly("symbolizers", \&rule::get_symbolizers).def_property_readonly("symbols", \&rule::get_symbolizers)/g' src/mapnik_rule.cpp && \
-    sed -i 's/handle.cast<mapnik::value_integer>();/handle.cast<mapnik::value_integer>();}else if (py::isinstance<py::none>(handle)) {/g' src/create_datasource.hpp && \
-    sed -i 's/to_string3)/to_string3).def("tostring",\&to_string1).def("tostring",\&to_string2).def("tostring",\&to_string3)/g' src/mapnik_image.cpp && \
     if [ "$AUDITWHEEL_ARCH" != "x86_64" ]; then sed -i 's/.def_static("face_names", &freetype_engine::face_names)/\/\/ .def_static("face_names", \&freetype_engine::face_names)/g' src/mapnik_font_engine.cpp; fi && \
     sed -i 's/.def_static("face_names", &freetype_engine::face_names)/\/\/ .def_static("face_names", \&freetype_engine::face_names)/g' src/mapnik_font_engine.cpp && \
-    # Importing libraries in different orders can lead to cryptic TLS (thread \
-    # local storage) errors.  Import stdc++ and gdal before others seems to \
-    # prevent this from happening \
-    python -c $'# \n\
-path = "packaging/mapnik/__init__.py" \n\
-s = open(path).read().replace("import warnings", \n\
-"""import warnings \n\
-import ctypes.util \n\
-try: \n\
-    ctypes.CDLL(ctypes.util.find_library("stdc++"), mode=ctypes.RTLD_GLOBAL) \n\
-except Exception: \n\
-    pass \n\
-libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath( \n\
-    __file__))), \'mapnik.libs\')) \n\
-if os.path.exists(libpath): \n\
-    libs = os.listdir(libpath) \n\
-    libgdalpath = [lib for lib in libs if lib.startswith(\'libgdal\')][0] \n\
-    ctypes.cdll.LoadLibrary(os.path.join(libpath, libgdalpath)) \n\
-""") \n\
-open(path, "w").write(s)' && \
-    # Apply a patch and set variables to work with the cmake build of mapnik \
-    git apply --stat --numstat --apply ../mapnik_setup.py.patch && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P $((($JOBS+1)/2)) bash -c 'export WORKDIR=/tmp/python-mapnik-`basename ${0}`; mkdir -p $WORKDIR; cp -r . $WORKDIR/.; pushd $WORKDIR; "${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && popd && rm -rf $WORKDIR' && \
+    find /opt/py -mindepth 1 -not -name '*p39-*' -print0 | xargs -n 1 -0 -P $((($JOBS+1)/2)) bash -c 'export WORKDIR=/tmp/python-mapnik-`basename ${0}`; mkdir -p $WORKDIR; cp -r . $WORKDIR/.; pushd $WORKDIR; "${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && popd && rm -rf $WORKDIR' && \
     find /io/wheelhouse/ -name 'mapnik*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'mapnik*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'mapnik*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \

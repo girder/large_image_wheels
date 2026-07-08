@@ -15,7 +15,7 @@ TEST_BIOFORMATS=true
 TEST_GDAL=true
 TEST_GLYMUR=$(python3 -c 'import sys, sysconfig;sys.exit(sys.version_info < (3, 10) or sysconfig.get_config_var("Py_GIL_DISABLED") == 1)' && echo true || echo false)
 TEST_JAVABRIDGE=$(python3 -c 'import sys, sysconfig;sys.exit(sysconfig.get_config_var("Py_GIL_DISABLED") == 1 and sys.version_info < (3, 14))' && echo true || echo false)
-TEST_MAPNIK=true
+TEST_MAPNIK=$(python3 -c 'import sys, sysconfig;sys.exit(sys.version_info < (3, 10))' && echo true || echo false)
 TEST_OPENSLIDE=$(python3 -c 'import sys, sysconfig;sys.exit(sys.version_info < (3, 10))' && echo true || echo false)
 TEST_PYLIBMC=true
 TEST_PYLIBTIFF=true
