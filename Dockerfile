@@ -155,9 +155,15 @@ COPY versions.txt \
 
 RUN \
     echo "`date` autoconf" >> /build/log.txt && \
-    curl -OLJ https://ftp.gnu.org/gnu/autoconf/autoconf-2.72.tar.gz && \
-    tar -zxvf autoconf-2.72.tar.gz && \
-    cd autoconf-2.72 && \
+    # curl --retry 5 --silent https://ftpmirror.gnu.org/gnu/autoconf/autoconf-`getver.py autoconf`.tar.gz -L -o autoconf.tar.gz || \
+    # curl --retry 5 --silent https://mirror.csclub.uwaterloo.ca/gnu/autoconf/autoconf-`getver.py autoconf`.tar.gz -L -o autoconf.tar.gz || \
+    # curl --retry 5 --silent https://ftp.gnu.org/pub/gnu/autoconf/autoconf-`getver.py autoconf`.tar.gz -L -o autoconf.tar.gz && \
+    curl --retry 5 --silent https://ftpmirror.gnu.org/gnu/autoconf/autoconf-2.72.tar.gz -L -o autoconf.tar.gz || \
+    curl --retry 5 --silent https://mirror.csclub.uwaterloo.ca/gnu/autoconf/autoconf-2.72.tar.gz -L -o autoconf.tar.gz || \
+    curl --retry 5 --silent https://ftp.gnu.org/pub/gnu/autoconf/autoconf-2.72.tar.gz -L -o autoconf.tar.gz && \
+    mkdir autoconf && \
+    tar -zxf autoconf.tar.gz -C autoconf --strip-components 1 && \
+    cd autoconf && \
     ./configure && \
     make install && \
     echo "`date` autoconf" >> /build/log.txt && \
@@ -281,6 +287,7 @@ cd /build && \
     echo "`date` libidn2" >> /build/log.txt && \
     export JOBS=`nproc` && \
     curl --retry 5 --silent https://ftpmirror.gnu.org/gnu/libidn/libidn2-`getver.py libidn2`.tar.gz -L -o libidn2.tar.gz || \
+    curl --retry 5 --silent https://mirror.csclub.uwaterloo.ca/gnu/libidn/libidn2-`getver.py libidn2`.tar.gz -L -o libidn2.tar.gz || \
     curl --retry 5 --silent https://ftp.gnu.org/gnu/libidn/libidn2-`getver.py libidn2`.tar.gz -L -o libidn2.tar.gz && \
     mkdir libidn2 && \
     tar -zxf libidn2.tar.gz -C libidn2 --strip-components 1 && \
@@ -1006,6 +1013,7 @@ RUN \
     echo "`date` libiconv" >> /build/log.txt && \
     export JOBS=`nproc` && \
     curl --retry 5 --silent https://ftpmirror.gnu.org/gnu/libiconv/libiconv-`getver.py libiconv`.tar.gz -L -o libiconv.tar.gz || \
+    curl --retry 5 --silent https://mirror.csclub.uwaterloo.ca/gnu/libiconv/libiconv-`getver.py libiconv`.tar.gz -L -o libiconv.tar.gz || \
     curl --retry 5 --silent https://ftp.gnu.org/pub/gnu/libiconv/libiconv-`getver.py libiconv`.tar.gz -L -o libiconv.tar.gz && \
     mkdir libiconv && \
     tar -zxf libiconv.tar.gz -C libiconv --strip-components 1 && \

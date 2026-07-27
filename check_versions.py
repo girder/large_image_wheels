@@ -23,6 +23,13 @@ Packages = {
         'filelist': 'https://sourceforge.net/projects/arma/files/',
         're': r'armadillo-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)/download$',
     },
+    'autoconf': {
+        'altfilelist': [
+            'https://mirror.csclub.uwaterloo.ca/gnu/autoconf/',
+            'https://ftp.gnu.org/pub/gnu/autoconf/'],
+        'filelist': 'https://ftpmirror.gnu.org/gnu/autoconf/',
+        're': r'autoconf-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
+    },
     'bioformats': {
         'git': 'https://github.com/ome/bioformats.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
@@ -241,12 +248,16 @@ Packages = {
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libiconv': {
-        'altfilelist': 'https://ftp.gnu.org/pub/gnu/libiconv/',
+        'altfilelist': [
+            'https://mirror.csclub.uwaterloo.ca/gnu/libiconv/',
+            'https://ftp.gnu.org/pub/gnu/libiconv/'],
         'filelist': 'https://ftpmirror.gnu.org/gnu/libiconv/',
         're': r'libiconv-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
     },
     'libidn2': {
-        'altfilelist': 'https://ftp.gnu.org/gnu/libidn/',
+        'altfilelist': [
+            'https://mirror.csclub.uwaterloo.ca/gnu/libidn/',
+            'https://ftp.gnu.org/gnu/libidn/'],
         'filelist': 'https://ftpmirror.gnu.org/gnu/libidn/',
         're': r'libidn2-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
     },
@@ -642,9 +653,13 @@ def getUrl(url, pkginfo, fallback=None):
         return requests.get(url, **param)
     except Exception:
         if fallback:
+            secondary = None
+            if isinstance(fallback, list):
+                secondary = fallback[1:] or None
+                fallback = fallback[0]
             if verbose >= 2:
                 print(f'retry fallback {url}')
-            return getUrl(fallback, pkginfo)
+            return getUrl(fallback, pkginfo, fallback=secondary)
         else:
             raise
 
