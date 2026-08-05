@@ -136,9 +136,9 @@ RUN echo "/usr/local/lib64" > /etc/ld.so.conf.d/01-manylinux.conf && \
 # available by default.
 RUN \
     echo "`date` virtualenv" >> /build/log.txt && \
-    export PATH="/opt/python/cp39-cp39/bin:$PATH" && \
+    export PATH="/opt/python/cp310-cp310/bin:$PATH" && \
     pip3 install --no-cache-dir virtualenv && \
-    virtualenv -p python3.9 /venv && \
+    virtualenv -p python3.10 /venv && \
     echo "`date` virtualenv" >> /build/log.txt
 
 COPY getver.py fix_record.py /usr/local/bin/
@@ -158,8 +158,8 @@ RUN \
     # curl --retry 5 --silent https://ftpmirror.gnu.org/gnu/autoconf/autoconf-`getver.py autoconf`.tar.gz -L -o autoconf.tar.gz || \
     # curl --retry 5 --silent https://mirror.csclub.uwaterloo.ca/gnu/autoconf/autoconf-`getver.py autoconf`.tar.gz -L -o autoconf.tar.gz || \
     # curl --retry 5 --silent https://ftp.gnu.org/pub/gnu/autoconf/autoconf-`getver.py autoconf`.tar.gz -L -o autoconf.tar.gz && \
-    curl --retry 5 --silent https://ftpmirror.gnu.org/gnu/autoconf/autoconf-2.72.tar.gz -L -o autoconf.tar.gz || \
     curl --retry 5 --silent https://mirror.csclub.uwaterloo.ca/gnu/autoconf/autoconf-2.72.tar.gz -L -o autoconf.tar.gz || \
+    curl --retry 5 --silent https://ftpmirror.gnu.org/gnu/autoconf/autoconf-2.72.tar.gz -L -o autoconf.tar.gz || \
     curl --retry 5 --silent https://ftp.gnu.org/pub/gnu/autoconf/autoconf-2.72.tar.gz -L -o autoconf.tar.gz && \
     mkdir autoconf && \
     tar -zxf autoconf.tar.gz -C autoconf --strip-components 1 && \
@@ -286,8 +286,8 @@ cd /build && \
 cd /build && \
     echo "`date` libidn2" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftpmirror.gnu.org/gnu/libidn/libidn2-`getver.py libidn2`.tar.gz -L -o libidn2.tar.gz || \
     curl --retry 5 --silent https://mirror.csclub.uwaterloo.ca/gnu/libidn/libidn2-`getver.py libidn2`.tar.gz -L -o libidn2.tar.gz || \
+    curl --retry 5 --silent https://ftpmirror.gnu.org/gnu/libidn/libidn2-`getver.py libidn2`.tar.gz -L -o libidn2.tar.gz || \
     curl --retry 5 --silent https://ftp.gnu.org/gnu/libidn/libidn2-`getver.py libidn2`.tar.gz -L -o libidn2.tar.gz && \
     mkdir libidn2 && \
     tar -zxf libidn2.tar.gz -C libidn2 --strip-components 1 && \
@@ -1012,8 +1012,8 @@ open(path, "w").write(s)' && \
 RUN \
     echo "`date` libiconv" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    curl --retry 5 --silent https://ftpmirror.gnu.org/gnu/libiconv/libiconv-`getver.py libiconv`.tar.gz -L -o libiconv.tar.gz || \
     curl --retry 5 --silent https://mirror.csclub.uwaterloo.ca/gnu/libiconv/libiconv-`getver.py libiconv`.tar.gz -L -o libiconv.tar.gz || \
+    curl --retry 5 --silent https://ftpmirror.gnu.org/gnu/libiconv/libiconv-`getver.py libiconv`.tar.gz -L -o libiconv.tar.gz || \
     curl --retry 5 --silent https://ftp.gnu.org/pub/gnu/libiconv/libiconv-`getver.py libiconv`.tar.gz -L -o libiconv.tar.gz && \
     mkdir libiconv && \
     tar -zxf libiconv.tar.gz -C libiconv --strip-components 1 && \
@@ -1995,7 +1995,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if false; then \
+    if true; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \

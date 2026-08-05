@@ -638,30 +638,39 @@ def getUrl(url, pkginfo, fallback=None):
     """
     param = {'verify': False} if pkginfo.get('insecure') else {}
     try:
-        return getSession().get(url, **param)
+        if verbose >= 2:
+            print(f'try {url}')
+        resp = getSession().get(url, **param)
+        if 200 <= resp.status_code < 400:
+            return resp
     except Exception:
         pass
     try:
         if verbose >= 2:
             print(f'retry {url}')
-        return getSession(True).get(url, **param)
+        resp = getSession(True).get(url, **param)
+        if 200 <= resp.status_code < 400:
+            return resp
     except Exception:
         pass
     try:
         if verbose >= 2:
             print(f'retry without session {url}')
-        return requests.get(url, **param)
+        resp = requests.get(url, **param)
+        if 200 <= resp.status_code < 400:
+            return resp
     except Exception:
-        if fallback:
-            secondary = None
-            if isinstance(fallback, list):
-                secondary = fallback[1:] or None
-                fallback = fallback[0]
-            if verbose >= 2:
-                print(f'retry fallback {url}')
-            return getUrl(fallback, pkginfo, fallback=secondary)
-        else:
-            raise
+        pass
+    if fallback:
+        secondary = None
+        if isinstance(fallback, list):
+            secondary = fallback[1:] or None
+            fallback = fallback[0]
+        if verbose >= 2:
+            print(f'retry fallback {url}')
+        return getUrl(fallback, pkginfo, fallback=secondary)
+    msg = f'Failed to get {url}'
+    raise Exception(msg)
 
 
 # This can be imported into Chrome
