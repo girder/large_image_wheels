@@ -192,8 +192,9 @@ Packages = {
         're': r'\/v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libaio': {
-        'git': 'https://pagure.io/libaio.git',
-        're': r'libaio\.([0-9]+-[0-9]+-[0-9]+(|\.[0-9]+))$',
+        # 'git': 'https://pagure.io/libaio.git',
+        'git': 'https://github.com/yugabyte/libaio.git',
+        're': r'libaio-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'libarchive': {
         'git': 'https://github.com/libarchive/libarchive.git',
@@ -469,9 +470,9 @@ Packages = {
         'git': 'https://gitlab.freedesktop.org/pixman/pixman.git',
         're': r'pixman-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
-    'pkg-config': {
-        'git': 'https://gitlab.freedesktop.org/pkg-config/pkg-config.git',
-        're': r'pkg-config-([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    'pkgconf': {
+        'git': 'https://github.com/pkgconf/pkgconf.git',
+        're': r'pkgconf-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'poppler': {
         'git': 'https://gitlab.freedesktop.org/poppler/poppler.git',
@@ -631,7 +632,7 @@ def getSession(new=False):
     return session
 
 
-def getUrl(url, pkginfo, fallback=None):
+def getUrl(url, pkginfo, fallback=None):  # noqa
     """
     Use a session to get a url.  If it fails, retry with a new session.  If
     that fails, retry without a session.

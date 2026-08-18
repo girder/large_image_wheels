@@ -153,6 +153,12 @@ COPY versions.txt \
     python-javabridge.pyx.patch \
     ./
 
+# Build tool
+RUN \
+    echo "`date` meson" >> /build/log.txt && \
+    pip install --no-cache-dir meson==`getver.py meson` && \
+    echo "`date` meson" >> /build/log.txt
+
 RUN \
     echo "`date` autoconf" >> /build/log.txt && \
     # curl --retry 5 --silent https://ftpmirror.gnu.org/gnu/autoconf/autoconf-`getver.py autoconf`.tar.gz -L -o autoconf.tar.gz || \
@@ -168,24 +174,25 @@ RUN \
     make install && \
     echo "`date` autoconf" >> /build/log.txt && \
 cd /build && \
-# Newer version of pkg-config than available in manylinux
 # \
 # RUN \
-    echo "`date` pkg-config" >> /build/log.txt && \
+    echo "`date` pkgconf" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
-    until timeout 60 git clone --depth=1 --single-branch -b pkg-config-`getver.py pkg-config` -c advice.detachedHead=false https://gitlab.freedesktop.org/pkg-config/pkg-config.git; do sleep 5; echo "retrying"; done && \
-    cd pkg-config && \
-    sed -i 's/m4_copy/m4_copy_force/g' glib/m4macros/glib-gettext.m4 && \
-    ./autogen.sh && \
-    ./configure --silent --prefix=/usr/local --with-internal-glib --disable-host-tool --disable-static && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    echo "`date` pkg-config" >> /build/log.txt
+    until timeout 60 git clone --depth=1 --single-branch -b pkgconf-`getver.py pkgconf` -c advice.detachedHead=false https://github.com/pkgconf/pkgconf.git; do sleep 5; echo "retrying"; done && \
+    cd pkgconf && \
+    meson setup --prefix=/usr/local --buildtype=release --optimization=3 _build && \
+    cd _build && \
+    ninja -j ${JOBS} && \
+    ninja -j ${JOBS} install && \
+    ln -sf /usr/local/bin/pkgconf /usr/local/bin/pkg-config && \
+    echo "`date` pkgconf" >> /build/log.txt
 
 # Some of these paths are added later
-ENV PKG_CONFIG=/usr/local/bin/pkg-config \
-    PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:/usr/share/pkgconfig
+ENV PKG_CONFIG=/usr/local/bin/pkgconf \
+    PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:/usr/share/pkgconfig \
+    PKG_CONFIG_ALLOW_SYSTEM_FLAGS=0 \
+    PKG_CONFIG_ALLOW_SYSTEM_LIBS=0
 # We had been doing:
 #     PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig:/usr/lib64/pkgconfig:/usr/share/pkgconfig \
 # but we don't want to find the built-in libraries, as if we bind to them, we
@@ -934,12 +941,6 @@ RUN \
     ldconfig && \
     echo "`date` util-linux" >> /build/log.txt
 
-# Build tool
-RUN \
-    echo "`date` meson" >> /build/log.txt && \
-    pip install --no-cache-dir meson==`getver.py meson` && \
-    echo "`date` meson" >> /build/log.txt
-
 # Used by openslide, libvips, and mapnik
 RUN \
     echo "`date` glib" >> /build/log.txt && \
@@ -1585,13 +1586,10 @@ RUN \
     echo "`date` netcdf" >> /build/log.txt
 
 # Used by mysql.  Linux async i/o library
-# We can't use the version number here, because the source isn't properly
-# tagged
 RUN \
     echo "`date` libaio" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    # git clone --depth=1 --single-branch -b libaio.`getver.py libaio` -c advice.detachedHead=false https://pagure.io/libaio.git && \
-    git clone --depth=1 --single-branch -c advice.detachedHead=false https://pagure.io/libaio.git && \
+    git clone --depth=1 --single-branch -b libaio-`getver.py libaio` -c advice.detachedHead=false https://github.com/yugabyte/libaio.git && \
     cd libaio && \
     make prefix=/usr/local --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1995,7 +1993,7 @@ RUN \
     # We need numpy present in the default python to build all extensions \
     pip install numpy && \
     # - Specific version \
-    if true; then \
+    if false; then \
     git clone --depth=1 --single-branch -b v`getver.py gdal` -c advice.detachedHead=false https://github.com/OSGeo/gdal.git && \
     true; else \
     # - Master -- also adjust version \
@@ -2223,7 +2221,7 @@ path = "pyproject.toml" \n\
 s = open(path).read() \n\
 s = s.replace(".beta", "") \n\
 s = s.replace("pybind11 >= 3.0.2", "pybind11 == 3.0.2") \n\
-s = re.sub("\\nversion = \\".*\\"", "\\nversion = \\"'`pkg-config --modversion libmapnik`.1$'\\"", s) \n\
+s = re.sub("\\nversion = \\".*\\"", "\\nversion = \\"'`pkgconf --modversion libmapnik`.1$'\\"", s) \n\
 s = s.replace("authors", "dynamic = [\\"scripts\\"]\\nauthors") \n\
 s = s.replace("license = \\"LGPL-2.1-or-later\\"", "license = { text = \\"LGPL-2.1-or-later\\"}") \n\
 open(path, "w").write(s)' && \
@@ -2469,7 +2467,7 @@ RUN \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so for manylinux2010 \
     # sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
-    ./configure --prefix=/usr/local --with-modules --with-rsvg --with-fftw --with-jxl LIBS="-lrt `pkg-config --libs zlib`" --disable-static && \
+    ./configure --prefix=/usr/local --with-modules --with-rsvg --with-fftw --with-jxl LIBS="-lrt `pkgconf --libs zlib`" --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
