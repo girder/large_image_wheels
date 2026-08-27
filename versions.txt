@@ -18,14 +18,14 @@ fyba 2fe3da3dc0442213e7364bed6723f68eb4ec7ad3
 fyba-release 4.1.1
 gdal 3.13.3
 gdal-pypi 3.13.3
-gdal-sha c3fcc2122a43d8cfb9a5eb2a3c908d582874e56f
+gdal-sha c38804752886b887e67affbc9820f12564912793
 gdal-source 3.14.0
 giflib 6.1.3
 glib 2.89.4
 glymur 0.14.8
 glymur-pypi 0.14.8
 gobject-introspection 1.86.0
-harfbuzz 14.3.1
+harfbuzz 14.4.0
 hdf4 4_2_16
 hdf5 1_14_3
 highfive 3.3.0
@@ -79,8 +79,8 @@ libzip 1.11.4
 lz4 1.10.0
 manylinux_2_28_aarch64 29a6ceb78de5b00494e6e7456a72782a4cb54238de102e7491d15fe47789b4d1
 manylinux_2_28_x86_64 4dc41da7df20400310c80d162a2fe2d2c2f3d9734d8dec20f6b9843711618deb
-mapnik-release 4.3.0
-mapnik-sha 31035642d548624fa07942c49dac60c680d09b2f
+mapnik-release 4.3.1
+mapnik-sha 8dd3a408a0b6a019f74605230796fe2ea680bf53
 matio 1.6.0
 meson 1.12.0
 minizip 4.2.2
