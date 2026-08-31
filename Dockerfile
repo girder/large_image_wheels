@@ -397,7 +397,7 @@ RUN \
     ldconfig && \
     # Because we will recompress all wheels, we can create them with no \
     # compression to save some time \
-    sed -i 's/ZIP_DEFLATED/ZIP_STORED/g' /opt/_internal/pipx/venvs/auditwheel/lib/python3.12/site-packages/auditwheel/tools.py && \
+    sed -i 's/ZIP_DEFLATED/ZIP_STORED/g' /opt/_internal/pipx/venvs/auditwheel/lib/python3.14/site-packages/auditwheel/tools.py && \
     echo "`date` advancecomp" >> /build/log.txt
 
 RUN \
@@ -2571,7 +2571,7 @@ open(path, "w").write(s)' && \
 import re \n\
 path = "pyvips/version.py" \n\
 s = open(path).read() \n\
-s = re.sub(r"__version__ = \'(.+?)\'", lambda match: f"__version__ = \'{match.group(1)}.'`getver.py libvips`$'\'", s) \n\
+s = re.sub(r\'__version__ = "(.+?)"\', lambda match: f\'__version__ = "{match.group(1)}.'`getver.py libvips`$'"\', s) \n\
 open(path, "w").write(s)' && \
     python -c $'# \n\
 path = "pyvips/bin/__init__.py" \n\

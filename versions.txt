@@ -18,7 +18,7 @@ fyba 2fe3da3dc0442213e7364bed6723f68eb4ec7ad3
 fyba-release 4.1.1
 gdal 3.13.3
 gdal-pypi 3.13.3
-gdal-sha c38804752886b887e67affbc9820f12564912793
+gdal-sha 5efb01bafda881ef05975d0adf2d89494ec6c5fa
 gdal-source 3.14.0
 giflib 6.1.3
 glib 2.89.4
@@ -77,10 +77,10 @@ libxcrypt 4.5.2
 libxml2 2.15.3
 libzip 1.11.4
 lz4 1.10.0
-manylinux_2_28_aarch64 29a6ceb78de5b00494e6e7456a72782a4cb54238de102e7491d15fe47789b4d1
-manylinux_2_28_x86_64 4dc41da7df20400310c80d162a2fe2d2c2f3d9734d8dec20f6b9843711618deb
+manylinux_2_28_aarch64 d3524021bb8b15d2258481be1ea46f1dfa8a9c7fc09bec43a6c5407945f9dc11
+manylinux_2_28_x86_64 0bf9db09181f36be8cf0628332abb5d31855b7d0f372faa776f492ccd9d3100d
 mapnik-release 4.3.1
-mapnik-sha 8dd3a408a0b6a019f74605230796fe2ea680bf53
+mapnik-sha 4627424a0812fdaa8f73384eed06c0a5de57e1ba
 matio 1.6.0
 meson 1.12.0
 minizip 4.2.2
@@ -99,7 +99,7 @@ openslide-python-pypi 1.4.6
 openslide-python-sha c63ac05b7c5fb07dd99cb36928865ca8a702477c
 openslide-sha e1721b4481499aad4d8dd1c3d0d12ad652bfa7de
 openssl 4.0.2
-orc 0.4.42
+orc 0.4.43
 pango 1.58.2
 parallel-netcdf 1.15.0
 patchelf 0.19.1
@@ -120,8 +120,8 @@ python-javabridge 4.0.5
 python-javabridge-pypi 4.0.5
 python-mapnik-pypi 4.3.0
 python-mapnik-sha 469c88678a40b0112b39229a7731c39160999f6d
-pyvips 3.1.1
-pyvips-pypi 3.1.1
+pyvips 3.2.0
+pyvips-pypi 3.2.0
 sqlite 2026.3530400
 strip-nondeterminism 0.45.0
 superlu 7.0.1
