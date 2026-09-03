@@ -2160,6 +2160,9 @@ RUN \
     sed -i 's:#include <algorithm>:#include <algorithm>\n#include <boost/algorithm/string.hpp>:g' plugins/input/csv/csv_utils.cpp && \
     sed -i 's/  xmlError\*/  const xmlError \*/g' src/libxml2_loader.cpp && \
     sed -i 's:#include <mapnik/image_util.hpp>:#define PSTL_USE_PARALLEL_POLICIES 0\n#define _GLIBCXX_USE_TBB_PAR_BACKEND 0\n#include <mapnik/image_util.hpp>:g' src/image_util.cpp && \
+    sed -i 's/SQLite::SQLite3/SQLite3::SQLite3/g' plugins/input/sqlite/CMakeLists.txt && \
+    sed -i 's/SQLite::SQLite3/SQLite3::SQLite3/g' plugins/input/tiles/CMakeLists.txt && \
+    sed -i 's/SQLite::SQLite3/SQLite3::SQLite3/g' utils/pgsql2sqlite/CMakeLists.txt && \
     find . -name '.git' -exec rm -rf {} \+ && \
     # Keeps the docker smaller \
     rm -rf demo test && mkdir test && mkdir demo && touch test/CMakeLists.txt && touch demo/CMakeLists.txt && \
@@ -2176,6 +2179,8 @@ RUN \
     -DCMAKE_INSTALL_LIBDIR=lib \
     -DFONTS_INSTALL_DIR=/usr/local/lib/mapnik/fonts \
     -DCMAKE_POLICY_DEFAULT_CMP0167=OLD \
+    -DMAPNIK_USE_PKG_CONFIG=ON \
+    -DCMAKE_DISABLE_FIND_PACKAGE_PROJ=ON \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     && \
     # Common build process \
