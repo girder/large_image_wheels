@@ -18,7 +18,7 @@ fyba 2fe3da3dc0442213e7364bed6723f68eb4ec7ad3
 fyba-release 4.1.1
 gdal 3.13.3
 gdal-pypi 3.13.3
-gdal-sha 643afe2b9aeb7cbe19fb1b693468e6d0658c1ff0
+gdal-sha 9a119bc210ec54ffd76a34179c3ef28cc44a0421
 gdal-source 3.14.0
 giflib 6.1.3
 glib 2.90.0
@@ -61,7 +61,7 @@ libjpeg-turbo 3.2.0
 libmemcached 1.0.19
 libnsl 2.0.1
 libopendrive 0.6.1
-libpng 1.6.58
+libpng 1.6.59
 libpsl 0.23.3
 librasterlite2 00cef3dac9
 libraw 0.22.2
@@ -77,8 +77,8 @@ libxcrypt 4.5.2
 libxml2 2.15.4
 libzip 1.11.4
 lz4 1.10.0
-manylinux_2_28_aarch64 c22ffd129ac99a8a42d1f2c2f4e88a9089288dd9ee987a7092da1c7dc48f27a9
-manylinux_2_28_x86_64 407f771c51a2c3e83ebe5a7970b4289ead3a6db21d9b9c089168775cad11d328
+manylinux_2_28_aarch64 acc4e63610fef1da3d687322793665205415c2b22c0d2e403f1a44eb834d63fc
+manylinux_2_28_x86_64 c2261579b9c2e5d45aa93312f73e2a302182e3e977b558581a1838d6fed3d8e6
 mapnik-release 4.3.2
 mapnik-sha 84107b6f29bf785ea2d05faf1683d9990915c55b
 matio 1.6.0
@@ -89,7 +89,7 @@ netcdf 4.10.1
 nifti 3.0.1
 ogdi 4_1_1
 openblas 0.3.34
-openexr 3.4.15
+openexr 3.5.1
 openjpeg 2.5.4
 openldap 2_7_1
 openmpi 5.0.11
@@ -98,7 +98,7 @@ openslide-python 1.4.6
 openslide-python-pypi 1.4.6
 openslide-python-sha 0e7922447be545a8688f0b5044b2a3801e0a6c9b
 openslide-sha 7ed6f34653798cdd9960d2b0d875e277cbf636a3
-openssl 4.0.2
+openssl 4.0.3
 orc 0.4.44
 pango 1.58.2
 parallel-netcdf 1.15.1

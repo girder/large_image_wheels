@@ -667,7 +667,7 @@ cd /build && \
     cd openexr && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_TESTING=OFF -DOPENEXR_BUILD_EXAMPLES=OFF && \
+    cmake -S .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_TESTING=OFF -DOPENEXR_BUILD_EXAMPLES=OFF -DOPENEXR_IMATH_TAG=v3.2.1 && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -2004,10 +2004,10 @@ RUN \
     true; fi && \
     # - Common \
     cd gdal && \
-    # use .1 as a suffix (3 spots) \
-    sed -i 's/define GDAL_VERSION_BUILD    0/define GDAL_VERSION_BUILD    1/g' gcore/gdal_version.h.in && \
-    sed -i 's/dev/.1dev/g' gcore/gdal_version.h.in && \
-    sed -i 's/\([0-9]\)$/\1.1/g' VERSION && \
+    # use .2 as a suffix (3 spots) \
+    sed -i 's/define GDAL_VERSION_BUILD    0/define GDAL_VERSION_BUILD    2/g' gcore/gdal_version.h.in && \
+    sed -i 's/dev/.2dev/g' gcore/gdal_version.h.in && \
+    sed -i 's/\([0-9]\)$/\1.2/g' VERSION && \
     sed -i 's/if library_version_num < gdal_python_version/if False/g' swig/python/setup.py.in && \
     export PATH="$PATH:/build/mysql/build/scripts" && \
     mkdir _build && \
@@ -2090,10 +2090,14 @@ s = open(path).read().replace( \n\
 \n\
 import os \n\
 import re \n\
+from . import osr \n\
+from . import gdal \n\
 \n\
 _localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
-os.environ.setdefault("PROJ_DATA", os.path.join(_localpath, "proj")) \n\
-os.environ.setdefault("GDAL_DATA", os.path.join(_localpath, "gdal")) \n\
+# os.environ.setdefault("PROJ_DATA", os.path.join(_localpath, "proj")) \n\
+osr.SetPROJSearchPaths([os.path.join(_localpath, "proj")]) \n\
+# os.environ.setdefault("GDAL_DATA", os.path.join(_localpath, "gdal")) \n\
+gdal.SetConfigOption("GDAL_DATA", os.path.join(_localpath, "gdal")) \n\
 os.environ.setdefault("CPL_LOG", os.devnull) \n\
 _caPath = "/etc/ssl/certs/ca-certificates.crt" \n\
 if os.path.exists(_caPath): \n\
