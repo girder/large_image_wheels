@@ -1,0 +1,348 @@
+From 8ce60fcf3b47435b5f2b566cd3866d7266fe8b79 Mon Sep 17 00:00:00 2001
+From: Your Name <you@example.com>
+Date: Wed, 30 Sep 2026 19:24:36 +0000
+Subject: [PATCH] Add the ability to set data paths
+
+---
+ include/mapnik/data_paths.hpp          | 34 +++++++++
+ plugins/input/gdal/gdal_data_guard.hpp | 98 ++++++++++++++++++++++++++
+ plugins/input/gdal/gdal_datasource.cpp |  5 ++
+ plugins/input/gdal/gdal_featureset.cpp |  3 +
+ src/CMakeLists.txt                     |  1 +
+ src/build.py                           |  1 +
+ src/data_paths.cpp                     | 40 +++++++++++
+ src/proj_transform.cpp                 |  9 ++-
+ src/projection.cpp                     |  8 +++
+ 9 files changed, 198 insertions(+), 1 deletion(-)
+ create mode 100644 include/mapnik/data_paths.hpp
+ create mode 100644 plugins/input/gdal/gdal_data_guard.hpp
+ create mode 100644 src/data_paths.cpp
+
+diff --git a/include/mapnik/data_paths.hpp b/include/mapnik/data_paths.hpp
+new file mode 100644
+index 00000000..92d78e04
+--- /dev/null
++++ b/include/mapnik/data_paths.hpp
+@@ -0,0 +1,34 @@
++#ifndef MAPNIK_DATA_PATHS_HPP
++#define MAPNIK_DATA_PATHS_HPP
++
++// mapnik
++#include <mapnik/config.hpp>
++
++// stl
++#include <string>
++
++namespace mapnik {
++
++// Configure the data directories used by the PROJ and GDAL libraries that
++// mapnik links against, without touching the process environment.
++//
++// This is the in-process equivalent of setting the PROJ_DATA/PROJ_LIB and
++// GDAL_DATA environment variables, but it only affects mapnik's own PROJ
++// contexts and mapnik's own GDAL calls. Other consumers of PROJ/GDAL in the
++// same process keep using their own defaults.
++//
++// An empty string means "do not override": the corresponding library falls
++// back to its own default lookup (environment variables, built-in paths).
++//
++// May be called multiple times; later calls replace earlier paths.
++MAPNIK_DECL void set_data_paths(std::string const& proj_dir, std::string const& gdal_dir);
++
++// Directory configured for PROJ data, empty when not overridden.
++MAPNIK_DECL std::string proj_data_dir();
++
++// Directory configured for GDAL data, empty when not overridden.
++MAPNIK_DECL std::string gdal_data_dir();
++
++} // namespace mapnik
++
++#endif // MAPNIK_DATA_PATHS_HPP
+diff --git a/plugins/input/gdal/gdal_data_guard.hpp b/plugins/input/gdal/gdal_data_guard.hpp
+new file mode 100644
+index 00000000..324939e1
+--- /dev/null
++++ b/plugins/input/gdal/gdal_data_guard.hpp
+@@ -0,0 +1,98 @@
++/*****************************************************************************
++ *
++ * This file is part of Mapnik (c++ mapping toolkit)
++ *
++ * Copyright (C) 2025 Artem Pavlenko
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with this library; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
++ *
++ *****************************************************************************/
++
++#ifndef MAPNIK_GDAL_DATA_GUARD_HPP
++#define MAPNIK_GDAL_DATA_GUARD_HPP
++
++// mapnik
++#include <mapnik/data_paths.hpp>
++
++// gdal
++#include <cpl_conv.h>
++
++// stl
++#include <string>
++
++namespace mapnik {
++namespace gdal_plugin {
++
++// Temporarily point GDAL at mapnik's bundled data directory for the current
++// thread only, restoring the previous thread-local value (if any) on
++// destruction.
++//
++// This deliberately uses the *thread-local* GDAL config option rather than the
++// global one so that other GDAL consumers in the same process (for example a
++// separately imported osgeo.gdal) are not affected, and so that parallel
++// rendering from worker threads stays isolated. Nothing here touches the
++// process environment.
++//
++// When no data directory has been configured via mapnik::set_data_paths() the
++// guard is a no-op and the per-thread value is left untouched, letting GDAL use
++// its own default lookup.
++class gdal_data_guard
++{
++  public:
++    gdal_data_guard()
++        : key_("GDAL_DATA"),
++          had_previous_(false)
++    {
++        std::string const dir = mapnik::gdal_data_dir();
++        if (dir.empty())
++        {
++            active_ = false;
++            return;
++        }
++        active_ = true;
++        char const* previous = CPLGetThreadLocalConfigOption(key_, nullptr);
++        if (previous)
++        {
++            previous_ = previous;
++            had_previous_ = true;
++        }
++        CPLSetThreadLocalConfigOption(key_, dir.c_str());
++    }
++
++    gdal_data_guard(gdal_data_guard const&) = delete;
++    gdal_data_guard& operator=(gdal_data_guard const&) = delete;
++
++    ~gdal_data_guard()
++    {
++        if (!active_)
++        {
++            return;
++        }
++        // nullptr value removes the thread-local option, restoring lookup
++        // to the global/environment default.
++        CPLSetThreadLocalConfigOption(key_, had_previous_ ? previous_.c_str() : nullptr);
++    }
++
++  private:
++    char const* key_;
++    bool active_ = false;
++    bool had_previous_ = false;
++    std::string previous_;
++};
++
++} // namespace gdal_plugin
++} // namespace mapnik
++
++#endif // MAPNIK_GDAL_DATA_GUARD_HPP
+diff --git a/plugins/input/gdal/gdal_datasource.cpp b/plugins/input/gdal/gdal_datasource.cpp
+index c8c855ca..c241d7a8 100644
+--- a/plugins/input/gdal/gdal_datasource.cpp
++++ b/plugins/input/gdal/gdal_datasource.cpp
+@@ -22,6 +22,7 @@
+ 
+ #include "gdal_datasource.hpp"
+ #include "gdal_featureset.hpp"
++#include "gdal_data_guard.hpp"
+ 
+ // mapnik
+ #include <mapnik/debug.hpp>
+@@ -47,6 +48,7 @@ DATASOURCE_PLUGIN_EXPORT(gdal);
+ 
+ void gdal_datasource_plugin::after_load() const
+ {
++    mapnik::gdal_plugin::gdal_data_guard guard;
+     GDALAllRegister();
+ }
+ 
+@@ -62,6 +64,9 @@ gdal_datasource::gdal_datasource(parameters const& params)
+       nodata_value_(params.get<double>("nodata")),
+       nodata_tolerance_(*params.get<double>("nodata_tolerance", 1e-12))
+ {
++    // Scope GDAL's data directory to this call so that the containing thread
++    // does not leak mapnik's bundled GDAL_DATA to other GDAL consumers.
++    mapnik::gdal_plugin::gdal_data_guard guard;
+     MAPNIK_LOG_DEBUG(gdal) << "gdal_datasource: Initializing...";
+ 
+ #ifdef MAPNIK_STATS
+diff --git a/plugins/input/gdal/gdal_featureset.cpp b/plugins/input/gdal/gdal_featureset.cpp
+index 3c35b5d9..0f6fd0d1 100644
+--- a/plugins/input/gdal/gdal_featureset.cpp
++++ b/plugins/input/gdal/gdal_featureset.cpp
+@@ -36,6 +36,7 @@
+ #include <sstream>
+ 
+ #include "gdal_featureset.hpp"
++#include "gdal_data_guard.hpp"
+ #include <gdal_priv.h>
+ 
+ using mapnik::box2d;
+@@ -147,6 +148,7 @@ void gdal_featureset::find_best_overview(int bandNumber,
+ 
+ feature_ptr gdal_featureset::get_feature(mapnik::query const& q)
+ {
++    mapnik::gdal_plugin::gdal_data_guard guard;
+     feature_ptr feature = feature_factory::create(ctx_, 1);
+     int raster_has_nodata = 0;
+     double raster_nodata = 0;
+@@ -898,6 +900,7 @@ feature_ptr gdal_featureset::get_feature(mapnik::query const& q)
+ 
+ feature_ptr gdal_featureset::get_feature_at_point(mapnik::coord2d const& pt)
+ {
++    mapnik::gdal_plugin::gdal_data_guard guard;
+     CPLErr raster_io_error = CE_None;
+ 
+     if (band_ > 0)
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 4f3c19e9..8d24672c 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -106,6 +106,7 @@ target_sources(mapnik PRIVATE
+     load_map.cpp
+     map.cpp
+     mapnik.cpp
++    data_paths.cpp
+     mapped_memory_cache.cpp
+     marker_cache.cpp
+     marker_helpers.cpp
+diff --git a/src/build.py b/src/build.py
+index f8e2c850..4926f765 100644
+--- a/src/build.py
++++ b/src/build.py
+@@ -168,6 +168,7 @@ else: # unix, non-macos
+ source = Split(
+     """
+     mapnik.cpp
++    data_paths.cpp
+     expression_grammar_x3.cpp
+     fs.cpp
+     request.cpp
+diff --git a/src/data_paths.cpp b/src/data_paths.cpp
+new file mode 100644
+index 00000000..497d7ce9
+--- /dev/null
++++ b/src/data_paths.cpp
+@@ -0,0 +1,40 @@
++#include <mapnik/data_paths.hpp>
++
++// stl
++#include <mutex>
++
++namespace mapnik {
++
++namespace {
++
++struct data_paths_t
++{
++    std::string proj_dir;
++    std::string gdal_dir;
++};
++
++std::mutex paths_mutex;
++data_paths_t paths;
++
++} // namespace
++
++void set_data_paths(std::string const& proj_dir, std::string const& gdal_dir)
++{
++    std::lock_guard<std::mutex> lock(paths_mutex);
++    paths.proj_dir = proj_dir;
++    paths.gdal_dir = gdal_dir;
++}
++
++std::string proj_data_dir()
++{
++    std::lock_guard<std::mutex> lock(paths_mutex);
++    return paths.proj_dir;
++}
++
++std::string gdal_data_dir()
++{
++    std::lock_guard<std::mutex> lock(paths_mutex);
++    return paths.gdal_dir;
++}
++
++} // namespace mapnik
+diff --git a/src/proj_transform.cpp b/src/proj_transform.cpp
+index b5d3cb2a..795c067a 100644
+--- a/src/proj_transform.cpp
++++ b/src/proj_transform.cpp
+@@ -24,6 +24,7 @@
+ #include <mapnik/geometry/boost_adapters.hpp>
+ #include <mapnik/geometry/box2d.hpp>
+ #include <mapnik/geometry/multi_point.hpp>
++#include <mapnik/data_paths.hpp>
+ #include <mapnik/projection.hpp>
+ #include <mapnik/proj_transform.hpp>
+ #include <mapnik/coord.hpp>
+@@ -153,7 +154,13 @@ proj_transform::proj_transform(projection const& source, projection const& dest)
+         {
+ #ifdef MAPNIK_USE_PROJ
+             ctx_ = proj_context_create();
+-            proj_log_level(ctx_, PJ_LOG_ERROR);
++            std::string const proj_dir = mapnik::proj_data_dir();
++            if (!proj_dir.empty())
++            {
++                char const* paths[] = {proj_dir.c_str()};
++                proj_context_set_search_paths(ctx_, 1, paths);
++            }
++            proj_log_level(ctx_, PJ_LOG_NONE);
+             transform_ = proj_create_crs_to_crs(ctx_, source.params().c_str(), dest.params().c_str(), nullptr);
+             if (transform_ == nullptr)
+             {
+diff --git a/src/projection.cpp b/src/projection.cpp
+index 7ee9bdc9..a5dcb1af 100644
+--- a/src/projection.cpp
++++ b/src/projection.cpp
+@@ -22,6 +22,7 @@
+ 
+ // mapnik
+ #include <mapnik/projection.hpp>
++#include <mapnik/data_paths.hpp>
+ #include <mapnik/util/trim.hpp>
+ #include <mapnik/well_known_srs.hpp>
+ 
+@@ -100,6 +101,13 @@ void projection::init_proj()
+     if (!proj_)
+     {
+         proj_ctx_ = proj_context_create();
++        std::string const proj_dir = mapnik::proj_data_dir();
++        if (!proj_dir.empty())
++        {
++            char const* paths[] = {proj_dir.c_str()};
++            proj_context_set_search_paths(proj_ctx_, 1, paths);
++        }
++        proj_log_level(proj_ctx_, PJ_LOG_NONE);
+         proj_ = proj_create(proj_ctx_, params_.c_str());
+         if (!proj_ || !proj_ctx_)
+         {
+-- 
+2.56.0
+

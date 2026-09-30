@@ -1,0 +1,294 @@
+From 04497b0606380681ca487a76273af3e374278004 Mon Sep 17 00:00:00 2001
+From: Your Name <you@example.com>
+Date: Wed, 30 Sep 2026 19:22:32 +0000
+Subject: [PATCH] Reduce TLS use
+
+---
+ include/mapnik/util/thread_cache.hpp     | 92 ++++++++++++++++++++++++
+ plugins/input/tiles/tiles_datasource.cpp |  9 ++-
+ src/CMakeLists.txt                       |  1 +
+ src/build.py                             |  1 +
+ src/proj_transform_cache.cpp             |  9 ++-
+ src/renderer_common/render_pattern.cpp   |  3 +-
+ src/thread_cache.cpp                     | 52 ++++++++++++++
+ 7 files changed, 162 insertions(+), 5 deletions(-)
+ create mode 100644 include/mapnik/util/thread_cache.hpp
+ create mode 100644 src/thread_cache.cpp
+
+diff --git a/include/mapnik/util/thread_cache.hpp b/include/mapnik/util/thread_cache.hpp
+new file mode 100644
+index 00000000..90425a75
+--- /dev/null
++++ b/include/mapnik/util/thread_cache.hpp
+@@ -0,0 +1,92 @@
++/*****************************************************************************
++ *
++ * This file is part of Mapnik (c++ mapping toolkit)
++ *
++ * Copyright (C) 2025 Artem Pavlenko
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with this library; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
++ *
++ *****************************************************************************/
++
++#ifndef MAPNIK_UTIL_THREAD_CACHE_HPP
++#define MAPNIK_UTIL_THREAD_CACHE_HPP
++
++// mapnik
++#include <mapnik/config.hpp>
++
++// stl
++#include <cstddef>
++
++namespace mapnik {
++namespace util {
++
++// Every per-thread cache in the process shares a single thread-local slot,
++// defined once in libmapnik (src/thread_cache.cpp) and reached from every
++// shared object through this exported accessor. The slot points at a small
++// per-thread table of type-erased cache pointers, one entry per cache_kind.
++//
++// Why a single slot of pointers instead of `thread_local` cache objects:
++// a `thread_local` object with a non-trivial destructor needs static TLS and
++// registers an exit handler with __cxa_thread_atexit(). A module loaded via
++// dlopen() after worker threads already exist can then fail with "cannot
++// allocate memory in static TLS block", and unloading a module while a thread
++// still holds such an object can leave a dangling exit handler that crashes at
++// thread exit. Pointers have trivial destructors: no exit handler, and the
++// static TLS cost is one word for the whole process no matter how many caches
++// exist.
++//
++// The table itself is created on first use and intentionally leaked when the
++// thread ends: it is small, one per thread, and leaking avoids destructor
++// ordering problems during module unload.
++enum class cache_kind : std::size_t
++{
++    proj_transform = 0,
++    render_pattern,
++    tiles_metadata,
++    tiles_tile,
++    count_
++};
++
++inline constexpr std::size_t cache_kind_count = static_cast<std::size_t>(cache_kind::count_);
++
++namespace detail {
++
++// Address of the current thread's cache table (cache_kind_count pointers).
++// The table itself lives on the heap; the one thread-local slot is a single
++// pointer used to find it. Defined exactly once in libmapnik.
++MAPNIK_DECL void** thread_state_table();
++
++} // namespace detail
++
++// Access the per-thread instance of the cache selected by `kind`.
++//
++// Thread safe: each thread only ever touches its own table, and distinct kinds
++// never collide. The same kind always yields the same instance on a thread.
++template<cache_kind Kind, typename Cache>
++Cache& thread_cache()
++{
++    void** table = detail::thread_state_table();
++    void*& entry = table[static_cast<std::size_t>(Kind)];
++    if (!entry)
++    {
++        entry = new Cache();
++    }
++    return *static_cast<Cache*>(entry);
++}
++
++} // namespace util
++} // namespace mapnik
++
++#endif // MAPNIK_UTIL_THREAD_CACHE_HPP
+diff --git a/plugins/input/tiles/tiles_datasource.cpp b/plugins/input/tiles/tiles_datasource.cpp
+index f9d61874..5e2cf144 100644
+--- a/plugins/input/tiles/tiles_datasource.cpp
++++ b/plugins/input/tiles/tiles_datasource.cpp
+@@ -26,6 +26,7 @@
+ #include "pmtiles_source.hpp"
+ #include "mbtiles_source.hpp"
+ #include "vector_tile_projection.hpp"
++#include <mapnik/util/thread_cache.hpp>
+ #include <mapnik/geom_util.hpp>
+ #include <mapnik/util/fs.hpp>
+ #include <mapnik/unicode.hpp>
+@@ -80,7 +81,9 @@ namespace {
+ 
+ boost::json::value const& xyz_metadata(std::string const& url_str)
+ {
+-    static thread_local std::unordered_map<std::string, boost::json::value> metadata_cache;
++    auto& metadata_cache = mapnik::util::thread_cache<
++      mapnik::util::cache_kind::tiles_metadata,
++      std::unordered_map<std::string, boost::json::value>>();
+     auto itr = metadata_cache.find(url_str);
+     if (itr == metadata_cache.end())
+     {
+@@ -305,8 +308,8 @@ std::int64_t scale_to_zoom(double scale, std::int64_t minzoom, std::int64_t maxz
+ 
+ std::unordered_map<std::string, std::string>& tiles_datasource::tile_cache()
+ {
+-    static thread_local std::unordered_map<std::string, std::string> tiles_cache;
+-    return tiles_cache;
++    return mapnik::util::thread_cache<mapnik::util::cache_kind::tiles_tile,
++                                      std::unordered_map<std::string, std::string>>();
+ }
+ 
+ mapnik::featureset_ptr tiles_datasource::features(mapnik::query const& q) const
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 8d24672c..78d01a26 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -107,6 +107,7 @@ target_sources(mapnik PRIVATE
+     map.cpp
+     mapnik.cpp
+     data_paths.cpp
++    thread_cache.cpp
+     mapped_memory_cache.cpp
+     marker_cache.cpp
+     marker_helpers.cpp
+diff --git a/src/build.py b/src/build.py
+index 4926f765..3696c242 100644
+--- a/src/build.py
++++ b/src/build.py
+@@ -169,6 +169,7 @@ source = Split(
+     """
+     mapnik.cpp
+     data_paths.cpp
++    thread_cache.cpp
+     expression_grammar_x3.cpp
+     fs.cpp
+     request.cpp
+diff --git a/src/proj_transform_cache.cpp b/src/proj_transform_cache.cpp
+index 61b98a31..eabb256e 100644
+--- a/src/proj_transform_cache.cpp
++++ b/src/proj_transform_cache.cpp
+@@ -22,6 +22,7 @@
+ 
+ #include <mapnik/proj_transform_cache.hpp>
+ #include <mapnik/proj_transform.hpp>
++#include <mapnik/util/thread_cache.hpp>
+ MAPNIK_DISABLE_WARNING_PUSH
+ #include <mapnik/warning_ignore.hpp>
+ #include <boost/functional/hash.hpp>
+@@ -53,12 +54,17 @@ struct compatible_predicate
+ };
+ 
+ using cache_type = boost::unordered_map<key_type, std::unique_ptr<proj_transform>, compatible_hash>;
+-thread_local static cache_type cache_ = {};
++
++cache_type& cache()
++{
++    return mapnik::util::thread_cache<mapnik::util::cache_kind::proj_transform, cache_type>();
++}
+ 
+ } // namespace
+ 
+ void init(std::string const& source, std::string const& dest)
+ {
++    auto& cache_ = cache();
+     compatible_key_type key = std::make_pair<std::string_view, std::string_view>(source, dest);
+     auto itr = cache_.find(key, compatible_hash{}, compatible_predicate{});
+     if (itr == cache_.end())
+@@ -71,6 +77,7 @@ void init(std::string const& source, std::string const& dest)
+ 
+ proj_transform const* get(std::string const& source, std::string const& dest)
+ {
++    auto& cache_ = cache();
+     compatible_key_type key = std::make_pair<std::string_view, std::string_view>(source, dest);
+     auto itr = cache_.find(key, compatible_hash{}, compatible_predicate{});
+     if (itr == cache_.end())
+diff --git a/src/renderer_common/render_pattern.cpp b/src/renderer_common/render_pattern.cpp
+index e3eb16bc..7e2ac332 100644
+--- a/src/renderer_common/render_pattern.cpp
++++ b/src/renderer_common/render_pattern.cpp
+@@ -24,6 +24,7 @@
+ #include <list>
+ // mapnik
+ #include <mapnik/renderer_common/render_pattern.hpp>
++#include <mapnik/util/thread_cache.hpp>
+ #include <mapnik/geometry/box2d.hpp>
+ #include <mapnik/marker.hpp>
+ #include <mapnik/svg/svg_converter.hpp>
+@@ -101,7 +102,7 @@ std::shared_ptr<image_rgba8 const> rasterized_pattern(marker_svg const& marker,
+ {
+     // Workers can reuse patterns across metatiles without sharing mutable
+     // lookup state. Bound both pixel storage and metadata for dynamic styles.
+-    static thread_local pattern_cache cache;
++    pattern_cache& cache = mapnik::util::thread_cache<mapnik::util::cache_kind::render_pattern, pattern_cache>();
+     constexpr std::size_t max_bytes = 64 * 1024 * 1024;
+     constexpr std::size_t max_entries = 64;
+ 
+diff --git a/src/thread_cache.cpp b/src/thread_cache.cpp
+new file mode 100644
+index 00000000..397e2550
+--- /dev/null
++++ b/src/thread_cache.cpp
+@@ -0,0 +1,52 @@
++/*****************************************************************************
++ *
++ * This file is part of Mapnik (c++ mapping toolkit)
++ *
++ * Copyright (C) 2025 Artem Pavlenko
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with this library; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
++ *
++ *****************************************************************************/
++
++#include <mapnik/util/thread_cache.hpp>
++
++namespace mapnik {
++namespace util {
++namespace detail {
++
++// One thread-local slot for the whole process: a single pointer to this
++// thread's cache table.
++//
++// It is a plain pointer with a trivial destructor, so there is no
++// __cxa_thread_atexit() registration and exactly one word of static TLS for the
++// entire process. Every per-thread cache in every mapnik shared object
++// (including dlopen()ed input plugins) is reached through this one slot, so the
++// static TLS footprint does not grow with the number of caches.
++//
++// The table (and the caches it points to) is leaked when the thread ends by
++// design; see thread_cache.hpp for the rationale.
++void** thread_state_table()
++{
++    static thread_local void** table = nullptr;
++    if (!table)
++    {
++        table = new void*[cache_kind_count]();
++    }
++    return table;
++}
++
++} // namespace detail
++} // namespace util
++} // namespace mapnik
+-- 
+2.56.0
+

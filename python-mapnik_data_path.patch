@@ -1,0 +1,109 @@
+From 221d4fb5840b8544e3948947f9c39208b669a5b5 Mon Sep 17 00:00:00 2001
+From: Your Name <you@example.com>
+Date: Wed, 30 Sep 2026 18:39:08 +0000
+Subject: [PATCH] Add local paths for proj and gdal
+
+---
+ packaging/mapnik/__init__.py | 13 ++++++++-----
+ setup.py                     |  3 ++-
+ src/mapnik_data_paths.cpp    | 22 ++++++++++++++++++++++
+ src/mapnik_python.cpp        |  2 ++
+ 4 files changed, 34 insertions(+), 6 deletions(-)
+ create mode 100644 src/mapnik_data_paths.cpp
+
+diff --git a/packaging/mapnik/__init__.py b/packaging/mapnik/__init__.py
+index 64cea4f..2b06c58 100644
+--- a/packaging/mapnik/__init__.py
++++ b/packaging/mapnik/__init__.py
+@@ -52,11 +52,6 @@ if os.path.exists(libpath):
+     ctypes.cdll.LoadLibrary(os.path.join(libpath, libgdalpath))
+ 
+ 
+-
+-localpath = os.path.dirname(os.path.abspath( __file__ ))
+-os.environ.setdefault("PROJ_DATA", os.path.join(localpath, "proj"))
+-os.environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal"))
+-
+ def bootstrap_env():
+     """
+     If an optional settings file exists, inherit its
+@@ -82,6 +77,14 @@ bootstrap_env()
+ 
+ from ._mapnik import *
+ 
++localpath = os.path.dirname(os.path.abspath( __file__ ))
++_bundled_proj_dir = os.path.join(localpath, "proj")
++_bundled_gdal_dir = os.path.join(localpath, "gdal")
++set_data_paths(
++    _bundled_proj_dir if os.path.isdir(_bundled_proj_dir) else "",
++    _bundled_gdal_dir if os.path.isdir(_bundled_gdal_dir) else "",
++)
++
+ def Shapefile(**keywords):
+     """Create a Shapefile Datasource.
+ 
+diff --git a/setup.py b/setup.py
+index 780ba70..b58ab9d 100755
+--- a/setup.py
++++ b/setup.py
+@@ -106,7 +106,8 @@ ext_modules = [
+                "src/mapnik_dot_symbolizer.cpp",
+                "src/mapnik_building_symbolizer.cpp",
+                "src/mapnik_shield_symbolizer.cpp",
+-               "src/mapnik_group_symbolizer.cpp"
++               "src/mapnik_group_symbolizer.cpp",
++               "src/mapnik_data_paths.cpp"
+           ],
+           extra_compile_args=extra_comp_args,
+           extra_link_args=linkflags,
+diff --git a/src/mapnik_data_paths.cpp b/src/mapnik_data_paths.cpp
+new file mode 100644
+index 0000000..d0f172e
+--- /dev/null
++++ b/src/mapnik_data_paths.cpp
+@@ -0,0 +1,22 @@
++#include <mapnik/data_paths.hpp>
++
++#include <pybind11/pybind11.h>
++
++#include <string>
++
++namespace py = pybind11;
++
++void export_data_paths(py::module& m)
++{
++    m.def("set_data_paths",
++          &mapnik::set_data_paths,
++          py::arg("proj_dir") = "",
++          py::arg("gdal_dir") = "",
++          "Configure the PROJ and GDAL data directories used by mapnik without\n"
++          "touching the process environment. An empty string leaves the\n"
++          "corresponding library using its own default lookup.\n");
++
++    m.def("proj_data_dir", &mapnik::proj_data_dir, "Directory configured for PROJ data ('' if unset).\n");
++
++    m.def("gdal_data_dir", &mapnik::gdal_data_dir, "Directory configured for GDAL data ('' if unset).\n");
++}
+diff --git a/src/mapnik_python.cpp b/src/mapnik_python.cpp
+index 81222e9..7a1636d 100644
+--- a/src/mapnik_python.cpp
++++ b/src/mapnik_python.cpp
+@@ -581,6 +581,7 @@ void export_dot_symbolizer(py::module const&);
+ void export_shield_symbolizer(py::module const&);
+ void export_group_symbolizer(py::module const&);
+ void export_building_symbolizer(py::module const&);
++void export_data_paths(py::module&); // non-const because of m.def(..)
+ 
+ using mapnik::load_map;
+ using mapnik::load_map_string;
+@@ -636,6 +637,7 @@ PYBIND11_MODULE(_mapnik, m) {
+     export_shield_symbolizer(m);
+     export_group_symbolizer(m);
+     export_building_symbolizer(m);
++    export_data_paths(m);
+     // exceptions
+     py::register_exception<mapnik::value_error>(m, "PyExc_MapnikValueError", PyExc_ValueError);
+     //
+-- 
+2.56.0
+

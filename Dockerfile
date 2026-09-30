@@ -146,8 +146,10 @@ COPY getver.py fix_record.py /usr/local/bin/
 # The openslide-vendor-mirax.c.patch allows girder's file layout to work with
 # mirax files and does no harm otherwise.
 COPY versions.txt \
-    mapnik_projection.cpp.patch \
+    mapnik_data_path.patch \
+    mapnik_tls.patch \
     python-mapnik.patch \
+    python-mapnik_data_path.patch \
     openslide-iewchen-zeiss-czi-jxr.patch \
     openslide-vendor-mirax.c.patch \
     python-javabridge.pyx.patch \
@@ -2155,7 +2157,8 @@ RUN \
     git clone --depth=1000 --single-branch -c advice.detachedHead=false --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
     cd mapnik && \
     git checkout `getver.py mapnik-sha` && \
-    git apply --stat --numstat --apply ../mapnik_projection.cpp.patch && \
+    git am ../mapnik_data_path.patch && \
+    git am ../mapnik_tls.patch && \
     sed -i 's/PJ_LOG_ERROR/PJ_LOG_NONE/g' src/*.cpp && \
     find include -name '*.hpp' -exec sed -i 's:boost/spirit/include/phoenix_operator.hpp:boost/phoenix/operator.hpp:g' {} \; && \
     find include -name '*.hpp' -exec sed -i 's:boost/spirit/include/phoenix_function.hpp:boost/phoenix/function.hpp:g' {} \; && \
@@ -2167,7 +2170,6 @@ RUN \
     sed -i 's/SQLite::SQLite3/SQLite3::SQLite3/g' plugins/input/sqlite/CMakeLists.txt && \
     sed -i 's/SQLite::SQLite3/SQLite3::SQLite3/g' plugins/input/tiles/CMakeLists.txt && \
     sed -i 's/SQLite::SQLite3/SQLite3::SQLite3/g' utils/pgsql2sqlite/CMakeLists.txt && \
-    find . -name '.git' -exec rm -rf {} \+ && \
     # Keeps the docker smaller \
     rm -rf demo test && mkdir test && mkdir demo && touch test/CMakeLists.txt && touch demo/CMakeLists.txt && \
     mkdir _build && \
@@ -2191,6 +2193,7 @@ RUN \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
+    find . -name '.git' -exec rm -rf {} \+ && \
     echo "`date` mapnik" >> /build/log.txt
 
 RUN \
@@ -2200,7 +2203,7 @@ RUN \
     cd python-mapnik && \
     git checkout `getver.py python-mapnik-sha` && \
     git am /build/python-mapnik.patch && \
-    find . -name '.git' -exec rm -rf {} \+ && \
+    git am /build/python-mapnik_data_path.patch && \
     # Copy the mapnik input sources and fonts to the python path and add them \
     # via setup.py.  Modify the paths.py file that gets created to refer to \
     # the relative location of these files. \
@@ -2230,7 +2233,7 @@ path = "pyproject.toml" \n\
 s = open(path).read() \n\
 s = s.replace(".beta", "") \n\
 s = s.replace("pybind11 >= 3.0.2", "pybind11 == 3.0.2") \n\
-s = re.sub("\\nversion = \\".*\\"", "\\nversion = \\"'`pkgconf --modversion libmapnik`.1$'\\"", s) \n\
+s = re.sub("\\nversion = \\".*\\"", "\\nversion = \\"'`pkgconf --modversion libmapnik`.2$'\\"", s) \n\
 s = s.replace("authors", "dynamic = [\\"scripts\\"]\\nauthors") \n\
 s = s.replace("license = \\"LGPL-2.1-or-later\\"", "license = { text = \\"LGPL-2.1-or-later\\"}") \n\
 open(path, "w").write(s)' && \
@@ -2245,6 +2248,7 @@ open(path, "w").write(s)' && \
     find /io/wheelhouse/ -name 'mapnik*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
     ls -l /io/wheelhouse && \
     rm -rf ~/.cache && \
+    find . -name '.git' -exec rm -rf {} \+ && \
     echo "`date` python-mapnik" >> /build/log.txt
 
 # used by openslide, though maybe not until PR #605 is merged
