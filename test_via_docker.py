@@ -31,12 +31,12 @@ containers = {
                   'proj-bin libxml2-dev libxmlsec1-dev'},
     },
     'liw/python:3.15': {
-        'skip': True,
+        # 'skip': True,
         'build': {'base': 'debian:stable-slim', 'python': '3.15',
                   'packages': 'build-essential libffi-dev'}},
     'liw/python:3.15t': {
-        'skip': True,
-        # 'skip': platform.machine() in {'aarch64', 'arm64'},
+        # 'skip': True,
+        'skip': platform.machine() in {'aarch64', 'arm64'},
         'build': {'base': 'debian:stable-slim', 'python': '3.15t',
                   'packages': 'build-essential libffi-dev libproj-dev '
                   'proj-bin libxml2-dev libxmlsec1-dev'},
@@ -59,11 +59,11 @@ containers = {
         'build': {'base': 'almalinux:8', 'python': '3.14'},
         'subcmds': ['sed -i -e \'s/^mirrorlist=/#mirrorlist=/\' -e \'s|^# baseurl=|baseurl=|\' /etc/yum.repos.d/almalinux*.repo', 'yum install -y libffi-devel gcc']},  # noqa
     'liw/almapython:3.15': {
-        'skip': True,
+        # 'skip': True,
         'build': {'base': 'almalinux:8', 'python': '3.15'},
         'subcmds': ['sed -i -e \'s/^mirrorlist=/#mirrorlist=/\' -e \'s|^# baseurl=|baseurl=|\' /etc/yum.repos.d/almalinux*.repo', 'yum install -y libffi-devel gcc']},  # noqa
     'liw/almapython:3.15t': {
-        'skip': True,
+        # 'skip': True,
         'build': {'base': 'almalinux:8', 'python': '3.15'},
         'subcmds': ['sed -i -e \'s/^mirrorlist=/#mirrorlist=/\' -e \'s|^# baseurl=|baseurl=|\' /etc/yum.repos.d/almalinux*.repo', 'yum install -y libffi-devel gcc']},  # noqa
 }

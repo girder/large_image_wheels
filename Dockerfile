@@ -97,9 +97,7 @@ RUN \
     ln -s /opt/python/* /opt/py/. && \
     # Disable old versions \
     rm -rf /opt/py/cp38* && \
-    # We can't handle the no-gil variant yet (lxml doesn't work yet) \
-    # rm -rf /opt/py/cp314-cp314t* && \
-    rm -rf /opt/py/cp315* && \
+    # rm -rf /opt/py/cp315* && \
     if [ "$PYPY" = true ]; then \
     echo "Only building pypy versions" && \
     rm -rf /opt/py/cp* && \
@@ -1659,6 +1657,20 @@ RUN \
     ldconfig && \
     echo "`date` postgresql" >> /build/log.txt
 
+# Used by mapnik, libtiff, poppler
+RUN \
+    echo "`date` harfbuzz" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b `getver.py harfbuzz` -c advice.detachedHead=false https://github.com/harfbuzz/harfbuzz.git && \
+    cd harfbuzz && \
+    sed -i 's!/usr/bin/python3!/usr/bin/env python3!g' src/relative_to.py && \
+    meson setup --prefix=/usr/local --buildtype=release --optimization=3 -Dtests=disabled -Ddocs=disabled _build && \
+    cd _build && \
+    ninja -j ${JOBS} && \
+    ninja -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` harfbuzz" >> /build/log.txt
+
 # Used by GDAL, mapnik, libvips.  PDF reader
 RUN \
     echo "`date` poppler" >> /build/log.txt && \
@@ -2135,20 +2147,6 @@ open(path, "w").write(s)' && \
     rm -rf ~/.cache && \
     echo "`date` gdal python" >> /build/log.txt
 
-# Used by mapnik and libtiff
-RUN \
-    echo "`date` harfbuzz" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b `getver.py harfbuzz` -c advice.detachedHead=false https://github.com/harfbuzz/harfbuzz.git && \
-    cd harfbuzz && \
-    sed -i 's!/usr/bin/python3!/usr/bin/env python3!g' src/relative_to.py && \
-    meson setup --prefix=/usr/local --buildtype=release --optimization=3 -Dtests=disabled -Ddocs=disabled _build && \
-    cd _build && \
-    ninja -j ${JOBS} && \
-    ninja -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` harfbuzz" >> /build/log.txt
-
 # PINNED VERSION - use master since last version is stale
 RUN \
     echo "`date` mapnik" >> /build/log.txt && \
@@ -2347,7 +2345,9 @@ open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    find /opt/py -mindepth 1 -not -name '*p39-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    # Exclude 3.9 as no longer supported; exclude non -t variants above 3.11 \
+    # since 3.11 builds an abi3 compatible version that works with 3.11-3.15 \
+    find /opt/py -mindepth 1 -not -name '*p39-*' -a -not -name '*p312' -a -not -name '*p313' -a -not -name '*p314' -a -not -name '*p315' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     find /io/wheelhouse/ -name 'openslide*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'openslide*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
