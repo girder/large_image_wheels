@@ -7,19 +7,39 @@ export OGR_CT_DEBUG=ON
 
 . /etc/profile || true
 
+# The macos harness runs this script once per python version inside a single
+# VM; LIW_PYTHON_BIN_DIR names the bin directory of the interpreter under
+# test so that python3 (and the venv created from it) is that interpreter
+# even after /etc/profile resets PATH.  Unset on linux.
+if [ -n "${LIW_PYTHON_BIN_DIR:-}" ]; then
+  export PATH="$LIW_PYTHON_BIN_DIR:$PATH"
+fi
+
 # Check for undefined variables only after setting the profile
 set -u
 
 # $([ $(arch) != "aarch64" ] || python3 -c 'import sys;sys.exit(not (sys.version_info >= (3, 9)))')
-TEST_BIOFORMATS=true
-TEST_GDAL=true
-TEST_GLYMUR=$(python3 -c 'import sys, sysconfig;sys.exit(sys.version_info < (3, 10) or sysconfig.get_config_var("Py_GIL_DISABLED") == 1)' && echo true || echo false)
-TEST_JAVABRIDGE=$(python3 -c 'import sys, sysconfig;sys.exit(sysconfig.get_config_var("Py_GIL_DISABLED") == 1 and sys.version_info < (3, 14))' && echo true || echo false)
-TEST_MAPNIK=$(python3 -c 'import sys, sysconfig;sys.exit(sys.version_info < (3, 10))' && echo true || echo false)
-TEST_OPENSLIDE=$(python3 -c 'import sys, sysconfig;sys.exit(sys.version_info < (3, 10))' && echo true || echo false)
-TEST_PYLIBMC=true
-TEST_PYLIBTIFF=true
-TEST_PYVIPS=$(python3 -c 'import sys, sysconfig;sys.exit(sysconfig.get_config_var("Py_GIL_DISABLED") == 1 and sys.version_info < (3, 14))' && echo true || echo false)
+# Each TEST_* flag combines the interpreter-feature conditions with a check
+# that the corresponding wheel is present in the wheelhouse.  On linux every
+# wheel is present, so the gates reduce to the interpreter conditions; on
+# partial wheelhouses (e.g. the macos build, which currently produces only
+# some of the packages) the tests for absent wheels are skipped instead of
+# failing to install, or worse, silently installing a pypi wheel instead of
+# ours.  tart_build.sh validates the expected wheels before the test runs,
+# so a missing wheel here means a package was not requested, not that a
+# build silently failed.
+WHEELHOUSE="${1:-/wheels}"
+have_wheel() { [ -n "$(ls "$WHEELHOUSE"/"$1"*.whl 2>/dev/null)" ]; }
+
+TEST_BIOFORMATS=$(have_wheel python_bioformats && echo true || echo false)
+TEST_GDAL=$(have_wheel GDAL && echo true || echo false)
+TEST_GLYMUR=$(python3 -c 'import sys, sysconfig;sys.exit(sys.version_info < (3, 10) or sysconfig.get_config_var("Py_GIL_DISABLED") == 1)' && have_wheel Glymur && echo true || echo false)
+TEST_JAVABRIDGE=$(python3 -c 'import sys, sysconfig;sys.exit(sysconfig.get_config_var("Py_GIL_DISABLED") == 1 and sys.version_info < (3, 14))' && have_wheel python_javabridge && echo true || echo false)
+TEST_MAPNIK=$(python3 -c 'import sys, sysconfig;sys.exit(sys.version_info < (3, 10))' && have_wheel mapnik && echo true || echo false)
+TEST_OPENSLIDE=$(python3 -c 'import sys, sysconfig;sys.exit(sys.version_info < (3, 10))' && have_wheel openslide_python && echo true || echo false)
+TEST_PYLIBMC=$(have_wheel pylibmc && echo true || echo false)
+TEST_PYLIBTIFF=$(have_wheel pylibtiff && echo true || echo false)
+TEST_PYVIPS=$(python3 -c 'import sys, sysconfig;sys.exit(sysconfig.get_config_var("Py_GIL_DISABLED") == 1 and sys.version_info < (3, 14))' && have_wheel pyvips && echo true || echo false)
 
 find /etc/apt/sources.list.d -type f -exec sed -i 's|http://|https://|g' {} \+ 2>/dev/null || true
 sed -i -e 's/^mirrorlist=/#mirrorlist=/' -e 's|^# baseurl=|baseurl=|' /etc/yum.repos.d/almalinux*.repo 2>/dev/null || true
@@ -36,6 +56,22 @@ if curl --version 2>/dev/null >/dev/null; then true; else
     zypper install -y curl
   fi
 fi
+
+# Download a sample file into the current directory.  If LIW_TEST_CACHE
+# names a directory, the file is copied from there when present and cached
+# there after the first download, so that repeated runs (the macos test
+# harness runs this script once per python in one VM) do not re-download
+# the sample files.  Unset, this behaves like a plain curl download.
+dl() { # dl <url> <outfile>
+  if [ -n "${LIW_TEST_CACHE:-}" ] && [ -f "$LIW_TEST_CACHE/$2" ]; then
+    cp "$LIW_TEST_CACHE/$2" "$2"
+  else
+    curl --silent --retry 5 -L -o "$2" "$1"
+    if [ -n "${LIW_TEST_CACHE:-}" ] && [ -d "$LIW_TEST_CACHE" ]; then
+      cp "$2" "$LIW_TEST_CACHE/$2" 2>/dev/null || true
+    fi
+  fi
+}
 
 # # We need to have scikit-image for some of our tests, and if there aren't
 # # wheels published for it, we need to have the tools to build it locally.
@@ -54,15 +90,15 @@ pip uninstall -y numpy scipy
 pip cache purge || true
 
 echo 'Test installing pyvips and other dependencies from wheels via large_image'
-if $TEST_BIOFORMATS && $TEST_JAVABRIDGE; then pip install 'large-image[bioformats]' -f ${1:-/wheels}; fi
-if $TEST_GDAL; then pip install --no-index -f ${1:-/wheels} gdal; pip install 'large-image[gdal]' -f ${1:-/wheels}; fi
-if $TEST_GLYMUR; then pip install 'large-image[openjpeg]' -f ${1:-/wheels}; fi
-if $TEST_MAPNIK; then pip install 'large-image[mapnik]' -f ${1:-/wheels}; fi
-if $TEST_OPENSLIDE; then pip install 'large-image[openslide]' -f ${1:-/wheels}; fi
-if $TEST_PYLIBMC; then pip install 'large-image[memcached]' -f ${1:-/wheels}; fi
-if $TEST_PYLIBTIFF; then pip install 'large-image[tiff]' -f ${1:-/wheels}; fi
-if $TEST_PYVIPS; then pip install 'large-image[vips]' -f ${1:-/wheels}; fi
-if $TEST_GDAL && $TEST_PYVIPS; then pip install 'large-image[converter]' -f ${1:-/wheels}; fi
+if $TEST_BIOFORMATS && $TEST_JAVABRIDGE; then pip install 'large-image[bioformats]' -f "$WHEELHOUSE"; fi
+if $TEST_GDAL; then pip install --no-index -f "$WHEELHOUSE" gdal; pip install 'large-image[gdal]' -f "$WHEELHOUSE"; fi
+if $TEST_GLYMUR; then pip install 'large-image[openjpeg]' -f "$WHEELHOUSE"; fi
+if $TEST_MAPNIK; then pip install 'large-image[mapnik]' -f "$WHEELHOUSE"; fi
+if $TEST_OPENSLIDE; then pip install 'large-image[openslide]' -f "$WHEELHOUSE"; fi
+if $TEST_PYLIBMC; then pip install 'large-image[memcached]' -f "$WHEELHOUSE"; fi
+if $TEST_PYLIBTIFF; then pip install 'large-image[tiff]' -f "$WHEELHOUSE"; fi
+if $TEST_PYVIPS; then pip install 'large-image[vips]' -f "$WHEELHOUSE"; fi
+if $TEST_GDAL && $TEST_PYVIPS; then pip install 'large-image[converter]' -f "$WHEELHOUSE"; fi
 
 if $TEST_OPENSLIDE; then
   echo 'Test basic import of openslide'
@@ -115,33 +151,33 @@ EOF
 fi
 
 echo 'Download an openslide file'
-curl --silent --retry 5 -L -o sample.svs https://data.kitware.com/api/v1/file/5be43d9c8d777f217991e1c2/download
+dl https://data.kitware.com/api/v1/file/5be43d9c8d777f217991e1c2/download sample.svs
 echo 'Download a tiff file'
-curl --silent --retry 5 -L -o sample.tif https://data.kitware.com/api/v1/file/5be43e398d777f217991e21f/download
+dl https://data.kitware.com/api/v1/file/5be43e398d777f217991e21f/download sample.tif
 echo 'Download another tiff file'
-curl --silent --retry 5 -L -o sample.ptif https://data.kitware.com/api/v1/file/57b345d28d777f126827dc26/download
+dl https://data.kitware.com/api/v1/file/57b345d28d777f126827dc26/download sample.ptif
 echo 'Download a tiff file that requires a newer openjpeg'
-curl --silent --retry 5 -L -o sample_jp2.tif https://data.kitware.com/api/v1/file/5be348568d777f21798fa1d1/download
+dl https://data.kitware.com/api/v1/file/5be348568d777f21798fa1d1/download sample_jp2.tif
 echo 'Download a png file'
-curl --silent --retry 5 -OJL https://github.com/girder/large_image/raw/master/test/test_files/yb10kx5ktrans.png
+dl https://github.com/girder/large_image/raw/master/test/test_files/yb10kx5ktrans.png yb10kx5ktrans.png
 echo 'Download a geotiff file'
-curl --silent --retry 5 -L -o landcover.tif https://data.kitware.com/api/v1/file/5be43e848d777f217991e270/download
+dl https://data.kitware.com/api/v1/file/5be43e848d777f217991e270/download landcover.tif
 echo 'Download a somewhat bad nitf file'
-curl --silent --retry 5 -L -o sample.ntf https://data.kitware.com/api/v1/file/5cee913e8d777f072bf1c47a/download
+dl https://data.kitware.com/api/v1/file/5cee913e8d777f072bf1c47a/download sample.ntf
 echo 'Download an rgba geotiff'
-curl --silent --retry 5 -L -o rgba_geotiff.tiff https://data.kitware.com/api/v1/file/6862d7564263e86bc81ba30d/download
+dl https://data.kitware.com/api/v1/file/6862d7564263e86bc81ba30d/download rgba_geotiff.tiff
 echo 'Download a czi file'
-curl --silent --retry 5 -L -o sample.czi https://data.kitware.com/api/v1/file/5f048d599014a6d84e005dfc/download
+dl https://data.kitware.com/api/v1/file/5f048d599014a6d84e005dfc/download sample.czi
 echo 'Download an scn file'
-curl --silent --retry 5 -L -o leica.scn https://data.kitware.com/api/v1/file/5cb8ba728d777f072b4b2663/download
+dl https://data.kitware.com/api/v1/file/5cb8ba728d777f072b4b2663/download leica.scn
 echo 'Download an ome.tiff file'
-curl --silent --retry 5 -L -o sample.ome.tif https://data.kitware.com/api/v1/file/5cb9c6288d777f072b4e85f0/download
+dl https://data.kitware.com/api/v1/file/5cb9c6288d777f072b4e85f0/download sample.ome.tif
 echo 'Download a webp compressed file'
-curl --silent --retry 5 -L  -o d042-353.crop.small.float32.tif https://data.kitware.com/api/v1/file/hashsum/sha512/8b640e9adcd0b8aba794666027b80215964d075e76ca2ebebefc7e17c3cd79af7da40a40151e2a2ba0ae48969e54275cf69a3cfc1a2a6b87fbb0d186013e5489/download
+dl https://data.kitware.com/api/v1/file/hashsum/sha512/8b640e9adcd0b8aba794666027b80215964d075e76ca2ebebefc7e17c3cd79af7da40a40151e2a2ba0ae48969e54275cf69a3cfc1a2a6b87fbb0d186013e5489/download d042-353.crop.small.float32.tif
 echo 'Download a MIRAX (mrxs) file'
-curl --silent --retry 5 -L  -o mrxs.zip https://data.kitware.com/api/v1/file/hashsum/sha512/c5195f2740e92e4375c5011c4dd34d9b3e8524166ba1478ead95ad1a9207b10f3a27488ee3c7f55c6ff3b9412618d48f5dfd0a45e4f776b30c872b9ed1ab30d3/download
+dl https://data.kitware.com/api/v1/file/hashsum/sha512/c5195f2740e92e4375c5011c4dd34d9b3e8524166ba1478ead95ad1a9207b10f3a27488ee3c7f55c6ff3b9412618d48f5dfd0a45e4f776b30c872b9ed1ab30d3/download mrxs.zip
 echo 'Download a jp2 file'
-curl --silent --retry 5 -L  -o erdas_foo.jp2 https://github.com/OSGeo/gdal/raw/master/autotest/gdrivers/data/jpeg2000/erdas_foo.jp2
+dl https://github.com/OSGeo/gdal/raw/master/autotest/gdrivers/data/jpeg2000/erdas_foo.jp2 erdas_foo.jp2
 
 if $TEST_OPENSLIDE; then
   echo 'Use large_image to read an openslide file'
@@ -233,6 +269,7 @@ pprint.pprint({
 })
 EOF
 fi
+if $TEST_GDAL || $TEST_MAPNIK || $TEST_PYVIPS || $TEST_BIOFORMATS; then
 echo 'Use large_image to read a geotiff file'
 python <<EOF
 import large_image, pprint
@@ -255,6 +292,7 @@ pprint.pprint(ti['tile'][:4,:4].tolist())
 tile = ts.getTile(1178, 1507, 12)
 pprint.pprint(repr(tile[1400:1440]))
 EOF
+fi
 if $TEST_GDAL; then
   echo 'Use large_image to read a geotiff file with a projection via gdal'
   python <<EOF
@@ -408,7 +446,7 @@ if $TEST_GDAL; then
 import os
 import platform
 known = set('JPEG raw GTIFF MEM vrt Derived GTI LIBERTIFF HFA NITF GXF AAIGrid CEOS SAR_CEOS DTED JDEM Envisat L1B RS2 ILWIS RMF Leveller SRTMHGT IDRISI GSG ERS PALSARJaxa DIMAP GFF COSAR PDS ADRG COASP TSX Terragen MSGN TIL northwood SAGA XYZ AVIF HEIF ESRIC HF2 KMLSUPEROVERLAY CTG ZMap NGSGEOID IRIS MAP CALS SAFE SENTINEL2 PRF MRF WMTS GRIB BMP TGA STACTA SNAP_TIFF BSB AIGrid USGSDEM AirSAR PCIDSK SIGDEM MSG RIK STACIT PDF RCM GDALG PNG GIF WCS HTTP netCDF Zarr DAAS EEDA FITS HDF5 PLMOSAIC WMS OGCAPI GTA WEBP HDF4 MBTiles PostGISRaster KEA JP2OpenJPEG EXR PCRaster JPEGXL MiraMon MrSID GeoJSON TAB Shape KML VRT AVC GML CSV DGN GMT S57 GeoRSS DXF PGDump GPSBabel EDIGEO SXF OpenFileGDB WAsP Selafin JML VDV FlatGeobuf MapML ADBC MiraMon AIVector JSONFG GPX GMLAS CSW NAS PLSCENES SOSI WFS OAPIF NGW Elastic XODR Idrisi PDS SQLite GeoPackage OSM VFK MVT PMTiles AmigoCloud Carto ILI MySQL PG XLSX XLS CAD GTFS ODS LVBAG'.lower().split())
-if platform.machine() == 'aarch64':
+if platform.machine() in ('aarch64', 'arm64'):
     known -= {'mrsid', }
 current = set(os.popen('gdal-config --formats').read().lower().split())
 print('New formats: %s' % ' '.join(sorted(current - known)))
@@ -456,7 +494,7 @@ if $TEST_BIOFORMATS && $TEST_JAVABRIDGE; then
   python -c 'import large_image_source_bioformats;print(large_image_source_bioformats._getBioformatsVersion())'
 fi
 
-if [ $(arch) != "aarch64" ]; then
+if [ "$(arch)" != "aarch64" ] && [ "$(arch)" != "arm64" ]; then
   echo 'Use large_image to read a czi file'
   python <<EOF
 import large_image, pprint

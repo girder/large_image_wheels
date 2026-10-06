@@ -151,6 +151,7 @@ COPY versions.txt \
     openslide-iewchen-zeiss-czi-jxr.patch \
     openslide-vendor-mirax.c.patch \
     python-javabridge.pyx.patch \
+    auditwheel_build_id_patch.py \
     ./
 
 # Build tool
@@ -422,6 +423,7 @@ for line in os.popen("find / -xdev -name manylinux-policy.json").readlines(): \n
         "libglib-2.0.so.0", "Xlibglib-2.0.so.0").replace( \n\
         "XlibXext.so.6", "libjvm.so") \n\
     open(path, "w").write(data)' && \
+    python /build/auditwheel_build_id_patch.py && \
     echo "`date` auditwheel" >> /build/log.txt
 
 # Use an older version of numpy -- we can work with newer versions, but have to
@@ -886,6 +888,7 @@ path = "pyproject.toml" \n\
 s = open(path).read() \n\
 s = s.replace("jpeg2jp2 = \'glymur.command_line:jpeg2jp2\'", "jpeg2jp2 = \'glymur.command_line:jpeg2jp2\'" + "".join(["\\n%s = \'glymur.bin:program\'" % name for name in os.listdir("glymur/bin") if not name.endswith(".py")])) \n\
 s = s.replace("requires-python = \'>=3.11\'", "requires-python = \'>=3.10\'") \n\
+s = s.replace("dependencies = [\\n    \'numpy\',", "dependencies = [\\n    \'packaging\',\\n    \'numpy\',") \n\
 s += """ \n\
 [tool.setuptools] \n\
 include-package-data = true \n\
