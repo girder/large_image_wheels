@@ -151,6 +151,7 @@ COPY versions.txt \
     openslide-iewchen-zeiss-czi-jxr.patch \
     openslide-vendor-mirax.c.patch \
     python-javabridge.pyx.patch \
+    auditwheel_build_id_patch.py \
     ./
 
 # Build tool
@@ -422,6 +423,7 @@ for line in os.popen("find / -xdev -name manylinux-policy.json").readlines(): \n
         "libglib-2.0.so.0", "Xlibglib-2.0.so.0").replace( \n\
         "XlibXext.so.6", "libjvm.so") \n\
     open(path, "w").write(data)' && \
+    python /build/auditwheel_build_id_patch.py && \
     echo "`date` auditwheel" >> /build/log.txt
 
 # Use an older version of numpy -- we can work with newer versions, but have to
@@ -501,9 +503,10 @@ cd /build && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
-    echo "`date` openjpeg" >> /build/log.txt
-
-RUN \
+    echo "`date` openjpeg" >> /build/log.txt && \
+cd /build && \
+# \
+# RUN \
     echo "`date` libpng" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export AUTOMAKE_JOBS=`nproc` && \
@@ -598,10 +601,11 @@ cd /build && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
-    echo "`date` json-c" >> /build/log.txt
-
-# Used in gdal, mapnik, libvips, openslide, glymur, python-javabridge
-RUN \
+    echo "`date` json-c" >> /build/log.txt && \
+cd /build && \
+# \
+# Used in gdal, mapnik, libvips, openslide, glymur, python-javabridge \
+# RUN \
     echo "`date` libjpeg-turbo" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export CFLAGS="$CFLAGS -O3 -fPIC -lm" && \
@@ -886,6 +890,7 @@ path = "pyproject.toml" \n\
 s = open(path).read() \n\
 s = s.replace("jpeg2jp2 = \'glymur.command_line:jpeg2jp2\'", "jpeg2jp2 = \'glymur.command_line:jpeg2jp2\'" + "".join(["\\n%s = \'glymur.bin:program\'" % name for name in os.listdir("glymur/bin") if not name.endswith(".py")])) \n\
 s = s.replace("requires-python = \'>=3.11\'", "requires-python = \'>=3.10\'") \n\
+s = s.replace("dependencies = [\\n    \'numpy\',", "dependencies = [\\n    \'packaging\',\\n    \'numpy\',") \n\
 s += """ \n\
 [tool.setuptools] \n\
 include-package-data = true \n\
@@ -1617,7 +1622,7 @@ RUN \
     fi && \
     CFLAGS="$CFLAGS -ftls-model=global-dynamic" \
     CXXFLAGS="$CXXFLAGS -Wno-deprecated-declarations -ftls-model=global-dynamic" \
-    cmake .. -DBUILD_CONFIG=mysql_release -DBUILD_SHARED_LIBS=ON -DWITH_BOOST=`find ../../boost/ -maxdepth 1 -name 'boost_*'` -DWITH_ZLIB=bundled -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DCMAKE_BUILD_TYPE=MinSizeRel -DWITHOUT_SERVER=ON -DREPRODUCIBLE_BUILD=ON -DINSTALL_MYSQLTESTDIR="" && \
+    cmake .. -DBUILD_CONFIG=mysql_release -DBUILD_SHARED_LIBS=ON -DWITH_ZLIB=bundled -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DCMAKE_BUILD_TYPE=MinSizeRel -DWITHOUT_SERVER=ON -DREPRODUCIBLE_BUILD=ON -DINSTALL_MYSQLTESTDIR="" -DWITH_AUTHENTICATION_WEBAUTHN=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     # reduce docker size \
