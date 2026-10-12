@@ -28,6 +28,7 @@
 # which this sandbox was made; see manthey/utils agent_tart.sh provision).
 
 set -u
+set -o pipefail
 
 LIW_TART_USER="${LIW_TART_USER:-admin}"
 LIW_GUEST_HOME="/Users/$LIW_TART_USER"
@@ -166,7 +167,7 @@ delete_vm() {
 
 fail() {
     echo "BUILD FAILED; tail of the in-VM log ($VM_NAME kept for debugging):" >&2
-    run_ssh "tail -50 ~/$REPO_NAME/liw_build.log" 2>/dev/null || true
+    run_ssh "tail -50 ~/$REPO_NAME/macos_build.log" 2>/dev/null || true
     exit 1
 }
 
@@ -213,15 +214,15 @@ tar -C "$(dirname "$REPO_DIR")" \
     die "could not copy the repository into the VM"
 
 info "starting the wheel build in the VM"
-run_ssh "rm -rf ~/$REPO_NAME/liw_osx_build" || true
-run_ssh "cd ~/$REPO_NAME && LIW_PYTHONS='$LIW_PYTHONS' nohup bash macos/build_wheels.sh $LIW_PACKAGES > $LIW_GUEST_HOME/liw_build.log 2>&1 < /dev/null &"
+run_ssh "rm -rf ~/$REPO_NAME/liw_macos_build" || true
+run_ssh "cd ~/$REPO_NAME && LIW_PYTHONS='$LIW_PYTHONS' nohup bash macos/build_wheels.sh $LIW_PACKAGES > $LIW_GUEST_HOME/macos_build.log 2>&1 < /dev/null &"
 
-info "waiting for the build to finish (progress: tail of ~/liw_build.log)"
+info "waiting for the build to finish (progress: tail of ~/macos_build.log)"
 elapsed=0
 while true; do
     sleep 30
     elapsed=$((elapsed + 30))
-    code="$(run_ssh "cat $LIW_GUEST_HOME/liw_osx_build/exit_code 2>/dev/null" 2>/dev/null || true)"
+    code="$(run_ssh "cat $LIW_GUEST_HOME/liw_macos_build/exit_code 2>/dev/null" 2>/dev/null || true)"
     if [ -n "$code" ]; then
         break
     fi
@@ -233,7 +234,7 @@ while true; do
         fail
     fi
     info "still building (${elapsed}s elapsed); last log line:"
-    run_ssh "tail -1 $LIW_GUEST_HOME/liw_build.log" 2>/dev/null || true
+    run_ssh "tail -1 $LIW_GUEST_HOME/macos_build.log" 2>/dev/null || true
 done
 if [ "$code" != "0" ]; then
     echo "error: in-VM build exited with status $code" >&2
@@ -242,10 +243,12 @@ fi
 
 info "build succeeded; retrieving wheels"
 mkdir -p "$REPO_DIR/wheels"
-run_ssh "cd $LIW_GUEST_HOME/liw_osx_build/wheelhouse && tar -cf - 'macosx*'" |
+run_ssh "cd $LIW_GUEST_HOME/liw_macos_build/wheelhouse && tar -cf - *macosx*.whl" |
     tar -xf - -C "$REPO_DIR/wheels/" ||
-    die "could not retrieve the wheels"
-ls -l "$REPO_DIR/wheels/"*macosx* 2>/dev/null
+    die "could not retrieve the wheels (VM $VM_NAME left running for debugging)"
+ls "$REPO_DIR/wheels/"*macosx*.whl >/dev/null 2>&1 ||
+    die "no macosx wheels were retrieved (VM $VM_NAME left running for debugging)"
+ls -l "$REPO_DIR/wheels/"*macosx*.whl
 
 if [ "$LIW_KEEP" = 1 ]; then
     info "keeping $VM_NAME (--keep); stop it with: tart stop $VM_NAME"

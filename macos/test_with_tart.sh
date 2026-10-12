@@ -34,6 +34,7 @@
 #   -h | --help     show this help
 
 set -u
+set -o pipefail
 
 LIW_TART_USER="${LIW_TART_USER:-admin}"
 LIW_TART_PASS="${LIW_TART_PASS:-admin}"
@@ -178,6 +179,7 @@ cat >"$IN_VM_TEST" <<'IN_VM_EOF'
 # wheel_test.sh - runs INSIDE the test VM: install the wheels on a clean
 # system, hide Homebrew, and verify isolation and function.
 set -u
+set -o pipefail
 
 WHEELDIR="$1"
 PYTHONS="${2:-3.11 3.12 3.13 3.14 3.15 3.14t 3.15t}"

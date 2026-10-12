@@ -19,7 +19,7 @@ manylinux container plays for the linux builds:
   are deleted when the run finishes (kept on failure for debugging).
 - Inside the VM, `build_wheels.sh` is the counterpart of the monolithic
   Dockerfile: it builds every library a wheel needs **from source** into a
-  private prefix (`~/liw_osx_build/prefix`) with the pinned versions from
+  private prefix (`~/liw_macos_build/prefix`) with the pinned versions from
   the shared `versions.txt` (read through `getver.py`, exactly like the
   linux build).  Homebrew and macOS system libraries are never used as
   sources of headers or link targets:
@@ -55,7 +55,7 @@ manylinux container plays for the linux builds:
   package builders (`build_pylibtiff`), then the main `case` that maps
   package names to builders.
 - `tart_build.sh` -- host-side orchestrator: clone fresh VM, copy repo in,
-  run `build_wheels.sh` (nohup + polling via `~/liw_osx_build/exit_code`),
+  run `build_wheels.sh` (nohup + polling via `~/liw_macos_build/exit_code`),
   retrieve wheels into `./wheels/`, delete the VM.
 - `test_with_tart.sh` -- host-side isolation test: clone another fresh VM,
   install the wheels into a venv per python, hide `/opt/homebrew`, audit
@@ -93,7 +93,7 @@ LIW_FORCE=1 bash macos/build_wheels.sh        # ignore completed-step stamps
 bash macos/build_wheels.sh dep:zlib           # build one dependency only
 ```
 
-Completed steps are stamped under `~/liw_osx_build/stamps`, so re-running
+Completed steps are stamped under `~/liw_macos_build/stamps`, so re-running
 only redoes unfinished work.
 
 ## Status (as of the first implementation)
