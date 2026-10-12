@@ -77,6 +77,8 @@ done
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 REPO_NAME="$(basename "$REPO_DIR")"
+# All of the helpers and main flow below use VM_NAME.
+VM_NAME="$LIW_VM_NAME"
 
 command -v tart >/dev/null 2>&1 || die "tart not found on the host"
 command -v ssh >/dev/null 2>&1 || die "ssh not found on the host"
