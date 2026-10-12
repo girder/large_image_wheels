@@ -12,7 +12,7 @@
 #   LIW_PYTHONS   python versions to build for
 #                 (default "3.11 3.12 3.13 3.14 3.15 3.14t 3.15t")
 #   LIW_FORCE     set to 1 to ignore completed-step stamps and rebuild all
-#   LIW_BUILD     working directory (default ~/liw_osx_build)
+#   LIW_BUILD     working directory (default ~/liw_macos_build)
 #
 # Completed steps are stamped, so re-running this script only redoes what
 # has not finished.  Wheels are collected in $LIW_BUILD/wheelhouse.
@@ -40,7 +40,7 @@ while IFS='=' read -r var _; do
     esac
 done < <(env | sed 's/=.*//')
 
-LIW_BUILD="${LIW_BUILD:-$HOME/liw_osx_build}"
+LIW_BUILD="${LIW_BUILD:-$HOME/liw_macos_build}"
 LIW_PREFIX="$LIW_BUILD/prefix"
 LIW_SRC="$LIW_BUILD/src"
 LIW_STAMPS="$LIW_BUILD/stamps"
