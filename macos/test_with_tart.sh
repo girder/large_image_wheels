@@ -79,6 +79,8 @@ done
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 [ -n "$LIW_WHEELS_DIR" ] || LIW_WHEELS_DIR="$REPO_DIR/wheels"
+# All of the helpers and main flow below use VM_NAME.
+VM_NAME="$LIW_VM_NAME"
 
 # Collect the macosx wheels to test.
 WHEEL_LIST="$(cd "$LIW_WHEELS_DIR" && ls *macosx*.whl 2>/dev/null || true)"
