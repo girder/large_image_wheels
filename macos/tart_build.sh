@@ -210,24 +210,46 @@ start_vm() {
                 -o UserKnownHostsFile="$LIW_SSH_DIR/known_hosts" \
                 -o StrictHostKeyChecking=no \
                 -i "$LIW_SSH_KEY.pub" \
-                "$LIW_TART_USER@$(vm_ip "$VM_NAME")" ||
+                "$LIW_TART_USER@$(vm_ip "$VM_NAME")" || {
+                stop_vm
                 die "could not install the ssh key"
+            }
         else
+            stop_vm
             die "ssh key not accepted and sshpass is not installed"
         fi
     fi
     run_ssh true || die "ssh into $VM_NAME still fails after the key bootstrap"
 }
 
-stop_vm() {
-    vm_exists "$VM_NAME" || return 0
-    info "stopping $VM_NAME"
-    tart stop --timeout 60 "$VM_NAME" >/dev/null 2>&1 || true
-    if vm_running "$VM_NAME"; then
-        pkill -f "tart run.* $VM_NAME\$" >/dev/null 2>&1 || true
+stop_vm() { # stop_vm [name]  (default: $VM_NAME)
+    local vm="${1:-$VM_NAME}"
+    vm_exists "$vm" || return 0
+    info "stopping $vm"
+    tart stop --timeout 60 "$vm" >/dev/null 2>&1 || true
+    if vm_running "$vm"; then
+        pkill -f "tart run.* $vm\$" >/dev/null 2>&1 || true
         sleep 2
     fi
 }
+
+# Leftovers from interrupted runs hold memory that the next VM may need;
+# tart refuses to start a VM once the system limit is reached.  Stop our
+# own leftover wheel VMs (never the agent_* VMs) before starting one.
+stop_leftover_vms() {
+    local vm
+    while IFS= read -r vm; do
+        [ -n "$vm" ] || continue
+        [ "$vm" = "$VM_NAME" ] && continue
+        if vm_running "$vm"; then
+            info "stopping leftover VM $vm (from an earlier interrupted run)"
+            stop_vm "$vm"
+        fi
+    done < <(tart list --quiet 2>/dev/null | grep '^liw_wheels_')
+}
+
+# Interrupted runs (Ctrl-C) must not leave their VM running.
+trap 'stop_vm; exit 130' INT TERM
 
 delete_vm() {
     stop_vm
@@ -389,6 +411,7 @@ provision_base() {
         die "cloning $LIW_TART_BASE_IMAGE failed"
     tart set "$LIW_TART_BASE" --cpu "$LIW_CPUS" --memory "$LIW_MEM_MB" \
         --disk-size "$LIW_DISK_GB" || die "configuring $LIW_TART_BASE failed"
+    stop_leftover_vms
     start_vm
     run_ssh "cat > $LIW_GUEST_HOME/.liw_base_provision.sh" <"$IN_VM_PROVISION" ||
         die "could not copy the provisioning script"
@@ -450,6 +473,7 @@ vm_exists_retry "$VM_NAME" && delete_vm
 info "cloning $LIW_TART_BASE into $VM_NAME"
 tart clone "$LIW_TART_BASE" "$VM_NAME" || die "cloning failed"
 tart set "$VM_NAME" --cpu "$LIW_CPUS" --memory "$LIW_MEM_MB" || die "tart set failed"
+stop_leftover_vms
 start_vm
 
 info "copying $REPO_NAME into the VM"
