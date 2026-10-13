@@ -201,8 +201,8 @@ wheel_for_python() { # wheel_for_python <version req> -> wheel file or empty
     local req="$1" tag whl
     tag="cp${req//./}"
     case "$req" in
-    *t) whl="$(ls "$WHEELDIR" | grep -E "-${tag}-.*macosx" | head -1)" ;;
-    *) whl="$(ls "$WHEELDIR" | grep -E "-${tag}-${tag}-.*macosx" | head -1)" ;;
+    *t) whl="$(ls "$WHEELDIR" | grep -E -e "-${tag}-.*macosx" | head -1)" ;;
+    *) whl="$(ls "$WHEELDIR" | grep -E -e "-${tag}-${tag}-.*macosx" | head -1)" ;;
     esac
     [ -n "$whl" ] && printf '%s' "$WHEELDIR/$whl"
     return 0
@@ -299,6 +299,22 @@ audit_macho() {
 log "=== wheel isolation test ==="
 log "wheels: $WHEELDIR"
 log "pythons: $PYTHONS"
+log "wheels present:"
+ls "$WHEELDIR" 2>&1 | sed 's/^/  /' | while IFS= read -r line; do log "$line"; done
+
+# The build VM installs any requested pythons it is missing; do the same
+# here so that every requested python gets tested.
+log ""
+log "=== phase 0: check pythons ==="
+for req in $PYTHONS; do
+    if [ -z "$(find_version_dir "$req")" ]; then
+        log "installing python $req (several minutes)"
+        "$PYENV_ROOT/bin/pyenv" install -s "$req" || {
+            log "FAIL: pyenv install $req failed"
+            FAILURES=$((FAILURES + 1))
+        }
+    fi
+done
 
 # --- phase 1: create venvs and install (Homebrew still present; pip needs
 # its ssl libraries, which live in Homebrew in the base VM) ---
