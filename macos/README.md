@@ -6,17 +6,27 @@ tart macOS VM as the isolation boundary.  This file is written to be
 self-sufficient: if you are resuming work on this with no prior context,
 read it top to bottom before changing anything.
 
+The pipeline is standalone and manages its own VM lifecycle the way
+`docker build` manages images: `macos/tart_build.sh` provisions a base
+VM from a published macOS image once (Xcode Command Line Tools,
+Homebrew with build tools, pyenv with the pythons), and every build
+classes a fresh VM from that base.  There is no dependency on any other
+provisioning; the `agent_*` VMs of manthey/utils are unrelated to this
+pipeline.
+
 ## Design
 
 macOS cannot run macOS inside Docker-style containers (Apple's container
 framework runs Linux guests), so a tart VM plays the role that the
 manylinux container plays for the linux builds:
 
-- Every build starts from a **fresh clone of a pristine base VM** (the base
-  is provisioned separately, via manthey/utils `agent_tart.sh
-  provision`; the base VM is never modified by builds).  Nothing from
-  previous builds or from the host can influence the wheels.  Build VMs
-  are deleted when the run finishes (kept on failure for debugging).
+- Every build starts from a **fresh clone of a pristine base VM**
+  (`liw_wheels_base`).  The base is provisioned by
+  `macos/tart_build.sh provision` from a published macOS image and is
+  never modified by builds; like a docker image, delete it and the next
+  build re-provisions it.  Nothing from previous builds or from the host
+  can influence the wheels.  Build VMs are deleted when the run finishes
+  (stopped and kept on failure for debugging).
 - Inside the VM, `build_wheels.sh` is the counterpart of the monolithic
   Dockerfile: it builds every library a wheel needs **from source** into a
   private prefix (`~/liw_macos_build/prefix`) with the pinned versions from
@@ -54,9 +64,11 @@ manylinux container plays for the linux builds:
   (`build_zlib` ... `build_libtiff`, wrapped by `build_libtiff_deps`), then
   package builders (`build_pylibtiff`), then the main `case` that maps
   package names to builders.
-- `tart_build.sh` -- host-side orchestrator: clone fresh VM, copy repo in,
-  run `build_wheels.sh` (nohup + polling via `~/liw_macos_build/exit_code`),
-  retrieve wheels into `./wheels/`, delete the VM.
+- `tart_build.sh` -- host-side orchestrator: provisions the base VM if
+  missing (`provision` command, or automatically), clones a fresh VM,
+  copies the repo in, runs `build_wheels.sh` (nohup + polling via
+  `~/liw_macos_build/exit_code`), retrieves wheels into `./wheels/`, and
+  deletes the VM.
 - `test_with_tart.sh` -- host-side isolation test: clone another fresh VM,
   install the wheels into a venv per python, hide `/opt/homebrew`, audit
   every Mach-O with `otool`, run functional tests, write
@@ -90,16 +102,17 @@ The wheel pipeline uses its own VM namespace, distinct from the
 manthey/utils agent sandboxes (which are all named `agent_*`):
 
 - `liw_wheels_base` -- the pristine base VM that every build/test VM is
-  cloned from.  It is provisioned once (with manthey/utils
-  `agent_tart.sh provision --base liw_wheels_base`) and never modified
-  by builds; it plays the role of the manylinux base image.
+  cloned from.  It is provisioned by `macos/tart_build.sh provision`
+  (or automatically by the first build) from a published macOS image and
+  is never modified by builds; it plays the role of the manylinux base
+  image.
 - `liw_wheels_build` -- the fresh clone that runs `build_wheels.sh`.
 - `liw_wheels_test` -- the fresh clone that runs the isolation test.
 
-Until `liw_wheels_base` is provisioned, both scripts fall back to the
-existing `agent_base` (the agent_tart.sh default base, which already
-contains the toolchain) and print a notice explaining how to provision
-the dedicated base.
+`macos/tart_build.sh provision` always rebuilds the base from the
+pristine image (like a docker image build); there is no in-place update
+mode.  The test script never provisions; it fails with instructions if
+the base is missing.
 
 Inside a VM, for quick iteration, `build_wheels.sh` runs directly:
 
