@@ -224,7 +224,7 @@ start_vm() {
 
 stop_vm() { # stop_vm [name]  (default: $VM_NAME)
     local vm="${1:-$VM_NAME}" waited=0
-    vm_exists "$vm" || return 0
+    vm_exists_retry "$vm" || return 0
     info "stopping $vm"
     tart stop --timeout 60 "$vm" >/dev/null 2>&1 || true
     if vm_running "$vm"; then
@@ -264,7 +264,7 @@ trap 'stop_vm; exit 130' INT TERM
 
 delete_vm() {
     stop_vm
-    vm_exists "$VM_NAME" || return 0
+    vm_exists_retry "$VM_NAME" || return 0
     info "deleting $VM_NAME"
     tart delete "$VM_NAME" 2>/dev/null || {
         pkill -f "tart run.* $VM_NAME\$" >/dev/null 2>&1 || true
@@ -411,14 +411,14 @@ IN_VM_EOF
 # provisioning script inside.  Like a docker image build, provisioning
 # always starts from the pristine image; there is no in-place update.
 provision_base() {
-    if vm_exists_retry "$LIW_TART_BASE"; then
-        info "$LIW_TART_BASE exists; deleting it for a fresh provisioning"
-        VM_NAME="$LIW_TART_BASE"
-        delete_vm
-    fi
     VM_NAME="$LIW_TART_BASE"
+    if vm_running "$VM_NAME"; then
+        stop_vm
+    fi
     info "cloning $LIW_TART_BASE_IMAGE into $LIW_TART_BASE (large download on first run)"
-    tart clone "$LIW_TART_BASE_IMAGE" "$LIW_TART_BASE" ||
+    # --overwrite replaces a previous base without relying on tart list
+    # bookkeeping (which can fail transiently).
+    tart clone --overwrite "$LIW_TART_BASE_IMAGE" "$LIW_TART_BASE" ||
         die "cloning $LIW_TART_BASE_IMAGE failed"
     tart set "$LIW_TART_BASE" --cpu "$LIW_CPUS" --memory "$LIW_MEM_MB" \
         --disk-size "$LIW_DISK_GB" || die "configuring $LIW_TART_BASE failed"
@@ -479,10 +479,14 @@ if vm_running "$LIW_TART_BASE"; then
     info "base VM $LIW_TART_BASE is running; stopping it so it can be cloned"
     tart stop --timeout 60 "$LIW_TART_BASE" >/dev/null 2>&1 || true
 fi
-vm_exists_retry "$VM_NAME" && delete_vm
+if vm_running "$VM_NAME"; then
+    stop_vm
+fi
 
 info "cloning $LIW_TART_BASE into $VM_NAME"
-tart clone "$LIW_TART_BASE" "$VM_NAME" || die "cloning failed"
+# --overwrite replaces a previous build VM without relying on tart list
+# bookkeeping (which can fail transiently).
+tart clone --overwrite "$LIW_TART_BASE" "$VM_NAME" || die "cloning failed"
 tart set "$VM_NAME" --cpu "$LIW_CPUS" --memory "$LIW_MEM_MB" || die "tart set failed"
 stop_leftover_vms
 start_vm
