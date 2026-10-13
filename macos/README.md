@@ -79,10 +79,27 @@ macos/test_with_tart.sh
 ```
 
 Both host scripts accept `--base NAME` (base VM to clone; default
-`agent_base`, matching manthey/utils `agent_tart.sh`) and `--keep`.
+`liw_wheels_base`) and `--keep`.
 `tart_build.sh` also takes `--packages`, `--pythons`, `--cpus`, `--mem`;
 `test_with_tart.sh` takes `--wheels DIR` and `--keep-homebrew` (to skip
 the Homebrew-hiding step).
+
+### VM naming
+
+The wheel pipeline uses its own VM namespace, distinct from the
+manthey/utils agent sandboxes (which are all named `agent_*`):
+
+- `liw_wheels_base` -- the pristine base VM that every build/test VM is
+  cloned from.  It is provisioned once (with manthey/utils
+  `agent_tart.sh provision --base liw_wheels_base`) and never modified
+  by builds; it plays the role of the manylinux base image.
+- `liw_wheels_build` -- the fresh clone that runs `build_wheels.sh`.
+- `liw_wheels_test` -- the fresh clone that runs the isolation test.
+
+Until `liw_wheels_base` is provisioned, both scripts fall back to the
+existing `agent_base` (the agent_tart.sh default base, which already
+contains the toolchain) and print a notice explaining how to provision
+the dedicated base.
 
 Inside a VM, for quick iteration, `build_wheels.sh` runs directly:
 
