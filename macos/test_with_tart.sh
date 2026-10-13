@@ -468,9 +468,10 @@ fi
 vm_ip "$VM_NAME" 600 >/dev/null || {
     echo "--- tail of $LIW_LOG_DIR/$VM_NAME.log:" >&2
     tail -30 "$LIW_LOG_DIR/$VM_NAME.log" >&2
+    stop_vm
     die "$VM_NAME did not acquire an IP (see log above; check 'tart list' for VMs holding memory)"
 }
-wait_ssh_ready || die "$VM_NAME did not become reachable over ssh"
+wait_ssh_ready || { stop_vm; die "$VM_NAME did not become reachable over ssh"; }
 
 if ! run_ssh true 2>/dev/null; then
     info "bootstrapping the ssh key into $VM_NAME"
@@ -504,21 +505,32 @@ while true; do
         break
     fi
     if ! vm_running "$VM_NAME"; then
-        die "test VM died; check $LIW_LOG_DIR/$VM_NAME.log"
+        echo "error: test VM died; check $LIW_LOG_DIR/$VM_NAME.log" >&2
+        stop_vm
+        exit 1
     fi
     if [ "$elapsed" -ge 3600 ]; then
-        die "test timed out after 1 hour"
+        echo "error: test timed out after 1 hour" >&2
+        stop_vm
+        exit 1
     fi
     info "still testing (${elapsed}s elapsed)"
 done
 
-info "retrieving the test report"
+info "retrieving the test report and in-VM log"
 run_ssh "cat $LIW_GUEST_HOME/liw_test/report.txt" >"$REPO_DIR/macos_test_report.txt" 2>/dev/null ||
-    die "could not retrieve the report"
-cat "$REPO_DIR/macos_test_report.txt"
+    echo "warning: could not retrieve the test report" >&2
+run_ssh "cat $LIW_GUEST_HOME/liw_test.log" >"$REPO_DIR/macos_test_log.txt" 2>/dev/null || true
+cat "$REPO_DIR/macos_test_report.txt" 2>/dev/null
 
-if [ "$code" != "0" ]; then
-    echo "error: $code check(s) failed (VM $VM_NAME kept for debugging)" >&2
+if [ ! -s "$REPO_DIR/macos_test_report.txt" ] || [ "$code" != "0" ]; then
+    echo "error: the isolation test failed (see macos_test_report.txt and" >&2
+    echo "macos_test_log.txt)" >&2
+    # Release the VM's memory but keep it for debugging; inspect it with:
+    #   tart run --no-graphics $VM_NAME
+    #   ssh admin@$(tart ip $VM_NAME)
+    stop_vm
+    echo "VM $VM_NAME was stopped and kept for debugging." >&2
     exit 1
 fi
 
