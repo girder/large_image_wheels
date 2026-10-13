@@ -109,6 +109,19 @@ vm_exists() {
     tart list --quiet 2>/dev/null | grep -Fxq "$1"
 }
 
+# `tart list` can fail transiently (for instance while another tart
+# command is still cleaning up), so retry before concluding that a VM
+# does not exist.
+vm_exists_retry() {
+    local vm="$1" n=0
+    until vm_exists "$vm"; do
+        n=$((n + 1))
+        [ "$n" -ge 5 ] && return 1
+        sleep 2
+    done
+    return 0
+}
+
 vm_running() {
     if command -v jq >/dev/null 2>&1; then
         if tart list --json 2>/dev/null |
@@ -178,14 +191,14 @@ fail() {
 
 # --- main ------------------------------------------------------------------
 
-vm_exists "$LIW_TART_BASE" ||
+vm_exists_retry "$LIW_TART_BASE" ||
     die "base VM $LIW_TART_BASE does not exist; pass --base NAME (the base is provisioned by manthey/utils agent_tart.sh)"
 
 if vm_running "$LIW_TART_BASE"; then
     info "base VM $LIW_TART_BASE is running; stopping it so it can be cloned"
     tart stop --timeout 60 "$LIW_TART_BASE" >/dev/null 2>&1 || true
 fi
-vm_exists "$VM_NAME" && delete_vm
+vm_exists_retry "$VM_NAME" && delete_vm
 
 info "cloning $LIW_TART_BASE into $VM_NAME"
 tart clone "$LIW_TART_BASE" "$VM_NAME" || die "cloning failed"
