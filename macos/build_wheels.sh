@@ -450,6 +450,24 @@ build_libtiff() {
     done_stamp libtiff
 }
 
+# openjpeg is needed by glymur (its opj_* tools are bundled into the wheel)
+# and later by gdal/openslide/mapnik.  The linux Dockerfile builds openjpeg
+# twice (once before libtiff, once after); building it once *after* libtiff
+# here yields the same final state: the opj tools get tiff support from our
+# libtiff and MinSizeRel matches the linux rebuild.
+build_openjpeg() {
+    skip_if_done openjpeg && return 0
+    step "openjpeg"
+    cd "$LIW_SRC"
+    rm -rf openjpeg
+    fetch "https://github.com/uclouvain/openjpeg/archive/v$(v openjpeg).tar.gz" \
+        openjpeg.tar.gz
+    mkdir openjpeg
+    tar -zxf openjpeg.tar.gz -C openjpeg --strip-components 1
+    cmake_build "$LIW_SRC/openjpeg" -DBUILD_SHARED=ON -DBUILD_STATIC=OFF
+    done_stamp openjpeg
+}
+
 # The codec set matches the linux wheels: zlib, jpeg, jbig, lzma, zstd,
 # webp, deflate.
 build_libtiff_deps() {
@@ -626,6 +644,147 @@ EOF
     done_stamp pylibtiff
 }
 
+build_glymur() {
+    skip_if_done glymur && return 0
+    step "glymur"
+    local pp="$LIW_PATCH_PYBIN"
+
+    # Dependencies may have just been built (fresh VM); strip any build-tree
+    # RPATHs they installed before the wheels bundle them.
+    sanitize_prefix_dylibs
+
+    cd "$LIW_SRC"
+    rm -rf glymur
+    git_retry https://github.com/quintusdias/glymur.git "v$(v glymur)" glymur
+    cd glymur
+
+    # Bundle the openjpeg and libjpeg command line tools with the wheel,
+    # like the linux build does; glymur.bin exposes each as a console
+    # script that os.execv's the binary.
+    mkdir -p glymur/bin
+    local tool
+    for tool in "$LIW_PREFIX"/bin/opj_*; do
+        if [ -f "$tool" ]; then
+            cp -L "$tool" glymur/bin/
+        fi
+    done
+    for tool in jpegtran cjpeg djpeg rdjpgcom wrjpgcom; do
+        if [ -f "$LIW_PREFIX/bin/$tool" ]; then
+            cp -L "$LIW_PREFIX/bin/$tool" glymur/bin/
+        fi
+    done
+    [ -n "$(ls glymur/bin)" ] || die "no openjpeg/libjpeg tools found to bundle"
+    strip -x glymur/bin/* 2>/dev/null || true
+
+    # Wrapper module so each bundled tool is exposed as a console script.
+    cat >glymur/bin/__init__.py <<'EOF'
+import os
+import sys
+
+def program():
+    path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0]))
+    os.execv(path, sys.argv)
+EOF
+
+    # Patch config.py so glymur finds the bundled openjpeg dylib.  delocate
+    # puts bundled dylibs in glymur/.dylibs inside the wheel; keep the
+    # auditwheel-style Glymur.libs location from the linux build as a
+    # fallback so the patch stays comparable across platforms.
+    cat >"$LIW_PATCHES/glymur_config.py" <<'EOF'
+path = "glymur/config.py"
+s = open(path).read()
+s = s.replace("    path = find_library(libname)",
+"""    path = find_library(libname)
+    libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.realpath(
+        __file__)), ".dylibs"))
+    if not os.path.exists(libpath):
+        libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(
+            os.path.realpath(__file__))), "Glymur.libs"))
+    if os.path.exists(libpath):
+        libs = os.listdir(libpath)
+        try:
+            pospath = os.path.join(libpath, [lib for lib in libs if
+                "lib" + libname in lib][0])
+            if os.path.exists(pospath):
+                path = pospath
+        except Exception:
+            pass""")
+open(path, "w").write(s)
+EOF
+    # Patch pyproject.toml: expose the bundled tools as console scripts,
+    # include them (and the test data) as package data, allow python 3.10,
+    # and add the local build suffix to the version, matching the linux
+    # wheel versioning (Glymur-0.14.8.1).
+    cat >"$LIW_PATCHES/glymur_pyproject.py" <<'EOF'
+import os
+import re
+path = "pyproject.toml"
+s = open(path).read()
+s = s.replace("jpeg2jp2 = 'glymur.command_line:jpeg2jp2'",
+    "jpeg2jp2 = 'glymur.command_line:jpeg2jp2'" +
+    "".join(["\n%s = 'glymur.bin:program'" % name for name in os.listdir("glymur/bin")
+        if not name.endswith(".py")]))
+s = s.replace("requires-python = '>=3.11'", "requires-python = '>=3.10'")
+s += """
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+glymur = [
+    "data/*.jp2",
+    "data/*.jpx",
+    "data/*.j2k",
+    "bin/*",
+]
+"""
+s = re.sub(r"(version = ')(\d+\.\d+\.\d+)((?:post\d+)?)(')", r"\1\2.1\3\4", s)
+open(path, "w").write(s)
+EOF
+    "$pp" "$LIW_PATCHES/glymur_config.py"
+    "$pp" "$LIW_PATCHES/glymur_pyproject.py"
+
+    # Commit the patches and tag with the combined version (the patched
+    # package version), matching the linux wheel versioning.
+    git config user.email "wheels@example.com"
+    git config user.name "Wheel Builder"
+    git add -A
+    git commit -q -m "patch for wheel building"
+    git tag "$(v glymur).1"
+
+    # Build one wheel per python.  glymur is pure python, so pip tags the
+    # wheels py3-none-any; they are retagged before delocate below.
+    collect_pybins
+    local pybin
+    for pybin in "${PYBINS[@]}"; do
+        step "glymur wheel: $(basename "$(dirname "$pybin")")"
+        (
+            cd "$LIW_SRC/glymur"
+            rm -rf build
+            "$pybin/python" -m pip wheel --no-deps -w "$LIW_WHEELHOUSE" .
+        ) || die "glymur wheel build failed for $pybin"
+    done
+
+    step "delocate glymur wheels"
+    "${LIW_PATCH_PIPBIN}" install -q -U delocate
+    local whl newname
+    for whl in "$LIW_WHEELHOUSE"/Glymur-*.whl; do
+        [ -f "$whl" ] || continue
+        case "$(basename "$whl")" in
+        *-any.whl)
+            # delocate never retags an "any" wheel, but it rewrites the WHEEL
+            # file's tags to match the wheel filename, so rename first; the
+            # bundled executables make this a macosx_11_0_arm64 wheel.
+            newname="$(basename "$whl" | sed 's/-any\.whl/-macosx_11_0_arm64.whl/')"
+            mv "$whl" "$(dirname "$whl")/$newname"
+            whl="$(dirname "$whl")/$newname"
+            ;;
+        esac
+        "$LIW_PATCH_DIR/bin/delocate-wheel" "$whl" || die "delocate failed for $whl"
+    done
+    ls -l "$LIW_WHEELHOUSE"
+    done_stamp glymur
+}
+
 # --------------------------------------------------------------------------
 # Main.
 # --------------------------------------------------------------------------
@@ -670,6 +829,11 @@ for pkg in ${PACKAGES[@]+"${PACKAGES[@]}"}; do
     pylibtiff)
         build_libtiff_deps
         build_pylibtiff
+        ;;
+    glymur)
+        build_libtiff_deps
+        build_openjpeg
+        build_glymur
         ;;
     # "dep:<name>" builds a single dependency; useful for debugging.
     dep:*)

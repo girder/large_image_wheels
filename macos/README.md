@@ -62,10 +62,11 @@ manylinux container plays for the linux builds:
   `collect_pybins`, `ensure_tools`, `set_patch_python`,
   `scrub_python_sysconfig`, `sanitize_prefix_dylibs`) follow; then
   dependency builders (`build_zlib` ... `build_libtiff`, wrapped by
-  `build_libtiff_deps`), then package builders (`build_pylibtiff`; each
-  package builder calls `sanitize_prefix_dylibs` after its dependencies
-  are built), then the main `case` that maps package names to builders
-  (`dep:<name>` builds a single dependency for debugging).
+  `build_libtiff_deps`, plus `build_openjpeg`), then package builders
+  (`build_pylibtiff`, `build_glymur`; each package builder calls
+  `sanitize_prefix_dylibs` after its dependencies are built), then the main
+  `case` that maps package names to builders (`dep:<name>` builds a single
+  dependency for debugging).
 - `tart_build.sh` -- host-side orchestrator: provisions the base VM if
   missing (`provision` command, or automatically), clones a fresh VM,
   copies the repo in, runs `build_wheels.sh` (nohup + polling via
@@ -146,6 +147,10 @@ and a fresh test VM, all on the current code):
   otool audit clean, and the isolation tests pass with Homebrew hidden
   (bundled dylib loaded from `.dylibs`, tiff image round trip, bundled
   `tiffinfo`).
+- Glymur: build commands are implemented (`build_openjpeg` +
+  `build_glymur`, wired into the main `case`; both patch scripts verified
+  against the actual glymur 0.14.8 sources), but the VM build and the
+  isolation tests have not been run yet.
 
 ## Hard-won details (do not lose these)
 
@@ -228,6 +233,21 @@ and a fresh test VM, all on the current code):
 - arm64 SIMD needs no `nasm` (NEON assembly is compiled by clang directly).
 - Mach-O stripping uses `strip -x` (the GNU `--strip-unneeded -p -D`
   flags do not exist on macOS).
+- glymur is pure python, so `pip wheel` tags its wheels `py3-none-any`.
+  delocate never retags an `any` wheel (its tag-update path returns early
+  for `any.whl`), but `delocate-wheel` does rewrite the WHEEL file's tags
+  to match the wheel filename -- so the glymur wheels are renamed to
+  `py3-none-macosx_11_0_arm64` *before* running `delocate-wheel`, which
+  then bundles the executables' dylib dependencies and fixes the WHEEL
+  file to match.
+- Patch scripts written via unquoted heredocs (`<<'EOF'`) inside a
+  function body carry the script's own column-0 layout: the indentation
+  of *inserted* code lives inside the triple-quoted replacement strings,
+  not in the heredoc.  When testing a patch by extracting it with awk,
+  do not `sed 's/^    //'` the extracted file -- that strips the
+  replacement strings' real indentation and makes a correct patch look
+  broken (or a broken one look correct).  Always verify with
+  `python3 -c "import ast; ast.parse(...)` on the patched file.
 - libtiff is built with autotools (`autogen.sh`); Homebrew installs the
   GNU libtool binaries as `glibtool`/`glibtoolize`, so `ensure_tools`
   creates `libtool`/`libtoolize` wrappers in the private prefix.
@@ -262,9 +282,17 @@ and a fresh test VM, all on the current code):
 
 Notes on the remaining packages:
 
-- **Glymur**: pure python plus bundled executables (opj_* from openjpeg,
-  jpeg tools from libjpeg-turbo); needs openjpeg built first.  The
-  `glymur/bin` wrapper pattern is identical to pylibtiff's.
+- **Glymur**: implemented (`glymur` case: `build_libtiff_deps`,
+  `build_openjpeg`, `build_glymur`).  Like the linux build, openjpeg is
+  built *after* libtiff (the linux Dockerfile builds it twice; one build
+  after libtiff reaches the same final state), so the bundled `opj_*`
+  tools link our libtiff.  The bundled `opj_*` and libjpeg tools go into
+  `glymur/bin` with the same `glymur.bin:program` wrapper pylibtiff uses;
+  `config.py` is patched to find the bundled openjpeg dylib in
+  `glymur/.dylibs` (with the linux `Glymur.libs` location as fallback),
+  and `pyproject.toml` is patched for the console scripts, package data,
+  python 3.10, and the `0.14.8.1` version.  Still to do: run the VM
+  build and add glymur checks to the isolation test.
 - **pyvips**: needs libvips and its dependency tree (glib, gobject
   introspection, and friends from the Dockerfile); the `pyvips` module
   needs the same "find the bundled library" patch as pylibtiff.
