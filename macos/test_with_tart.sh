@@ -404,7 +404,12 @@ for venv in $VENVDIRS; do
     req="$(basename "$venv" | sed 's/^venv-//')"
     log ""
     log "python $req:"
-    site="$("$venv/bin/python" -c 'import site; print(site.getsitepackages()[0])')"
+    site="$($venv/bin/python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])' 2>/dev/null)"
+    if [ -z "$site" ] || [ ! -d "$site" ]; then
+        log "FAIL python $req: could not determine site-packages (interpreter failed to start?)"
+        FAILURES=$((FAILURES + 1))
+        continue
+    fi
     if ! audit_macho "$site" >>"$REPORT" 2>&1; then
         log "FAIL python $req: otool audit found forbidden library references"
         FAILURES=$((FAILURES + 1))
