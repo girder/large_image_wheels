@@ -213,12 +213,21 @@ for path in glob.glob(os.path.join(ver_dir, "lib", "python3.*", "*sysconfigdata*
 
     def scrub(value):
         if "/opt/homebrew" not in value and "/usr/local" not in value \
-                and "-march=native" not in value:
+                and "-march=native" not in value \
+                and "/.pyenv/" not in value:
+            return value
+        if " " not in value.strip():
+            # Single-token values are plain paths or program names (e.g.
+            # LIBDIR, LIBPL, prefix).  Removing the whole value would leave
+            # empty strings that break consumers (a bare "-L" in link
+            # commands comes from an emptied LIBDIR); path-only values are
+            # inert at build time and are not recorded into the wheels.
             return value
         return " ".join(
             token
             for token in value.split()
             if "/opt/homebrew" not in token and "/usr/local" not in token
+            and "/.pyenv/" not in token
             and token != "-march=native")
 
     cleaned = {}
@@ -302,6 +311,29 @@ set_patch_python() {
         fi
     done
     die "no python found for patching"
+}
+
+# Some CMake projects (libjpeg-turbo) install dylibs with a build-tree
+# RPATH.  delocate only sanitizes rpaths on files that require other
+# libraries, so dependency-free dylibs would keep those rpaths into the
+# wheel.  None of the prefix dylibs need an rpath (their dependencies use
+# absolute install names that delocate rewrites), so strip them all and
+# re-sign (arm64 requires a valid signature after install_name_tool).
+sanitize_prefix_dylibs() {
+    step "stripping build rpaths from prefix dylibs"
+    local f rp
+    while IFS= read -r -d '' f; do
+        while IFS= read -r rp; do
+            case "$rp" in
+            @loader_path/* | @executable_path/* | @rpath/*) ;;
+            *) install_name_tool -delete_rpath "$rp" "$f" 2>/dev/null || true ;;
+            esac
+        done < <(otool -l "$f" |
+            awk '/LC_RPATH/{inr=1; next} inr && $1=="path" {print $2; inr=0}')
+    done < <(find "$LIW_PREFIX/lib" -name '*.dylib' -type f -print0)
+    while IFS= read -r -d '' f; do
+        codesign -f -s - "$f" 2>/dev/null || true
+    done < <(find "$LIW_PREFIX/lib" -name '*.dylib' -type f -print0)
 }
 
 # --------------------------------------------------------------------------
@@ -617,6 +649,7 @@ fi
 set_patch_python
 scrub_python_sysconfig
 step "patch python: $LIW_PATCH_PYBIN"
+sanitize_prefix_dylibs
 
 if [ -n "${LIW_DRYRUN:-}" ]; then
     collect_pybins
