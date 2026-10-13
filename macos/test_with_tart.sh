@@ -164,7 +164,7 @@ run_ssh() {
 
 stop_vm() { # stop_vm [name]  (default: $VM_NAME)
     local vm="${1:-$VM_NAME}" waited=0
-    vm_exists "$vm" || return 0
+    vm_exists_retry "$vm" || return 0
     info "stopping $vm"
     tart stop --timeout 60 "$vm" >/dev/null 2>&1 || true
     if vm_running "$vm"; then
@@ -204,7 +204,7 @@ trap 'stop_vm; exit 130' INT TERM
 
 delete_vm() {
     stop_vm
-    vm_exists "$VM_NAME" || return 0
+    vm_exists_retry "$VM_NAME" || return 0
     info "deleting $VM_NAME"
     tart delete "$VM_NAME" 2>/dev/null || {
         pkill -f "tart run.* $VM_NAME\$" >/dev/null 2>&1 || true
@@ -528,10 +528,14 @@ if vm_running "$LIW_TART_BASE"; then
     info "base VM $LIW_TART_BASE is running; stopping it so it can be cloned"
     tart stop --timeout 60 "$LIW_TART_BASE" >/dev/null 2>&1 || true
 fi
-vm_exists_retry "$VM_NAME" && delete_vm
+if vm_running "$VM_NAME"; then
+    stop_vm
+fi
 
 info "cloning $LIW_TART_BASE into $VM_NAME"
-tart clone "$LIW_TART_BASE" "$VM_NAME" || die "cloning failed"
+# --overwrite replaces a previous test VM without relying on tart list
+# bookkeeping (which can fail transiently).
+tart clone --overwrite "$LIW_TART_BASE" "$VM_NAME" || die "cloning failed"
 tart set "$VM_NAME" --cpu "$LIW_CPUS" --memory "$LIW_MEM_MB" || die "tart set failed"
 
 info "starting $VM_NAME (log $LIW_LOG_DIR/$VM_NAME.log)"
