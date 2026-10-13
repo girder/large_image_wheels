@@ -166,8 +166,13 @@ delete_vm() {
 }
 
 fail() {
-    echo "BUILD FAILED; tail of the in-VM log ($VM_NAME kept for debugging):" >&2
+    echo "BUILD FAILED; tail of the in-VM log:" >&2
     run_ssh "tail -50 ~/$REPO_NAME/macos_build.log" 2>/dev/null || true
+    # Release the VM's memory but keep it for debugging; inspect it with:
+    #   tart run --no-graphics $VM_NAME
+    #   ssh admin@$(tart ip $VM_NAME)
+    stop_vm
+    echo "VM $VM_NAME was stopped and kept for debugging." >&2
     exit 1
 }
 
