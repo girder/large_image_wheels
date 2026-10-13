@@ -223,13 +223,24 @@ start_vm() {
 }
 
 stop_vm() { # stop_vm [name]  (default: $VM_NAME)
-    local vm="${1:-$VM_NAME}"
+    local vm="${1:-$VM_NAME}" waited=0
     vm_exists "$vm" || return 0
     info "stopping $vm"
     tart stop --timeout 60 "$vm" >/dev/null 2>&1 || true
     if vm_running "$vm"; then
         pkill -f "tart run.* $vm\$" >/dev/null 2>&1 || true
         sleep 2
+    fi
+    # Verify the VM actually stopped; a guest that ignores ACPI for the
+    # full stop timeout can leave the process lingering, which then holds
+    # memory and blocks the next VM from starting.
+    while vm_running "$vm" && [ "$waited" -lt 20 ]; do
+        sleep 2
+        waited=$((waited + 2))
+        pkill -f "tart run.* $vm\$" >/dev/null 2>&1 || true
+    done
+    if vm_running "$vm"; then
+        echo "warning: $vm is still running after stop; it may hold memory" >&2
     fi
 }
 
