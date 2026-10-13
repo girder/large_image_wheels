@@ -72,13 +72,13 @@ manylinux container plays for the linux builds:
   copies the repo in, runs `build_wheels.sh` (nohup + polling via
   `~/liw_macos_build/exit_code`), retrieves wheels into `./wheels/`, and
   deletes the VM.
-- `test_with_tart.sh` -- host-side isolation test: clone another fresh VM
+- `test_via_tart.sh` -- host-side isolation test: clone another fresh VM
   and run an embedded in-VM test script (phase 0: install/rebuild missing
   or Homebrew-linked pythons; phase 1: install the wheels into a venv per
   python and verify pip picks our wheel; phase 2: hide `/opt/homebrew`,
   audit every Mach-O with `otool`, and run the functional tests).  Writes
-  `macos_test_report.txt` and `macos_test_log.txt` at the repository
-  root; stops (but keeps) the VM on failure.
+  `macos_test_report.txt` and `macos_test_log.txt` to `/tmp`; stops (but
+  keeps) the VM on failure.
 
 ## Usage
 
@@ -95,16 +95,16 @@ macos/tart_build.sh
 # build a single package
 macos/tart_build.sh pylibtiff
 
-# verify the wheels on a different fresh VM (writes macos_test_report.txt
-# and macos_test_log.txt)
-macos/test_with_tart.sh
+# verify the wheels on a different fresh VM (writes /tmp/macos_test_report.txt
+# and /tmp/macos_test_log.txt)
+macos/test_via_tart.sh
 ```
 
 Both host scripts accept `--base NAME` (base VM to clone; default
 `liw_wheels_base`) and `--keep`.
 `tart_build.sh` also takes `--packages`, `--pythons`, `--cpus`, `--mem`,
 `--disk` (base disk size when provisioning), and `--image` (the OS image
-the base is provisioned from); `test_with_tart.sh` takes `--wheels DIR`
+the base is provisioned from); `test_via_tart.sh` takes `--wheels DIR`
 and `--keep-homebrew` (to skip the Homebrew-hiding step).
 
 ### VM naming
@@ -278,7 +278,7 @@ and a fresh test VM, all on the current code):
    needs).
 5. Build and test: `LIW_PYTHONS="3.13" bash macos/build_wheels.sh
    <package>` inside the VM, then the full host flow (`tart_build.sh` +
-   `test_with_tart.sh`).
+   `test_via_tart.sh`).
 
 Notes on the remaining packages:
 
@@ -318,7 +318,7 @@ The linux wheels are verified by `test/test_script.sh` (driven by
 `test_via_docker.py`, which runs one container per python version --
 see also `test/python.Dockerfile` and `test/li_script.sh`).  The macOS
 wheels are currently verified by the in-VM test embedded in
-`test_with_tart.sh`, which duplicates the functional checks.
+`test_via_tart.sh`, which duplicates the functional checks.
 
 Goal: one shared functional test script for both platforms, so wheel
 behavior is verified identically.  Sketch when we pick this up:

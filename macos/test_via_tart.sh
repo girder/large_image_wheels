@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test_with_tart.sh - run on the HOST (outside the tart VM) to verify that
+# test_via_tart.sh - run on the HOST (outside the tart VM) to verify that
 # the macOS arm64 wheels were built with proper isolation.
 #
 # This creates a fresh tart VM by cloning the base VM, copies the macosx
@@ -16,11 +16,11 @@
 #   4. functionally exercises the wheels (load the bundled libtiff dylib,
 #      write and read a tiff image, run the bundled tiffinfo executable).
 #
-# A test report is written to ./macos_test_report.txt and printed.  On
+# A test report is written to /tmp/macos_test_report.txt and printed.  On
 # failure the VM is left in place for debugging.
 #
 # Usage:
-#   macos/test_with_tart.sh [options]
+#   macos/test_via_tart.sh [options]
 #
 # Options:
 #   --base NAME     base tart VM to clone (default: $LIW_TART_BASE, else
@@ -605,14 +605,14 @@ while true; do
 done
 
 info "retrieving the test report and in-VM log"
-run_ssh "cat $LIW_GUEST_HOME/liw_test/report.txt" >"$REPO_DIR/macos_test_report.txt" 2>/dev/null ||
+run_ssh "cat $LIW_GUEST_HOME/liw_test/report.txt" >/tmp/macos_test_report.txt 2>/dev/null ||
     echo "warning: could not retrieve the test report" >&2
-run_ssh "cat $LIW_GUEST_HOME/liw_test.log" >"$REPO_DIR/macos_test_log.txt" 2>/dev/null || true
-cat "$REPO_DIR/macos_test_report.txt" 2>/dev/null
+run_ssh "cat $LIW_GUEST_HOME/liw_test.log" >/tmp/macos_test_log.txt 2>/dev/null || true
+cat /tmp/macos_test_report.txt 2>/dev/null
 
-if [ ! -s "$REPO_DIR/macos_test_report.txt" ] || [ "$code" != "0" ]; then
-    echo "error: the isolation test failed (see macos_test_report.txt and" >&2
-    echo "macos_test_log.txt)" >&2
+if [ ! -s /tmp/macos_test_report.txt ] || [ "$code" != "0" ]; then
+    echo "error: the isolation test failed (see /tmp/macos_test_report.txt and" >&2
+    echo "/tmp/macos_test_log.txt)" >&2
     # Release the VM's memory but keep it for debugging; inspect it with:
     #   tart run --no-graphics $VM_NAME
     #   ssh admin@$(tart ip $VM_NAME)
