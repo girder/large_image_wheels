@@ -62,7 +62,8 @@ manylinux container plays for the linux builds:
   `collect_pybins`, `ensure_tools`, `set_patch_python`,
   `scrub_python_sysconfig`, `sanitize_prefix_dylibs`) follow; then
   dependency builders (`build_zlib` ... `build_libtiff`, wrapped by
-  `build_libtiff_deps`, plus `build_openjpeg`), then package builders
+  `build_libtiff_deps`, plus `build_lcms2`, `build_libpng`, and
+  `build_openjpeg`), then package builders
   (`build_pylibtiff`, `build_glymur`; each package builder calls
   `sanitize_prefix_dylibs` after its dependencies are built), then the main
   `case` that maps package names to builders (`dep:<name>` builds a single
@@ -70,15 +71,19 @@ manylinux container plays for the linux builds:
 - `tart_build.sh` -- host-side orchestrator: provisions the base VM if
   missing (`provision` command, or automatically), clones a fresh VM,
   copies the repo in, runs `build_wheels.sh` (nohup + polling via
-  `~/liw_macos_build/exit_code`), retrieves wheels into `./wheels/`, and
-  deletes the VM.
+  `~/liw_macos_build/exit_code`), retrieves wheels into `./wheels/`,
+  validates that every requested package produced a wheel for every
+  requested python (dying on a missing one -- the counterpart of
+  `build.sh`'s copy-out of the expected wheels), and deletes the VM.
 - `test_via_tart.sh` -- host-side isolation test: clone another fresh VM
   and run an embedded in-VM test script (phase 0: install/rebuild missing
   or Homebrew-linked pythons; phase 1: install the wheels into a venv per
   python and verify pip picks our wheel; phase 2: hide `/opt/homebrew`,
-  audit every Mach-O with `otool`, and run the functional tests).  Writes
+  audit every Mach-O with `otool`, run the macos-specific checks, and
+  run the shared `test/test_script.sh` per python).  Writes
   `macos_test_report.txt` and `macos_test_log.txt` to `/tmp`; stops (but
-  keeps) the VM on failure.
+  keeps) the VM on failure.  The in-VM timeout is configurable with
+  `LIW_TEST_TIMEOUT` (seconds; default 14400).
 
 ## Usage
 
@@ -147,10 +152,11 @@ and a fresh test VM, all on the current code):
   otool audit clean, and the isolation tests pass with Homebrew hidden
   (bundled dylib loaded from `.dylibs`, tiff image round trip, bundled
   `tiffinfo`).
-- Glymur: build commands are implemented (`build_openjpeg` +
-  `build_glymur`, wired into the main `case`; both patch scripts verified
-  against the actual glymur 0.14.8 sources), but the VM build and the
-  isolation tests have not been run yet.
+- Glymur: build commands are implemented (`build_libtiff_deps`,
+  `build_lcms2`, `build_libpng`, `build_openjpeg`, `build_glymur`, wired
+  into the main `case`; both patch scripts verified against the actual
+  glymur 0.14.8 sources), but the VM build and the isolation tests have
+  not been run yet.
 
 ## Hard-won details (do not lose these)
 
@@ -274,8 +280,24 @@ and a fresh test VM, all on the current code):
      with `pip wheel --no-deps`;
    - run `delocate-wheel` over the results;
    - `done_stamp <package>`.
-4. Wire the package into the main `case` (with the dependency builder it
-   needs).
+4. Wire the package into the main `case` (with the dependency builders it
+   needs).  Two rules govern that list:
+   - **Completeness on a fresh VM**: every build starts from a pristine
+     base, so the case must build the package's *full* dependency tree,
+     not just what some earlier package's run happened to leave in the
+     prefix.  Order matters just as much: configure-time feature
+     detection silently drops optional libraries that are not installed
+     yet, so every library the linux build makes available to this
+     package must be built before the package's configure step (mirror
+     the Dockerfile's final state; see `build_openjpeg` and its feature
+     assertions for the pattern).
+   - **Feature assertions**: after a dependency-sensitive build, assert
+     the feature set rather than trusting configure's silence.  Grep
+     `otool -L` output of the produced binaries for every optional
+     library the linux wheel links, and die if one is missing.  A
+     missing optional library would otherwise only surface as a
+     reduced-capability wheel that the functional tests may never
+     exercise.
 5. Build and test: `LIW_PYTHONS="3.13" bash macos/build_wheels.sh
    <package>` inside the VM, then the full host flow (`tart_build.sh` +
    `test_via_tart.sh`).
@@ -283,16 +305,19 @@ and a fresh test VM, all on the current code):
 Notes on the remaining packages:
 
 - **Glymur**: implemented (`glymur` case: `build_libtiff_deps`,
-  `build_openjpeg`, `build_glymur`).  Like the linux build, openjpeg is
-  built *after* libtiff (the linux Dockerfile builds it twice; one build
-  after libtiff reaches the same final state), so the bundled `opj_*`
-  tools link our libtiff.  The bundled `opj_*` and libjpeg tools go into
-  `glymur/bin` with the same `glymur.bin:program` wrapper pylibtiff uses;
-  `config.py` is patched to find the bundled openjpeg dylib in
+  `build_lcms2`, `build_libpng`, `build_openjpeg`, `build_glymur`).
+  lcms2 and libpng are built because the linux openjpeg (rebuilt after
+  they existed) links them into the bundled `opj_*` tools; skipping them
+  would silently ship feature-reduced tools.  `build_openjpeg` asserts
+  the linkage.  Like the linux build, openjpeg is built *after* libtiff
+  (the linux Dockerfile builds it twice; one build after libtiff reaches
+  the same final state).  The bundled `opj_*` and libjpeg tools go into
+  `glymur/bin` with the same `glymur.bin:program` wrapper pylibtiff
+  uses; `config.py` is patched to find the bundled openjpeg dylib in
   `glymur/.dylibs` (with the linux `Glymur.libs` location as fallback),
   and `pyproject.toml` is patched for the console scripts, package data,
   python 3.10, and the `0.14.8.1` version.  Still to do: run the VM
-  build and add glymur checks to the isolation test.
+  build and the isolation test.
 - **pyvips**: needs libvips and its dependency tree (glib, gobject
   introspection, and friends from the Dockerfile); the `pyvips` module
   needs the same "find the bundled library" patch as pylibtiff.
@@ -312,30 +337,49 @@ Notes on the remaining packages:
   layout).  This is the package most likely to need real design work.
 - **mapnik**: needs mapnik + boost etc.; check the mapnik patches.
 
-## Test parity with the linux build (planned, next step)
+## Test parity with the linux build
 
 The linux wheels are verified by `test/test_script.sh` (driven by
 `test_via_docker.py`, which runs one container per python version --
-see also `test/python.Dockerfile` and `test/li_script.sh`).  The macOS
-wheels are currently verified by the in-VM test embedded in
-`test_via_tart.sh`, which duplicates the functional checks.
+see also `test/python.Dockerfile` and `test/li_script.sh`).  Decision
+(2026-10): the macOS wheels are verified by the **same script**, not by
+a separate python check harness; a parallel rewrite would drift from the
+authoritative suite.
 
-Goal: one shared functional test script for both platforms, so wheel
-behavior is verified identically.  Sketch when we pick this up:
+`test_script.sh` extensions that keep this workable on both platforms
+(all no-ops for the linux containers):
 
-- Factor the per-package functional checks into a common script, e.g.
-  `test/wheel_check.py` (or a per-package list of check modules):
-  verify the installed package version is the expected one, exercise the
-  package's core function (for pylibtiff: write and read a tiff image
-  through the bundled dylib), and run the bundled executables
-  (`tiffinfo`).  The pylibtiff python test in the embedded macOS script
-  is the starting content.
-- The linux harness runs that script inside each of its test containers;
-  the macOS harness runs it inside the tart test VM and adds the
-  macos-specific layers around it (otool audit, Homebrew-hiding,
-  `@loader_path` verification that the bundled dylib is the one loaded).
-- Keep the platform-specific harnesses thin; the shared script should
-  stay free of platform assumptions beyond what the package itself needs.
+- Each `TEST_*` flag combines the interpreter-feature conditions with a
+  check that the corresponding wheel exists in the wheelhouse (its first
+  argument).  On linux every wheel is present, so the gates reduce to
+  the interpreter conditions; on partial wheelhouses (the macOS build
+  produces only some packages) the absent packages' tests are skipped
+  instead of failing to install -- or worse, silently installing a pypi
+  wheel.  `tart_build.sh` hard-fails on any missing expected wheel
+  before tests run, so a skip here means the package was not requested,
+  not that a build silently failed.
+- `LIW_PYTHON_BIN_DIR`, when set, is prepended to PATH after
+  `. /etc/profile` (which resets PATH to the stock system value in the
+  VM); the macOS harness sets it to the interpreter under test so
+  `python3` and the script's venv are the requested version.
+- The sample-file downloads go through a `dl` helper that caches in
+  `LIW_TEST_CACHE` when set; the macOS harness runs the script once per
+  python in one VM and would otherwise re-download everything seven
+  times.
+- The arch gates treat `aarch64` and `arm64` as the same machine
+  (`$(arch)` prints `arm64` on macOS; `platform.machine()` likewise),
+  so the czi test and the gdal `mrsid` subtraction behave identically on
+  both arm64 platforms.
+
+The macOS harness (`test_via_tart.sh`) keeps only the platform layers
+around the shared script: phase 0 python rebuilding, phase 1 venv
+installation with wheel-identity checks (pylibtiff and Glymur),
+Homebrew-hiding, the `otool` audits (including the venvs
+`test_script.sh` creates), and the macos-specific checks (`@loader_path`
+verification that the bundled dylib is the one loaded, bundled
+`tiffinfo`).  The embedded duplicate functional checks were removed.
+`li_script.sh` (large_image's own tox suite) remains linux-only; running
+it in the VM is a possible later extension.
 
 ## Notes and differences from the linux build
 
