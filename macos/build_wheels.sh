@@ -450,11 +450,43 @@ build_libtiff() {
     done_stamp libtiff
 }
 
+# lcms2 is an optional dependency of openjpeg (and later of gdal, mapnik,
+# openslide).  The linux build produces one final state where every library
+# was built before anything that could optionally use it; the macos build
+# must reach the same state on a fresh VM, since configure-time feature
+# detection silently drops optional libraries that are not yet installed.
+build_lcms2() {
+    skip_if_done lcms2 && return 0
+    step "lcms2"
+    cd "$LIW_SRC"
+    rm -rf lcms2
+    git_retry https://github.com/mm2/Little-CMS.git "lcms$(v lcms2)" lcms2
+    (
+        cd lcms2 || exit 1
+        ./configure --prefix="$LIW_PREFIX" --disable-static
+        make -j "$LIW_JOBS"
+        make install
+    ) || die "lcms2 build failed"
+    done_stamp lcms2
+}
+
+build_libpng() {
+    skip_if_done libpng && return 0
+    step "libpng"
+    cd "$LIW_SRC"
+    rm -rf libpng
+    git_retry https://github.com/glennrp/libpng.git "v$(v libpng)" libpng
+    cmake_build "$LIW_SRC/libpng"
+    done_stamp libpng
+}
+
 # openjpeg is needed by glymur (its opj_* tools are bundled into the wheel)
 # and later by gdal/openslide/mapnik.  The linux Dockerfile builds openjpeg
-# twice (once before libtiff, once after); building it once *after* libtiff
-# here yields the same final state: the opj tools get tiff support from our
-# libtiff and MinSizeRel matches the linux rebuild.
+# twice (once before libtiff, once after); building it once *after* lcms2,
+# libpng, zlib, and libtiff here yields the same final state: the opj tools
+# get tiff, png, and lcms support from our libraries and MinSizeRel matches
+# the linux rebuild.  Everything it can optionally use must exist before
+# this runs, or cmake silently disables the feature.
 build_openjpeg() {
     skip_if_done openjpeg && return 0
     step "openjpeg"
@@ -465,6 +497,18 @@ build_openjpeg() {
     mkdir openjpeg
     tar -zxf openjpeg.tar.gz -C openjpeg --strip-components 1
     cmake_build "$LIW_SRC/openjpeg" -DBUILD_SHARED=ON -DBUILD_STATIC=OFF
+    # Feature assertions: the linux wheels' opj tools link lcms2, libpng,
+    # and libtiff.  A missing optional dependency at configure time would
+    # otherwise silently reduce the tools' feature set, and no functional
+    # test exercises every input path.
+    local linked lib
+    linked="$(otool -L "$LIW_PREFIX/bin"/opj_* \
+        "$LIW_PREFIX/lib"/libopenjp2*.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "openjpeg produced no binaries to check"
+    for lib in lcms2 libpng libtiff; do
+        printf '%s\n' "$linked" | grep -q "$lib" ||
+            die "openjpeg was not linked against $lib; an optional dependency was missed (check the build order)"
+    done
     done_stamp openjpeg
 }
 
@@ -641,6 +685,8 @@ EOF
         esac
     done
     ls -l "$LIW_WHEELHOUSE"
+    [ -n "$(ls "$LIW_WHEELHOUSE"/pylibtiff-*macosx*.whl 2>/dev/null)" ] ||
+        die "no pylibtiff macosx wheels were built"
     done_stamp pylibtiff
 }
 
@@ -782,6 +828,8 @@ EOF
         "$LIW_PATCH_DIR/bin/delocate-wheel" "$whl" || die "delocate failed for $whl"
     done
     ls -l "$LIW_WHEELHOUSE"
+    [ -n "$(ls "$LIW_WHEELHOUSE"/Glymur-*macosx*.whl 2>/dev/null)" ] ||
+        die "no Glymur macosx wheels were built"
     done_stamp glymur
 }
 
@@ -820,7 +868,9 @@ if [ -n "${LIW_DRYRUN:-}" ]; then
 fi
 
 PACKAGES=("$@")
-[ "${#PACKAGES[@]}" -eq 0 ] && PACKAGES=(pylibtiff)
+# Keep in sync with tart_build.sh's LIW_PACKAGES default: the expected-wheel
+# validation there assumes this same set when no packages are named.
+[ "${#PACKAGES[@]}" -eq 0 ] && PACKAGES=(pylibtiff glymur)
 
 # The "${var[@]+...}" guard keeps bash 3.2 (the VM's default bash) happy
 # about empty arrays under `set -u`.
@@ -831,7 +881,12 @@ for pkg in ${PACKAGES[@]+"${PACKAGES[@]}"}; do
         build_pylibtiff
         ;;
     glymur)
+        # Order matters: everything openjpeg can optionally use (zlib, jpeg,
+        # tiff via libtiff_deps, lcms2, libpng) must be installed before
+        # build_openjpeg runs, or its cmake silently disables the feature.
         build_libtiff_deps
+        build_lcms2
+        build_libpng
         build_openjpeg
         build_glymur
         ;;
