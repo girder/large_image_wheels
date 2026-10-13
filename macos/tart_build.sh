@@ -31,7 +31,9 @@
 #   --cpus N        vCPUs for the build VM (default: 4)
 #   --mem MB        memory for the build VM in MB (default: 8192)
 #   --disk GB       disk size when provisioning the base (default: 150)
-#   --packages LIST packages to build, space separated (default: all)
+#   --packages LIST packages to build, space separated
+#                   (default: all supported packages; keep in sync with
+#                   build_wheels.sh's default)
 #   --pythons LIST  python versions for the build (default: 3.11-3.15,
 #                   3.14t, 3.15t)
 #   --keep          do not delete the build VM after a successful build
@@ -50,6 +52,8 @@ LIW_TART_BASE="${LIW_TART_BASE:-liw_wheels_base}"
 LIW_TART_BASE_IMAGE="${LIW_TART_BASE_IMAGE:-ghcr.io/cirruslabs/macos-golden-gate-base:latest}"
 LIW_VM_NAME="liw_wheels_build"
 LIW_PACKAGES=""
+# The default package set; keep in sync with build_wheels.sh's default.
+LIW_DEFAULT_PACKAGES="pylibtiff glymur"
 LIW_PYTHONS="${LIW_PYTHONS:-3.11 3.12 3.13 3.14 3.15 3.14t 3.15t}"
 LIW_KEEP=0
 LIW_CPUS="${LIW_CPUS:-4}"
@@ -98,6 +102,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 LIW_PACKAGES="${LIW_PACKAGES:+$LIW_PACKAGES }$*"
+[ -n "$LIW_PACKAGES" ] || LIW_PACKAGES="$LIW_DEFAULT_PACKAGES"
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 REPO_NAME="$(basename "$REPO_DIR")"
@@ -534,9 +539,64 @@ mkdir -p "$REPO_DIR/wheels"
 run_ssh "cd $LIW_GUEST_HOME/liw_macos_build/wheelhouse && tar -cf - *macosx*.whl" |
     tar -xf - -C "$REPO_DIR/wheels/" ||
     die "could not retrieve the wheels (VM $VM_NAME left running for debugging)"
-ls "$REPO_DIR/wheels/"*macosx*.whl >/dev/null 2>&1 ||
-    die "no macosx wheels were retrieved (VM $VM_NAME left running for debugging)"
 ls -l "$REPO_DIR/wheels/"*macosx*.whl
+
+# Every requested package must have produced a wheel that every requested
+# python can install.  This is the counterpart of build.sh copying the
+# expected wheels out of the docker build (whose cp fails if a wheel is
+# missing): without it, a silently missing wheel would only surface as
+# quietly skipped tests, since the shared test script gates on wheel
+# presence.  Pure python wheels (py3-none) cover every python; abi3 wheels
+# cover their baseline version and newer.
+wheel_prefix() { # wheel_prefix <package name> -> wheel filename prefix
+    case "$1" in
+    glymur) echo Glymur ;;
+    gdal) echo GDAL ;;
+    *) echo "$1" ;;
+    esac
+}
+
+wheel_for_python() { # wheel_for_python <wheels dir> <prefix> <req>
+    local dir="$1" prefix="$2" req="$3" base num bn
+    base="${req%t}"
+    num="$(printf '%s' "$base" | tr -d .)"
+    if ls "$dir/${prefix}"-*py3-none-macosx*.whl >/dev/null 2>&1; then
+        return 0
+    fi
+    case "$req" in
+    *t)
+        ls "$dir/${prefix}"-*"cp${num}-cp${num}t"-macosx*.whl >/dev/null 2>&1
+        ;;
+    *)
+        if ls "$dir/${prefix}"-*"cp${num}-cp${num}"-macosx*.whl >/dev/null 2>&1; then
+            return 0
+        fi
+        for b in 3.10 3.11 3.12 3.13 3.14 3.15; do
+            bn="$(printf '%s' "$b" | tr -d .)"
+            if ls "$dir/${prefix}"-*"cp${bn}-abi3"-macosx*.whl >/dev/null 2>&1; then
+                return 0
+            fi
+        done
+        return 1
+        ;;
+    esac
+}
+
+missing=""
+for pkg in $LIW_PACKAGES; do
+    prefix="$(wheel_prefix "$pkg")"
+    for req in $LIW_PYTHONS; do
+        if ! wheel_for_python "$REPO_DIR/wheels" "$prefix" "$req"; then
+            missing="$missing $pkg/$req"
+        fi
+    done
+done
+if [ -n "$missing" ]; then
+    echo "error: missing expected wheels:$missing" >&2
+    stop_vm
+    echo "VM $VM_NAME was stopped and kept for debugging." >&2
+    exit 1
+fi
 
 if [ "$LIW_KEEP" = 1 ]; then
     info "keeping $VM_NAME (--keep); stop it with: tart stop $VM_NAME"
