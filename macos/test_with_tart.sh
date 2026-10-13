@@ -458,18 +458,10 @@ IN_VM_EOF
 
 # --- main -------------------------------------------------------------------
 
-# Same base-VM namespace rules as tart_build.sh: wheel VMs use
-# liw_wheels_* names; fall back to agent_base until a dedicated base
-# exists.
+# The test VM needs the same provisioned base as the build VM; it never
+# provisions one itself (that is tart_build.sh's job).
 if ! vm_exists_retry "$LIW_TART_BASE"; then
-    if [ "$LIW_TART_BASE" = "liw_wheels_base" ] && vm_exists_retry agent_base; then
-        info "$LIW_TART_BASE does not exist; using agent_base for now"
-        info "provision a dedicated base to stop this notice:"
-        info "  agent_tart.sh provision --base liw_wheels_base"
-        LIW_TART_BASE=agent_base
-    else
-        die "base VM $LIW_TART_BASE does not exist; pass --base NAME"
-    fi
+    die "base VM $LIW_TART_BASE does not exist; provision it with: macos/tart_build.sh provision"
 fi
 
 if vm_running "$LIW_TART_BASE"; then
