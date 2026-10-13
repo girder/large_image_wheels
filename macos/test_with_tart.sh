@@ -459,7 +459,17 @@ tart set "$VM_NAME" --cpu "$LIW_CPUS" --memory "$LIW_MEM_MB" || die "tart set fa
 
 info "starting $VM_NAME (log $LIW_LOG_DIR/$VM_NAME.log)"
 nohup tart run --no-graphics "$VM_NAME" >>"$LIW_LOG_DIR/$VM_NAME.log" 2>&1 &
-vm_ip "$VM_NAME" 600 >/dev/null || die "$VM_NAME did not acquire an IP"
+sleep 5
+if ! pgrep -f "tart run.* $VM_NAME\$" >/dev/null 2>&1; then
+    echo "--- tail of $LIW_LOG_DIR/$VM_NAME.log:" >&2
+    tail -20 "$LIW_LOG_DIR/$VM_NAME.log" >&2
+    die "$VM_NAME exited immediately after starting (see log above; another tart VM may be holding memory -- check 'tart list')"
+fi
+vm_ip "$VM_NAME" 600 >/dev/null || {
+    echo "--- tail of $LIW_LOG_DIR/$VM_NAME.log:" >&2
+    tail -30 "$LIW_LOG_DIR/$VM_NAME.log" >&2
+    die "$VM_NAME did not acquire an IP (see log above; check 'tart list' for VMs holding memory)"
+}
 wait_ssh_ready || die "$VM_NAME did not become reachable over ssh"
 
 if ! run_ssh true 2>/dev/null; then
