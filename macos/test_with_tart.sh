@@ -230,13 +230,29 @@ find_version_dir() {
     case "$req" in
     *t)
         dir="$PYENV_ROOT/versions/$req"
-        [ -d "$dir" ] || dir=""
+        [ -d "$dir" ] ||
+            dir="$(ls -d "$PYENV_ROOT/versions/${req%t}".*t 2>/dev/null | sort -V | tail -1)"
         ;;
     *)
-        dir="$(ls -d "$PYENV_ROOT/versions/$req".* 2>/dev/null | sort -V | tail -1)"
+        dir="$(ls -d "$PYENV_ROOT/versions/$req".* 2>/dev/null | grep -v 't$' | sort -V | tail -1)"
         ;;
     esac
     [ -n "$dir" ] && printf '%s' "$dir"
+    return 0
+}
+
+# Return 0 if the python interpreter in $1 carries Homebrew (or
+# /usr/local) library dependencies, which the base VM's pyenv pythons do.
+python_links_homebrew() {
+    local dir="$1" bin
+    for bin in "$dir"/bin/python3*; do
+        [ -f "$bin" ] || continue
+        if otool -L "$bin" 2>/dev/null |
+            grep -qE "/opt/homebrew/|/usr/local/lib"; then
+            return 0
+        fi
+    done
+    return 1
 }
 
 # Locate the Homebrew prefix to hide (only if it is actually Homebrew).
@@ -319,11 +335,25 @@ ls "$WHEELDIR" 2>&1 | sed 's/^/  /' | while IFS= read -r line; do log "$line"; d
 # here so that every requested python gets tested.
 log ""
 log "=== phase 0: check pythons ==="
+# The base VM's older pyenv pythons (3.11-3.13) link Homebrew's libintl
+# directly, so with Homebrew hidden the interpreters themselves cannot
+# even start.  Those pythons are rebuilt here with a scrubbed environment
+# so that the test measures the wheels, not the interpreter's
+# dependencies.
 for req in $PYTHONS; do
-    if [ -z "$(find_version_dir "$req")" ]; then
+    dir="$(find_version_dir "$req")"
+    if [ -z "$dir" ]; then
         log "installing python $req (several minutes)"
-        "$PYENV_ROOT/bin/pyenv" install -s "$req" || {
+        ( unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS SDKROOT
+          "$PYENV_ROOT/bin/pyenv" install -s "$req" ) || {
             log "FAIL: pyenv install $req failed"
+            FAILURES=$((FAILURES + 1))
+        }
+    elif python_links_homebrew "$dir"; then
+        log "rebuilding python $req (its interpreter links Homebrew libraries)"
+        ( unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS SDKROOT
+          "$PYENV_ROOT/bin/pyenv" install -f "$req" ) || {
+            log "FAIL: pyenv reinstall $req failed"
             FAILURES=$((FAILURES + 1))
         }
     fi
