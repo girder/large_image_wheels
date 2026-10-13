@@ -42,7 +42,7 @@ LIW_GUEST_HOME="/Users/$LIW_TART_USER"
 LIW_LOG_DIR="${LIW_TART_LOG_DIR:-$HOME/.large_image_wheels_tart/logs}"
 LIW_SSH_DIR="${LIW_TART_SSH_DIR:-$HOME/.large_image_wheels_tart/ssh}"
 
-LIW_TART_BASE="${LIW_TART_BASE:-agent_base}"
+LIW_TART_BASE="${LIW_TART_BASE:-liw_wheels_base}"
 LIW_VM_NAME="liw_wheels_test"
 LIW_WHEELS_DIR=""
 LIW_PYTHONS="${LIW_PYTHONS:-3.11 3.12 3.13 3.14 3.15 3.14t 3.15t}"
@@ -458,7 +458,19 @@ IN_VM_EOF
 
 # --- main -------------------------------------------------------------------
 
-vm_exists_retry "$LIW_TART_BASE" || die "base VM $LIW_TART_BASE does not exist; pass --base NAME"
+# Same base-VM namespace rules as tart_build.sh: wheel VMs use
+# liw_wheels_* names; fall back to agent_base until a dedicated base
+# exists.
+if ! vm_exists_retry "$LIW_TART_BASE"; then
+    if [ "$LIW_TART_BASE" = "liw_wheels_base" ] && vm_exists_retry agent_base; then
+        info "$LIW_TART_BASE does not exist; using agent_base for now"
+        info "provision a dedicated base to stop this notice:"
+        info "  agent_tart.sh provision --base liw_wheels_base"
+        LIW_TART_BASE=agent_base
+    else
+        die "base VM $LIW_TART_BASE does not exist; pass --base NAME"
+    fi
+fi
 
 if vm_running "$LIW_TART_BASE"; then
     info "base VM $LIW_TART_BASE is running; stopping it so it can be cloned"
