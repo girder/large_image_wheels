@@ -13,8 +13,10 @@
 #      rejecting any reference to /opt/homebrew, /usr/local, /Users, or
 #      other absolute paths outside /usr/lib and /System, and rejecting
 #      forbidden RPATH entries,
-#   4. functionally exercises the wheels (load the bundled libtiff dylib,
-#      write and read a tiff image, run the bundled tiffinfo executable).
+#   4. functionally exercises the wheels by running the shared
+#      test/test_script.sh (the same functional suite the linux containers
+#      run), plus macos-specific checks: the bundled dylib is the one
+#      actually loaded, and the bundled tiffinfo executable runs.
 #
 # A test report is written to /tmp/macos_test_report.txt and printed.  On
 # failure the VM is left in place for debugging.
@@ -32,6 +34,9 @@
 #   --keep-homebrew do not hide Homebrew during the functional tests
 #   --keep          do not delete the VM afterwards
 #   -h | --help     show this help
+#
+# Environment: LIW_TEST_TIMEOUT overrides the in-VM test timeout in seconds
+# (default 14400).
 
 set -u
 set -o pipefail
@@ -50,6 +55,7 @@ LIW_HIDE_HOMEBREW=1
 LIW_KEEP=0
 LIW_CPUS="${LIW_CPUS:-4}"
 LIW_MEM_MB="${LIW_MEM_MB:-8192}"
+LIW_TEST_TIMEOUT="${LIW_TEST_TIMEOUT:-14400}"
 
 usage() {
     sed -n '2,41p' "$0" | sed 's/^# \{0,1\}//'
@@ -252,7 +258,7 @@ wheel_for_python() { # wheel_for_python <version req> -> wheel file or empty
 }
 
 wheel_version() { # version embedded in the wheel file name
-    basename "$1" | sed -E 's/^pylibtiff-([0-9.]+)-.*/\1/'
+    basename "$1" | sed -E 's/^(pylibtiff|Glymur)-([0-9.]+)-.*/\2/'
 }
 
 find_version_dir() {
@@ -429,6 +435,26 @@ for req in $PYTHONS; do
         continue
     fi
     log "OK python $req: installed pylibtiff $installed"
+    # If a Glymur wheel is present, verify its identity the same way.
+    gwhl="$(ls "$WHEELDIR"/Glymur-*.whl 2>/dev/null | head -1)"
+    if [ -n "$gwhl" ]; then
+        gver="$(wheel_version "$gwhl")"
+        if ! "$venv/bin/pip" install --quiet --find-links "$WHEELDIR" \
+            "Glymur==$gver" >>"$REPORT" 2>&1; then
+            log "FAIL python $req: pip install of Glymur failed"
+            FAILURES=$((FAILURES + 1))
+            rm -rf "$venv"
+            continue
+        fi
+        ginstalled="$($venv/bin/pip show Glymur 2>/dev/null | sed -n 's/^Version: //p')"
+        if [ "$ginstalled" != "$gver" ]; then
+            log "FAIL python $req: installed Glymur $ginstalled but expected $gver (pip may have used pypi)"
+            FAILURES=$((FAILURES + 1))
+            rm -rf "$venv"
+            continue
+        fi
+        log "OK python $req: installed Glymur $ginstalled"
+    fi
     VENVDIRS="$VENVDIRS $venv"
 done
 
@@ -499,6 +525,36 @@ for venv in $VENVDIRS; do
         log "OK python $req: bundled tiffinfo ran"
     else
         log "FAIL python $req: bundled tiffinfo failed"
+        FAILURES=$((FAILURES + 1))
+    fi
+    # Run the shared functional test suite: the same test/test_script.sh the
+    # linux containers run, with the wheelhouse as the wheel source and
+    # LIW_PYTHON_BIN_DIR pinning the interpreter under test.  Sample file
+    # downloads are cached so later pythons do not re-download them.  The
+    # venv the script creates is audited with otool as well.
+    rundir="$TESTROOT/run-$req"
+    rm -rf "$rundir"
+    mkdir -p "$rundir"
+    pydir="$(find_version_dir "$req")"
+    if (
+        cd "$rundir" || exit 1
+        LIW_TEST_CACHE="$TESTROOT/downloads"
+        export LIW_TEST_CACHE
+        mkdir -p "$LIW_TEST_CACHE"
+        if [ -n "$pydir" ]; then
+            export LIW_PYTHON_BIN_DIR="$pydir/bin"
+        fi
+        bash "$TESTROOT/test_script.sh" "$WHEELDIR"
+    ) >>"$REPORT" 2>&1; then
+        log "OK python $req: shared test_script.sh passed"
+        if ! audit_macho "$rundir/venv/lib" >>"$REPORT" 2>&1; then
+            log "FAIL python $req: otool audit of the test_script.sh venv found forbidden library references"
+            FAILURES=$((FAILURES + 1))
+        else
+            log "OK python $req: otool audit of the test_script.sh venv clean"
+        fi
+    else
+        log "FAIL python $req: shared test_script.sh failed"
         FAILURES=$((FAILURES + 1))
     fi
 done
@@ -572,15 +628,18 @@ if ! run_ssh true 2>/dev/null; then
 fi
 run_ssh true || die "ssh into $VM_NAME still fails after the key bootstrap"
 
-info "copying wheels and the test script into the VM"
-run_ssh "mkdir -p ~/$VM_NAME-wheels"
+info "copying wheels and the shared test script into the VM"
+run_ssh "rm -rf $LIW_GUEST_HOME/liw_test" || true
+run_ssh "mkdir -p ~/$VM_NAME-wheels $LIW_GUEST_HOME/liw_test"
 tar -C "$LIW_WHEELS_DIR" -cf - $WHEEL_LIST |
     run_ssh "tar -xf - -C ~/$VM_NAME-wheels/" || die "could not copy wheels into the VM"
+tar -C "$REPO_DIR" -cf - test/test_script.sh |
+    run_ssh "tar -xf - -C $LIW_GUEST_HOME/liw_test/" ||
+    die "could not copy the shared test script into the VM"
 run_ssh "cat > $LIW_GUEST_HOME/.liw_wheel_test.sh" <"$IN_VM_TEST" ||
     die "could not copy the test script"
 
 info "running the isolation test in the VM"
-run_ssh "rm -rf $LIW_GUEST_HOME/liw_test" || true
 run_ssh "chmod +x ~/.liw_wheel_test.sh && nohup bash ~/.liw_wheel_test.sh ~/$VM_NAME-wheels '$LIW_PYTHONS' '$LIW_HIDE_HOMEBREW' > $LIW_GUEST_HOME/liw_test.log 2>&1 < /dev/null &"
 
 elapsed=0
@@ -596,8 +655,8 @@ while true; do
         stop_vm
         exit 1
     fi
-    if [ "$elapsed" -ge 3600 ]; then
-        echo "error: test timed out after 1 hour" >&2
+    if [ "$elapsed" -ge "$LIW_TEST_TIMEOUT" ]; then
+        echo "error: test timed out after $LIW_TEST_TIMEOUT seconds" >&2
         stop_vm
         exit 1
     fi
