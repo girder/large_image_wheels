@@ -11,7 +11,10 @@ pip install pylibtiff openslide_python pyvips gdal mapnik glymur javabridge -f h
 
 ## Building
 
-The wheels are all generated with the accompanying Dockerfile.
+The linux wheels are all generated with the accompanying Dockerfile.
+The macOS arm64 wheels are built and tested in tart macOS VMs; see
+[macos/README.md](macos/README.md) for the standalone build and
+isolation-test pipeline.
 
 Building the wheels:
 ```

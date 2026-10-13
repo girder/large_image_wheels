@@ -10,7 +10,7 @@ The pipeline is standalone and manages its own VM lifecycle the way
 `docker build` manages images: `macos/tart_build.sh` provisions a base
 VM from a published macOS image once (Xcode Command Line Tools,
 Homebrew with build tools, pyenv with the pythons), and every build
-classes a fresh VM from that base.  There is no dependency on any other
+clones a fresh VM from that base.  There is no dependency on any other
 provisioning; the `agent_*` VMs of manthey/utils are unrelated to this
 pipeline.
 
@@ -60,19 +60,24 @@ manylinux container plays for the linux builds:
   the top; helpers (`step`, `v`, `skip_if_done`/`done_stamp`, `git_retry`,
   `fetch`, `cmake_build`, `find_version_dir`, `ensure_pythons`,
   `collect_pybins`, `ensure_tools`, `set_patch_python`,
-  `scrub_python_sysconfig`) follow; then dependency builders
-  (`build_zlib` ... `build_libtiff`, wrapped by `build_libtiff_deps`), then
-  package builders (`build_pylibtiff`), then the main `case` that maps
-  package names to builders.
+  `scrub_python_sysconfig`, `sanitize_prefix_dylibs`) follow; then
+  dependency builders (`build_zlib` ... `build_libtiff`, wrapped by
+  `build_libtiff_deps`), then package builders (`build_pylibtiff`; each
+  package builder calls `sanitize_prefix_dylibs` after its dependencies
+  are built), then the main `case` that maps package names to builders
+  (`dep:<name>` builds a single dependency for debugging).
 - `tart_build.sh` -- host-side orchestrator: provisions the base VM if
   missing (`provision` command, or automatically), clones a fresh VM,
   copies the repo in, runs `build_wheels.sh` (nohup + polling via
   `~/liw_macos_build/exit_code`), retrieves wheels into `./wheels/`, and
   deletes the VM.
-- `test_with_tart.sh` -- host-side isolation test: clone another fresh VM,
-  install the wheels into a venv per python, hide `/opt/homebrew`, audit
-  every Mach-O with `otool`, run functional tests, write
-  `macos_test_report.txt` at the repository root.
+- `test_with_tart.sh` -- host-side isolation test: clone another fresh VM
+  and run an embedded in-VM test script (phase 0: install/rebuild missing
+  or Homebrew-linked pythons; phase 1: install the wheels into a venv per
+  python and verify pip picks our wheel; phase 2: hide `/opt/homebrew`,
+  audit every Mach-O with `otool`, and run the functional tests).  Writes
+  `macos_test_report.txt` and `macos_test_log.txt` at the repository
+  root; stops (but keeps) the VM on failure.
 
 ## Usage
 
@@ -80,21 +85,26 @@ On the host (a macOS machine with tart and a provisioned base VM; also
 install `sshpass` for the one-time ssh-key bootstrap into fresh clones):
 
 ```
+# provision the base VM (also happens automatically on the first build)
+macos/tart_build.sh provision
+
 # full isolated build (fresh VM clone, build, wheel retrieval, VM deletion)
 macos/tart_build.sh
 
 # build a single package
 macos/tart_build.sh pylibtiff
 
-# verify the wheels on a different fresh VM (writes macos_test_report.txt)
+# verify the wheels on a different fresh VM (writes macos_test_report.txt
+# and macos_test_log.txt)
 macos/test_with_tart.sh
 ```
 
 Both host scripts accept `--base NAME` (base VM to clone; default
 `liw_wheels_base`) and `--keep`.
-`tart_build.sh` also takes `--packages`, `--pythons`, `--cpus`, `--mem`;
-`test_with_tart.sh` takes `--wheels DIR` and `--keep-homebrew` (to skip
-the Homebrew-hiding step).
+`tart_build.sh` also takes `--packages`, `--pythons`, `--cpus`, `--mem`,
+`--disk` (base disk size when provisioning), and `--image` (the OS image
+the base is provisioned from); `test_with_tart.sh` takes `--wheels DIR`
+and `--keep-homebrew` (to skip the Homebrew-hiding step).
 
 ### VM naming
 
@@ -126,18 +136,37 @@ bash macos/build_wheels.sh dep:zlib           # build one dependency only
 Completed steps are stamped under `~/liw_macos_build/stamps`, so re-running
 only redoes unfinished work.
 
-## Status (as of the first implementation)
+## Status
 
-Validated inside a tart VM (this may not have been a fresh VM; treat a
-`tart_build.sh` + `test_with_tart.sh` run as the authoritative proof):
+End-to-end verified (a standalone-provisioned base VM, a fresh build VM,
+and a fresh test VM, all on the current code):
 
 - All pylibtiff dependencies build into the private prefix.
-- Wheels for 3.11, 3.12, 3.13, 3.14, 3.15, 3.14t, 3.15t: all built, otool
-  audit clean, functional tests pass (bundled dylib loaded, tiff image
-  round trip, bundled `tiffinfo`).
+- Wheels for 3.11, 3.12, 3.13, 3.14, 3.15, 3.14t, 3.15t: all built,
+  otool audit clean, and the isolation tests pass with Homebrew hidden
+  (bundled dylib loaded from `.dylibs`, tiff image round trip, bundled
+  `tiffinfo`).
 
 ## Hard-won details (do not lose these)
 
+- Process: when editing these scripts, **verify the edit is in the file
+  before committing** (grep for the new content); an atomic multi-part
+  edit that partially matches silently applies nothing, and a commit
+  message that over-claims is worse than no documentation.  This bit us
+  once already.
+- If a build fails with `retrying git clone: <url> (v)` -- the tag is
+  literally `v` -- the version lookup returned nothing: check
+  `versions.txt` first (it is shared with the linux build and is updated
+  by the version-cron; a mangled file produced exactly this).  Gating a
+  malformed `versions.txt` belongs in the version-update script, not in
+  `v()`.
+- tart refuses to start a VM once the host's VM/memory limit is reached.
+  The host scripts therefore stop their VM on every exit path (success,
+  failure, timeout, interrupt), stop leftover running `liw_wheels_*` VMs
+  before starting one, verify that `stop_vm` really stopped the VM, and
+  clone with `tart clone --overwrite` so stale VMs never block a run.
+  Only one 8 GB VM fits alongside a running sandbox; pass `--mem 4096`
+  for more headroom.
 - `getver.py` resolves `versions.txt` relative to the **current
   directory** (the Dockerfile always runs from `/build`).  The `v()`
   helper cds to the repository root in a subshell.
@@ -255,13 +284,38 @@ Notes on the remaining packages:
   layout).  This is the package most likely to need real design work.
 - **mapnik**: needs mapnik + boost etc.; check the mapnik patches.
 
+## Test parity with the linux build (planned, next step)
+
+The linux wheels are verified by `test/test_script.sh` (driven by
+`test_via_docker.py`, which runs one container per python version --
+see also `test/python.Dockerfile` and `test/li_script.sh`).  The macOS
+wheels are currently verified by the in-VM test embedded in
+`test_with_tart.sh`, which duplicates the functional checks.
+
+Goal: one shared functional test script for both platforms, so wheel
+behavior is verified identically.  Sketch when we pick this up:
+
+- Factor the per-package functional checks into a common script, e.g.
+  `test/wheel_check.py` (or a per-package list of check modules):
+  verify the installed package version is the expected one, exercise the
+  package's core function (for pylibtiff: write and read a tiff image
+  through the bundled dylib), and run the bundled executables
+  (`tiffinfo`).  The pylibtiff python test in the embedded macOS script
+  is the starting content.
+- The linux harness runs that script inside each of its test containers;
+  the macOS harness runs it inside the tart test VM and adds the
+  macos-specific layers around it (otool audit, Homebrew-hiding,
+  `@loader_path` verification that the bundled dylib is the one loaded).
+- Keep the platform-specific harnesses thin; the shared script should
+  stay free of platform assumptions beyond what the package itself needs.
+
 ## Notes and differences from the linux build
 
 - `strip-nondeterminism` and `advzip` normalization is not yet applied to
   the macOS wheels; wheel reproducibility is a possible follow-up.
-- The Homebrew-hiding test needs passwordless sudo in the VM (the
-  manthey/utils provision creates it); without it, the test falls back to
-  the otool audit only and says so in the report.
+- The Homebrew-hiding test needs passwordless sudo in the VM (our
+  provisioning creates it via /etc/sudoers.d/liw-nopasswd); without it,
+  the test falls back to the otool audit only and says so in the report.
 - The base VM's older pyenv pythons (3.11--3.13) link Homebrew's libintl
   directly, so with Homebrew hidden the interpreters themselves cannot
   start.  The test script detects this (`otool -L` on the interpreter)
