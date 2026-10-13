@@ -472,6 +472,10 @@ build_pylibtiff() {
     step "pylibtiff"
     local pp="$LIW_PATCH_PYBIN"
 
+    # Dependencies may have just been built (fresh VM); strip any build-tree
+    # RPATHs they installed before the wheels bundle them.
+    sanitize_prefix_dylibs
+
     "$LIW_PATCH_PIPBIN" install -q -U setuptools-scm
 
     cd "$LIW_SRC"
@@ -649,7 +653,6 @@ fi
 set_patch_python
 scrub_python_sysconfig
 step "patch python: $LIW_PATCH_PYBIN"
-sanitize_prefix_dylibs
 
 if [ -n "${LIW_DRYRUN:-}" ]; then
     collect_pybins
