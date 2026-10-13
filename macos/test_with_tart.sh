@@ -457,7 +457,8 @@ info "copying wheels and the test script into the VM"
 run_ssh "mkdir -p ~/$VM_NAME-wheels"
 tar -C "$LIW_WHEELS_DIR" -cf - $WHEEL_LIST |
     run_ssh "tar -xf - -C ~/$VM_NAME-wheels/" || die "could not copy wheels into the VM"
-run_scp "$IN_VM_TEST" ".liw_wheel_test.sh" || die "could not copy the test script"
+run_ssh "cat > $LIW_GUEST_HOME/.liw_wheel_test.sh" <"$IN_VM_TEST" ||
+    die "could not copy the test script"
 
 info "running the isolation test in the VM"
 run_ssh "rm -rf $LIW_GUEST_HOME/liw_test" || true
