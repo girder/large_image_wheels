@@ -207,7 +207,9 @@ start_vm() {
         info "bootstrapping the ssh key into $VM_NAME (password bootstrap)"
         if command -v sshpass >/dev/null 2>&1; then
             sshpass -p "$LIW_TART_PASS" ssh-copy-id \
-                -i "$LIW_SSH_KEY.pub" $(ssh_opts | sed 's/ -o BatchMode=yes//') \
+                -o UserKnownHostsFile="$LIW_SSH_DIR/known_hosts" \
+                -o StrictHostKeyChecking=no \
+                -i "$LIW_SSH_KEY.pub" \
                 "$LIW_TART_USER@$(vm_ip "$VM_NAME")" ||
                 die "could not install the ssh key"
         else
