@@ -264,8 +264,18 @@ stop_leftover_vms() {
     done < <(tart list --quiet 2>/dev/null | grep '^liw_wheels_')
 }
 
+# The in-VM build log is streamed with a background `tail -f`; stop that
+# stream on every exit path so no ssh process outlives the run.
+LIW_STREAM_PID=""
+stop_stream() {
+    [ -n "$LIW_STREAM_PID" ] || return 0
+    kill "$LIW_STREAM_PID" 2>/dev/null || true
+    wait "$LIW_STREAM_PID" 2>/dev/null || true
+    LIW_STREAM_PID=""
+}
+
 # Interrupted runs (Ctrl-C) must not leave their VM running.
-trap 'stop_vm; exit 130' INT TERM
+trap 'stop_stream; stop_vm; exit 130' INT TERM
 
 delete_vm() {
     stop_vm
@@ -279,8 +289,17 @@ delete_vm() {
 }
 
 fail() {
-    echo "BUILD FAILED; tail of the in-VM log:" >&2
-    run_ssh "tail -50 ~/$REPO_NAME/macos_build.log" 2>/dev/null || true
+    # The build log lives inside the VM at $LIW_GUEST_HOME/macos_build.log;
+    # save a copy on the host and show its tail.
+    echo "BUILD FAILED; the in-VM build log is $LIW_GUEST_HOME/macos_build.log (inside the VM)" >&2
+    run_ssh "cat $LIW_GUEST_HOME/macos_build.log" >/tmp/macos_build.log 2>/dev/null || true
+    if [ -s /tmp/macos_build.log ]; then
+        echo "a copy was saved to /tmp/macos_build.log; last 50 lines:" >&2
+        tail -50 /tmp/macos_build.log >&2
+    else
+        echo "warning: could not retrieve the build log" >&2
+    fi
+    stop_stream
     # Release the VM's memory but keep it for debugging; inspect it with:
     #   tart run --no-graphics $VM_NAME
     #   ssh admin@$(tart ip $VM_NAME)
@@ -510,7 +529,14 @@ info "starting the wheel build in the VM"
 run_ssh "rm -rf ~/$REPO_NAME/liw_macos_build" || true
 run_ssh "cd ~/$REPO_NAME && LIW_PYTHONS='$LIW_PYTHONS' nohup bash macos/build_wheels.sh $LIW_PACKAGES > $LIW_GUEST_HOME/macos_build.log 2>&1 < /dev/null &"
 
-info "waiting for the build to finish (progress: tail of ~/macos_build.log)"
+# Stream the in-VM build log continuously instead of sampling one line
+# every 30 s.  The log lives inside the VM; fail() copies it to
+# /tmp/macos_build.log when the build fails.
+info "streaming the in-VM build log"
+run_ssh "tail -f -n +1 $LIW_GUEST_HOME/macos_build.log" &
+LIW_STREAM_PID=$!
+
+info "waiting for the build to finish"
 elapsed=0
 while true; do
     sleep 30
@@ -526,9 +552,9 @@ while true; do
         echo "error: build timed out after $LIW_TIMEOUT seconds" >&2
         fail
     fi
-    info "still building (${elapsed}s elapsed); last log line:"
-    run_ssh "tail -1 $LIW_GUEST_HOME/macos_build.log" 2>/dev/null || true
+    info "still building (${elapsed}s elapsed)"
 done
+stop_stream
 if [ "$code" != "0" ]; then
     echo "error: in-VM build exited with status $code" >&2
     fail
