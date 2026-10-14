@@ -63,11 +63,13 @@ manylinux container plays for the linux builds:
   `scrub_python_sysconfig`, `sanitize_prefix_dylibs`) follow; then
   dependency builders (`build_zlib` ... `build_libtiff`, wrapped by
   `build_libtiff_deps`, plus `build_lcms2`, `build_libpng`,
-  `build_openjpeg`, and the openslide chain `build_libbrotli`,
+  `build_openjpeg`, `build_cyrus_sasl`, `build_libmemcached`, and the
+  openslide chain `build_libbrotli`,
   `build_libexpat`, `build_libffi`, `build_glib`, `build_sqlite`,
   `build_libxml2`, `build_pixman`, `build_freetype`, `build_fontconfig`,
   `build_cairo`, `build_jxrlib`), then package builders (`build_pylibtiff`,
-  `build_glymur`, `build_openslide`, `build_openslide_python`; each package
+  `build_glymur`, `build_openslide`, `build_openslide_python`,
+  `build_pylibmc`; each package
   builder calls `sanitize_prefix_dylibs` after its dependencies are built),
   then the main `case` that maps package names to builders
   (`dep:<name>` builds a single dependency for debugging).
@@ -195,7 +197,9 @@ runs, not just what the scripts are expected to do):
   keeps only one EXIT trap, so the Homebrew restore moved into the same
   trap).  The third run passed everything.
 - Next up, in rough effort order (see the remaining-packages notes
-  below for details): pylibmc and mapnik (moderate), then pyvips, then
+  below for details): the first VM build and test run for pylibmc (its
+  build and test wiring is in place, but nothing about it has been
+  observed in a VM run yet), then mapnik (moderate), then pyvips, then
   GDAL (the largest); python-javabridge / python-bioformats need a JDK
   design decision first.  pyproj stays pypi-sourced.
 
@@ -334,6 +338,16 @@ runs, not just what the scripts are expected to do):
 - libtiff is built with autotools (`autogen.sh`); Homebrew installs the
   GNU libtool binaries as `glibtool`/`glibtoolize`, so `ensure_tools`
   creates `libtool`/`libtoolize` wrappers in the private prefix.
+- cyrus-sasl on darwin: the `macos-framework` feature is enabled by
+  default and its install hook creates /Library/Frameworks/SASL2.framework
+  symlinks outside the prefix, so `build_cyrus_sasl` passes
+  `--disable-macos-framework`.  Do not blindly mirror the Dockerfile's
+  configure options: 2.1.28's configure has no `--enable-plain` (the
+  plain plugin is always built) and no `--disable-gssapi` (gssapi
+  auto-detects, finding no krb5 in the prefix), and the
+  openssl/openldap-backed mechanisms (otp, srp, scram, passdss, ldapdb,
+  auth-sasldb, sql) are explicitly disabled instead because the isolated
+  prefix has no openssl or openldap.
 - meson is not part of the base VM's Homebrew build-tool set (cmake,
   ninja, pkgconf, autotools are).  `ensure_meson` pip-installs meson
   into the patch python (build tool only; never enters a wheel) and
@@ -555,7 +569,39 @@ Notes on the remaining packages:
   ("Used by gdal and mapnik"): that library is still required and must
   be built before GDAL or mapnik, mirroring its position in the
   Dockerfile's order.
-- **pylibmc**: needs libmemcached (+ cyrus-sasl in the Dockerfile).
+- **pylibmc**: implemented (`pylibmc` case: `build_zlib`,
+  `build_cyrus_sasl`, `build_libmemcached`, `build_pylibmc`) but **not
+  yet verified in a VM run**.  Order mirrors the Dockerfile:
+  cyrus-sasl is built before libmemcached because libmemcached's
+  configure only compiles its SASL support in when libsasl2 is found;
+  `build_libmemcached` asserts the libsasl2 linkage, since pylibmc's C
+  module keys its SASL paths off LIBMEMCACHED_WITH_SASL_SUPPORT and
+  would silently compile them out otherwise.  zlib is built first so the
+  extension's `-lz` and libmemcached's optional compression resolve to
+  our library.  The wheel mirrors the linux patches: `libs =
+  ["memcached", "sasl2"]`, package_data for the bundled plugins,
+  `library_dirs` pointed at the prefix (the linux build relies on
+  /usr/local being the default search path; the scrubbed sysconfig data
+  makes ours authoritative), the `.1` version suffix, and the
+  `__init__.py` patch that sets SASL_PATH to the bundled `pylibmc/sasl2`
+  copy before `_pylibmc` is imported.  Plugin delta vs. the linux wheel:
+  the linux base image's openssl/krb5/openldap let cyrus-sasl build the
+  otp/srp/scram/passdss/gssapi/ldapdb plugins (auditwheel then bundles
+  libcrypto, libkrb5, libldap, and even libpq/libmysqlclient into
+  pylibmc.libs); the macos prefix has none of those and system copies
+  are forbidden, so those mechanisms are explicitly disabled and only
+  the self-contained mechanisms memcached SASL actually negotiates
+  (PLAIN, CRAM-MD5, DIGEST-MD5, LOGIN, ANONYMOUS, NTLM) are built and
+  bundled (versioned module names are normalized to the unversioned
+  `lib<mech>.so` names the linux wheel ships).  Delocate puts
+  libmemcached/libsasl2 into `pylibmc/.dylibs` (the pylibmc package is
+  the wheel's only directory, and the build asserts the wheel content);
+  note the C extension is a *top-level* module (`_pylibmc.cpython-*.so`
+  next to the pylibmc package, since its setup.py gives the extension no
+  package qualifier), so the test harness audits it separately from the
+  package directory.  The expected-wheel validation in tart_build.sh
+  needs no per-package change (one cp3XX-cp3XX wheel per python, like
+  pylibtiff).
 - **python_javabridge / python-bioformats**: need a JDK; the linux build
   bundles the JVM inside the wheel.  On macOS, decide whether to bundle
   a macos arm64 JDK the same way or to rely on an installed JVM; the
@@ -601,14 +647,18 @@ authoritative suite.
 The macOS harness (`test_via_tart.sh`) keeps only the platform layers
 around the shared script: phase 0 python rebuilding, phase 1 venv
 installation with wheel-identity checks (pylibtiff, Glymur,
-openslide-python), Homebrew-hiding, the `otool` audits -- scoped to the
-packages our wheels provide (libtiff, glymur, openslide), since the venvs
+openslide-python, pylibmc), Homebrew-hiding, the `otool` audits -- scoped to
+the packages our wheels provide (libtiff, glymur, openslide, pylibmc),
+since the venvs
 also contain pypi wheels pulled in as dependencies whose build artifacts
 (e.g. Pillow's RPATH to its own build machine, lxml's self-referencing
 load commands) are not ours to police -- and the macos-specific checks
 (`@loader_path` verification that the bundled dylib is the one loaded,
 bundled `tiffinfo`, bundled `slidetool slide quickhash1` against the
-suite's downloaded slide).  The embedded duplicate functional checks were
+suite's downloaded slide, and the pylibmc bundled-library check:
+SASL_PATH points into the installed package and the extension's otool
+output shows libmemcached loading from `.dylibs`).  The embedded
+duplicate functional checks were
 removed.  `li_script.sh` (large_image's own tox suite) remains
 linux-only; running it in the VM is a possible later extension.
 

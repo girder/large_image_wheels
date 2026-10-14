@@ -53,7 +53,7 @@ LIW_TART_BASE_IMAGE="${LIW_TART_BASE_IMAGE:-ghcr.io/cirruslabs/macos-golden-gate
 LIW_VM_NAME="liw_wheels_build"
 LIW_PACKAGES=""
 # The default package set; keep in sync with build_wheels.sh's default.
-LIW_DEFAULT_PACKAGES="pylibtiff glymur openslide_python"
+LIW_DEFAULT_PACKAGES="pylibtiff glymur openslide_python pylibmc"
 LIW_PYTHONS="${LIW_PYTHONS:-3.11 3.12 3.13 3.14 3.15 3.14t 3.15t}"
 LIW_KEEP=0
 LIW_CPUS="${LIW_CPUS:-4}"

@@ -778,6 +778,81 @@ build_libtiff_deps() {
     build_libtiff
 }
 
+# sasl is required for libmemcached (the Dockerfile's comment): its
+# configure only compiles the SASL support in (and defines
+# LIBMEMCACHED_WITH_SASL_SUPPORT, which pylibmc's C module keys off) when
+# libsasl2 is found.  The linux build enables every mechanism the base
+# image supports, including the openssl-backed ones (otp, srp, scram,
+# passdss) and the openldap-backed ldapdb; the macos VM has neither
+# openssl nor openldap inside the isolated prefix, and system copies must
+# not be used, so those mechanisms are disabled here.  The mechanisms
+# memcached SASL actually negotiates (PLAIN, CRAM-MD5, DIGEST-MD5, plus
+# the login/anonymous/ntlm set) are all self-contained and are kept.
+build_cyrus_sasl() {
+    skip_if_done cyrus-sasl && return 0
+    step "cyrus-sasl"
+    cd "$LIW_SRC"
+    rm -rf cyrus-sasl
+    git_retry https://github.com/cyrusimap/cyrus-sasl.git \
+        "cyrus-sasl-$(v cyrus-sasl)" cyrus-sasl
+    (
+        cd cyrus-sasl || exit 1
+        ./autogen.sh
+        # Note on the option set: cyrus-sasl 2.1.28's configure has no
+        # --enable-plain (the plain plugin is always built) and no
+        # --disable-gssapi (gssapi auto-detects, and finds no krb5 here),
+        # so neither is passed; --disable-macos-framework is required on
+        # darwin -- the macos-framework feature is enabled by default and
+        # its install hook creates /Library/Frameworks/SASL2.framework
+        # symlinks outside the prefix.
+        CFLAGS="$CFLAGS -Wno-implicit-function-declaration" \
+            ./configure --prefix="$LIW_PREFIX" --disable-static \
+            --disable-sample --disable-macos-framework \
+            --enable-obsolete_cram_attr --enable-obsolete_digest_attr \
+            --enable-alwaystrue --enable-checkapop \
+            --enable-cram --enable-digest --enable-anon \
+            --enable-login --enable-ntlm \
+            --disable-otp --disable-srp --disable-scram --disable-passdss \
+            --disable-ldapdb --disable-sql --disable-auth-sasldb
+        make -j "$LIW_JOBS"
+        make install
+    ) || die "cyrus-sasl build failed"
+    done_stamp cyrus-sasl
+}
+
+# libmemcached must be built after cyrus-sasl (see above).  The linux
+# build avoids the doc build with a target list instead of plain `make
+# install` (docs dominate its build time); the sed before configure keeps
+# the install rules from failing on the man pages.
+build_libmemcached() {
+    skip_if_done libmemcached && return 0
+    step "libmemcached"
+    cd "$LIW_SRC"
+    rm -rf libmemcached
+    git_retry https://github.com/memcachier/libmemcached.git \
+        "$(v libmemcached)" libmemcached
+    (
+        cd libmemcached || exit 1
+        autoreconf -ifv
+        sed -i '' 's/install-man install/install/g' Makefile.in
+        CXXFLAGS="$CXXFLAGS -fpermissive" \
+            ./configure --prefix="$LIW_PREFIX" --disable-static
+        # This target list does not parallelize reliably; no -j (like the
+        # linux build).
+        make install-exec install-data install-includeHEADERS \
+            install-libLTLIBRARIES install-binPROGRAMS
+    ) || die "libmemcached build failed"
+    # Feature assertion: without libsasl2 linked in, pylibmc compiles its
+    # SASL paths out silently and the wheel would be feature-reduced
+    # compared to the linux wheel.
+    local linked
+    linked="$(otool -L "$LIW_PREFIX/lib"/libmemcached*.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "libmemcached produced no dylib to check"
+    printf '%s\n' "$linked" | grep -q libsasl2 ||
+        die "libmemcached was not linked against libsasl2; SASL support was missed (check the cyrus-sasl build)"
+    done_stamp libmemcached
+}
+
 # --------------------------------------------------------------------------
 # Packages.
 # --------------------------------------------------------------------------
@@ -1390,6 +1465,148 @@ EOF
     done_stamp openslide_python
 }
 
+build_pylibmc() {
+    skip_if_done pylibmc && return 0
+    step "pylibmc"
+    local pp="$LIW_PATCH_PYBIN"
+
+    # Dependencies may have just been built (fresh VM); strip any build-tree
+    # RPATHs they installed before the wheels bundle them.
+    sanitize_prefix_dylibs
+
+    cd "$LIW_SRC"
+    rm -rf pylibmc
+    git_retry https://github.com/lericson/pylibmc.git "$(v pylibmc)" pylibmc
+    cd pylibmc
+
+    # Some tags carry a -dev suffix in the version header; strip it (the
+    # Dockerfile's same edit).
+    sed -i '' 's/-dev//g' src/pylibmc-version.h
+
+    # Bundle the sasl2 client-side plugins with the wheel, like the linux
+    # build does: libsasl2 dlopens every file in the directory named by
+    # the SASL_PATH environment variable, which the patched __init__.py
+    # points at this copy inside the package.  Versioned module names
+    # (libplain.so.2.0.25, plus the libplain.so symlink the linux find
+    # copies) are normalized to the unversioned plugin names the linux
+    # wheel ships, so exactly one file per mechanism is bundled.
+    mkdir -p src/pylibmc/sasl2
+    local f base rp
+    while IFS= read -r f; do
+        base="$(basename "$f" | sed -E 's/\.(dylib|so)\..*//')"
+        case "$base" in
+        *.so) ;;
+        *) base="$base.so" ;;
+        esac
+        cp -L "$f" "src/pylibmc/sasl2/$base"
+    done < <(find "$LIW_PREFIX/lib/sasl2" \
+        \( -name '*.so' -o -name '*.so.*' -o -name '*.dylib' \) 2>/dev/null)
+    [ -n "$(ls src/pylibmc/sasl2)" ] || die "no sasl2 plugins found to bundle"
+    strip -x src/pylibmc/sasl2/* 2>/dev/null || true
+    # libtool-installed modules can carry build-tree RPATHs (e.g. to
+    # $LIW_PREFIX/lib); delocate's rpath sanitizer only processes files
+    # that require other libraries, so strip every non-@ RPATH and re-sign
+    # (arm64 requires a valid signature after install_name_tool).
+    while IFS= read -r -d '' f; do
+        while IFS= read -r rp; do
+            case "$rp" in
+            @loader_path/* | @executable_path/* | @rpath/*) ;;
+            *) install_name_tool -delete_rpath "$rp" "$f" 2>/dev/null || true ;;
+            esac
+        done < <(otool -l "$f" |
+            awk '/LC_RPATH/{inr=1; next} inr && $1=="path" {print $2; inr=0}')
+        codesign -f -s - "$f" 2>/dev/null || true
+    done < <(find src/pylibmc/sasl2 -type f -print0)
+
+    # Patch setup.py: link sasl2 (the Dockerfile's --with-sasl2
+    # equivalent), include the bundled plugins as package data, link
+    # against the private prefix's lib dir (the linux build relies on
+    # /usr/local being the default search path; the scrubbed sysconfig
+    # data makes ours authoritative), and add the local build suffix to
+    # the version, matching the linux wheel versioning (pylibmc-1.6.3.1).
+    cat >"$LIW_PATCHES/pylibmc_setup.py" <<'EOF'
+import os
+path = "setup.py"
+s = open(path).read()
+s = s.replace('libs = ["memcached"]', 'libs = ["memcached", "sasl2"]')
+s = s.replace("packages=['pylibmc'],",
+    "packages=['pylibmc'], "
+    "package_data={'pylibmc': ['sasl2/*']}, include_package_data=True,")
+s = s.replace("library_dirs=libdirs,",
+    "library_dirs=libdirs + [os.path.join(os.environ['LIW_PREFIX'], 'lib')],")
+s = s.replace("version=version,", 'version=version + ".1",')
+open(path, "w").write(s)
+EOF
+    cat >"$LIW_PATCHES/pylibmc_init.py" <<'EOF'
+# Point SASL_PATH at the bundled plugin copy before _pylibmc (and thus
+# libsasl2) is imported, so a clean install finds the plugins without a
+# system sasl2 directory.  The linux wheels do the same.
+path = "src/pylibmc/__init__.py"
+s = open(path).read()
+s = s.replace(
+    "import _pylibmc",
+    """import os
+_localpath = os.path.dirname(os.path.abspath(__file__))
+os.environ.setdefault("SASL_PATH", os.path.join(_localpath, "sasl2"))
+
+import _pylibmc""")
+open(path, "w").write(s)
+EOF
+    "$pp" "$LIW_PATCHES/pylibmc_setup.py"
+    "$pp" "$LIW_PATCHES/pylibmc_init.py"
+
+    # Commit the patches and tag with the combined version (the patched
+    # package version), matching the linux wheel versioning.
+    git config user.email "wheels@example.com"
+    git config user.name "Wheel Builder"
+    git add -A
+    git commit -q -m "patch for wheel building"
+    git tag "$(v pylibmc).1"
+
+    # Build one wheel per python (a plain C extension, no stable ABI), then
+    # bundle the dylibs with delocate (the auditwheel equivalent on macOS).
+    collect_pybins
+    local pybin
+    for pybin in "${PYBINS[@]}"; do
+        step "pylibmc wheel: $(basename "$(dirname "$pybin")")"
+        (
+            cd "$LIW_SRC/pylibmc"
+            rm -rf build
+            # The extension's include path comes through CFLAGS (the sysconfig
+            # data was scrubbed of Homebrew entries, so ours is authoritative).
+            CFLAGS="$CFLAGS -I$LIW_PREFIX/include" \
+                "$pybin/python" -m pip wheel --no-deps -w "$LIW_WHEELHOUSE" .
+        ) || die "pylibmc wheel build failed for $pybin"
+    done
+
+    step "delocate pylibmc wheels"
+    "$LIW_PATCH_PIPBIN" install -q -U delocate
+    local whl
+    for whl in "$LIW_WHEELHOUSE"/pylibmc-*.whl; do
+        [ -f "$whl" ] || continue
+        case "$(basename "$whl")" in
+        *macosx*) "$LIW_PATCH_DIR/bin/delocate-wheel" "$whl" ||
+            die "delocate failed for $whl" ;;
+        esac
+    done
+    ls -l "$LIW_WHEELHOUSE"
+    [ -n "$(ls "$LIW_WHEELHOUSE"/pylibmc-*macosx*.whl 2>/dev/null)" ] ||
+        die "no pylibmc macosx wheels were built"
+    # Feature assertions on the wheel: the extension must have pulled in
+    # libmemcached and libsasl2 (delocate puts the dylibs in
+    # pylibmc/.dylibs -- the pylibmc package is the wheel's only directory),
+    # and the sasl2 plugins must be bundled as package data.
+    local contents
+    contents="$(unzip -l "$(ls "$LIW_WHEELHOUSE"/pylibmc-*macosx*.whl | head -1)")"
+    printf '%s\n' "$contents" | grep -q 'pylibmc/.dylibs/libmemcached' ||
+        die "the pylibmc wheel does not bundle libmemcached"
+    printf '%s\n' "$contents" | grep -q 'pylibmc/.dylibs/libsasl2' ||
+        die "the pylibmc wheel does not bundle libsasl2"
+    printf '%s\n' "$contents" | grep -q 'pylibmc/sasl2/.*\.so' ||
+        die "the pylibmc wheel does not bundle the sasl2 plugins"
+    done_stamp pylibmc
+}
+
 # --------------------------------------------------------------------------
 # Main.
 # --------------------------------------------------------------------------
@@ -1428,7 +1645,7 @@ fi
 PACKAGES=("$@")
 # Keep in sync with tart_build.sh's LIW_PACKAGES default: the expected-wheel
 # validation there assumes this same set when no packages are named.
-[ "${#PACKAGES[@]}" -eq 0 ] && PACKAGES=(pylibtiff glymur openslide_python)
+[ "${#PACKAGES[@]}" -eq 0 ] && PACKAGES=(pylibtiff glymur openslide_python pylibmc)
 
 # The "${var[@]+...}" guard keeps bash 3.2 (the VM's default bash) happy
 # about empty arrays under `set -u`.
@@ -1471,6 +1688,17 @@ for pkg in ${PACKAGES[@]+"${PACKAGES[@]}"}; do
         build_jxrlib
         build_openslide
         build_openslide_python
+        ;;
+    pylibmc)
+        # Order mirrors the Dockerfile: cyrus-sasl must exist before
+        # libmemcached's configure detects it ("sasl is required for
+        # libmemcached"), and zlib is built first so that the extension's
+        # -lz and libmemcached's optional compression resolve to our
+        # library rather than the system copy.
+        build_zlib
+        build_cyrus_sasl
+        build_libmemcached
+        build_pylibmc
         ;;
     # "dep:<name>" builds a single dependency; useful for debugging.
     dep:*)
