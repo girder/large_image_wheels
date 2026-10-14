@@ -343,7 +343,12 @@ Notes on the remaining packages:
   uses; `config.py` is patched to find the bundled openjpeg dylib in
   `glymur/.dylibs` (with the linux `Glymur.libs` location as fallback),
   and `pyproject.toml` is patched for the console scripts, package data,
-  python 3.10, and the `0.14.8.1` version.  Still to do: run the VM
+  python 3.10, and the `0.14.8.1` version.  Its dependencies are also
+  patched to declare `packaging`: glymur 0.14.8 imports it in
+  `version.py` without declaring it (an upstream bug the shared test
+  exposed -- `import glymur` fails on a clean install of upstream
+  0.14.8, and the linux wheel has the same latent issue until the
+  Dockerfile patch is rebuilt).  Still to do: run the VM
   build and the isolation test.
 - **pyvips**: needs libvips and its dependency tree (glib, gobject
   introspection, and friends from the Dockerfile); the `pyvips` module
@@ -426,12 +431,15 @@ linux-only; running it in the VM is a possible later extension.
 - The Homebrew-hiding test needs passwordless sudo in the VM (our
   provisioning creates it via /etc/sudoers.d/liw-nopasswd); without it,
   the test falls back to the otool audit only and says so in the report.
-- The base VM's older pyenv pythons (3.11--3.13) link Homebrew's libintl
-  directly, so with Homebrew hidden the interpreters themselves cannot
-  start.  The test script detects this (`otool -L` on the interpreter)
-  and rebuilds those pythons in the test VM with a scrubbed environment
-  before testing, so the test measures the wheels, not the interpreter's
-  dependencies.
+- The base VM's pyenv pythons all link Homebrew libraries (libintl for
+  3.11--3.13; other libraries for the newer ones), so with Homebrew
+  hidden the interpreters themselves cannot be trusted.  The test VM
+  rebuilds those pythons with a scrubbed environment before testing, so
+  the test measures the wheels, not the interpreter's dependencies.
+  Since the rebuilds are discarded with the VM, every test run repeats
+  them; phase 0 therefore runs the builds concurrently (up to the VM's
+  cpu count, passed from `--cpus`), cutting roughly 15 sequential
+  minutes to a few.
 - Free-threaded wheels import with a `RuntimeWarning` about re-enabling
   the GIL because the C extension is not annotated for free-threading;
   this matches upstream behavior and the linux wheels.

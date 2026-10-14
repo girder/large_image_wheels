@@ -381,29 +381,52 @@ ls "$WHEELDIR" 2>&1 | sed 's/^/  /' | while IFS= read -r line; do log "$line"; d
 # here so that every requested python gets tested.
 log ""
 log "=== phase 0: check pythons ==="
-# The base VM's older pyenv pythons (3.11-3.13) link Homebrew's libintl
-# directly, so with Homebrew hidden the interpreters themselves cannot
-# even start.  Those pythons are rebuilt here with a scrubbed environment
-# so that the test measures the wheels, not the interpreter's
-# dependencies.
+# The base VM's pyenv pythons link Homebrew libraries (libintl for
+# 3.11-3.13; other libraries for the newer ones), so with Homebrew hidden
+# the interpreters themselves could not be trusted.  Those pythons are
+# rebuilt here with a scrubbed environment so that the test measures the
+# wheels, not the interpreter's dependencies.  The builds are independent
+# and each is a single-threaded make taking several minutes, so run up to
+# CONCURRENCY of them at a time (bash 3.2 has no `wait -n`, so throttle by
+# counting background jobs).
+CONCURRENCY="${4:-$(sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
+case "$CONCURRENCY" in '' | *[!0-9]*) CONCURRENCY=4 ;; esac
+[ "$CONCURRENCY" -ge 1 ] || CONCURRENCY=1
+build_status="$TESTROOT/pybuild_status"
+: >"$build_status"
 for req in $PYTHONS; do
     dir="$(find_version_dir "$req")"
     if [ -z "$dir" ]; then
-        log "installing python $req (several minutes)"
-        ( unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS SDKROOT
-          "$PYENV_ROOT/bin/pyenv" install -s "$req" ) || {
-            log "FAIL: pyenv install $req failed"
-            FAILURES=$((FAILURES + 1))
-        }
+        mode="installing"
+        flag="-s"
     elif python_links_homebrew "$dir"; then
-        log "rebuilding python $req (its interpreter links Homebrew libraries)"
-        ( unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS SDKROOT
-          "$PYENV_ROOT/bin/pyenv" install -f "$req" ) || {
-            log "FAIL: pyenv reinstall $req failed"
-            FAILURES=$((FAILURES + 1))
-        }
+        mode="rebuilding"
+        flag="-f"
+    else
+        continue
     fi
+    while [ "$(jobs -rp | wc -l | tr -d ' ')" -ge "$CONCURRENCY" ]; do
+        sleep 5
+    done
+    log "python $req: $mode (build log pybuild-$req.log; up to $CONCURRENCY builds at a time)"
+    (
+        unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS SDKROOT
+        "$PYENV_ROOT/bin/pyenv" install "$flag" "$req"
+    ) >"$TESTROOT/pybuild-$req.log" 2>&1 &&
+        echo "$req ok" >>"$build_status" ||
+        echo "$req failed" >>"$build_status" &
 done
+wait
+while IFS= read -r line; do
+    case "$line" in
+    *" failed")
+        breq="${line% failed}"
+        log "FAIL: pyenv build failed for $breq; last lines of the build log:"
+        tail -40 "$TESTROOT/pybuild-$breq.log" >>"$REPORT" 2>&1
+        FAILURES=$((FAILURES + 1))
+        ;;
+    esac
+done <"$build_status"
 
 # --- phase 1: create venvs and install (Homebrew still present; pip needs
 # its ssl libraries, which live in Homebrew in the base VM) ---
@@ -667,7 +690,7 @@ run_ssh "cat > $LIW_GUEST_HOME/.liw_wheel_test.sh" <"$IN_VM_TEST" ||
     die "could not copy the test script"
 
 info "running the isolation test in the VM"
-run_ssh "chmod +x ~/.liw_wheel_test.sh && nohup bash ~/.liw_wheel_test.sh ~/$VM_NAME-wheels '$LIW_PYTHONS' '$LIW_HIDE_HOMEBREW' > $LIW_GUEST_HOME/liw_test.log 2>&1 < /dev/null &"
+run_ssh "chmod +x ~/.liw_wheel_test.sh && nohup bash ~/.liw_wheel_test.sh ~/$VM_NAME-wheels '$LIW_PYTHONS' '$LIW_HIDE_HOMEBREW' '$LIW_CPUS' > $LIW_GUEST_HOME/liw_test.log 2>&1 < /dev/null &"
 
 # Stream the in-VM test output continuously.  report.txt holds the full
 # detail (pip installs, the shared test_script.sh output, otool audits);

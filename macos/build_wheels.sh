@@ -792,6 +792,10 @@ s = s.replace("jpeg2jp2 = 'glymur.command_line:jpeg2jp2'",
     "jpeg2jp2 = 'glymur.command_line:jpeg2jp2'" +
     "".join(["\n%s = 'glymur.bin:program'" % name for name in os.listdir("glymur/bin")
         if not name.endswith(".py")]))
+# glymur 0.14.8 imports packaging in version.py without declaring it
+# (upstream bug); declare it so 'import glymur' works on a clean install.
+s = s.replace("dependencies = [\n    'numpy',",
+    "dependencies = [\n    'packaging',\n    'numpy',")
 s = s.replace("requires-python = '>=3.11'", "requires-python = '>=3.10'")
 s += """
 [tool.setuptools]
