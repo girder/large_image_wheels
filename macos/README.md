@@ -58,16 +58,19 @@ manylinux container plays for the linux builds:
 
 - `build_wheels.sh` -- the in-VM monolithic build.  Environment setup is at
   the top; helpers (`step`, `v`, `skip_if_done`/`done_stamp`, `git_retry`,
-  `fetch`, `cmake_build`, `find_version_dir`, `ensure_pythons`,
-  `collect_pybins`, `ensure_tools`, `set_patch_python`,
+  `fetch`, `cmake_build`, `meson_build`/`ensure_meson`, `find_version_dir`,
+  `ensure_pythons`, `collect_pybins`, `ensure_tools`, `set_patch_python`,
   `scrub_python_sysconfig`, `sanitize_prefix_dylibs`) follow; then
   dependency builders (`build_zlib` ... `build_libtiff`, wrapped by
-  `build_libtiff_deps`, plus `build_lcms2`, `build_libpng`, and
-  `build_openjpeg`), then package builders
-  (`build_pylibtiff`, `build_glymur`; each package builder calls
-  `sanitize_prefix_dylibs` after its dependencies are built), then the main
-  `case` that maps package names to builders (`dep:<name>` builds a single
-  dependency for debugging).
+  `build_libtiff_deps`, plus `build_lcms2`, `build_libpng`,
+  `build_openjpeg`, and the openslide chain `build_libbrotli`,
+  `build_libexpat`, `build_libffi`, `build_glib`, `build_sqlite`,
+  `build_libxml2`, `build_pixman`, `build_freetype`, `build_fontconfig`,
+  `build_cairo`, `build_jxrlib`), then package builders (`build_pylibtiff`,
+  `build_glymur`, `build_openslide`, `build_openslide_python`; each package
+  builder calls `sanitize_prefix_dylibs` after its dependencies are built),
+  then the main `case` that maps package names to builders
+  (`dep:<name>` builds a single dependency for debugging).
 - `tart_build.sh` -- host-side orchestrator: provisions the base VM if
   missing (`provision` command, or automatically), clones a fresh VM,
   copies the repo in, runs `build_wheels.sh` (nohup + polling via
@@ -104,6 +107,7 @@ macos/tart_build.sh
 
 # build a single package
 macos/tart_build.sh pylibtiff
+macos/tart_build.sh openslide_python
 
 # verify the wheels on a different fresh VM (writes /tmp/macos_test_report.txt
 # and /tmp/macos_test_log.txt)
@@ -139,6 +143,7 @@ Inside a VM, for quick iteration, `build_wheels.sh` runs directly:
 
 ```
 LIW_PYTHONS="3.13" bash macos/build_wheels.sh pylibtiff
+LIW_PYTHONS="3.13" bash macos/build_wheels.sh openslide_python
 LIW_DRYRUN=1 bash macos/build_wheels.sh       # verify env/tools/pythons only
 LIW_FORCE=1 bash macos/build_wheels.sh        # ignore completed-step stamps
 bash macos/build_wheels.sh dep:zlib           # build one dependency only
@@ -174,7 +179,19 @@ runs, not just what the scripts are expected to do):
 - Still to do: rebuild the wheels so the `TIFFGetField` wrapper is
   actually in the published wheel (the fix is in `build_wheels.sh`, not
   yet exercised in a VM run), then rerun `test_via_tart.sh` and confirm
-  a full pass.
+  a full pass.  The openslide_python package was added to
+  `build_wheels.sh` (see below) and still needs its first VM build and
+  test run.
+- The openslide_python dependency chain was verified on the build host
+  (not in a VM) by shadow-running `build_wheels.sh`'s functions with the
+  same scrubbed environment into a throwaway prefix: every dependency
+  from libbrotli through openslide builds (openslide's feature
+  assertions pass, including the jxr linkage), the openslide-python
+  wheel builds and delocates, and against a real Aperio slide the
+  installed wheel loads the bundled dylib from `.dylibs`, the otool
+  audit is clean, `slidetool slide quickhash1` runs, and openslide reads
+  regions.  What the host run cannot verify: the pristine-VM isolation,
+  the free-threaded wheel builds, and the shared test suite.
 - Phase 0 python rebuilds are parallelized (up to the VM's cpu count,
   passed from `--cpus`); measured saving of about 5 of the roughly 15
   sequential minutes at concurrency 4.
@@ -314,6 +331,56 @@ runs, not just what the scripts are expected to do):
 - libtiff is built with autotools (`autogen.sh`); Homebrew installs the
   GNU libtool binaries as `glibtool`/`glibtoolize`, so `ensure_tools`
   creates `libtool`/`libtoolize` wrappers in the private prefix.
+- meson is not part of the base VM's Homebrew build-tool set (cmake,
+  ninja, pkgconf, autotools are).  `ensure_meson` pip-installs meson
+  into the patch python (build tool only; never enters a wheel) and
+  `meson_build` runs it.  Beware meson's dependency resolution: when
+  pkg-config misses, meson falls back to its own cmake method, which
+  searches /opt/homebrew and /usr/local -- our cmake-build isolation
+  flags do not apply to meson's internal cmake calls.  Every meson
+  dependency must therefore resolve through the prefix's pkg-config
+  files (all of openslide's do: zlib, zstd, jpeg, png, tiff, openjpeg,
+  glib, gio, gobject, cairo, xml2, sqlite3, and jxrlib via the
+  libjxr.pc that jxrlib itself installs).  glib's pcre2 and libdicom are
+  fetched and built by meson subproject wraps (meson's default wrap mode
+  allows the fallback; the linux build relies on the same wraps).
+- glib is a special case for the meson fallback hazard: its meson does
+  `dependency('libpcre2-8', required: false)` and then falls back to a
+  bare `cc.find_library('pcre2-8')` before reaching its own subproject
+  wrap, and find_library searches Homebrew.  On the host shadow run this
+  linked Homebrew's pcre2 into libglib (min target 27.0, which delocate
+  rejects for an 11.0 wheel).  `build_glib` therefore passes
+  `--force-fallback-for=libpcre2-8` so glib builds the wrap's pcre2
+  (which carries an apple-platforms fix patch) statically into itself.
+  Watch for the same `cc.find_library` pattern in future meson builds:
+  pkg-config being prefix-scoped does not make find_library prefix-scoped.
+- fontconfig needs `gperf`, which is neither in the base VM's brew set
+  nor in the CLT; fontconfig's meson falls back to its own gperf
+  subproject, so nothing extra has to be provisioned.
+- The macOS linker rejects undefined symbols in dylibs where the Linux
+  linker allows them.  jxrlib's shared-library rules rely on the Linux
+  behavior (libjxrglue references symbols that live in libjpegxr); the
+  build passes `-Wl,-undefined,dynamic_lookup` to those two link rules
+  to restore the Linux semantics.  Verified by an encode/decode round
+  trip through both dylibs on the host.  The same rules get
+  `-Wl,-install_name,$(DIR_INSTALL)/lib/$(notdir $@)` so the installed
+  dylibs have absolute install names (delocate can then rewrite them;
+  clang's `-shared` otherwise records the bare output path).
+- openslide is pinned by commit sha (`openslide-sha`), so it needs a
+  full clone (`git_retry` with an empty tag) -- a sha is not contained in
+  a `--depth=1` clone of the branch tip.
+- openslide-python's abi3 wheel: upstream master's `_abi3` is
+  `version >= (3, 11) and not Py_GIL_DISABLED`, so 3.11+ stable builds
+  one cp311-abi3 wheel covering 3.11-3.15 and the free-threaded
+  interpreters build their own cp3XX-cp3XXt wheels.  Building for every
+  stable python would just produce duplicate abi3 wheels (the linux
+  build excludes 3.12-3.15 for the same reason), so
+  `build_openslide_python` selects 3.11 and the `*t` pythons from
+  `PYBINS`.  `tart_build.sh`'s expected-wheel validation already accepts
+  an abi3 wheel for any stable python newer than the abi3 baseline.
+- glib on darwin does not need util-linux's libmount/libblkid (the
+  Dockerfile builds util-linux only for glib's Linux-side needs), so the
+  macos build has no util-linux counterpart.
 
 ## Adding a package
 
@@ -388,8 +455,50 @@ Notes on the remaining packages:
 - **pyvips**: needs libvips and its dependency tree (glib, gobject
   introspection, and friends from the Dockerfile); the `pyvips` module
   needs the same "find the bundled library" patch as pylibtiff.
-- **openslide_python**: needs openslide (with its own patch set from the
-  repo's `.patch` files) and the same bundled-library lookup patch.
+Notes on the remaining packages:
+
+- **openslide_python**: implemented (`openslide_python` case:
+  `build_libtiff_deps`, `build_lcms2`, `build_libpng`, `build_openjpeg`,
+  then the openslide chain `build_libbrotli`, `build_libexpat`,
+  `build_libffi`, `build_glib`, `build_sqlite`, `build_libxml2`,
+  `build_pixman`, `build_freetype`, `build_fontconfig`, `build_cairo`,
+  `build_jxrlib`, `build_openslide`, `build_openslide_python`).
+  openslide 4.x is a meson build and requires (hard deps) glib/gio/gobject,
+  cairo, libxml2, sqlite3, zlib, libzstd, libjpeg, libpng, libtiff,
+  libopenjp2, and libdicom; libdicom is not built separately -- openslide's
+  own `subprojects/libdicom.wrap` fetches and builds it (meson's default
+  wrap mode allows the fallback, like the linux build).  The two repo
+  patches (`openslide-iewchen-zeiss-czi-jxr.patch`,
+  `openslide-vendor-mirax.c.patch`) are applied with `git am` at the
+  `openslide-sha` pin (a full clone, since a sha is not in a depth-1
+  clone); the zeiss patch adds optional JXR support, so `build_jxrlib`
+  runs before openslide and `build_openslide` asserts the linked feature
+  set (cairo, glib, gobject, sqlite3, xml2, jxrglue, jpegxr, png, tiff,
+  openjpeg, jpeg) via `otool -L`.  util-linux (libmount/libblkid) is a
+  Linux-only glib dependency and has no macos counterpart.  meson itself
+  is not in the base VM's Homebrew set; `ensure_meson` pip-installs it
+  into the patch python and `meson_build` mirrors the Dockerfile's meson
+  flags (`--buildtype=release --optimization=3`).  openslide-python is
+  cloned from master (the release tag is stale) and patched like the
+  linux build: `lowlevel.py` learns to load the bundled libopenslide
+  dylib from `openslide/.dylibs` (with the linux `openslide_python.libs`
+  fallback) *before* the `openslide-bin` wheel import and the system
+  search; the bundled `slidetool` goes into `openslide/bin` with the same
+  `openslide.bin:program` wrapper pylibtiff uses (the linux wheels bundle
+  only slidetool as well: the `openslide-quickhash1sum`-style names are
+  install-time symlinks that do not exist in the meson build directory,
+  so the linux find-based copy also produces slidetool only); `setup.py`
+  links
+  `_convert` against the prefix's libopenslide (`library_dirs`),
+  `_version.py` gains the `.1` suffix, and `pyproject.toml` gets the
+  package data and console scripts.  Upstream master already carries the
+  free-threading `_abi3` guard the linux patch adds.  Because 3.11+ builds
+  one abi3 wheel covering 3.11-3.15 (the free-threaded interpreters build
+  their own tagged wheels), `build_openslide_python` builds only for 3.11
+  and the requested `*t` pythons; `tart_build.sh`'s expected-wheel
+  validation already accepts abi3 wheels for the stable pythons, and the
+  test harness verifies the version identity per python.  Not yet
+  exercised in a VM run.
 - **GDAL**: the largest build; the Dockerfile's full dependency tree
   applies, and the licensing-inclusive feature set should be mirrored.
   The python bindings link libgdal directly and need the bundled-library
@@ -448,14 +557,15 @@ authoritative suite.
 
 The macOS harness (`test_via_tart.sh`) keeps only the platform layers
 around the shared script: phase 0 python rebuilding, phase 1 venv
-installation with wheel-identity checks (pylibtiff and Glymur),
-Homebrew-hiding, the `otool` audits -- scoped to the packages our
-wheels provide (libtiff, glymur), since the venvs also contain pypi
-wheels pulled in as dependencies whose build artifacts (e.g. Pillow's
-RPATH to its own build machine, lxml's self-referencing load commands)
-are not ours to police -- and the macos-specific checks
+installation with wheel-identity checks (pylibtiff, Glymur,
+openslide-python), Homebrew-hiding, the `otool` audits -- scoped to the
+packages our wheels provide (libtiff, glymur, openslide), since the venvs
+also contain pypi wheels pulled in as dependencies whose build artifacts
+(e.g. Pillow's RPATH to its own build machine, lxml's self-referencing
+load commands) are not ours to police -- and the macos-specific checks
 (`@loader_path` verification that the bundled dylib is the one loaded,
-bundled `tiffinfo`).  The embedded duplicate functional checks were
+bundled `tiffinfo`, bundled `slidetool slide quickhash1` against the
+suite's downloaded slide).  The embedded duplicate functional checks were
 removed.  `li_script.sh` (large_image's own tox suite) remains
 linux-only; running it in the VM is a possible later extension.
 
