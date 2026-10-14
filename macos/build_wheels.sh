@@ -476,7 +476,12 @@ build_libpng() {
     cd "$LIW_SRC"
     rm -rf libpng
     git_retry https://github.com/glennrp/libpng.git "v$(v libpng)" libpng
-    cmake_build "$LIW_SRC/libpng"
+    # On macOS libpng's cmake defaults to building a framework
+    # (png.framework/png) instead of libpng16.dylib.  The framework's
+    # install name would complicate delocate bundling, and no linux wheel
+    # links a framework, so build the plain dylib like the linux build
+    # does.
+    cmake_build "$LIW_SRC/libpng" -DPNG_FRAMEWORK=OFF
     done_stamp libpng
 }
 
