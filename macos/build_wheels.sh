@@ -817,7 +817,14 @@ EOF
 
     step "delocate glymur wheels"
     "${LIW_PATCH_PIPBIN}" install -q -U delocate
+    # pip may write the wheel filename in lowercase (glymur-...) even though
+    # the distribution is named Glymur; the linux build renames it to the
+    # capitalized name before repair, and the loop below globs for Glymur-*.
     local whl newname
+    for whl in "$LIW_WHEELHOUSE"/glymur-*.whl; do
+        [ -f "$whl" ] || continue
+        mv "$whl" "$(dirname "$whl")/$(basename "$whl" | sed 's/^glymur-/Glymur-/')"
+    done
     for whl in "$LIW_WHEELHOUSE"/Glymur-*.whl; do
         [ -f "$whl" ] || continue
         case "$(basename "$whl")" in

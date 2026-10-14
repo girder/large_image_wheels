@@ -256,9 +256,14 @@ and a fresh test VM, all on the current code):
   bundles the webp tools, and the libwebp library itself does not use
   png.
 - glymur is pure python, so `pip wheel` tags its wheels `py3-none-any`.
-  delocate never retags an `any` wheel (its tag-update path returns early
-  for `any.whl`), but `delocate-wheel` does rewrite the WHEEL file's tags
-  to match the wheel filename -- so the glymur wheels are renamed to
+  pip may also write the wheel filename in lowercase (`glymur-...`)
+  although the distribution is named Glymur; the delocate step renames
+  `glymur-*` to `Glymur-*` first (the linux build does the same sed
+  rename before auditwheel repair).  Because pip's wheel cache serves
+  the identical pure-python wheel to every python, the end result is a
+  single Glymur wheel per architecture, matching the linux build.
+  delocate never retags an `any` wheel, but it rewrites the WHEEL file's
+  tags to match the wheel filename, so the wheel is renamed to
   `py3-none-macosx_11_0_arm64` *before* running `delocate-wheel`, which
   then bundles the executables' dylib dependencies and fixes the WHEEL
   file to match.
