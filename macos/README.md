@@ -71,10 +71,13 @@ manylinux container plays for the linux builds:
 - `tart_build.sh` -- host-side orchestrator: provisions the base VM if
   missing (`provision` command, or automatically), clones a fresh VM,
   copies the repo in, runs `build_wheels.sh` (nohup + polling via
-  `~/liw_macos_build/exit_code`), retrieves wheels into `./wheels/`,
+  `~/liw_macos_build/exit_code`) while streaming the in-VM build log
+  (`$LIW_GUEST_HOME/macos_build.log` inside the VM) to the terminal,
+  retrieves wheels into `./wheels/`,
   validates that every requested package produced a wheel for every
   requested python (dying on a missing one -- the counterpart of
   `build.sh`'s copy-out of the expected wheels), and deletes the VM.
+  On failure a copy of the build log is saved to `/tmp/macos_build.log`.
 - `test_via_tart.sh` -- host-side isolation test: clone another fresh VM
   and run an embedded in-VM test script (phase 0: install/rebuild missing
   or Homebrew-linked pythons; phase 1: install the wheels into a venv per
@@ -328,6 +331,14 @@ Notes on the remaining packages:
   The python bindings link libgdal directly and need the bundled-library
   treatment plus the `GDAL_LIBRARY_PATH`/`GEOS_LIBRARY_PATH` exports that
   the linux wheels provide.
+- **pyproj**: intentionally not built for macOS.  pyproj4 publishes
+  macosx arm64 wheels, so the tests install pyproj from pypi like any
+  other dependency; the linux pipeline no longer builds a pyproj wheel
+  either (the pyproj4 section's `pip wheel` commands are disabled).  Do
+  not confuse this with the `proj4` library section of the Dockerfile
+  ("Used by gdal and mapnik"): that library is still required and must
+  be built before GDAL or mapnik, mirroring its position in the
+  Dockerfile's order.
 - **pylibmc**: needs libmemcached (+ cyrus-sasl in the Dockerfile).
 - **python_javabridge / python-bioformats**: need a JDK; the linux build
   bundles the JVM inside the wheel.  On macOS, decide whether to bundle
