@@ -249,6 +249,15 @@ TESTROOT="$HOME/liw_test"
 REPORT="$TESTROOT/report.txt"
 FAILURES=0
 
+# If this script dies unexpectedly (e.g. an unbound variable under set -u),
+# record a failure immediately: the host-side loop waits for the failures
+# file, and a silently dead script would otherwise look like a hang until
+# the full timeout expires.  The normal exit paths write the real result
+# first, which this trap leaves alone.  The Homebrew restore lives in the
+# same EXIT trap (bash keeps only one), defined below once
+# restore_homebrew exists.
+trap restore_homebrew_and_record_failure EXIT
+
 mkdir -p "$TESTROOT"
 : >"$REPORT"
 
@@ -316,7 +325,16 @@ find_homebrew() {
 }
 
 HOMEBREW_DIR="$(find_homebrew)"
-trap restore_homebrew EXIT
+
+restore_homebrew_and_record_failure() {
+    restore_homebrew
+    # Normal exit paths have already written the real result; only an
+    # unexpected death (unbound variable, killed interpreter) lands here.
+    if [ ! -f "$TESTROOT/failures" ]; then
+        echo 1 >"$TESTROOT/failures"
+        echo "=== the in-VM test script died unexpectedly ==="
+    fi
+}
 
 hide_homebrew() {
     [ -n "$HOMEBREW_DIR" ] || return 0
@@ -585,6 +603,10 @@ PYEOF
 
 for venv in $VENVDIRS; do
     req="$(basename "$venv" | sed 's/^venv-//')"
+    # The per-python run directory is named here (it is wiped and
+    # recreated before the shared suite below); the openslide check
+    # references its future sample.svs path.
+    rundir="$TESTROOT/run-$req"
     log ""
     log "python $req:"
     site="$($venv/bin/python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])' 2>/dev/null)"

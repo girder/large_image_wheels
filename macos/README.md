@@ -178,24 +178,18 @@ runs, not just what the scripts are expected to do):
   built macosx wheel and rerunning the failing reads).
 - Still to do: rebuild the wheels so the `TIFFGetField` wrapper is
   actually in the published wheel (the fix is in `build_wheels.sh`, not
-  yet exercised in a VM run).  The first full openslide_python VM build
-  and test run (2026-10-14) exposed two real bugs, both fixed in
-  `build_wheels.sh`/`test_via_tart.sh` (see the openslide_bin bullet in
-  the hard-won details): the test harness's phase-1 wheel selection
-  matched openslide_python's free-threaded wheel for the `*t` pythons
-  (anchored to pylibtiff now), and openslide-python's bundled-library
-  lookup ran *after* upstream's `import openslide_bin` fast path, so in
-  every venv that has pypi's openslide-bin installed (all of them:
-  `large-image[openslide]` requires it) pypi's unpatched libopenslide
-  silently replaced ours -- the shared suite's flattened-MIRAX test
-  failed with "Unsupported or missing image file" while the svs tests
-  passed, which is what made it look openslide-unrelated.  The bundled
-  lookup now runs first, the harness asserts the loaded dylib comes from
-  `.dylibs` before the shared suite runs, and the fix was verified on
-  the build host by reproducing the exact VM scenario (our wheel + pypi
-  openslide-bin + large_image_source_openslide in one venv): the mrxs
-  test snippet then passes.  Rerun `tart_build.sh` (the wheel must be
-  rebuilt -- the lowlevel fix changes it) and `test_via_tart.sh`.
+  yet exercised in a VM run), then rerun `test_via_tart.sh` and confirm
+  a full pass.  The second test run (with the rebuilt openslide_python
+  wheels) got through phase 1 on every python and hung in phase 2: the
+  openslide bundled-dylib check referenced `$rundir` before it was
+  defined, and the in-VM script's `set -u` killed the script silently
+  (its stderr goes to liw_test.log, not the stream), so the host-side
+  loop polled until the full timeout.  Fixed by defining `rundir` at the
+  top of the per-venv loop and by adding an EXIT trap that records a
+  failure the moment the script dies unexpectedly (bash keeps only one
+  EXIT trap, so the Homebrew restore moved into the same trap).  The
+  wheels themselves were not implicated; rerunning only
+  `test_via_tart.sh` is needed.
 - Phase 0 python rebuilds are parallelized (up to the VM's cpu count,
   passed from `--cpus`); measured saving of about 5 of the roughly 15
   sequential minutes at concurrency 4.
@@ -358,6 +352,17 @@ runs, not just what the scripts are expected to do):
   (which carries an apple-platforms fix patch) statically into itself.
   Watch for the same `cc.find_library` pattern in future meson builds:
   pkg-config being prefix-scoped does not make find_library prefix-scoped.
+- The in-VM test script runs under `set -u`, and any unbound variable
+  kills it *silently*: its stderr goes to liw_test.log (not streamed),
+  the failures file is never written, and the host-side loop polls
+  "still testing" until the full timeout -- which looks exactly like a
+  hang.  This bit us with the openslide check referencing `$rundir`
+  before its assignment.  Two defenses now: `rundir` is defined at the
+  top of the per-venv loop, and an EXIT trap records a failure the
+  moment the script dies unexpectedly, so the host fails fast with
+  "the in-VM test script died unexpectedly".  Remember that bash keeps
+  only ONE EXIT trap -- a second `trap ... EXIT` replaces the first (the
+  Homebrew restore and the failure recorder live in one combined trap).
 - openslide-python's bundled-dylib lookup must run BEFORE upstream's
   `import openslide_bin` fast path in `_load_library`.  On macos pypi
   publishes openslide-bin wheels and `large-image[openslide]` installs
