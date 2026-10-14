@@ -161,38 +161,43 @@ runs, not just what the scripts are expected to do):
 - All pylibtiff and glymur dependencies build into the private prefix,
   including the openjpeg feature assertions (lcms2, libpng, libtiff
   linkage verified via otool after the libpng framework fix).
-- Wheels for 3.11, 3.12, 3.13, 3.14, 3.15, 3.14t, 3.15t: pylibtiff and
-  Glymur built; one Glymur wheel per architecture (py3-none-macosx,
-  `packaging` declared); wheel-identity checks pass (pip picks our
-  wheels); otool audits clean with Homebrew hidden; bundled dylib loads
-  from `.dylibs`; tiff round trip and bundled `tiffinfo` pass on every
-  python.
-- The shared `test/test_script.sh` runs inside the test VM per python.
-  Its first full run exposed two real issues, both fixed: glymur 0.14.8
-  does not declare its `packaging` import (fixed in both the macos and
-  linux glymur patches), and large_image tiff reads segfaulted on
-  darwin/arm64 because large_image clears
-  `libtiff.TIFFGetField.argtypes` and ctypes then mishandles the
+- Wheels for 3.11, 3.12, 3.13, 3.14, 3.15, 3.14t, 3.15t: pylibtiff,
+  Glymur, and openslide_python built.  Glymur is one wheel per
+  architecture (py3-none-macosx, `packaging` declared); openslide_python
+  is one cp311-abi3 wheel for the stable pythons plus one wheel per
+  free-threaded python.  Wheel-identity checks pass (pip picks our
+  wheels) for all three; otool audits clean with Homebrew hidden;
+  bundled dylibs load from `.dylibs`; tiff round trip, bundled
+  `tiffinfo`, the openslide bundled-dylib check, and bundled
+  `slidetool slide quickhash1` pass on every python.
+- The shared `test/test_script.sh` runs inside the test VM per python
+  and passes on every requested python.  Its runs exposed four real
+  issues, all fixed: glymur 0.14.8 does not declare its `packaging`
+  import (fixed in both the macos and linux glymur patches);
+  large_image tiff reads segfaulted on darwin/arm64 because large_image
+  clears `libtiff.TIFFGetField.argtypes` and ctypes then mishandles the
   variadic call (fixed by wrapping `TIFFGetField` in the pylibtiff
-  wheel; the fix was verified locally by applying the exact patch to the
-  built macosx wheel and rerunning the failing reads).
-- Still to do: rebuild the wheels so the `TIFFGetField` wrapper is
-  actually in the published wheel (the fix is in `build_wheels.sh`, not
-  yet exercised in a VM run), then rerun `test_via_tart.sh` and confirm
-  a full pass.  The second test run (with the rebuilt openslide_python
-  wheels) got through phase 1 on every python and hung in phase 2: the
-  openslide bundled-dylib check referenced `$rundir` before it was
-  defined, and the in-VM script's `set -u` killed the script silently
-  (its stderr goes to liw_test.log, not the stream), so the host-side
-  loop polled until the full timeout.  Fixed by defining `rundir` at the
-  top of the per-venv loop and by adding an EXIT trap that records a
-  failure the moment the script dies unexpectedly (bash keeps only one
-  EXIT trap, so the Homebrew restore moved into the same trap).  The
-  wheels themselves were not implicated; rerunning only
-  `test_via_tart.sh` is needed.
+  wheel; the wrapper is in the published wheels and the tiff reads pass
+  on every python); openslide-python's bundled-library lookup lost to
+  pypi's openslide-bin wheel (see the hard-won details -- the bundled
+  lookup now runs first, verified in a VM run); and the harness's own
+  `set -u` death (see below).
 - Phase 0 python rebuilds are parallelized (up to the VM's cpu count,
   passed from `--cpus`); measured saving of about 5 of the roughly 15
   sequential minutes at concurrency 4.
+- Second test run (with the rebuilt openslide_python wheels) hung in
+  phase 2: the openslide bundled-dylib check referenced `$rundir` before
+  it was defined, and the in-VM script's `set -u` killed the script
+  silently (its stderr goes to liw_test.log, not the stream), so the
+  host-side loop polled until the full timeout.  Fixed by defining
+  `rundir` at the top of the per-venv loop and by adding an EXIT trap
+  that records a failure the moment the script dies unexpectedly (bash
+  keeps only one EXIT trap, so the Homebrew restore moved into the same
+  trap).  The third run passed everything.
+- Next up, in rough effort order (see the remaining-packages notes
+  below for details): pylibmc and mapnik (moderate), then pyvips, then
+  GDAL (the largest); python-javabridge / python-bioformats need a JDK
+  design decision first.  pyproj stays pypi-sourced.
 
 ## Hard-won details (do not lose these)
 
@@ -486,13 +491,9 @@ Notes on the remaining packages:
   `version.py` without declaring it (an upstream bug the shared test
   exposed -- `import glymur` fails on a clean install of upstream
   0.14.8, and the linux wheel has the same latent issue until the
-  Dockerfile patch is rebuilt).  The glymur wheel has been built in the
-  VM and passes the wheel-identity and otool checks; a fresh
-  `tart_build.sh` + `test_via_tart.sh` run is still needed to confirm
-  the full pass including the shared suite (the first full run got
-  through `import glymur` after the `packaging` fix and failed only on
-  the large_image segfault, see the hard-won details on the
-  `TIFFGetField` wrapper).
+  Dockerfile patch is rebuilt).  Verified end to end in the VM: the
+  wheel passes the identity, otool, and shared-suite checks on every
+  requested python.
 - **pyvips**: needs libvips and its dependency tree (glib, gobject
   introspection, and friends from the Dockerfile); the `pyvips` module
   needs the same "find the bundled library" patch as pylibtiff.
@@ -538,8 +539,9 @@ Notes on the remaining packages:
   their own tagged wheels), `build_openslide_python` builds only for 3.11
   and the requested `*t` pythons; `tart_build.sh`'s expected-wheel
   validation already accepts abi3 wheels for the stable pythons, and the
-  test harness verifies the version identity per python.  Not yet
-  exercised in a VM run.
+  test harness verifies the version identity per python.  Verified end
+  to end in the VM (see the hard-won details for the openslide-bin
+  shadowing issue the first VM run exposed and its fix).
 - **GDAL**: the largest build; the Dockerfile's full dependency tree
   applies, and the licensing-inclusive feature set should be mirrored.
   The python bindings link libgdal directly and need the bundled-library
