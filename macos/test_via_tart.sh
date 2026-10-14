@@ -268,7 +268,7 @@ wheel_for_python() { # wheel_for_python <version req> -> wheel file or empty
 }
 
 wheel_version() { # version embedded in the wheel file name
-    basename "$1" | sed -E 's/^(pylibtiff|Glymur)-([0-9.]+)-.*/\2/'
+    basename "$1" | sed -E 's/^(pylibtiff|Glymur|openslide_python)-([0-9.]+)-.*/\2/'
 }
 
 find_version_dir() {
@@ -488,6 +488,28 @@ for req in $PYTHONS; do
         fi
         log "OK python $req: installed Glymur $ginstalled"
     fi
+    # If an openslide_python wheel is present, verify its identity the same
+    # way.  The abi3 wheel built from python 3.11 covers every stable
+    # python; the free-threaded pythons get their own wheels.
+    owhl="$(ls "$WHEELDIR"/openslide_python-*.whl 2>/dev/null | head -1)"
+    if [ -n "$owhl" ]; then
+        over="$(wheel_version "$owhl")"
+        if ! "$venv/bin/pip" install --quiet --find-links "$WHEELDIR" \
+            "openslide-python==$over" >>"$REPORT" 2>&1; then
+            log "FAIL python $req: pip install of openslide-python failed"
+            FAILURES=$((FAILURES + 1))
+            rm -rf "$venv"
+            continue
+        fi
+        oinstalled="$($venv/bin/pip show openslide-python 2>/dev/null | sed -n 's/^Version: //p')"
+        if [ "$oinstalled" != "$over" ]; then
+            log "FAIL python $req: installed openslide-python $oinstalled but expected $over (pip may have used pypi)"
+            FAILURES=$((FAILURES + 1))
+            rm -rf "$venv"
+            continue
+        fi
+        log "OK python $req: installed openslide-python $oinstalled"
+    fi
     VENVDIRS="$VENVDIRS $venv"
 done
 
@@ -547,7 +569,7 @@ for venv in $VENVDIRS; do
     # own build artifacts (e.g. Pillow's RPATH to its build machine, lxml's
     # self-referencing load commands) are not ours to police.
     audit_fail=0
-    for pkg in libtiff glymur; do
+    for pkg in libtiff glymur openslide; do
         if [ -d "$site/$pkg" ]; then
             audit_macho "$site/$pkg" >>"$REPORT" 2>&1 || audit_fail=1
         fi
@@ -556,7 +578,7 @@ for venv in $VENVDIRS; do
         log "FAIL python $req: otool audit found forbidden library references"
         FAILURES=$((FAILURES + 1))
     else
-        log "OK python $req: otool audit clean (libtiff, glymur)"
+        log "OK python $req: otool audit clean (libtiff, glymur, openslide)"
     fi
     if "$venv/bin/python" "$TESTROOT/test_libtiff.py" >>"$REPORT" 2>&1; then
         log "OK python $req: python functional test passed"
@@ -592,7 +614,7 @@ for venv in $VENVDIRS; do
         log "OK python $req: shared test_script.sh passed"
         venvsite="$(ls -d "$rundir/venv/lib/python3."*/site-packages 2>/dev/null | head -1)"
         audit_fail=0
-        for pkg in libtiff glymur; do
+        for pkg in libtiff glymur openslide; do
             if [ -n "$venvsite" ] && [ -d "$venvsite/$pkg" ]; then
                 audit_macho "$venvsite/$pkg" >>"$REPORT" 2>&1 || audit_fail=1
             fi
@@ -601,7 +623,19 @@ for venv in $VENVDIRS; do
             log "FAIL python $req: otool audit of the test_script.sh venv found forbidden library references"
             FAILURES=$((FAILURES + 1))
         else
-            log "OK python $req: otool audit of the test_script.sh venv clean (libtiff, glymur)"
+            log "OK python $req: otool audit of the test_script.sh venv clean (libtiff, glymur, openslide)"
+        fi
+        # The bundled openslide command line tool (slidetool, the only one
+        # the linux wheels bundle too) is exposed as a console script; run
+        # it against the slide file the shared test suite downloaded (if it
+        # got that far).
+        if [ -f "$rundir/sample.svs" ]; then
+            if "$venv/bin/slidetool" slide quickhash1 "$rundir/sample.svs" >>"$REPORT" 2>&1; then
+                log "OK python $req: bundled slidetool quickhash ran"
+            else
+                log "FAIL python $req: bundled slidetool quickhash failed"
+                FAILURES=$((FAILURES + 1))
+            fi
         fi
     else
         log "FAIL python $req: shared test_script.sh failed"
