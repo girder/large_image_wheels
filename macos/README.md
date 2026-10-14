@@ -149,19 +149,35 @@ only redoes unfinished work.
 
 ## Status
 
-End-to-end verified (a standalone-provisioned base VM, a fresh build VM,
-and a fresh test VM, all on the current code):
+Verified end to end as of 2026-10-14 (build VM and test VM runs on the
+current code; the list reflects what has actually been observed in VM
+runs, not just what the scripts are expected to do):
 
-- All pylibtiff dependencies build into the private prefix.
-- Wheels for 3.11, 3.12, 3.13, 3.14, 3.15, 3.14t, 3.15t: all built,
-  otool audit clean, and the isolation tests pass with Homebrew hidden
-  (bundled dylib loaded from `.dylibs`, tiff image round trip, bundled
-  `tiffinfo`).
-- Glymur: build commands are implemented (`build_libtiff_deps`,
-  `build_lcms2`, `build_libpng`, `build_openjpeg`, `build_glymur`, wired
-  into the main `case`; both patch scripts verified against the actual
-  glymur 0.14.8 sources), but the VM build and the isolation tests have
-  not been run yet.
+- All pylibtiff and glymur dependencies build into the private prefix,
+  including the openjpeg feature assertions (lcms2, libpng, libtiff
+  linkage verified via otool after the libpng framework fix).
+- Wheels for 3.11, 3.12, 3.13, 3.14, 3.15, 3.14t, 3.15t: pylibtiff and
+  Glymur built; one Glymur wheel per architecture (py3-none-macosx,
+  `packaging` declared); wheel-identity checks pass (pip picks our
+  wheels); otool audits clean with Homebrew hidden; bundled dylib loads
+  from `.dylibs`; tiff round trip and bundled `tiffinfo` pass on every
+  python.
+- The shared `test/test_script.sh` runs inside the test VM per python.
+  Its first full run exposed two real issues, both fixed: glymur 0.14.8
+  does not declare its `packaging` import (fixed in both the macos and
+  linux glymur patches), and large_image tiff reads segfaulted on
+  darwin/arm64 because large_image clears
+  `libtiff.TIFFGetField.argtypes` and ctypes then mishandles the
+  variadic call (fixed by wrapping `TIFFGetField` in the pylibtiff
+  wheel; the fix was verified locally by applying the exact patch to the
+  built macosx wheel and rerunning the failing reads).
+- Still to do: rebuild the wheels so the `TIFFGetField` wrapper is
+  actually in the published wheel (the fix is in `build_wheels.sh`, not
+  yet exercised in a VM run), then rerun `test_via_tart.sh` and confirm
+  a full pass.
+- Phase 0 python rebuilds are parallelized (up to the VM's cpu count,
+  passed from `--cpus`); measured saving of about 5 of the roughly 15
+  sequential minutes at concurrency 4.
 
 ## Hard-won details (do not lose these)
 
@@ -261,6 +277,20 @@ and a fresh test VM, all on the current code):
   libwebp which was configured after libpng.  This is accepted: no wheel
   bundles the webp tools, and the libwebp library itself does not use
   png.
+- ctypes calls variadic C functions differently on darwin/arm64 when
+  `argtypes` is unset: with `argtypes = None`, a call like
+  `TIFFGetField(tif, tag, byref(data))` segfaults inside libtiff for any
+  tag actually present in the file, while the identical call with
+  `argtypes = [TIFF, c_ttag_t]` works.  large_image clears
+  `libtiff.TIFFGetField.argtypes` at import (its patch predates arm64
+  macs and is harmless on linux, where the ABIs coincide), which made
+  every large_image tiff read segfault with our wheels.  The pylibtiff
+  wheel therefore wraps `libtiff.TIFFGetField` (see
+  `pylibtiff_libtiff_ctypes_getfield.py` in `build_pylibtiff`) so the
+  raw ctypes pointer is always invoked with explicit argtypes while the
+  wrapper still accepts `argtypes`/`restype` assignments.  Watch for
+  the same pattern with any other variadic libtiff entry point
+  (TIFFSetField, TIFFGetFieldDefaulted) if one ever crashes.
 - glymur is pure python, so `pip wheel` tags its wheels `py3-none-any`.
   pip may also write the wheel filename in lowercase (`glymur-...`)
   although the distribution is named Glymur; the delocate step renames
@@ -348,8 +378,13 @@ Notes on the remaining packages:
   `version.py` without declaring it (an upstream bug the shared test
   exposed -- `import glymur` fails on a clean install of upstream
   0.14.8, and the linux wheel has the same latent issue until the
-  Dockerfile patch is rebuilt).  Still to do: run the VM
-  build and the isolation test.
+  Dockerfile patch is rebuilt).  The glymur wheel has been built in the
+  VM and passes the wheel-identity and otool checks; a fresh
+  `tart_build.sh` + `test_via_tart.sh` run is still needed to confirm
+  the full pass including the shared suite (the first full run got
+  through `import glymur` after the `packaging` fix and failed only on
+  the large_image segfault, see the hard-won details on the
+  `TIFFGetField` wrapper).
 - **pyvips**: needs libvips and its dependency tree (glib, gobject
   introspection, and friends from the Dockerfile); the `pyvips` module
   needs the same "find the bundled library" patch as pylibtiff.
@@ -438,8 +473,21 @@ linux-only; running it in the VM is a possible later extension.
   the test measures the wheels, not the interpreter's dependencies.
   Since the rebuilds are discarded with the VM, every test run repeats
   them; phase 0 therefore runs the builds concurrently (up to the VM's
-  cpu count, passed from `--cpus`), cutting roughly 15 sequential
-  minutes to a few.
+  cpu count, passed from `--cpus`).  Measured: about 5 of the roughly
+  15 sequential minutes saved at concurrency 4.  An alternative that
+  was deferred rather than rejected: using uv to download prebuilt
+  interpreters (python-build-standalone) instead of building them with
+  pyenv.  Parallelism was tried first and proved sufficient for the
+  moment, so uv was not pursued; revisit it if interpreter build time
+  becomes a problem again.  If picked up, the known considerations
+  are: it changes the rarely-run provisioning (deliberately left
+  alone); the PBS interpreters' sysconfig data is unverified against
+  the scrub (they are self-contained and should not link Homebrew,
+  which could also remove the need for the phase-0 rebuilds);
+  availability of every requested version (including free-threaded)
+  in the PBS catalog must be checked; and `find_version_dir`/
+  `ensure_pythons`/`collect_pybins` match pyenv's directory layout and
+  would need to move to uv's.
 - Free-threaded wheels import with a `RuntimeWarning` about re-enabling
   the GIL because the C extension is not annotated for free-threading;
   this matches upstream behavior and the linux wheels.
