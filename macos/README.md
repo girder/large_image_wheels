@@ -242,6 +242,19 @@ and a fresh test VM, all on the current code):
 - arm64 SIMD needs no `nasm` (NEON assembly is compiled by clang directly).
 - Mach-O stripping uses `strip -x` (the GNU `--strip-unneeded -p -D`
   flags do not exist on macOS).
+- On macOS, some cmake projects default to building a framework instead
+  of a dylib: libpng produces `png.framework/png` (its otool path
+  contains no "libpng" substring, which tripped the openjpeg feature
+  assertion into flagging a missing optional dependency).  Pass
+  `-DPNG_FRAMEWORK=OFF` to get the plain `libpng16.dylib` the linux
+  build produces; framework install names would also complicate
+  delocate bundling.  When adding a cmake-built dependency, check that
+  plain dylibs (not frameworks) land in the prefix.
+- libwebp is built before libpng (it is part of the `libtiff_deps`
+  chain), so its dwebp/cwebp tools get no png support, unlike the linux
+  libwebp which was configured after libpng.  This is accepted: no wheel
+  bundles the webp tools, and the libwebp library itself does not use
+  png.
 - glymur is pure python, so `pip wheel` tags its wheels `py3-none-any`.
   delocate never retags an `any` wheel (its tag-update path returns early
   for `any.whl`), but `delocate-wheel` does rewrite the WHEEL file's tags
