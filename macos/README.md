@@ -178,20 +178,24 @@ runs, not just what the scripts are expected to do):
   built macosx wheel and rerunning the failing reads).
 - Still to do: rebuild the wheels so the `TIFFGetField` wrapper is
   actually in the published wheel (the fix is in `build_wheels.sh`, not
-  yet exercised in a VM run), then rerun `test_via_tart.sh` and confirm
-  a full pass.  The openslide_python package was added to
-  `build_wheels.sh` (see below) and still needs its first VM build and
-  test run.
-- The openslide_python dependency chain was verified on the build host
-  (not in a VM) by shadow-running `build_wheels.sh`'s functions with the
-  same scrubbed environment into a throwaway prefix: every dependency
-  from libbrotli through openslide builds (openslide's feature
-  assertions pass, including the jxr linkage), the openslide-python
-  wheel builds and delocates, and against a real Aperio slide the
-  installed wheel loads the bundled dylib from `.dylibs`, the otool
-  audit is clean, `slidetool slide quickhash1` runs, and openslide reads
-  regions.  What the host run cannot verify: the pristine-VM isolation,
-  the free-threaded wheel builds, and the shared test suite.
+  yet exercised in a VM run).  The first full openslide_python VM build
+  and test run (2026-10-14) exposed two real bugs, both fixed in
+  `build_wheels.sh`/`test_via_tart.sh` (see the openslide_bin bullet in
+  the hard-won details): the test harness's phase-1 wheel selection
+  matched openslide_python's free-threaded wheel for the `*t` pythons
+  (anchored to pylibtiff now), and openslide-python's bundled-library
+  lookup ran *after* upstream's `import openslide_bin` fast path, so in
+  every venv that has pypi's openslide-bin installed (all of them:
+  `large-image[openslide]` requires it) pypi's unpatched libopenslide
+  silently replaced ours -- the shared suite's flattened-MIRAX test
+  failed with "Unsupported or missing image file" while the svs tests
+  passed, which is what made it look openslide-unrelated.  The bundled
+  lookup now runs first, the harness asserts the loaded dylib comes from
+  `.dylibs` before the shared suite runs, and the fix was verified on
+  the build host by reproducing the exact VM scenario (our wheel + pypi
+  openslide-bin + large_image_source_openslide in one venv): the mrxs
+  test snippet then passes.  Rerun `tart_build.sh` (the wheel must be
+  rebuilt -- the lowlevel fix changes it) and `test_via_tart.sh`.
 - Phase 0 python rebuilds are parallelized (up to the VM's cpu count,
   passed from `--cpus`); measured saving of about 5 of the roughly 15
   sequential minutes at concurrency 4.
@@ -354,6 +358,38 @@ runs, not just what the scripts are expected to do):
   (which carries an apple-platforms fix patch) statically into itself.
   Watch for the same `cc.find_library` pattern in future meson builds:
   pkg-config being prefix-scoped does not make find_library prefix-scoped.
+- openslide-python's bundled-dylib lookup must run BEFORE upstream's
+  `import openslide_bin` fast path in `_load_library`.  On macos pypi
+  publishes openslide-bin wheels and `large-image[openslide]` installs
+  one into every venv, so upstream's fast path wins whenever it runs
+  first -- and pypi's libopenslide is unpatched upstream (no
+  flattened-MIRAX support), which failed the shared suite's mrxs test
+  with a bare "Unsupported or missing image file" (openslide_open
+  returned NULL, i.e. no vendor detected -- a vendor *open* failure would
+  instead surface as OpenSlideError with a message).  On linux this never
+  showed because there is no aarch64 openslide-bin wheel on pypi, so the
+  linux venvs fall through to the bundled library.  Consequence of
+  shadowing openslide-bin on purpose: our bundled libopenslide always
+  wins over a user-installed openslide-bin, matching the linux wheels'
+  behavior.  The phase-1 harness check asserts the loaded dylib path is
+  in `.dylibs` precisely so this class of regression fails loudly.
+- meson's pkg-config isolation needs PKG_CONFIG_LIBDIR, not just
+  PKG_CONFIG_PATH + PKG_CONFIG_ALLOW_SYSTEM_LIBS: those only order and
+  filter the *output*; pc *discovery* still scans pkgconf's built-in
+  default dirs, which for Homebrew's pkgconf include /opt/homebrew.  Any
+  meson "auto" feature whose library is installed in Homebrew but not in
+  the prefix silently leaks in -- observed on the build host, where a
+  `brew install cairo` pulled in X11/lzo/freetype and cairo's auto xlib
+  and lzo features lit up mid-build.  PKG_CONFIG_LIBDIR replaces the
+  default search entirely, so discovery is prefix-scoped.
+- cairo's meson disables freetype and fontconfig by default on darwin
+  (it prefers CoreText there; on linux they are required).  The linux
+  wheel's cairo has both compiled in, so `build_cairo` passes
+  `-Dfreetype=enabled -Dfontconfig=enabled` and asserts the linkage.
+  fontconfig is built with `-Dnls=disabled`: NLS only adds translated
+  messages, and without it fontconfig's non-pkg-config intl lookup would
+  pull a foreign libintl on hosts that have gettext (the VM has none, so
+  it lands disabled there anyway).
 - fontconfig needs `gperf`, which is neither in the base VM's brew set
   nor in the CLT; fontconfig's meson falls back to its own gperf
   subproject, so nothing extra has to be provisioned.

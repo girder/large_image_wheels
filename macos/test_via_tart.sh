@@ -255,13 +255,16 @@ mkdir -p "$TESTROOT"
 log() { echo "$*" | tee -a "$REPORT"; }
 
 wheel_for_python() { # wheel_for_python <version req> -> wheel file or empty
-    # Wheel tags: stable is "cp313-cp313"; free-threaded is "cp314-cp314t"
-    # (the interpreter tag keeps cp314, the ABI tag gets the t suffix).
+    # The venv's primary install is pylibtiff; anchor the search to it so
+    # other packages' wheels that happen to match the interpreter tag
+    # (e.g. openslide_python's abi3/free-threaded wheels sorting first)
+    # cannot be picked instead.  The other packages are verified separately
+    # by name below.
     local req="$1" tag whl
     tag="cp${req//./}"
     case "$req" in
-    *t) whl="$(ls "$WHEELDIR" | grep -E -e "-${tag}-.*macosx" | head -1)" ;;
-    *) whl="$(ls "$WHEELDIR" | grep -E -e "-${tag}-${tag}-.*macosx" | head -1)" ;;
+    *t) whl="$(ls "$WHEELDIR" | grep -E -e "^pylibtiff-.*-${tag}-.*macosx" | head -1)" ;;
+    *) whl="$(ls "$WHEELDIR" | grep -E -e "^pylibtiff-.*-${tag}-${tag}-.*macosx" | head -1)" ;;
     esac
     [ -n "$whl" ] && printf '%s' "$WHEELDIR/$whl"
     return 0
@@ -554,6 +557,32 @@ assert (img == data).all(), "round trip image differs"
 print("tiff round trip OK")
 PYEOF
 
+cat >"$TESTROOT/test_openslide.py" <<'PYEOF'
+import os
+import sys
+
+import openslide
+import openslide.lowlevel as ll
+
+loaded = getattr(ll, "_lib", None)
+name = getattr(loaded, "_name", "") if loaded is not None else ""
+print("openslide dylib loaded from:", name)
+if ".dylibs/" not in name:
+    # A pypi openslide-bin wheel (installed by large-image[openslide]) or
+    # a system copy winning the load means our bundled library was
+    # bypassed; its libopenslide is unpatched upstream.
+    sys.exit("libopenslide was not loaded from the bundled .dylibs directory")
+
+path = os.environ.get("LIW_OPENSLIDE_TEST_FILE")
+if path and os.path.exists(path):
+    slide = openslide.OpenSlide(path)
+    print("vendor:", slide.properties[openslide.PROPERTY_NAME_VENDOR])
+    region = slide.read_region((0, 0), 0, (64, 64))
+    assert region.size == (64, 64), region.size
+    slide.close()
+    print("openslide read OK")
+PYEOF
+
 for venv in $VENVDIRS; do
     req="$(basename "$venv" | sed 's/^venv-//')"
     log ""
@@ -584,6 +613,13 @@ for venv in $VENVDIRS; do
         log "OK python $req: python functional test passed"
     else
         log "FAIL python $req: python functional test failed"
+        FAILURES=$((FAILURES + 1))
+    fi
+    if LIW_OPENSLIDE_TEST_FILE="$rundir/sample.svs" \
+        "$venv/bin/python" "$TESTROOT/test_openslide.py" >>"$REPORT" 2>&1; then
+        log "OK python $req: openslide bundled-dylib check passed"
+    else
+        log "FAIL python $req: openslide bundled-dylib check failed"
         FAILURES=$((FAILURES + 1))
     fi
     if "$venv/bin/tiffinfo" /tmp/liw_test_image.tif >>"$REPORT" 2>&1; then

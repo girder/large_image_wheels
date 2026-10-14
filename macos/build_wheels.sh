@@ -77,6 +77,13 @@ export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$LIW_PREFIX/bin"
 # is excluded.
 export PKG_CONFIG="$LIW_PREFIX/bin/pkgconf"
 export PKG_CONFIG_PATH="$LIW_PREFIX/lib/pkgconfig:$LIW_PREFIX/share/pkgconfig"
+# PKG_CONFIG_ALLOW_SYSTEM_LIBS only strips system -L/-I flags from the
+# output; pc *discovery* still scans pkgconf's built-in default dirs, which
+# for Homebrew's pkgconf include /opt/homebrew.  Any meson "auto" feature
+# whose library is installed in Homebrew but not here would silently leak
+# in (observed with X11 and lzo on the build host).  PKG_CONFIG_LIBDIR
+# replaces the default search entirely, so discovery is prefix-scoped.
+export PKG_CONFIG_LIBDIR="$LIW_PREFIX/lib/pkgconfig:$LIW_PREFIX/share/pkgconfig"
 export PKG_CONFIG_ALLOW_SYSTEM_FLAGS=0
 export PKG_CONFIG_ALLOW_SYSTEM_LIBS=0
 export PYTHONDONTWRITEBYTECODE=1
@@ -685,7 +692,11 @@ build_fontconfig() {
     rm -rf fontconfig
     git_retry https://gitlab.freedesktop.org/fontconfig/fontconfig.git \
         "$(v fontconfig)" fontconfig
-    meson_build "$LIW_SRC/fontconfig" -Ddoc=disabled -Dtests=disabled
+    # nls disabled: it only adds translated messages (no library feature);
+    # without it fontconfig would otherwise pull a foreign libintl through
+    # meson's non-pkg-config intl lookup on hosts that have one.
+    meson_build "$LIW_SRC/fontconfig" -Ddoc=disabled -Dtests=disabled \
+        -Dnls=disabled
     done_stamp fontconfig
 }
 
@@ -696,7 +707,22 @@ build_cairo() {
     rm -rf cairo
     git_retry https://gitlab.freedesktop.org/cairo/cairo.git \
         "$(v cairo)" cairo
-    meson_build "$LIW_SRC/cairo" -Dtests=disabled
+    # cairo's meson disables freetype and fontconfig by default on darwin
+    # (it prefers CoreText); the linux build has both compiled in, so
+    # require them explicitly for feature parity.  The X11 backends are
+    # left at auto: with the prefix-scoped pkg-config they are off (the
+    # linux build has no X11 either).
+    meson_build "$LIW_SRC/cairo" -Dtests=disabled \
+        -Dfreetype=enabled -Dfontconfig=enabled
+    # Feature assertions: the linux wheel's cairo links freetype,
+    # fontconfig, pixman, libpng, and zlib.
+    local linked lib
+    linked="$(otool -L "$LIW_PREFIX/lib"/libcairo*.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "cairo produced no dylib to check"
+    for lib in libfreetype libfontconfig libpixman libpng; do
+        printf '%s\n' "$linked" | grep -q "$lib" ||
+            die "cairo was not linked against $lib; an optional dependency was missed (check the build order)"
+    done
     done_stamp cairo
 }
 
@@ -1225,20 +1251,34 @@ EOF
     # delocate puts bundled dylibs in openslide/.dylibs inside the wheel;
     # keep the auditwheel-style openslide_python.libs location from the
     # linux build as a fallback so the patch stays comparable across
-    # platforms.  The bundled lookup runs before the openslide-bin wheel
-    # import and the system search so our library always wins.
+    # platforms.  The bundled lookup must run before the openslide-bin
+    # import: on macos pypi publishes openslide-bin wheels, and
+    # large-image[openslide] installs one into every test venv -- its
+    # libopenslide is unpatched upstream (no flattened-MIRAX support), so
+    # letting it win silently replaced our library in the shared test
+    # suite's venvs (on linux there is no aarch64 openslide-bin wheel, so
+    # the linux build never hit this).
     cat >"$LIW_PATCHES/openslide_python_lowlevel.py" <<'EOF'
 path = "openslide/lowlevel.py"
 s = open(path).read()
 s = s.replace(
-    """    if platform.system() == 'Windows':
-        try:
-            return try_load(['libopenslide-1.dll', 'libopenslide-0.dll'])""",
-    """    # A wheel built by the large_image wheels pipeline bundles
+    """def _load_library() -> CDLL:
+    try:
+        import openslide_bin
+
+        return openslide_bin.libopenslide1
+    except (AttributeError, ModuleNotFoundError):
+        pass
+""",
+    """def _load_library() -> CDLL:
+    # A wheel built by the large_image wheels pipeline bundles
     # libopenslide (delocate puts it in openslide/.dylibs); look there
-    # before the openslide-bin wheel or any system-installed copy.  Keep
-    # the auditwheel-style openslide_python.libs location from the linux
-    # build as a fallback.
+    # before the openslide-bin wheel or any system-installed copy.  This
+    # must come first: on macos pypi publishes openslide-bin wheels and
+    # large-image[openslide] installs one, but its library is unpatched
+    # upstream (no flattened-MIRAX support), so letting it win would
+    # silently replace our library.  Keep the auditwheel-style
+    # openslide_python.libs location from the linux build as a fallback.
     libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.realpath(
         __file__)), ".dylibs"))
     if not os.path.exists(libpath):
@@ -1248,13 +1288,17 @@ s = s.replace(
         try:
             lib = [lib for lib in os.listdir(libpath)
                 if lib.startswith('libopenslide')][0]
-            return try_load([os.path.join(libpath, lib)])
+            return cdll.LoadLibrary(os.path.join(libpath, lib))
         except (IndexError, OSError):
             pass
 
-    if platform.system() == 'Windows':
-        try:
-            return try_load(['libopenslide-1.dll', 'libopenslide-0.dll'])""")
+    try:
+        import openslide_bin
+
+        return openslide_bin.libopenslide1
+    except (AttributeError, ModuleNotFoundError):
+        pass
+""")
 open(path, "w").write(s)
 EOF
     # Patch setup.py: link _convert against libopenslide in the private
