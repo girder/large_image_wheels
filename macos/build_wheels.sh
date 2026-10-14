@@ -641,6 +641,50 @@ open(path, "w").write(s)
 EOF
     "$pp" "$LIW_PATCHES/pylibtiff_setup.py"
     "$pp" "$LIW_PATCHES/pylibtiff_libtiff_ctypes.py"
+    cat >"$LIW_PATCHES/pylibtiff_libtiff_ctypes_getfield.py" <<'EOF'
+# Wrap the TIFFGetField ctypes function so that its argument types are
+# always explicit on the actual call.  large_image clears
+# libtiff.TIFFGetField.argtypes; with no argtypes, ctypes passes the
+# arguments of variadic functions differently on darwin/arm64 and the
+# call segfaults inside libtiff for any tag present in the file (the
+# linux builds are unaffected).  The wrapper still accepts argtypes and
+# restype assignments (large_image sets argtypes to None) so external
+# code keeps working.  Note: argtypes are mutated around the call;
+# large_image serializes pylibtiff access per directory.
+path = "libtiff/libtiff_ctypes.py"
+s = open(path).read()
+s += '''
+_TIFFGetField_ptr = libtiff.TIFFGetField
+
+class _TIFFGetFieldWrapper(object):
+    def __init__(self, ptr):
+        object.__setattr__(self, '_ptr', ptr)
+        self.argtypes = None
+        self.restype = ptr.restype
+
+    def __getattr__(self, name):
+        return getattr(self._ptr, name)
+
+    def __setattr__(self, name, value):
+        if name in ('argtypes', 'restype'):
+            object.__setattr__(self, name, value)
+        else:
+            setattr(self._ptr, name, value)
+
+    def __call__(self, *args):
+        ptr = self._ptr
+        saved = ptr.argtypes
+        ptr.argtypes = [TIFF, c_ttag_t]
+        try:
+            return ptr(*args)
+        finally:
+            ptr.argtypes = saved
+
+libtiff.TIFFGetField = _TIFFGetFieldWrapper(_TIFFGetField_ptr)
+'''
+open(path, "w").write(s)
+EOF
+    "$pp" "$LIW_PATCHES/pylibtiff_libtiff_ctypes_getfield.py"
     "$pp" "$LIW_PATCHES/pylibtiff_pyproject.py"
 
     # Generate the tiff header companion file (needs numpy present, and
