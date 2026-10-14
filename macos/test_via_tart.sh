@@ -280,7 +280,7 @@ wheel_for_python() { # wheel_for_python <version req> -> wheel file or empty
 }
 
 wheel_version() { # version embedded in the wheel file name
-    basename "$1" | sed -E 's/^(pylibtiff|Glymur|openslide_python)-([0-9.]+)-.*/\2/'
+    basename "$1" | sed -E 's/^(pylibtiff|Glymur|openslide_python|pylibmc)-([0-9.]+)-.*/\2/'
 }
 
 find_version_dir() {
@@ -359,36 +359,40 @@ restore_homebrew() {
         mv "$HOMEBREW_DIR.hidden" "$HOMEBREW_DIR" 2>/dev/null || true
 }
 
-# Report every Mach-O file under $1 whose dependencies or RPATHs point
-# outside the allowed system locations.
+# Report every Mach-O file under each given path whose dependencies or
+# RPATHs point outside the allowed system locations.  Missing paths are
+# skipped (the wheelhouse's package set varies between runs).
 audit_macho() {
-    local root="$1" bad=0 f dep rp
-    while IFS= read -r -d '' f; do
-        file "$f" 2>/dev/null | grep -q Mach-O || continue
-        while IFS= read -r dep; do
-            case "$dep" in
-            @loader_path/* | @rpath/* | @executable_path/*) ;;
-            /usr/lib/* | /System/*) ;;
-            # /DLC/... is delocate's install-id marker for copied dylibs;
-            # it is never used to resolve a load.
-            /DLC/*) ;;
-            *)
-                log "  FORBIDDEN dependency: $f -> $dep"
-                bad=1
-                ;;
-            esac
-        done < <(otool -L "$f" 2>/dev/null | tail -n +2 | awk '{print $1}')
-        while IFS= read -r rp; do
-            case "$rp" in
-            @loader_path/* | @executable_path/*) ;;
-            /opt/homebrew/* | /usr/local/* | /Users/*)
-                log "  FORBIDDEN RPATH: $f -> $rp"
-                bad=1
-                ;;
-            esac
-        done < <(otool -l "$f" 2>/dev/null |
-            awk '/LC_RPATH/{inr=1; next} inr && $1=="path" {print $2; inr=0}')
-    done < <(find "$root" -type f -print0)
+    local bad=0 f dep rp root
+    for root in "$@"; do
+        [ -e "$root" ] || continue
+        while IFS= read -r -d '' f; do
+            file "$f" 2>/dev/null | grep -q Mach-O || continue
+            while IFS= read -r dep; do
+                case "$dep" in
+                @loader_path/* | @rpath/* | @executable_path/*) ;;
+                /usr/lib/* | /System/*) ;;
+                # /DLC/... is delocate's install-id marker for copied
+                # dylibs; it is never used to resolve a load.
+                /DLC/*) ;;
+                *)
+                    log "  FORBIDDEN dependency: $f -> $dep"
+                    bad=1
+                    ;;
+                esac
+            done < <(otool -L "$f" 2>/dev/null | tail -n +2 | awk '{print $1}')
+            while IFS= read -r rp; do
+                case "$rp" in
+                @loader_path/* | @executable_path/*) ;;
+                /opt/homebrew/* | /usr/local/* | /Users/*)
+                    log "  FORBIDDEN RPATH: $f -> $rp"
+                    bad=1
+                    ;;
+                esac
+            done < <(otool -l "$f" 2>/dev/null |
+                awk '/LC_RPATH/{inr=1; next} inr && $1=="path" {print $2; inr=0}')
+        done < <(find "$root" -type f -print0)
+    done
     return $bad
 }
 
@@ -531,6 +535,26 @@ for req in $PYTHONS; do
         fi
         log "OK python $req: installed openslide-python $oinstalled"
     fi
+    # If a pylibmc wheel is present, verify its identity the same way.
+    mwhl="$(ls "$WHEELDIR"/pylibmc-*.whl 2>/dev/null | head -1)"
+    if [ -n "$mwhl" ]; then
+        mver="$(wheel_version "$mwhl")"
+        if ! "$venv/bin/pip" install --quiet --find-links "$WHEELDIR" \
+            "pylibmc==$mver" >>"$REPORT" 2>&1; then
+            log "FAIL python $req: pip install of pylibmc failed"
+            FAILURES=$((FAILURES + 1))
+            rm -rf "$venv"
+            continue
+        fi
+        minstalled="$($venv/bin/pip show pylibmc 2>/dev/null | sed -n 's/^Version: //p')"
+        if [ "$minstalled" != "$mver" ]; then
+            log "FAIL python $req: installed pylibmc $minstalled but expected $mver (pip may have used pypi)"
+            FAILURES=$((FAILURES + 1))
+            rm -rf "$venv"
+            continue
+        fi
+        log "OK python $req: installed pylibmc $minstalled"
+    fi
     VENVDIRS="$VENVDIRS $venv"
 done
 
@@ -601,6 +625,40 @@ if path and os.path.exists(path):
     print("openslide read OK")
 PYEOF
 
+cat >"$TESTROOT/test_pylibmc.py" <<'PYEOF'
+import os
+import subprocess
+import sys
+
+import pylibmc
+import _pylibmc
+
+print("pylibmc version:", pylibmc.__version__)
+
+# The patched __init__.py points SASL_PATH at the bundled plugin copy
+# before _pylibmc (and thus libsasl2) is imported.
+sasl_path = os.environ.get("SASL_PATH", "")
+print("SASL_PATH:", sasl_path)
+if "/pylibmc/sasl2" not in sasl_path:
+    sys.exit("SASL_PATH does not point into the installed pylibmc package")
+if not os.path.isdir(sasl_path) or not os.listdir(sasl_path):
+    sys.exit("the bundled sasl2 plugin directory is missing or empty")
+
+# The extension is a top-level module; it must load the bundled
+# libmemcached from the wheel's .dylibs directory (delocate rewrites the
+# load command to an @loader_path-relative path; a system or Homebrew
+# libmemcached would mean the bundled library was bypassed).
+out = subprocess.run(
+    ["otool", "-L", _pylibmc.__file__],
+    capture_output=True, text=True, check=True).stdout
+line = next(
+    (line for line in out.splitlines() if "libmemcached" in line), "")
+print(line.strip() or "no libmemcached load command found")
+if "@loader_path" not in line or ".dylibs/" not in line:
+    sys.exit("libmemcached was not loaded from the bundled .dylibs directory")
+print("pylibmc bundled-library check OK")
+PYEOF
+
 for venv in $VENVDIRS; do
     req="$(basename "$venv" | sed 's/^venv-//')"
     # The per-python run directory is named here (it is wiped and
@@ -620,16 +678,15 @@ for venv in $VENVDIRS; do
     # own build artifacts (e.g. Pillow's RPATH to its build machine, lxml's
     # self-referencing load commands) are not ours to police.
     audit_fail=0
-    for pkg in libtiff glymur openslide; do
-        if [ -d "$site/$pkg" ]; then
-            audit_macho "$site/$pkg" >>"$REPORT" 2>&1 || audit_fail=1
-        fi
-    done
+    # pylibmc's C extension is a top-level module (installed outside the
+    # pylibmc package directory), so it is audited alongside the packages.
+    audit_macho "$site/libtiff" "$site/glymur" "$site/openslide" \
+        "$site/pylibmc" "$site"/_pylibmc*.so >>"$REPORT" 2>&1 || audit_fail=1
     if [ "$audit_fail" != 0 ]; then
         log "FAIL python $req: otool audit found forbidden library references"
         FAILURES=$((FAILURES + 1))
     else
-        log "OK python $req: otool audit clean (libtiff, glymur, openslide)"
+        log "OK python $req: otool audit clean (libtiff, glymur, openslide, pylibmc)"
     fi
     if "$venv/bin/python" "$TESTROOT/test_libtiff.py" >>"$REPORT" 2>&1; then
         log "OK python $req: python functional test passed"
@@ -643,6 +700,14 @@ for venv in $VENVDIRS; do
     else
         log "FAIL python $req: openslide bundled-dylib check failed"
         FAILURES=$((FAILURES + 1))
+    fi
+    if [ -n "$(ls "$WHEELDIR"/pylibmc-*.whl 2>/dev/null)" ]; then
+        if "$venv/bin/python" "$TESTROOT/test_pylibmc.py" >>"$REPORT" 2>&1; then
+            log "OK python $req: pylibmc bundled-library check passed"
+        else
+            log "FAIL python $req: pylibmc bundled-library check failed"
+            FAILURES=$((FAILURES + 1))
+        fi
     fi
     if "$venv/bin/tiffinfo" /tmp/liw_test_image.tif >>"$REPORT" 2>&1; then
         log "OK python $req: bundled tiffinfo ran"
@@ -672,16 +737,13 @@ for venv in $VENVDIRS; do
         log "OK python $req: shared test_script.sh passed"
         venvsite="$(ls -d "$rundir/venv/lib/python3."*/site-packages 2>/dev/null | head -1)"
         audit_fail=0
-        for pkg in libtiff glymur openslide; do
-            if [ -n "$venvsite" ] && [ -d "$venvsite/$pkg" ]; then
-                audit_macho "$venvsite/$pkg" >>"$REPORT" 2>&1 || audit_fail=1
-            fi
-        done
+        audit_macho "$venvsite/libtiff" "$venvsite/glymur" "$venvsite/openslide" \
+            "$venvsite/pylibmc" "$venvsite"/_pylibmc*.so >>"$REPORT" 2>&1 || audit_fail=1
         if [ "$audit_fail" != 0 ]; then
             log "FAIL python $req: otool audit of the test_script.sh venv found forbidden library references"
             FAILURES=$((FAILURES + 1))
         else
-            log "OK python $req: otool audit of the test_script.sh venv clean (libtiff, glymur, openslide)"
+            log "OK python $req: otool audit of the test_script.sh venv clean (libtiff, glymur, openslide, pylibmc)"
         fi
         # The bundled openslide command line tool (slidetool, the only one
         # the linux wheels bundle too) is exposed as a console script; run
