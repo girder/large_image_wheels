@@ -9,9 +9,9 @@
 #      (verifying that pip picks OUR wheel, not one from pypi),
 #   2. hides /opt/homebrew entirely, then verifies that the wheels still
 #      work -- so nothing in them can depend on Homebrew libraries,
-#   3. audits every Mach-O file in the installed packages with otool,
-#      rejecting any reference to /opt/homebrew, /usr/local, /Users, or
-#      other absolute paths outside /usr/lib and /System, and rejecting
+#   3. audits every Mach-O file in the packages our wheels provide with
+#      otool, rejecting any reference to /opt/homebrew, /usr/local, /Users,
+#      or other absolute paths outside /usr/lib and /System, and rejecting
 #      forbidden RPATH entries,
 #   4. functionally exercises the wheels by running the shared
 #      test/test_script.sh (the same functional suite the linux containers
@@ -205,8 +205,18 @@ stop_leftover_vms() {
     done < <(tart list --quiet 2>/dev/null | grep '^liw_wheels_')
 }
 
+# The in-VM test output is streamed with a background `tail -F`; stop that
+# stream on every exit path so no ssh process outlives the run.
+LIW_STREAM_PID=""
+stop_stream() {
+    [ -n "$LIW_STREAM_PID" ] || return 0
+    kill "$LIW_STREAM_PID" 2>/dev/null || true
+    wait "$LIW_STREAM_PID" 2>/dev/null || true
+    LIW_STREAM_PID=""
+}
+
 # Interrupted runs (Ctrl-C) must not leave their VM running.
-trap 'stop_vm; exit 130' INT TERM
+trap 'stop_stream; stop_vm; exit 130' INT TERM
 
 delete_vm() {
     stop_vm
@@ -509,11 +519,21 @@ for venv in $VENVDIRS; do
         FAILURES=$((FAILURES + 1))
         continue
     fi
-    if ! audit_macho "$site" >>"$REPORT" 2>&1; then
+    # Audit only the packages our wheels provide.  The venvs also contain
+    # pypi wheels pulled in as dependencies (numpy, lxml, pillow), whose
+    # own build artifacts (e.g. Pillow's RPATH to its build machine, lxml's
+    # self-referencing load commands) are not ours to police.
+    audit_fail=0
+    for pkg in libtiff glymur; do
+        if [ -d "$site/$pkg" ]; then
+            audit_macho "$site/$pkg" >>"$REPORT" 2>&1 || audit_fail=1
+        fi
+    done
+    if [ "$audit_fail" != 0 ]; then
         log "FAIL python $req: otool audit found forbidden library references"
         FAILURES=$((FAILURES + 1))
     else
-        log "OK python $req: otool audit clean"
+        log "OK python $req: otool audit clean (libtiff, glymur)"
     fi
     if "$venv/bin/python" "$TESTROOT/test_libtiff.py" >>"$REPORT" 2>&1; then
         log "OK python $req: python functional test passed"
@@ -547,11 +567,18 @@ for venv in $VENVDIRS; do
         bash "$TESTROOT/test_script.sh" "$WHEELDIR"
     ) >>"$REPORT" 2>&1; then
         log "OK python $req: shared test_script.sh passed"
-        if ! audit_macho "$rundir/venv/lib" >>"$REPORT" 2>&1; then
+        venvsite="$(ls -d "$rundir/venv/lib/python3."*/site-packages 2>/dev/null | head -1)"
+        audit_fail=0
+        for pkg in libtiff glymur; do
+            if [ -n "$venvsite" ] && [ -d "$venvsite/$pkg" ]; then
+                audit_macho "$venvsite/$pkg" >>"$REPORT" 2>&1 || audit_fail=1
+            fi
+        done
+        if [ "$audit_fail" != 0 ]; then
             log "FAIL python $req: otool audit of the test_script.sh venv found forbidden library references"
             FAILURES=$((FAILURES + 1))
         else
-            log "OK python $req: otool audit of the test_script.sh venv clean"
+            log "OK python $req: otool audit of the test_script.sh venv clean (libtiff, glymur)"
         fi
     else
         log "FAIL python $req: shared test_script.sh failed"
@@ -633,7 +660,7 @@ run_ssh "rm -rf $LIW_GUEST_HOME/liw_test" || true
 run_ssh "mkdir -p ~/$VM_NAME-wheels $LIW_GUEST_HOME/liw_test"
 tar -C "$LIW_WHEELS_DIR" -cf - $WHEEL_LIST |
     run_ssh "tar -xf - -C ~/$VM_NAME-wheels/" || die "could not copy wheels into the VM"
-tar -C "$REPO_DIR" -cf - test/test_script.sh |
+tar -C "$REPO_DIR/test" -cf - test_script.sh |
     run_ssh "tar -xf - -C $LIW_GUEST_HOME/liw_test/" ||
     die "could not copy the shared test script into the VM"
 run_ssh "cat > $LIW_GUEST_HOME/.liw_wheel_test.sh" <"$IN_VM_TEST" ||
@@ -641,6 +668,15 @@ run_ssh "cat > $LIW_GUEST_HOME/.liw_wheel_test.sh" <"$IN_VM_TEST" ||
 
 info "running the isolation test in the VM"
 run_ssh "chmod +x ~/.liw_wheel_test.sh && nohup bash ~/.liw_wheel_test.sh ~/$VM_NAME-wheels '$LIW_PYTHONS' '$LIW_HIDE_HOMEBREW' > $LIW_GUEST_HOME/liw_test.log 2>&1 < /dev/null &"
+
+# Stream the in-VM test output continuously.  report.txt holds the full
+# detail (pip installs, the shared test_script.sh output, otool audits);
+# the log() progress lines tee into it as well.  -F retries until the file
+# appears (the in-VM script creates it a moment after launching).  On
+# completion both report.txt and liw_test.log are retrieved to /tmp.
+info "streaming the in-VM test output"
+run_ssh "tail -F -n +1 $LIW_GUEST_HOME/liw_test/report.txt" &
+LIW_STREAM_PID=$!
 
 elapsed=0
 while true; do
@@ -652,16 +688,23 @@ while true; do
     fi
     if ! vm_running "$VM_NAME"; then
         echo "error: test VM died; check $LIW_LOG_DIR/$VM_NAME.log" >&2
+        stop_stream
         stop_vm
         exit 1
     fi
     if [ "$elapsed" -ge "$LIW_TEST_TIMEOUT" ]; then
         echo "error: test timed out after $LIW_TEST_TIMEOUT seconds" >&2
+        stop_stream
+        run_ssh "cat $LIW_GUEST_HOME/liw_test/report.txt" >/tmp/macos_test_report.txt 2>/dev/null || true
+        run_ssh "cat $LIW_GUEST_HOME/liw_test.log" >/tmp/macos_test_log.txt 2>/dev/null || true
         stop_vm
         exit 1
     fi
-    info "still testing (${elapsed}s elapsed)"
+    if [ $((elapsed % 60)) -eq 0 ]; then
+        info "still testing (${elapsed}s elapsed)"
+    fi
 done
+stop_stream
 
 info "retrieving the test report and in-VM log"
 run_ssh "cat $LIW_GUEST_HOME/liw_test/report.txt" >/tmp/macos_test_report.txt 2>/dev/null ||

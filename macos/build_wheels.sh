@@ -726,6 +726,23 @@ build_glymur() {
     done
     [ -n "$(ls glymur/bin)" ] || die "no openjpeg/libjpeg tools found to bundle"
     strip -x glymur/bin/* 2>/dev/null || true
+    # cmake-installed executables keep build-tree RPATHs (e.g. to
+    # $LIW_PREFIX/lib).  delocate's rpath sanitizer only processes files
+    # that require other libraries, so the dependency-free tools (rdjpgcom,
+    # wrjpgcom) would carry the build prefix's RPATH into the wheel and
+    # fail the test VM's otool audit.  Strip every non-@ RPATH and re-sign
+    # (arm64 requires a valid signature after install_name_tool).
+    local f rp
+    while IFS= read -r -d '' f; do
+        while IFS= read -r rp; do
+            case "$rp" in
+            @loader_path/* | @executable_path/* | @rpath/*) ;;
+            *) install_name_tool -delete_rpath "$rp" "$f" 2>/dev/null || true ;;
+            esac
+        done < <(otool -l "$f" |
+            awk '/LC_RPATH/{inr=1; next} inr && $1=="path" {print $2; inr=0}')
+        codesign -f -s - "$f" 2>/dev/null || true
+    done < <(find glymur/bin -type f -perm -111 -print0)
 
     # Wrapper module so each bundled tool is exposed as a console script.
     cat >glymur/bin/__init__.py <<'EOF'
