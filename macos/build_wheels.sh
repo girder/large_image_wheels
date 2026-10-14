@@ -99,9 +99,11 @@ die() {
 # Version pins come from the shared versions.txt, exactly like the linux
 # build uses through getver.py.  getver.py resolves versions.txt relative
 # to the current directory (the Dockerfile always runs from /build), so
-# run it from the repository root in a subshell.
+# run it from the repository root in a subshell.  Extra arguments are
+# passed through, matching getver.py's field-selection calls (the Dockerfile
+# uses e.g. `getver.py sqlite 2 . . 1` for the sqlite release number).
 v() {
-    (cd "$LIW_REPO" && python3 getver.py "$1")
+    (cd "$LIW_REPO" && python3 getver.py "$@")
 }
 
 # Stamp-based skipping so an interrupted build only redoes unfinished steps.
@@ -114,9 +116,15 @@ done_stamp() {
     touch "$LIW_STAMPS/$1"
 }
 
+# An empty tag means a full clone of the default branch: the caller checks
+# out a pinned commit sha afterwards, which a --depth=1 clone of the branch
+# tip cannot contain (openslide is pinned by sha, like the linux build).
 git_retry() { # git_retry <url> <tag> <dest dir>
-    local n=0
-    until git clone --depth=1 --single-branch -b "$2" \
+    local n=0 shallow=(--depth=1 --single-branch -b "$2")
+    if [ -z "$2" ]; then
+        shallow=()
+    fi
+    until git clone ${shallow[@]+"${shallow[@]}"} \
         -c advice.detachedHead=false "$1" "$3"; do
         n=$((n + 1))
         [ "$n" -ge 10 ] && die "git clone failed after $n attempts: $1 ($2)"
@@ -336,6 +344,38 @@ sanitize_prefix_dylibs() {
     done < <(find "$LIW_PREFIX/lib" -name '*.dylib' -type f -print0)
 }
 
+# The base VM's Homebrew set does not include meson (glib, pixman,
+# freetype, fontconfig, cairo, and openslide are meson builds).  Install
+# it into the patch python instead -- it is a build tool only and never
+# enters a wheel.
+ensure_meson() {
+    LIW_MESON="$LIW_PATCH_DIR/bin/meson"
+    if [ ! -x "$LIW_MESON" ]; then
+        "$LIW_PATCH_PIPBIN" install -q -U meson || die "pip install meson failed"
+    fi
+    [ -x "$LIW_MESON" ] || die "meson unavailable after tool setup"
+}
+
+# Build and install a meson project into the private prefix.  The flags
+# mirror the Dockerfile's meson invocations (buildtype=release,
+# optimization=3); the private prefix's pkg-config setup applies as
+# everywhere else.
+meson_build() { # meson_build <source dir> [extra meson setup args...]
+    local src="$1"
+    shift
+    (
+        cd "$src" || exit 1
+        rm -rf _build
+        "$LIW_MESON" setup _build \
+            --prefix="$LIW_PREFIX" \
+            --buildtype=release \
+            -Doptimization=3 \
+            "$@" || exit 1
+        ninja -C _build -j "$LIW_JOBS" || exit 1
+        ninja -C _build install
+    ) || die "meson build failed in $src"
+}
+
 # --------------------------------------------------------------------------
 # Dependencies (mirroring the Dockerfile's build order and flags).
 # --------------------------------------------------------------------------
@@ -515,6 +555,188 @@ build_openjpeg() {
             die "openjpeg was not linked against $lib; an optional dependency was missed (check the build order)"
     done
     done_stamp openjpeg
+}
+
+# libbrotli is a freetype dependency (WOFF2 font support).  The linux
+# Dockerfile builds it before freetype, so the macos freetype sees the
+# same feature set.
+build_libbrotli() {
+    skip_if_done libbrotli && return 0
+    step "libbrotli"
+    cd "$LIW_SRC"
+    rm -rf brotli
+    git_retry https://github.com/google/brotli.git "v$(v libbrotli)" brotli
+    cmake_build "$LIW_SRC/brotli" -DBUILD_TESTING=OFF
+    done_stamp libbrotli
+}
+
+build_libexpat() {
+    skip_if_done libexpat && return 0
+    step "libexpat"
+    cd "$LIW_SRC"
+    rm -rf libexpat
+    fetch "https://github.com/libexpat/libexpat/archive/R_$(v libexpat).tar.gz" \
+        libexpat.tar.gz
+    mkdir libexpat
+    tar -zxf libexpat.tar.gz -C libexpat --strip-components 1
+    cmake_build "$LIW_SRC/libexpat/expat" \
+        -DEXPAT_BUILD_EXAMPLES=OFF -DEXPAT_BUILD_TESTS=OFF
+    done_stamp libexpat
+}
+
+build_libffi() {
+    skip_if_done libffi && return 0
+    step "libffi"
+    cd "$LIW_SRC"
+    rm -rf libffi
+    git_retry https://github.com/libffi/libffi.git "v$(v libffi)" libffi
+    (
+        cd libffi || exit 1
+        ./autogen.sh
+        ./configure --prefix="$LIW_PREFIX" --disable-static --disable-docs
+        make -j "$LIW_JOBS"
+        make install
+    ) || die "libffi build failed"
+    done_stamp libffi
+}
+
+# The Dockerfile also builds util-linux (libmount/libblkid) before glib;
+# those libraries are Linux-only and glib's meson does not use them on
+# darwin, so there is no macos counterpart.
+build_glib() {
+    skip_if_done glib && return 0
+    step "glib"
+    cd "$LIW_SRC"
+    rm -rf glib
+    git_retry https://github.com/GNOME/glib.git "$(v glib)" glib
+    # glib's meson needs the packaging module (like the Dockerfile's
+    # pip install before glib); run it with the patch python's meson.
+    "$LIW_PATCH_PIPBIN" install -q packaging
+    # force-fallback-for=libpcre2-8 keeps glib from picking up a foreign
+    # pcre2 through meson's cc.find_library fallback (pkg-config is scoped
+    # to the prefix, but find_library is not); the pcre2 subproject wrap is
+    # built statically into libglib instead.
+    meson_build "$LIW_SRC/glib" -Dtests=False -Dglib_debug=disabled \
+        --force-fallback-for=libpcre2-8
+    done_stamp glib
+}
+
+build_sqlite() {
+    skip_if_done sqlite && return 0
+    step "sqlite"
+    cd "$LIW_SRC"
+    rm -rf sqlite
+    fetch "https://sqlite.org/$(v sqlite 1)/sqlite-autoconf-$(v sqlite 2 . . 1).tar.gz" \
+        sqlite.tar.gz
+    mkdir sqlite
+    tar -zxf sqlite.tar.gz -C sqlite --strip-components 1
+    (
+        cd sqlite || exit 1
+        ./configure --prefix="$LIW_PREFIX" --disable-static --all
+        make -j "$LIW_JOBS"
+        make install
+    ) || die "sqlite build failed"
+    done_stamp sqlite
+}
+
+build_libxml2() {
+    skip_if_done libxml2 && return 0
+    step "libxml2"
+    cd "$LIW_SRC"
+    rm -rf libxml2
+    git_retry https://github.com/GNOME/libxml2.git "v$(v libxml2)" libxml2
+    # Legacy APIs are kept so rasterlite will still work (as on linux);
+    # iconv resolves to the macOS system libiconv in /usr/lib, which the
+    # wheel audits allow.
+    cmake_build "$LIW_SRC/libxml2" \
+        -DLIBXML2_WITH_TESTS=OFF -DLIBXML2_WITH_PYTHON=OFF \
+        -DLIBXML2_WITH_ICU=OFF -DLIBXML2_WITH_ICONV=ON \
+        -DLIBXML2_WITH_LEGACY=ON -DLIBXML2_WITH_HTTP=ON \
+        -DLIBXML2_WITH_DEBUG=OFF -DLIBXML2_WITH_PROGRAMS=OFF
+    done_stamp libxml2
+}
+
+build_pixman() {
+    skip_if_done pixman && return 0
+    step "pixman"
+    cd "$LIW_SRC"
+    rm -rf pixman
+    git_retry https://gitlab.freedesktop.org/pixman/pixman.git \
+        "pixman-$(v pixman)" pixman
+    meson_build "$LIW_SRC/pixman"
+    done_stamp pixman
+}
+
+build_freetype() {
+    skip_if_done freetype && return 0
+    step "freetype"
+    cd "$LIW_SRC"
+    rm -rf freetype
+    git_retry https://github.com/freetype/freetype.git \
+        "VER-$(v freetype)" freetype
+    meson_build "$LIW_SRC/freetype"
+    done_stamp freetype
+}
+
+build_fontconfig() {
+    skip_if_done fontconfig && return 0
+    step "fontconfig"
+    cd "$LIW_SRC"
+    rm -rf fontconfig
+    git_retry https://gitlab.freedesktop.org/fontconfig/fontconfig.git \
+        "$(v fontconfig)" fontconfig
+    meson_build "$LIW_SRC/fontconfig" -Ddoc=disabled -Dtests=disabled
+    done_stamp fontconfig
+}
+
+build_cairo() {
+    skip_if_done cairo && return 0
+    step "cairo"
+    cd "$LIW_SRC"
+    rm -rf cairo
+    git_retry https://gitlab.freedesktop.org/cairo/cairo.git \
+        "$(v cairo)" cairo
+    meson_build "$LIW_SRC/cairo" -Dtests=disabled
+    done_stamp cairo
+}
+
+# jxrlib is optional in openslide (CZI JXR compression, from the
+# iewchen-zeiss-czi-jxr patch).  It is a plain Makefile build; a few
+# substitutions are needed on macOS:
+#   - newer clang makes this old code's implicit declarations errors by
+#     default; the Dockerfile applies the same quieting flags,
+#   - the .pc generation step invokes bare `python`, which does not exist
+#     in the VM,
+#   - the shared-library link rules have no CFLAGS and rely on the Linux
+#     behavior of allowing undefined symbols in a .so; the macOS linker
+#     rejects that, so -undefined dynamic_lookup restores the Linux
+#     semantics (the symbols live in the sibling libjpegxr.so and resolve
+#     when both are loaded),
+#   - clang's -shared sets the dylib's install name to the output path;
+#     give the installed dylibs absolute install names so delocate can
+#     rewrite them when bundling.
+build_jxrlib() {
+    skip_if_done jxrlib && return 0
+    step "jxrlib"
+    cd "$LIW_SRC"
+    rm -rf jxrlib
+    git_retry https://github.com/4creators/jxrlib.git "v$(v jxrlib)" jxrlib
+    cd jxrlib
+    # The VM's sed is BSD sed: -i takes the backup suffix as a separate
+    # argument (an empty string here).
+    sed -i '' \
+        's/CFLAGS=/CFLAGS=-Wno-implicit-function-declaration -Wno-incompatible-pointer-types /g' \
+        Makefile
+    # The .pc generation rule invokes bare `python` after a leading tab;
+    # the VM only has python3.
+    sed -i '' 's/@python -c/@python3 -c/' Makefile
+    sed -i '' \
+        's|$(CC) -shared $? -o $@|$(CC) -shared -Wl,-undefined,dynamic_lookup $? -o $@ -Wl,-install_name,$(DIR_INSTALL)/lib/$(notdir $@)|g' \
+        Makefile
+    DIR_INSTALL="$LIW_PREFIX" SHARED=1 make -j "$LIW_JOBS" install
+    [ -f "$LIW_PREFIX/lib/pkgconfig/libjxr.pc" ] ||
+        die "jxrlib did not install its pkg-config file"
+    done_stamp jxrlib
 }
 
 # The codec set matches the linux wheels: zlib, jpeg, jbig, lzma, zstd,
@@ -910,6 +1132,220 @@ EOF
     done_stamp glymur
 }
 
+build_openslide() {
+    skip_if_done openslide && return 0
+    step "openslide"
+    cd "$LIW_SRC"
+    rm -rf openslide
+    # Full clone: the pinned version is a commit sha (versions.txt
+    # openslide-sha), which a --depth=1 clone cannot contain.
+    git_retry https://github.com/openslide/openslide.git "" openslide
+    (
+        cd openslide || exit 1
+        git checkout -q "$(v openslide-sha)"
+        # The same two patches the linux build applies; they live at the
+        # repository root and are copied into the VM with it.
+        git am "$LIW_REPO/openslide-iewchen-zeiss-czi-jxr.patch" || exit 1
+        git am "$LIW_REPO/openslide-vendor-mirax.c.patch" || exit 1
+    ) || die "openslide patches failed"
+    meson_build "$LIW_SRC/openslide" -Dtest=disabled -Ddoc=disabled
+    # Feature assertions: everything below is either a required dependency
+    # (a missing one fails the configure step anyway) or an optional one the
+    # linux wheel links and whose absence would otherwise be silent (jxr is
+    # optional in the zeiss-czi-jxr patch; sqlite, cairo, xml, glib, jpeg,
+    # png, tiff, and openjpeg are hard requirements).  libdicom arrives via
+    # openslide's own meson subproject wrap (like the linux build) and is
+    # linked statically, so it has no otool entry.
+    local linked lib
+    linked="$(otool -L "$LIW_PREFIX/lib"/libopenslide*.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "openslide produced no dylib to check"
+    for lib in libcairo libglib libgobject libsqlite3 libxml2 libjxrglue \
+        libjpegxr libpng libtiff libopenjp2 libjpeg; do
+        printf '%s\n' "$linked" | grep -q "$lib" ||
+            die "openslide was not linked against $lib; an optional dependency was missed (check the build order)"
+    done
+    done_stamp openslide
+}
+
+build_openslide_python() {
+    skip_if_done openslide_python && return 0
+    step "openslide_python"
+    local pp="$LIW_PATCH_PYBIN"
+
+    # Dependencies may have just been built (fresh VM); strip any build-tree
+    # RPATHs they installed before the wheels bundle them.
+    sanitize_prefix_dylibs
+
+    cd "$LIW_SRC"
+    rm -rf openslide-python
+    # Master, like the linux build (the last release tag is stale).
+    git_retry https://github.com/openslide/openslide-python.git "" openslide-python
+    cd openslide-python
+
+    # Bundle the openslide command line tools with the wheel, like the
+    # linux build does: slidetool plus its symlinked entry points, copied
+    # dereferenced from the prefix.
+    mkdir -p openslide/bin
+    local f base
+    while IFS= read -r f; do
+        base="$(basename "$f")"
+        if [ -f "$LIW_PREFIX/bin/$base" ]; then
+            cp -L "$LIW_PREFIX/bin/$base" openslide/bin/
+        fi
+    done < <(find "$LIW_SRC/openslide/_build/tools" -perm -111 \! -type d)
+    [ -n "$(ls openslide/bin)" ] || die "no openslide tools found to bundle"
+    strip -x openslide/bin/* 2>/dev/null || true
+    # cmake/meson-installed executables keep build-tree RPATHs (e.g. to
+    # $LIW_PREFIX/lib).  delocate's rpath sanitizer only processes files
+    # that require other libraries, so strip every non-@ RPATH and re-sign
+    # (arm64 requires a valid signature after install_name_tool).
+    local rp
+    while IFS= read -r -d '' f; do
+        while IFS= read -r rp; do
+            case "$rp" in
+            @loader_path/* | @executable_path/* | @rpath/*) ;;
+            *) install_name_tool -delete_rpath "$rp" "$f" 2>/dev/null || true ;;
+            esac
+        done < <(otool -l "$f" |
+            awk '/LC_RPATH/{inr=1; next} inr && $1=="path" {print $2; inr=0}')
+        codesign -f -s - "$f" 2>/dev/null || true
+    done < <(find openslide/bin -type f -perm -111 -print0)
+
+    # Wrapper module so each bundled tool is exposed as a console script.
+    cat >openslide/bin/__init__.py <<'EOF'
+import os
+import sys
+
+def program():
+    path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0]))
+    os.execv(path, sys.argv)
+EOF
+
+    # Patch lowlevel.py so it finds the bundled libopenslide dylib.
+    # delocate puts bundled dylibs in openslide/.dylibs inside the wheel;
+    # keep the auditwheel-style openslide_python.libs location from the
+    # linux build as a fallback so the patch stays comparable across
+    # platforms.  The bundled lookup runs before the openslide-bin wheel
+    # import and the system search so our library always wins.
+    cat >"$LIW_PATCHES/openslide_python_lowlevel.py" <<'EOF'
+path = "openslide/lowlevel.py"
+s = open(path).read()
+s = s.replace(
+    """    if platform.system() == 'Windows':
+        try:
+            return try_load(['libopenslide-1.dll', 'libopenslide-0.dll'])""",
+    """    # A wheel built by the large_image wheels pipeline bundles
+    # libopenslide (delocate puts it in openslide/.dylibs); look there
+    # before the openslide-bin wheel or any system-installed copy.  Keep
+    # the auditwheel-style openslide_python.libs location from the linux
+    # build as a fallback.
+    libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.realpath(
+        __file__)), ".dylibs"))
+    if not os.path.exists(libpath):
+        libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(
+            os.path.realpath(__file__))), "openslide_python.libs"))
+    if os.path.exists(libpath):
+        try:
+            lib = [lib for lib in os.listdir(libpath)
+                if lib.startswith('libopenslide')][0]
+            return try_load([os.path.join(libpath, lib)])
+        except (IndexError, OSError):
+            pass
+
+    if platform.system() == 'Windows':
+        try:
+            return try_load(['libopenslide-1.dll', 'libopenslide-0.dll'])""")
+open(path, "w").write(s)
+EOF
+    # Patch setup.py: link _convert against libopenslide in the private
+    # prefix (the include path comes through CFLAGS at wheel-build time).
+    cat >"$LIW_PATCHES/openslide_python_setup.py" <<'EOF'
+import os
+path = "setup.py"
+s = open(path).read()
+s = s.replace(
+    "            ['openslide/_convert.c'],",
+    "            ['openslide/_convert.c'],\n"
+    "            libraries=['openslide'],\n"
+    "            library_dirs=['%s']," % os.path.join(os.environ["LIW_PREFIX"], "lib"))
+open(path, "w").write(s)
+EOF
+    # Add the local build suffix to the version, matching the linux wheel
+    # versioning (openslide-python 1.4.6.1).
+    cat >"$LIW_PATCHES/openslide_python_version.py" <<'EOF'
+import re
+path = "openslide/_version.py"
+s = open(path).read()
+s = re.sub(r"(__version__ = '[^']*)'", r"\1.1'", s)
+open(path, "w").write(s)
+EOF
+    # Patch pyproject.toml: include the bundled tools as package data and
+    # expose them as console scripts.
+    cat >"$LIW_PATCHES/openslide_python_pyproject.py" <<'EOF'
+import os
+path = "pyproject.toml"
+s = open(path).read()
+s = s.replace('openslide = ["py.typed", "*.pyi"]',
+    'openslide = ["py.typed", "*.pyi", "bin/*"]')
+s += "\n[project.scripts]\n" + "".join(
+    "%s = 'openslide.bin:program'\n" % name for name in os.listdir("openslide/bin")
+    if not name.endswith(".py"))
+open(path, "w").write(s)
+EOF
+    "$pp" "$LIW_PATCHES/openslide_python_lowlevel.py"
+    "$pp" "$LIW_PATCHES/openslide_python_setup.py"
+    "$pp" "$LIW_PATCHES/openslide_python_version.py"
+    "$pp" "$LIW_PATCHES/openslide_python_pyproject.py"
+
+    # Commit the patches and tag with the combined version (the patched
+    # package version), matching the linux wheel versioning.
+    git config user.email "wheels@example.com"
+    git config user.name "Wheel Builder"
+    git add -A
+    git commit -q -m "patch for wheel building"
+    git tag "$(v openslide-python).1"
+
+    # Build one wheel for 3.11 (abi3, covering 3.11-3.15) and for each
+    # requested free-threaded python (their own tags); this mirrors the
+    # linux build, which excludes non-abi3 duplicate pythons above 3.11.
+    # The gil check for _abi3 is already in upstream setup.py.
+    collect_pybins
+    local pybin kept=() ver
+    for pybin in ${PYBINS[@]+"${PYBINS[@]}"}; do
+        ver="$(basename "$(dirname "$pybin")")"
+        case "$ver" in
+        3.11* | *t) kept+=("$pybin") ;;
+        esac
+    done
+    [ "${#kept[@]}" -gt 0 ] || die "no pythons selected for the openslide-python wheels"
+    for pybin in ${kept[@]+"${kept[@]}"}; do
+        step "openslide_python wheel: $(basename "$(dirname "$pybin")")"
+        (
+            cd "$LIW_SRC/openslide-python"
+            rm -rf build
+            # The extension's include path comes through CFLAGS (the sysconfig
+            # data was scrubbed of Homebrew entries, so ours is authoritative).
+            CFLAGS="$CFLAGS -I$LIW_PREFIX/include" \
+                "$pybin/python" -m pip wheel --no-deps -w "$LIW_WHEELHOUSE" .
+        ) || die "openslide_python wheel build failed for $pybin"
+    done
+
+    step "delocate openslide_python wheels"
+    "$LIW_PATCH_PIPBIN" install -q -U delocate
+    local whl
+    for whl in "$LIW_WHEELHOUSE"/openslide_python-*.whl; do
+        [ -f "$whl" ] || continue
+        case "$(basename "$whl")" in
+        *macosx*) "$LIW_PATCH_DIR/bin/delocate-wheel" "$whl" ||
+            die "delocate failed for $whl" ;;
+        esac
+    done
+    ls -l "$LIW_WHEELHOUSE"
+    [ -n "$(ls "$LIW_WHEELHOUSE"/openslide_python-*macosx*.whl 2>/dev/null)" ] ||
+        die "no openslide_python macosx wheels were built"
+    done_stamp openslide_python
+}
+
 # --------------------------------------------------------------------------
 # Main.
 # --------------------------------------------------------------------------
@@ -935,6 +1371,7 @@ if [ -z "${LIW_DRYRUN:-}" ]; then
     ensure_pythons
 fi
 set_patch_python
+ensure_meson
 scrub_python_sysconfig
 step "patch python: $LIW_PATCH_PYBIN"
 
@@ -947,7 +1384,7 @@ fi
 PACKAGES=("$@")
 # Keep in sync with tart_build.sh's LIW_PACKAGES default: the expected-wheel
 # validation there assumes this same set when no packages are named.
-[ "${#PACKAGES[@]}" -eq 0 ] && PACKAGES=(pylibtiff glymur)
+[ "${#PACKAGES[@]}" -eq 0 ] && PACKAGES=(pylibtiff glymur openslide_python)
 
 # The "${var[@]+...}" guard keeps bash 3.2 (the VM's default bash) happy
 # about empty arrays under `set -u`.
@@ -966,6 +1403,30 @@ for pkg in ${PACKAGES[@]+"${PACKAGES[@]}"}; do
         build_libpng
         build_openjpeg
         build_glymur
+        ;;
+    openslide_python)
+        # Order mirrors the Dockerfile's final state: openjpeg must see
+        # lcms2/libpng/libtiff (same as glymur); libbrotli must exist before
+        # freetype; expat before fontconfig; pixman/freetype/fontconfig
+        # before cairo; jxrlib before openslide.  openslide's meson silently
+        # drops what is missing, and build_openslide asserts the linked set.
+        build_libtiff_deps
+        build_lcms2
+        build_libpng
+        build_openjpeg
+        build_libbrotli
+        build_libexpat
+        build_libffi
+        build_glib
+        build_sqlite
+        build_libxml2
+        build_pixman
+        build_freetype
+        build_fontconfig
+        build_cairo
+        build_jxrlib
+        build_openslide
+        build_openslide_python
         ;;
     # "dep:<name>" builds a single dependency; useful for debugging.
     dep:*)
