@@ -1240,19 +1240,22 @@ build_harfbuzz() {
     # HAVE_CORE_TEXT probe (a CoreText link test) always succeeds on
     # darwin, there is no pango option to skip the resulting
     # pangocoretext.c sources, and they include <hb-coretext.h> from
-    # harfbuzz.  libharfbuzz then links the ApplicationServices system
-    # framework, which the otool audits allow.  The linux wheel has no
-    # CoreText shaper; this is a darwin-only addition.
+    # harfbuzz.  The linux wheel has no CoreText shaper; this is a
+    # darwin-only addition.  The linkage lands as the CoreText (plus
+    # CoreFoundation/CoreGraphics) system frameworks, not the
+    # ApplicationServices umbrella harfbuzz's meson requests: the modern
+    # linker resolves the umbrella's symbols from its sub-frameworks and
+    # records those instead (verified on the host).  All are /System
+    # frameworks, which the otool audits allow.
     # Feature assertions: glib and freetype are installed before this runs
     # (the openslide chain), so harfbuzz's auto features must light up the
-    # same way they do on linux; ApplicationServices must be linked
-    # because pango needs the coretext API it provides.  cairo is only
-    # linked by the separate harfbuzz-cairo library, not by libharfbuzz
-    # itself.
+    # same way they do on linux; CoreText must be linked because pango
+    # needs the coretext API it provides.  cairo is only linked by the
+    # separate harfbuzz-cairo library, not by libharfbuzz itself.
     local linked lib
     linked="$(otool -L "$LIW_PREFIX/lib"/libharfbuzz*.dylib 2>/dev/null || true)"
     [ -n "$linked" ] || die "harfbuzz produced no dylib to check"
-    for lib in libfreetype libglib ApplicationServices; do
+    for lib in libfreetype libglib CoreText; do
         printf '%s\n' "$linked" | grep -q "$lib" ||
             die "harfbuzz was not linked against $lib; an optional dependency was missed (check the build order)"
     done
