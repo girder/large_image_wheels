@@ -804,7 +804,9 @@ build_bison() {
         make -j "$LIW_JOBS" || exit 1
         make install || exit 1
     ) || die "bison build failed"
-    "$LIW_PREFIX/bin/bison" --version | grep -q "^bison $bison_version" ||
+    # bison --version prints "bison (GNU Bison) 3.8.2"; match the version
+    # substring rather than the whole line.
+    "$LIW_PREFIX/bin/bison" --version | grep -q "$bison_version" ||
         die "bison did not install the expected version"
     done_stamp bison
 }
