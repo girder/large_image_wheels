@@ -248,7 +248,11 @@ runs, not just what the scripts are expected to do):
   failed run leaves the VM stopped and kept).  The first full default
   run (2026-10-15) rebuilt all four existing packages successfully and
   died at the (since fixed) jpeg-xl feature assertion; the builders
-  from lz4 through libhwy passed their in-VM assertions.
+  from lz4 through libhwy passed their in-VM assertions.  Decision
+  (2026-10-15): verification runs are always full builds from a fresh
+  base-VM clone; the resume-in-a-kept-VM path (stamps) is not used for
+  verification -- there is no interest in trading certainty about
+  ordering dependencies for cycle time.
 
 ## Hard-won details (do not lose these)
 
