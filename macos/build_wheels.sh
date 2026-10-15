@@ -778,16 +778,49 @@ build_libtiff_deps() {
     build_libtiff
 }
 
+# bison is a build tool for libmemcached: its configure hardcodes
+# YACC='bison --warnings=all', and the CSL parser/scanner it generates are
+# compiled into libmemcached itself (options.cc), so a modern bison is
+# required -- the CLT's bison is 2.3, which predates --warnings=all.  The
+# base VM's Homebrew set has no bison, so build one from source into the
+# prefix (no Homebrew re-provision needed).  The version is pinned here
+# rather than in versions.txt: versions.txt is shared with the linux
+# build and maintained by the version-cron, and the linux container's
+# distro bison never needed an entry.  The bison tarball ships a
+# pre-generated configure, so no autotools bootstrap is involved.
+build_bison() {
+    skip_if_done bison && return 0
+    step "bison"
+    local bison_version=3.8.2
+    cd "$LIW_SRC"
+    rm -rf bison
+    fetch "https://ftp.gnu.org/gnu/bison/bison-$bison_version.tar.gz" \
+        bison.tar.gz
+    mkdir bison
+    tar -zxf bison.tar.gz -C bison --strip-components 1
+    (
+        cd bison || exit 1
+        ./configure --prefix="$LIW_PREFIX" --disable-static || exit 1
+        make -j "$LIW_JOBS" || exit 1
+        make install || exit 1
+    ) || die "bison build failed"
+    "$LIW_PREFIX/bin/bison" --version | grep -q "^bison $bison_version" ||
+        die "bison did not install the expected version"
+    done_stamp bison
+}
+
 # sasl is required for libmemcached (the Dockerfile's comment): its
 # configure only compiles the SASL support in (and defines
 # LIBMEMCACHED_WITH_SASL_SUPPORT, which pylibmc's C module keys off) when
 # libsasl2 is found.  The linux build enables every mechanism the base
 # image supports, including the openssl-backed ones (otp, srp, scram,
-# passdss) and the openldap-backed ldapdb; the macos VM has neither
+# ntlm, passdss) and the openldap-backed ldapdb; the macos VM has neither
 # openssl nor openldap inside the isolated prefix, and system copies must
-# not be used, so those mechanisms are disabled here.  The mechanisms
-# memcached SASL actually negotiates (PLAIN, CRAM-MD5, DIGEST-MD5, plus
-# the login/anonymous/ntlm set) are all self-contained and are kept.
+# not be used, so those mechanisms drop out (the last five are explicitly
+# disabled).  What survives is the set memcached SASL actually negotiates
+# (PLAIN, CRAM-MD5, DIGEST-MD5) plus the self-contained login/anonymous
+# pair, sasldb (ndbm via libSystem), and gssapiv2 against the macOS
+# system Kerberos framework -- all audit-allowed.
 build_cyrus_sasl() {
     skip_if_done cyrus-sasl && return 0
     step "cyrus-sasl"
@@ -798,14 +831,28 @@ build_cyrus_sasl() {
     (
         cd cyrus-sasl || exit 1
         ./autogen.sh
-        # Note on the option set: cyrus-sasl 2.1.28's configure has no
-        # --enable-plain (the plain plugin is always built) and no
-        # --disable-gssapi (gssapi auto-detects, and finds no krb5 here),
-        # so neither is passed; --disable-macos-framework is required on
-        # darwin -- the macos-framework feature is enabled by default and
-        # its install hook creates /Library/Frameworks/SASL2.framework
-        # symlinks outside the prefix.
-        CFLAGS="$CFLAGS -Wno-implicit-function-declaration" \
+        # Note on the option and flag set:
+        #   -std=gnu17 is required: the VM's autoconf (2.72+) probes for the
+        #   newest supported C standard and bakes -std=gnu23 into $CC, and
+        #   C23 removed K&R function definitions, which cyrus-sasl's md5.c
+        #   still uses ("unknown type name 'context'").  Our CFLAGS land
+        #   after $CC's flag in every compile command, so the later -std
+        #   wins; the flag also makes the C23 probe itself fail, so $CC
+        #   stays clean (verified: configure then reports C23 unsupported
+        #   and falls through to C11 "none needed").
+        #   cyrus-sasl 2.1.28's configure has no --enable-plain (the plain
+        #   plugin is always built), so it is not passed.  gssapi
+        #   auto-detects and finds the macOS system Kerberos framework (a
+        #   /System path the otool audit allows; the linux wheel ships the
+        #   gssapiv2 plugin too), so it is left alone.  --disable-macos-
+        #   framework is required on darwin -- the macos-framework feature
+        #   is enabled by default and its install hook creates
+        #   /Library/Frameworks/SASL2.framework symlinks outside the
+        #   prefix.  NTLM stays enabled like the Dockerfile: it silently
+        #   drops out without an OpenSSL in the prefix (like scram, otp,
+        #   srp, and passdss, which are explicitly disabled), and would
+        #   light up automatically if one is ever added.
+        CFLAGS="$CFLAGS -std=gnu17 -Wno-implicit-function-declaration" \
             ./configure --prefix="$LIW_PREFIX" --disable-static \
             --disable-sample --disable-macos-framework \
             --enable-obsolete_cram_attr --enable-obsolete_digest_attr \
@@ -817,6 +864,15 @@ build_cyrus_sasl() {
         make -j "$LIW_JOBS"
         make install
     ) || die "cyrus-sasl build failed"
+    # Feature assertions: the self-contained mechanisms memcached SASL
+    # negotiates must be present as plugins (build_pylibmc bundles them as
+    # package data).  libtool names the darwin modules lib<mech>.3.so with
+    # an unversioned .so symlink alongside.
+    local mech
+    for mech in libplain libcrammd5 libdigestmd5 liblogin libanonymous; do
+        [ -e "$LIW_PREFIX/lib/sasl2/$mech.so" ] ||
+            die "cyrus-sasl did not install the $mech plugin"
+    done
     done_stamp cyrus-sasl
 }
 
@@ -833,8 +889,32 @@ build_libmemcached() {
         "$(v libmemcached)" libmemcached
     (
         cd libmemcached || exit 1
+        # memflush.cc compares a char* against false; gcc's -fpermissive
+        # downgrades that to a warning on linux, but clang rejects it
+        # outright.  NULL is what the comparison means.
+        sed -i '' 's/opt_servers == false/opt_servers == NULL/g' \
+            clients/memflush.cc
         autoreconf -ifv
         sed -i '' 's/install-man install/install/g' Makefile.in
+        # -std=gnu17: autoreconf with the VM's autoconf 2.73 bakes
+        # -std=gnu23 into $CC (see build_cyrus_sasl); libmemcached is
+        # 2014-era code that has not been audited against C23.
+        # ac_cv_have_htonll=no: on macOS the htonll conftest passes (the
+        # system headers declare it through the netinet/in.h chain), but
+        # byteorder.cc -- which is always compiled and includes no system
+        # header that declares it -- would then reference an undeclared
+        # ntohll.  On linux the conftest fails and the code takes its
+        # swap64 fallback; force the same detection result here (the
+        # BUILD_BYTEORDER conditional this feeds is referenced by no
+        # build rule).
+        # YACC is passed explicitly: configure hardcodes
+        # YACC='bison --warnings=all', but the scrubbed PATH has /usr/bin
+        # (the CLT's bison 2.3, which predates --warnings=all) ahead of
+        # the prefix, so the prefix's bison must be named by absolute
+        # path.  flex comes from the CLT and is new enough as-is.
+        ac_cv_have_htonll=no \
+        CFLAGS="$CFLAGS -std=gnu17" \
+        YACC="$LIW_PREFIX/bin/bison --warnings=all" \
         CXXFLAGS="$CXXFLAGS -fpermissive" \
             ./configure --prefix="$LIW_PREFIX" --disable-static
         # This target list does not parallelize reliably; no -j (like the
@@ -1487,13 +1567,14 @@ build_pylibmc() {
     # build does: libsasl2 dlopens every file in the directory named by
     # the SASL_PATH environment variable, which the patched __init__.py
     # points at this copy inside the package.  Versioned module names
-    # (libplain.so.2.0.25, plus the libplain.so symlink the linux find
-    # copies) are normalized to the unversioned plugin names the linux
-    # wheel ships, so exactly one file per mechanism is bundled.
+    # (linux libplain.so.2.0.25, darwin libplain.3.so) are normalized to
+    # the unversioned plugin names the linux wheel ships, so the
+    # unversioned symlink and the versioned real file collapse into one
+    # file per mechanism.
     mkdir -p src/pylibmc/sasl2
     local f base rp
     while IFS= read -r f; do
-        base="$(basename "$f" | sed -E 's/\.(dylib|so)\..*//')"
+        base="$(basename "$f" | sed -E 's/\.(dylib|so)\..*//; s/\.[0-9]+\.(so|dylib)$/.so/')"
         case "$base" in
         *.so) ;;
         *) base="$base.so" ;;
@@ -1694,8 +1775,10 @@ for pkg in ${PACKAGES[@]+"${PACKAGES[@]}"}; do
         # libmemcached's configure detects it ("sasl is required for
         # libmemcached"), and zlib is built first so that the extension's
         # -lz and libmemcached's optional compression resolve to our
-        # library rather than the system copy.
+        # library rather than the system copy.  bison is a libmemcached
+        # build tool only (see build_bison).
         build_zlib
+        build_bison
         build_cyrus_sasl
         build_libmemcached
         build_pylibmc
