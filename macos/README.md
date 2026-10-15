@@ -202,8 +202,9 @@ runs, not just what the scripts are expected to do):
   (which must come after GDAL -- its cmake auto-detects the optional
   GDAL input plugin through pkg-config, and the linux build has gdal
   installed by the time mapnik's configure runs, so the same order is
-  required here); python-javabridge / python-bioformats need a JDK
-  design decision first.  pyproj stays pypi-sourced.
+  required here); last, python-javabridge / python-bioformats, whose
+  bundling approach is now decided (see the note) -- its first task is
+  the JDK 8 arm64 macOS vendor check.  pyproj stays pypi-sourced.
 
 ## Hard-won details (do not lose these)
 
@@ -650,12 +651,36 @@ Notes on the remaining packages:
   package directory.  The expected-wheel validation in tart_build.sh
   needs no per-package change (one cp3XX-cp3XX wheel per python, like
   pylibtiff).
-- **python_javabridge / python-bioformats**: need a JDK; the linux build
-  bundles the JVM inside the wheel.  On macOS, decide whether to bundle
-  a macos arm64 JDK the same way or to rely on an installed JVM; the
-  `javabridge/jutil.py` and `locate.py` patches reference `.so` paths and
-  need macos equivalents (`.dylib`, and `lib/jvm/lib/libjvm.dylib`
-  layout).  This is the package most likely to need real design work.
+- **python_javabridge / python-bioformats**: decided (2026-10-15): bundle
+  the JVM inside the wheel like the linux build does -- the linux wheel
+  is fully self-contained (no Java installed on the machine) and the
+  macos wheel must behave the same.  The JVM is pinned to Java 1.8 on
+  linux (java-1.8.0-openjdk-devel) because bioformats is built for Java
+  1.8 and newer JVMs may fail -- the same version constraint applies on
+  macOS.  A newer JVM was tried on the linux side at some point (java
+  17) and failed in some manner that was not recorded here -- it may be
+  diagnosable and solvable, and if it is, a modern JDK (17+) would be
+  preferable on macOS: those have official macOS arm64 builds (Temurin,
+  Zulu), which removes the vendor-availability problem below.  The
+  first feasibility task is therefore twofold: reproduce and diagnose
+  the java 17 failure (linux is the easiest place for that), and, if it
+  cannot be solved, vendor research on JDK 8: JDK
+  8 has no official macOS arm64 builds from most vendors (Temurin has
+  none; check Azul Zulu and BellSoft Liberica for an aarch64 macOS 8
+  build), and an x86_64 JVM under Rosetta is not an option -- javabridge
+  loads libjvm in-process via ctypes, so the JVM's architecture must
+  match the wheel's arm64.  If a JDK 8 arm64 macOS build exists, the
+  linux bundling flow is the template (pack200 still exists in JDK 8,
+  so the jar-repacking/determinism tricks carry over); the macos deltas
+  to design: the JDK layout difference (libjvm.dylib under
+  Contents/Home/jre/lib/server/ vs. the linux jre/lib/aarch64/libjvm.so
+  that the jutil.py/locate.py patches reference), ad-hoc re-signing of
+  the bundled JVM binaries and dylibs (arm64 requires valid signatures,
+  and JDK dylibs use @rpath heavily), how delocate treats the jvm tree,
+  and the otool audit scope for javabridge/jvm.  If neither the java 17
+  failure is solvable nor an arm64 Java 8 exists, that fact needs a
+  decision before any code is written (the "newer JVM may fail" risk
+  would have to be re-tested against current bioformats).
 - **mapnik**: needs boost, libicu, and the rest of mapnik's dependency
   set, plus the repo's mapnik patches (mapnik.patch, mapnik_data_path.patch,
   mapnik_tls.patch); check the mapnik sections of the Dockerfile.  It
