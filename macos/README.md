@@ -343,11 +343,38 @@ runs, not just what the scripts are expected to do):
   symlinks outside the prefix, so `build_cyrus_sasl` passes
   `--disable-macos-framework`.  Do not blindly mirror the Dockerfile's
   configure options: 2.1.28's configure has no `--enable-plain` (the
-  plain plugin is always built) and no `--disable-gssapi` (gssapi
-  auto-detects, finding no krb5 in the prefix), and the
-  openssl/openldap-backed mechanisms (otp, srp, scram, passdss, ldapdb,
-  auth-sasldb, sql) are explicitly disabled instead because the isolated
-  prefix has no openssl or openldap.
+  plain plugin is always built), and the openssl-backed mechanisms
+  (otp, srp, scram, ntlm, passdss) and the openldap-backed ldapdb,
+  sql, and auth-sasldb are explicitly disabled or silently dropped
+  because the isolated prefix has no openssl or openldap.
+- The VM's Homebrew autoconf is 2.73, and autoconf 2.72+ changes how
+  `AC_PROG_CC` picks the C standard: it probes for the newest edition
+  the compiler supports and **bakes `-std=gnu23` into `$CC`** (it does
+  not check what the compiler defaults to).  C23 removed K&R function
+  definitions, so cyrus-sasl's md5.c died in the first VM run with
+  confusing "unknown type name 'context'" errors (the K&R parameter
+  names are parsed as types).  The linux build never sees this because
+  the container's autoconf is older.  Fix: pass `-std=gnu17` in CFLAGS
+  -- our CFLAGS land after `$CC` in every compile command, so the later
+  flag wins, and the C23 probe itself then fails, leaving `$CC` clean.
+  Any future autotools build of pre-C23 code in the VM may need the
+  same flag.
+- `( some steps ) || die ...` disables `set -e` for every command
+  inside the subshell: when a compound command's status is checked
+  (`||`), bash turns errexit off inside it.  A failed `make -j` in an
+  autotools builder therefore keeps going into `make install`, and the
+  log shows two failure chains; `die` still fires because the last
+  command's status is the subshell's.  The cmake/meson helpers avoid
+  this with explicit `|| exit 1` on each step; keep that pattern in
+  mind when reading (or writing) autotools builders.
+- The scrubbed PATH has /usr/bin ahead of the prefix, so a prefix-built
+  tool does not shadow a same-named CLT tool (bison: the CLT's 2.3 vs
+  the prefix's 3.8.2 -- the build log's "unrecognized option
+  --warnings=all" looks like the prefix bison failed, but it was the
+  CLT's).  When a configure script resolves a tool by name at configure
+  time, pass it explicitly by absolute path
+  (`build_libmemcached` passes YACC="$LIW_PREFIX/bin/bison
+  --warnings=all").
 - meson is not part of the base VM's Homebrew build-tool set (cmake,
   ninja, pkgconf, autotools are).  `ensure_meson` pip-installs meson
   into the patch python (build tool only; never enters a wheel) and
@@ -570,15 +597,28 @@ Notes on the remaining packages:
   be built before GDAL or mapnik, mirroring its position in the
   Dockerfile's order.
 - **pylibmc**: implemented (`pylibmc` case: `build_zlib`,
-  `build_cyrus_sasl`, `build_libmemcached`, `build_pylibmc`) but **not
-  yet verified in a VM run**.  Order mirrors the Dockerfile:
-  cyrus-sasl is built before libmemcached because libmemcached's
-  configure only compiles its SASL support in when libsasl2 is found;
-  `build_libmemcached` asserts the libsasl2 linkage, since pylibmc's C
-  module keys its SASL paths off LIBMEMCACHED_WITH_SASL_SUPPORT and
-  would silently compile them out otherwise.  zlib is built first so the
-  extension's `-lz` and libmemcached's optional compression resolve to
-  our library.  The wheel mirrors the linux patches: `libs =
+  `build_bison`, `build_cyrus_sasl`, `build_libmemcached`,
+  `build_pylibmc`).  Verified end to end on the host (bison →
+  cyrus-sasl → libmemcached → wheel → delocate → install in a venv,
+  where the harness's bundled-library check and the otool audit pass);
+  not yet observed in a VM run, where the isolation, the 11.0
+  deployment target, and the full python matrix are exercised.  Order
+  mirrors the Dockerfile: cyrus-sasl is built before libmemcached
+  because libmemcached's configure only compiles its SASL support in
+  when libsasl2 is found; `build_libmemcached` asserts the libsasl2
+  linkage, since pylibmc's C module keys its SASL paths off
+  LIBMEMCACHED_WITH_SASL_SUPPORT and would silently compile them out
+  otherwise.  zlib is built first so the extension's `-lz` and
+  libmemcached's optional compression resolve to our library.
+  libmemcached needs two extra pieces on macOS: `build_bison` (its
+  configure hardcodes YACC='bison --warnings=all', the CLT's bison is
+  2.3 which predates that option, and the CSL parser the bison rule
+  generates is compiled into the library itself), and two clang-compat
+  fixes with comments in `build_libmemcached` (the
+  `ac_cv_have_htonll=no` cache override so byteorder.cc takes its
+  swap64 fallback like on linux, and the `memflush.cc` `== false` sed
+  that gcc's -fpermissive hides on linux).  The wheel mirrors the linux
+  patches: `libs =
   ["memcached", "sasl2"]`, package_data for the bundled plugins,
   `library_dirs` pointed at the prefix (the linux build relies on
   /usr/local being the default search path; the scrubbed sysconfig data
@@ -586,14 +626,16 @@ Notes on the remaining packages:
   `__init__.py` patch that sets SASL_PATH to the bundled `pylibmc/sasl2`
   copy before `_pylibmc` is imported.  Plugin delta vs. the linux wheel:
   the linux base image's openssl/krb5/openldap let cyrus-sasl build the
-  otp/srp/scram/passdss/gssapi/ldapdb plugins (auditwheel then bundles
+  otp/srp/scram/passdss/ldapdb plugins (auditwheel then bundles
   libcrypto, libkrb5, libldap, and even libpq/libmysqlclient into
   pylibmc.libs); the macos prefix has none of those and system copies
-  are forbidden, so those mechanisms are explicitly disabled and only
-  the self-contained mechanisms memcached SASL actually negotiates
-  (PLAIN, CRAM-MD5, DIGEST-MD5, LOGIN, ANONYMOUS, NTLM) are built and
-  bundled (versioned module names are normalized to the unversioned
-  `lib<mech>.so` names the linux wheel ships).  Delocate puts
+  are forbidden, so those mechanisms are explicitly disabled and the
+  bundled set is the self-contained one (PLAIN, CRAM-MD5, DIGEST-MD5,
+  LOGIN, ANONYMOUS, SASLDB over ndbm) plus GSSAPIv2 against the macOS
+  system Kerberos framework (a /System path the otool audit allows).
+  NTLM stays enabled like the Dockerfile but silently drops out
+  without an OpenSSL in the prefix, and would light up automatically
+  if one is ever added.  Delocate puts
   libmemcached/libsasl2 into `pylibmc/.dylibs` (the pylibmc package is
   the wheel's only directory, and the build asserts the wheel content);
   note the C extension is a *top-level* module (`_pylibmc.cpython-*.so`
