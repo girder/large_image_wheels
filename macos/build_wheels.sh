@@ -1366,6 +1366,7 @@ build_poppler() {
     # /usr/lib, which the otool audits allow, matching the linux build
     # where poppler links the image's own curl.
     cmake_build "$LIW_SRC/poppler" \
+        -DCMAKE_BUILD_TYPE=Release \
         -DENABLE_UNSTABLE_API_ABI_HEADERS=on \
         -DBUILD_CPP_TESTS=OFF -DBUILD_GTK_TESTS=OFF \
         -DBUILD_MANUAL_TESTS=OFF -DBUILD_QT5_TESTS=OFF -DBUILD_QT6_TESTS=OFF \

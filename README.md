@@ -250,7 +250,13 @@ runs, not just what the scripts are expected to do):
   died at the (since fixed) jpeg-xl feature assertion; the builders
   from lz4 through libhwy passed their in-VM assertions.  The second
   full run (2026-10-15) passed jpeg-xl and libimagequant and died at
-  the (since fixed) libexif autoreconf.  Decision (2026-10-15):
+  the (since fixed) libexif autoreconf.  The third full run (2026-10-15)
+  passed libexif, libarchive, libraw, harfbuzz, libde265, and libheif
+  (its codec summary matches the linux configuration: libde265 built
+  in, everything else off) and died at the (since fixed) poppler
+  configure, which rejects MinSizeRel -- the Dockerfile passes
+  -DCMAKE_BUILD_TYPE=Release, which build_poppler now passes too.
+  Decision (2026-10-15):
   verification runs are always full builds from a fresh base-VM clone;
   the resume-in-a-kept-VM path (stamps) is not used for verification --
   there is no interest in trading certainty about ordering dependencies
