@@ -1225,7 +1225,7 @@ build_harfbuzz() {
     # same way they do on linux.  cairo is only linked by the separate
     # harfbuzz-cairo library, not by libharfbuzz itself.
     local linked lib
-    linked="$(otool -L "$LIW_PREFIX/lib"/libharfbuzz.dylib 2>/dev/null || true)"
+    linked="$(otool -L "$LIW_PREFIX/lib"/libharfbuzz*.dylib 2>/dev/null || true)"
     [ -n "$linked" ] || die "harfbuzz produced no dylib to check"
     for lib in libfreetype libglib; do
         printf '%s\n' "$linked" | grep -q "$lib" ||
@@ -1304,8 +1304,11 @@ build_libde265() {
     rm -rf libde265
     git_retry https://github.com/strukturag/libde265.git \
         "v$(v libde265)" libde265
+    # The Dockerfile's -DBUILD_SHARED/-DBUILD_STATIC do not exist as
+    # options at this version (its CMakeLists only has BUILD_SHARED_LIBS,
+    # which defaults to ON), so the shared library is left to the default
+    # and the inert flags are not passed here.
     cmake_build "$LIW_SRC/libde265" \
-        -DBUILD_SHARED=ON -DBUILD_STATIC=OFF \
         -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
         -DCMAKE_CXX_FLAGS="$CXXFLAGS -pthread" \
         -DCMAKE_EXE_LINKER_FLAGS=-pthread \
@@ -1487,7 +1490,7 @@ build_imagemagick() {
         # tree so every delegate configure can detect lights up).
         ./configure --prefix="$LIW_PREFIX" --with-modules --with-rsvg \
             --with-fftw --with-jxl \
-            LIBS="$([ -n "$PKG_CONFIG" ] && "$PKG_CONFIG" --libs zlib)" \
+            LIBS="$("$PKG_CONFIG" --libs zlib)" \
             --disable-static || exit 1
         make -j "$LIW_JOBS" || exit 1
         make install || exit 1
@@ -2366,6 +2369,14 @@ for pkg in ${PACKAGES[@]+"${PACKAGES[@]}"}; do
         build_pylibmc
         ;;
     # "dep:<name>" builds a single dependency; useful for debugging.
+    # Hyphenated names map to their underscored builders (the stamps keep
+    # the hyphenated versions.txt names).
+    dep:jpeg-xl)
+        build_jpegxl || die "building jpeg-xl failed"
+        ;;
+    dep:libjpeg-turbo)
+        build_libjpeg_turbo || die "building libjpeg-turbo failed"
+        ;;
     dep:*)
         "build_${pkg#dep:}" || die "building $pkg failed"
         ;;
