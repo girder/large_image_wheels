@@ -1145,15 +1145,24 @@ build_libexif() {
     step "libexif"
     cd "$LIW_SRC"
     rm -rf libexif
-    git_retry https://github.com/libexif/libexif.git "v$(v libexif)" libexif
+    # Use the release tarball, not a git clone: the tarball ships a
+    # pre-generated configure, and libexif's configure.ac cannot be
+    # re-generated in the VM -- its NLS machinery (AM_PO_SUBDIRS,
+    # AM_GNU_GETTEXT, AM_ICONV) needs gettext's m4 macros and autopoint,
+    # which the VM deliberately does not have (the linux build gets them
+    # from its gettext-devel package).  NLS only adds translated
+    # messages, so it is disabled -- the same reasoning as fontconfig's
+    # -Dnls=disabled; the linux dylib gets NLS from glibc's gettext, not
+    # a bundled library.  Verified on the host: configure/build/install
+    # with --disable-nls produce a dylib linked only against libSystem.
+    fetch "https://github.com/libexif/libexif/releases/download/v$(v libexif)/libexif-$(v libexif).tar.gz" \
+        libexif.tar.gz
+    mkdir libexif
+    tar -zxf libexif.tar.gz -C libexif --strip-components 1
     (
         cd libexif || exit 1
-        autoreconf -ifv
-        # -std=gnu17: the VM's autoconf 2.73 bakes -std=gnu23 into $CC for
-        # pre-C23 code (see build_cyrus_sasl); libexif is old enough that
-        # the same flag is applied defensively.
-        CFLAGS="$CFLAGS -std=gnu17" \
-            ./configure --prefix="$LIW_PREFIX" --disable-static
+        ./configure --prefix="$LIW_PREFIX" --disable-static \
+            --disable-nls || exit 1
         make -j "$LIW_JOBS" || exit 1
         make install || exit 1
     ) || die "libexif build failed"
@@ -1194,8 +1203,8 @@ build_libraw() {
     git_retry https://github.com/LibRaw/LibRaw.git "$(v libraw)" LibRaw
     (
         cd LibRaw || exit 1
-        autoreconf -ifv
-        ./configure --prefix="$LIW_PREFIX" --disable-static
+        autoreconf -ifv || exit 1
+        ./configure --prefix="$LIW_PREFIX" --disable-static || exit 1
         make -j "$LIW_JOBS" || exit 1
         make install || exit 1
     ) || die "libraw build failed"
