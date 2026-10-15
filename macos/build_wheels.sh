@@ -1099,12 +1099,17 @@ build_jpegxl() {
         -DHWY_ENABLE_INSTALL=OFF \
         -DHWY_ENABLE_TESTS=OFF \
         -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-    # Feature assertions: libjxl links highway and brotli; without them it
-    # would have fallen back to (or failed on) the vendored copies.
+    # Feature assertion: libjxl links brotli dynamically.  Highway is NOT
+    # asserted: libjxl's third_party/CMakeLists.txt sets
+    # HWY_FORCE_STATIC_LIBS and, because the --recurse-submodules clone
+    # (same as the Dockerfile) provides the vendored highway, libjxl
+    # builds and statically embeds it instead of linking the prefix's
+    # libhwy -- the linux build behaves identically, so the prefix's
+    # libhwy is only there to mirror the Dockerfile's final state.
     local linked lib
     linked="$(otool -L "$LIW_PREFIX/lib"/libjxl*.dylib 2>/dev/null || true)"
     [ -n "$linked" ] || die "jpeg-xl produced no dylib to check"
-    for lib in libhwy libbrotli; do
+    for lib in libbrotli; do
         printf '%s\n' "$linked" | grep -q "$lib" ||
             die "libjxl was not linked against $lib; an optional dependency was missed (check the build order)"
     done
