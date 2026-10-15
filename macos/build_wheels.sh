@@ -1408,10 +1408,10 @@ build_hdf5() {
         -DHDF5_BUILD_DOC=OFF \
         -DALLOW_UNSUPPORTED=ON \
         -DHDF5_ENABLE_THREADSAFE=ON
-    [ -e "$LIW_PREFIX/lib/libhdf5.dylib" ] ||
+    [ -n "$(ls "$LIW_PREFIX/lib"/libhdf5*.dylib 2>/dev/null)" ] ||
         die "hdf5 did not install its library"
     local linked lib
-    linked="$(otool -L "$LIW_PREFIX/lib"/libhdf5.dylib 2>/dev/null || true)"
+    linked="$(otool -L "$LIW_PREFIX/lib"/libhdf5*.dylib 2>/dev/null || true)"
     [ -n "$linked" ] || die "hdf5 produced no dylib to check"
     for lib in "libz." ; do
         printf '%s\n' "$linked" | grep -q "$lib" ||
@@ -1437,10 +1437,10 @@ Version: $(v matio)
 Cflags: -I$LIW_PREFIX/include
 Libs: -L$LIW_PREFIX/lib -lmatio
 EOF
-    [ -e "$LIW_PREFIX/lib/libmatio.dylib" ] ||
+    [ -n "$(ls "$LIW_PREFIX/lib"/libmatio*.dylib 2>/dev/null)" ] ||
         die "matio did not install its library"
     local linked lib
-    linked="$(otool -L "$LIW_PREFIX/lib"/libmatio.dylib 2>/dev/null || true)"
+    linked="$(otool -L "$LIW_PREFIX/lib"/libmatio*.dylib 2>/dev/null || true)"
     [ -n "$linked" ] || die "matio produced no dylib to check"
     for lib in libhdf5; do
         printf '%s\n' "$linked" | grep -q "$lib" ||
@@ -1466,7 +1466,7 @@ build_openexr() {
     [ -n "$(ls "$LIW_PREFIX/lib"/libOpenEXR*.dylib 2>/dev/null)" ] ||
         die "openexr did not install its libraries"
     local linked lib
-    linked="$(otool -L "$LIW_PREFIX/lib"/libOpenEXR-*.dylib 2>/dev/null || true)"
+    linked="$(otool -L "$LIW_PREFIX/lib"/libOpenEXR*.dylib 2>/dev/null || true)"
     [ -n "$linked" ] || die "openexr produced no dylib to check"
     for lib in "libz." ; do
         printf '%s\n' "$linked" | grep -q "$lib" ||
