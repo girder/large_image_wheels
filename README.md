@@ -245,7 +245,10 @@ runs, not just what the scripts are expected to do):
   full `pyvips` package (`macos/tart_build.sh pyvips`, which exercises
   stages 2 and 3 together), with the dep: list above as the
   debugging fallback if it fails early (stamps make reruns cheap, and a
-  failed run leaves the VM stopped and kept).
+  failed run leaves the VM stopped and kept).  The first full default
+  run (2026-10-15) rebuilt all four existing packages successfully and
+  died at the (since fixed) jpeg-xl feature assertion; the builders
+  from lz4 through libhwy passed their in-VM assertions.
 
 ## Hard-won details (do not lose these)
 
