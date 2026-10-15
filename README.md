@@ -76,10 +76,12 @@ manylinux container plays for the linux builds:
   `build_fitsio`, `build_hdf5`, `build_matio`, `build_openexr`,
   `build_imagemagick`), then package builders (`build_pylibtiff`,
   `build_glymur`, `build_openslide`, `build_openslide_python`,
-  `build_pylibmc`; each package
+  `build_pylibmc`, `build_pyvips`, with `build_libvips` in the
+  dependency section; each package
   builder calls `sanitize_prefix_dylibs` after its dependencies are built),
   then the main `case` that maps package names to builders
-  (`dep:<name>` builds a single dependency for debugging).
+  (`dep:<name>` builds a single dependency for debugging; hyphenated
+  names such as `dep:jpeg-xl` map to their underscored builders).
 - `tart_build.sh` -- host-side orchestrator: provisions the base VM if
   missing (`provision` command, or automatically), clones a fresh VM,
   copies the repo in, runs `build_wheels.sh` (nohup + polling via
