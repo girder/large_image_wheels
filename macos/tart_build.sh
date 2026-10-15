@@ -388,6 +388,31 @@ if ! skip_if_done brew; then
     done_stamp brew
 fi
 
+# --- rust (build tool for libimagequant and librsvg; the linux Dockerfile
+# installs the same toolchain into the image) ---
+if ! skip_if_done rust; then
+    step "rust (rustup minimal profile; cargo-c takes several minutes)"
+    if [ ! -x "$HOME/.cargo/bin/cargo" ]; then
+        curl --retry 5 --silent -sSf https://sh.rustup.rs |
+            sh -s -- -y --profile minimal || {
+            echo "ERROR: rustup installation failed" >&2
+            exit 1
+        }
+    fi
+    export PATH="$HOME/.cargo/bin:$PATH"
+    command -v cargo >/dev/null 2>&1 || {
+        echo "ERROR: cargo unavailable after rustup installation" >&2
+        exit 1
+    }
+    if [ ! -x "$HOME/.cargo/bin/cargo-cinstall" ]; then
+        cargo install cargo-c --locked || {
+            echo "ERROR: cargo-c installation failed" >&2
+            exit 1
+        }
+    fi
+    done_stamp rust
+fi
+
 # --- pyenv pythons ----------------------------------------------------------
 # Built with a clean environment: no -march=native (it must not leak into
 # the pythons that build the wheels), no Homebrew linker flags, and the
@@ -610,6 +635,11 @@ wheel_for_python() { # wheel_for_python <wheels dir> <prefix> <req>
 
 missing=""
 for pkg in $LIW_PACKAGES; do
+    # dep:<name> entries build a single dependency for debugging and
+    # produce no wheels; the expected-wheel validation only applies to
+    # real packages (this also lets staged dependency-only checkpoint
+    # runs go through tart_build.sh).
+    [ "${pkg#dep:}" != "$pkg" ] && continue
     prefix="$(wheel_prefix "$pkg")"
     for req in $LIW_PYTHONS; do
         if ! wheel_for_python "$REPO_DIR/wheels" "$prefix" "$req"; then
