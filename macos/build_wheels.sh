@@ -1410,6 +1410,21 @@ build_hdf5() {
     # MPI_* variables) are dropped: the macos prefix has no MPI (parallel
     # netcdf is a GDAL-stage concern and will need an MPI built into the
     # prefix).  HDF5_ENABLE_DIRECT_VFD is linux-only (O_DIRECT).
+    #
+    # ZLIB_LIBRARIES/ZLIB_INCLUDE_DIR must be preset: hdf5's
+    # CMakeFilters.cmake first runs a CONFIG-mode
+    # find_package(ZLIB ... COMPONENTS static shared), which silently
+    # succeeds against the cmake-built zlib's ZLIBConfig.cmake in the
+    # prefix -- but that config only defines imported targets, not the
+    # ZLIB_LIBRARIES/ZLIB_INCLUDE_DIR variables hdf5's filter code
+    # consumes (it assumes module-mode FindZLIB).  The deflate filter is
+    # then compiled with H5_HAVE_FILTER_DEFLATE while nothing links zlib,
+    # and the macOS linker rejects the undefined inflate/compress2
+    # symbols (the linux linker tolerates them, which is why the
+    # Dockerfile gets away with it).  Presetting the module variables is
+    # harmless when the config find is skipped and repairs it when it is
+    # not (verified on the host: the shared-library link line then
+    # carries the prefix's libz.dylib).
     cmake_build "$LIW_SRC/hdf5" \
         -DDEFAULT_API_VERSION=v18 \
         -DHDF5_BUILD_EXAMPLES=OFF \
@@ -1420,6 +1435,8 @@ build_hdf5() {
         -DHDF5_DISABLE_COMPILER_WARNINGS=ON \
         -DBUILD_TESTING=OFF \
         -DZLIB_DIR="$LIW_PREFIX/lib" \
+        -DZLIB_LIBRARIES="$LIW_PREFIX/lib/libz.dylib" \
+        -DZLIB_INCLUDE_DIR="$LIW_PREFIX/include" \
         -DHDF5_BUILD_DOC=OFF \
         -DALLOW_UNSUPPORTED=ON \
         -DHDF5_ENABLE_THREADSAFE=ON

@@ -255,8 +255,12 @@ runs, not just what the scripts are expected to do):
   (its codec summary matches the linux configuration: libde265 built
   in, everything else off) and died at the (since fixed) poppler
   configure, which rejects MinSizeRel -- the Dockerfile passes
-  -DCMAKE_BUILD_TYPE=Release, which build_poppler now passes too.
-  Decision (2026-10-15):
+  -DCMAKE_BUILD_TYPE=Release, which build_poppler now passes too.  The
+  fourth full run (2026-10-15) passed poppler and cfitsio and died
+  linking hdf5: its config-mode zlib find silently succeeds against
+  the cmake-built zlib's ZLIBConfig.cmake without providing the module
+  variables hdf5 links with (fixed by presetting ZLIB_LIBRARIES and
+  ZLIB_INCLUDE_DIR; verified on the host).  Decision (2026-10-15):
   verification runs are always full builds from a fresh base-VM clone;
   the resume-in-a-kept-VM path (stamps) is not used for verification --
   there is no interest in trading certainty about ordering dependencies
@@ -648,7 +652,13 @@ Notes on the remaining packages:
   Dockerfile's MPI-dependent options (HDF5_ENABLE_PARALLEL and the MPI
   variables -- the prefix has no MPI; parallel netcdf is a GDAL-stage
   concern that will need an MPI built into the prefix) and
-  HDF5_ENABLE_DIRECT_VFD (linux-only, O_DIRECT); imagemagick drops
+  HDF5_ENABLE_DIRECT_VFD (linux-only, O_DIRECT); hdf5 also presets
+  ZLIB_LIBRARIES/ZLIB_INCLUDE_DIR (hdf5's config-mode zlib find
+  silently succeeds against the cmake-built zlib's ZLIBConfig.cmake,
+  which provides imported targets but not the module variables hdf5's
+  filter code consumes, leaving the deflate filter compiled but zlib
+  unlinked -- the linux linker tolerates the resulting undefined
+  symbols, the macOS one does not); imagemagick drops
   -lrt from LIBS (linux-only) and is asserted on libMagickCore's own
   delegates (freetype, fontconfig, xml2, zlib) plus a populated coder
   modules directory -- the wheel ships only libMagickCore/MagickWand
