@@ -1518,6 +1518,60 @@ build_imagemagick() {
     done_stamp imagemagick
 }
 
+# libvips is a meson build with all loaders compiled in (-Dmodules=disabled,
+# like the Dockerfile); every optional loader the linux wheel carries must
+# resolve through the prefix's pkg-config, which the feature assertions
+# below check rather than trusting configure's silence.
+build_libvips() {
+    skip_if_done libvips && return 0
+    step "libvips"
+    cd "$LIW_SRC"
+    rm -rf libvips
+    git_retry https://github.com/libvips/libvips.git "v$(v libvips)" libvips
+    (
+        cd libvips || exit 1
+        # Mirrors the Dockerfile's seds: allow using VIPS_TMPDIR for the
+        # temp directory, disable HAVE_TARGET_CLONES (ifunc, linux-only;
+        # clang would otherwise accept the attribute but produce no
+        # dispatching), and silence the tiff2vips g_logv warnings the
+        # linux build silences.
+        sed -i '' \
+            's/tmpd;/tmpd;if ((tmpd=g_getenv("VIPS_TMPDIR"))) return(tmpd);/g' \
+            libvips/iofuncs/util.c || exit 1
+        sed -i '' \
+            "s|cfg_var.set('HAVE_TARGET_CLONES',|# cfg_var.set('HAVE_TARGET_CLONES',|g" \
+            meson.build || exit 1
+        sed -i '' \
+            's/g_logv("tiff2vips", G_LOG_LEVEL_WARNING, fmt, ap);/\/\/g_logv("tiff2vips", G_LOG_LEVEL_WARNING, fmt, ap);/g' \
+            libvips/foreign/tiff2vips.c || exit 1
+        sed -i '' \
+            's/g_logv(G_LOG_DOMAIN, G_LOG_LEVEL_WARNING, fmt, ap);/\/\/g_logv(G_LOG_DOMAIN, G_LOG_LEVEL_WARNING, fmt, ap);/g' \
+            libvips/foreign/tiff2vips.c || exit 1
+    ) || die "libvips patch failed"
+    # The Dockerfile's LDFLAGS addition (,-rpath,$ORIGIN -lstdc++) is
+    # linux-specific (the rpath is what auditwheel rewrites; the C++
+    # runtime is implicit on darwin) and is not applied here.
+    meson_build "$LIW_SRC/libvips" -Dmodules=disabled -Dexamples=false \
+        -Dnifti-prefix-dir="$LIW_PREFIX"
+    [ -n "$(ls "$LIW_PREFIX/lib"/libvips*.dylib 2>/dev/null)" ] ||
+        die "libvips did not install its library"
+    # Feature assertions over the union of the installed libvips dylibs:
+    # every loader library the linux wheel links must have resolved from
+    # the prefix.  (libhwy enters through libjxl and hdf5 through matio;
+    # only direct linkage is asserted here.)
+    local linked lib
+    linked="$(otool -L "$LIW_PREFIX/lib"/libvips*.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "libvips produced no dylib to check"
+    for lib in libgobject openslide MagickCore libheif libjxl libjpeg \
+        libtiff libpng libwebp librsvg libpoppler libcfitsio libmatio \
+        nifti libarchive libraw libopenjp libexif liborc fftw lcms \
+        imagequant pangocairo; do
+        printf '%s\n' "$linked" | grep -q "$lib" ||
+            die "libvips was not linked against $lib; an optional dependency was missed (check the build order)"
+    done
+    done_stamp libvips
+}
+
 # --------------------------------------------------------------------------
 # Packages.
 # --------------------------------------------------------------------------
@@ -2273,6 +2327,178 @@ EOF
     done_stamp pylibmc
 }
 
+# The pyvips wheel bundles libvips and its whole dependency tree, plus the
+# bundled vips tools and magick in pyvips/bin, exactly like the linux wheel.
+build_pyvips() {
+    skip_if_done pyvips && return 0
+    step "pyvips"
+    local pp="$LIW_PATCH_PYBIN"
+
+    # Dependencies may have just been built (fresh VM); strip any build-tree
+    # RPATHs they installed before the wheels bundle them.
+    sanitize_prefix_dylibs
+
+    cd "$LIW_SRC"
+    rm -rf pyvips
+    git_retry https://github.com/libvips/pyvips.git "v$(v pyvips)" pyvips
+    cd pyvips
+
+    # Bundle the vips command-line tools and magick with the wheel, like
+    # the linux build does (meson puts the tools in the build directory;
+    # magick comes from the prefix install).
+    mkdir -p pyvips/bin
+    find "$LIW_SRC/libvips/_build/tools" -type f -perm -111 \
+        -exec cp {} pyvips/bin/ \;
+    cp -L "$LIW_PREFIX/bin/magick" pyvips/bin/
+    [ -e pyvips/bin/vips ] || die "no vips tool found to bundle"
+    [ -e pyvips/bin/magick ] || die "no magick tool found to bundle"
+    strip -x pyvips/bin/* 2>/dev/null || true
+
+    # Wrapper module so each bundled tool is exposed as a console script
+    # (same wrapper the linux wheel ships).
+    cat >pyvips/bin/__init__.py <<'EOF'
+import os
+import sys
+
+def program():
+    path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0]))
+    os.execv(path, sys.argv)
+EOF
+
+    # Patch __init__.py: preload the bundled libvips dylib before the
+    # extension is imported (delocate puts the bundled dylibs in
+    # pyvips/.dylibs inside the wheel; keep the auditwheel-style locations
+    # from the linux build as fallbacks).
+    cat >"$LIW_PATCHES/pyvips_init.py" <<EOF
+path = "pyvips/__init__.py"
+s = open(path).read().replace(
+"""    import _libvips""",
+"""    import ctypes
+    import os
+    # delocate puts the bundled dylibs in pyvips/.dylibs inside the wheel;
+    # keep the auditwheel-style locations from the linux build as fallbacks.
+    libpath = os.path.join(os.path.dirname(os.path.realpath(__file__)), ".dylibs")
+    if not os.path.exists(libpath):
+        libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(
+            os.path.realpath(__file__))), "pyvips.libs"))
+    if os.path.exists(libpath):
+        libs = os.listdir(libpath)
+        libvipspath = [lib for lib in libs if lib.startswith('libvips')]
+        if libvipspath:
+            ctypes.cdll.LoadLibrary(os.path.join(libpath, libvipspath[0]))
+    from . import _libvips""")
+open(path, "w").write(s)
+EOF
+    # Patch pyvips_build.py: name the cffi extension pyvips._libvips so the
+    # patched `from . import _libvips` resolves to it.
+    cat >"$LIW_PATCHES/pyvips_build.py" <<EOF
+path = "pyvips/pyvips_build.py"
+s = open(path).read().replace(
+"""ffibuilder.set_source("_libvips",""",
+"""ffibuilder.set_source("pyvips._libvips",""")
+open(path, "w").write(s)
+EOF
+    # Patch version.py with the combined version (package version + bundled
+    # libvips version), matching the linux wheel versioning.
+    cat >"$LIW_PATCHES/pyvips_version.py" <<EOF
+import re
+path = "pyvips/version.py"
+s = open(path).read()
+s = re.sub(r'__version__ = "(.+?)"',
+           lambda match: '__version__ = "%s.$(v libvips)"' % match.group(1), s)
+open(path, "w").write(s)
+EOF
+    # Patch setup.py and pyproject.toml: expose the bundled tools as console
+    # scripts and include them as package data.  On pyvips 3.2.0 the
+    # setup.py replaces are no-ops (its setup.py has no packages= line; the
+    # linux build carries the same inert patches), so the effective changes
+    # come from the pyproject.toml patch.
+    cat >"$LIW_PATCHES/pyvips_setup.py" <<EOF
+path = "setup.py"
+s = open(path).read().replace("from os import path",
+"""from os import path
+import os""").replace(
+"""packages=pyvips_packages,""",
+"""packages=pyvips_packages,
+        include_package_data=True,
+        package_data={'pyvips': ['bin/*']},
+        entry_points={'console_scripts': ['%s=pyvips.bin:program' % name for name in os.listdir('pyvips/bin') if not name.endswith('.py')]},""")
+open(path, "w").write(s)
+EOF
+    cat >"$LIW_PATCHES/pyvips_pyproject.py" <<EOF
+path = "pyproject.toml"
+s = open(path).read()
+s = s.replace("include-package-data = false", "include-package-data = true")
+s += """
+[tool.setuptools.package-data]
+pyvips = ["bin/*"]
+
+[project.scripts]
+"""
+import os
+for name in os.listdir('pyvips/bin'):
+    if not name.endswith('.py'):
+        s += "%s = 'pyvips.bin:program'\\n" % name
+open(path, "w").write(s)
+EOF
+    "$pp" "$LIW_PATCHES/pyvips_init.py"
+    "$pp" "$LIW_PATCHES/pyvips_build.py"
+    "$pp" "$LIW_PATCHES/pyvips_version.py"
+    "$pp" "$LIW_PATCHES/pyvips_setup.py"
+    "$pp" "$LIW_PATCHES/pyvips_pyproject.py"
+
+    # Commit the patches and tag with the combined version (package version
+    # + bundled libvips version), matching the linux wheel versioning.
+    git config user.email "wheels@example.com"
+    git config user.name "Wheel Builder"
+    git add -A
+    git commit -q -m "patch for wheel building"
+    git tag "$(v pyvips).$(v libvips)"
+
+    # Build one wheel per python, then bundle the dylibs with delocate
+    # (the auditwheel equivalent on macOS).  The cffi build resolves
+    # libvips through the prefix's pkg-config (the pkgconfig python
+    # package honors PKG_CONFIG and PKG_CONFIG_LIBDIR).
+    collect_pybins
+    local pybin
+    for pybin in "${PYBINS[@]}"; do
+        step "pyvips wheel: $(basename "$(dirname "$pybin")")"
+        (
+            cd "$LIW_SRC/pyvips"
+            rm -rf build
+            "${pybin}/python" -m pip wheel --no-deps -w "$LIW_WHEELHOUSE" .
+        ) || die "pyvips wheel build failed for $pybin"
+    done
+
+    step "delocate pyvips wheels"
+    "$LIW_PATCH_PIPBIN" install -q -U delocate
+    local whl
+    for whl in "$LIW_WHEELHOUSE"/pyvips-*.whl; do
+        [ -f "$whl" ] || continue
+        case "$(basename "$whl")" in
+        *macosx*) "$LIW_PATCH_DIR/bin/delocate-wheel" "$whl" ||
+            die "delocate failed for $whl" ;;
+        esac
+    done
+    ls -l "$LIW_WHEELHOUSE"
+    [ -n "$(ls "$LIW_WHEELHOUSE"/pyvips-*macosx*.whl 2>/dev/null)" ] ||
+        die "no pyvips macosx wheels were built"
+    # Feature assertions on the wheel: the bundled libvips dylib, the cffi
+    # extension, and the tools must be present (delocate puts the dylibs in
+    # pyvips/.dylibs -- the pyvips package is the wheel's only directory).
+    local contents
+    contents="$(unzip -l "$(ls "$LIW_WHEELHOUSE"/pyvips-*macosx*.whl | head -1)")"
+    printf '%s\n' "$contents" | grep -q 'pyvips/.dylibs/libvips' ||
+        die "the pyvips wheel does not bundle libvips"
+    printf '%s\n' "$contents" | grep -q 'pyvips/_libvips' ||
+        die "the pyvips wheel does not contain the cffi extension"
+    printf '%s\n' "$contents" | grep -q 'pyvips/bin/vips' ||
+        die "the pyvips wheel does not bundle the vips tool"
+    printf '%s\n' "$contents" | grep -q 'pyvips/bin/magick' ||
+        die "the pyvips wheel does not bundle the magick tool"
+    done_stamp pyvips
+}
+
 # --------------------------------------------------------------------------
 # Main.
 # --------------------------------------------------------------------------
@@ -2311,7 +2537,7 @@ fi
 PACKAGES=("$@")
 # Keep in sync with tart_build.sh's LIW_PACKAGES default: the expected-wheel
 # validation there assumes this same set when no packages are named.
-[ "${#PACKAGES[@]}" -eq 0 ] && PACKAGES=(pylibtiff glymur openslide_python pylibmc)
+[ "${#PACKAGES[@]}" -eq 0 ] && PACKAGES=(pylibtiff glymur openslide_python pylibmc pyvips)
 
 # The "${var[@]+...}" guard keeps bash 3.2 (the VM's default bash) happy
 # about empty arrays under `set -u`.
@@ -2367,6 +2593,55 @@ for pkg in ${PACKAGES[@]+"${PACKAGES[@]}"}; do
         build_cyrus_sasl
         build_libmemcached
         build_pylibmc
+        ;;
+    pyvips)
+        # Order mirrors the Dockerfile's final state: the openslide chain
+        # first (libvips links openslide like any other loader, and its
+        # glib/cairo/freetype/fontconfig/xml2 are shared with harfbuzz,
+        # pango, and librsvg), then the leaf dependencies, then the pango
+        # stack (harfbuzz before pango before librsvg), heif after
+        # libde265, matio after hdf5, and imagemagick after librsvg so
+        # --with-rsvg finds it.  libvips's meson silently drops what is
+        # missing; build_libvips asserts the linked feature set.
+        build_libtiff_deps
+        build_lcms2
+        build_libpng
+        build_openjpeg
+        build_libbrotli
+        build_libexpat
+        build_libffi
+        build_glib
+        build_sqlite
+        build_libxml2
+        build_pixman
+        build_freetype
+        build_fontconfig
+        build_cairo
+        build_jxrlib
+        build_openslide
+        build_orc
+        build_nifti
+        build_lz4
+        build_fftw3
+        build_libhwy
+        build_jpegxl
+        build_libimagequant
+        build_libexif
+        build_libarchive
+        build_libraw
+        build_harfbuzz
+        build_libde265
+        build_libheif
+        build_poppler
+        build_fitsio
+        build_hdf5
+        build_matio
+        build_openexr
+        build_pango
+        build_librsvg
+        build_imagemagick
+        build_libvips
+        build_pyvips
         ;;
     # "dep:<name>" builds a single dependency; useful for debugging.
     # Hyphenated names map to their underscored builders (the stamps keep

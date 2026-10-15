@@ -237,8 +237,13 @@ runs, not just what the scripts are expected to do):
   dep:libexif dep:libarchive dep:libraw dep:harfbuzz dep:pango
   dep:librsvg dep:libde265 dep:libheif dep:poppler dep:fitsio dep:hdf5
   dep:matio dep:openexr dep:imagemagick"` (this is also the order the
-  future `pyvips` case will use).  Stage 3 (the `libvips` build and the
-  pyvips wheel itself, with the case wiring) follows that run.
+  `pyvips` case uses).  Stage 3 -- `build_libvips`, `build_pyvips`, the
+  `pyvips` case wiring, and the test-harness additions -- is implemented
+  but has not been run in a VM either; the next step is a VM run of the
+  full `pyvips` package (`macos/tart_build.sh pyvips`, which exercises
+  stages 2 and 3 together), with the dep: list above as the
+  debugging fallback if it fails early (stamps make reruns cheap, and a
+  failed run leaves the VM stopped and kept).
 
 ## Hard-won details (do not lose these)
 
@@ -612,12 +617,22 @@ Notes on the remaining packages:
   `-Dnifti-prefix-dir=$LIW_PREFIX` (the Dockerfile passes /usr/local);
   gobject-introspection is deferred (it produces metadata, not linked
   features, and the macos openslide chain has been fine without it --
-  revisit only if libvips's meson requires it).  The `pyvips` module
-  needs the same "find the bundled library" patch as pylibtiff,
-  adapted to delocate's `pyvips/.dylibs` layout (with the linux
-  `pyvips.libs` location as fallback), and the bundled `vips` tools and
-  `magick` go into `pyvips/bin` with the `pyvips.bin:program` wrapper
-  (the linux wheel does exactly this).
+  revisit only if libvips's meson requires it).  The wheel (stage 3,
+  mirroring the Dockerfile's pyvips section): `pyvips/__init__.py`
+  preloads the bundled libvips dylib from `pyvips/.dylibs` (with the
+  linux `pyvips.libs` location as fallback) before importing the cffi
+  extension, `pyvips_build.py` names the extension `pyvips._libvips`,
+  `version.py` gains the `.8.18.7` suffix (wheel version
+  `3.2.0.8.18.7`), the bundled `vips` tools and `magick` go into
+  `pyvips/bin` with the `pyvips.bin:program` wrapper, and the effective
+  packaging changes come from the pyproject.toml patch (include-package
+  data, package-data `bin/*`, and the console scripts): pyvips 3.2.0's
+  setup.py has no `packages=pyvips_packages,` line, so the setup.py
+  patch's replaces are inert no-ops -- the linux build carries the same
+  inert patches.  `build_libvips` asserts the linked loader set
+  (gobject, openslide, MagickCore, heif, jxl, jpeg, tiff, png, webp,
+  rsvg, poppler, cfitsio, matio, nifti, archive, raw, openjp, exif,
+  orc, fftw, lcms, imagequant, pangocairo).
 Notes on the remaining packages:
 
 - **openslide_python**: implemented (`openslide_python` case:
@@ -804,8 +819,9 @@ authoritative suite.
 The macOS harness (`test_via_tart.sh`) keeps only the platform layers
 around the shared script: phase 0 python rebuilding, phase 1 venv
 installation with wheel-identity checks (pylibtiff, Glymur,
-openslide-python, pylibmc), Homebrew-hiding, the `otool` audits -- scoped to
-the packages our wheels provide (libtiff, glymur, openslide, pylibmc),
+openslide-python, pylibmc, pyvips), Homebrew-hiding, the `otool` audits -- scoped to
+the packages our wheels provide (libtiff, glymur, openslide, pylibmc,
+pyvips),
 since the venvs
 also contain pypi wheels pulled in as dependencies whose build artifacts
 (e.g. Pillow's RPATH to its own build machine, lxml's self-referencing

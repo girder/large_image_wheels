@@ -280,7 +280,7 @@ wheel_for_python() { # wheel_for_python <version req> -> wheel file or empty
 }
 
 wheel_version() { # version embedded in the wheel file name
-    basename "$1" | sed -E 's/^(pylibtiff|Glymur|openslide_python|pylibmc)-([0-9.]+)-.*/\2/'
+    basename "$1" | sed -E 's/^(pylibtiff|Glymur|openslide_python|pylibmc|pyvips)-([0-9.]+)-.*/\2/'
 }
 
 find_version_dir() {
@@ -555,6 +555,26 @@ for req in $PYTHONS; do
         fi
         log "OK python $req: installed pylibmc $minstalled"
     fi
+    # If a pyvips wheel is present, verify its identity the same way.
+    pvwhl="$(ls "$WHEELDIR"/pyvips-*.whl 2>/dev/null | head -1)"
+    if [ -n "$pvwhl" ]; then
+        pvver="$(wheel_version "$pvwhl")"
+        if ! "$venv/bin/pip" install --quiet --find-links "$WHEELDIR" \
+            "pyvips==$pvver" >>"$REPORT" 2>&1; then
+            log "FAIL python $req: pip install of pyvips failed"
+            FAILURES=$((FAILURES + 1))
+            rm -rf "$venv"
+            continue
+        fi
+        pvinstalled="$($venv/bin/pip show pyvips 2>/dev/null | sed -n 's/^Version: //p')"
+        if [ "$pvinstalled" != "$pvver" ]; then
+            log "FAIL python $req: installed pyvips $pvinstalled but expected $pvver (pip may have used pypi)"
+            FAILURES=$((FAILURES + 1))
+            rm -rf "$venv"
+            continue
+        fi
+        log "OK python $req: installed pyvips $pvinstalled"
+    fi
     VENVDIRS="$VENVDIRS $venv"
 done
 
@@ -659,6 +679,42 @@ if "@loader_path" not in line or ".dylibs/" not in line:
 print("pylibmc bundled-library check OK")
 PYEOF
 
+cat >"$TESTROOT/test_pyvips.py" <<'PYEOF'
+import glob
+import os
+import subprocess
+import sys
+
+import pyvips
+
+print("pyvips version:", pyvips.__version__)
+
+# The patched __init__.py preloads the bundled libvips dylib from
+# pyvips/.dylibs before importing the cffi extension; API_mode is only
+# True when that extension loaded and matched the libvips version (an ABI
+# fallback would silently skip it).
+if not pyvips.API_mode:
+    sys.exit("pyvips is not in API mode: the cffi extension did not import")
+print("pyvips API mode OK")
+
+# The extension must load libvips from the wheel's .dylibs directory
+# (delocate rewrites the load command to an @loader_path-relative path;
+# a system, Homebrew, or pypi libvips would mean the bundled library was
+# bypassed).
+exts = glob.glob(os.path.join(os.path.dirname(pyvips.__file__), "_libvips*.so"))
+if not exts:
+    sys.exit("the cffi extension was not found in the installed pyvips package")
+out = subprocess.run(
+    ["otool", "-L", exts[0]],
+    capture_output=True, text=True, check=True).stdout
+line = next(
+    (line for line in out.splitlines() if "libvips" in line), "")
+print(line.strip() or "no libvips load command found")
+if "@loader_path" not in line or ".dylibs/" not in line:
+    sys.exit("libvips was not loaded from the bundled .dylibs directory")
+print("pyvips bundled-library check OK")
+PYEOF
+
 for venv in $VENVDIRS; do
     req="$(basename "$venv" | sed 's/^venv-//')"
     # The per-python run directory is named here (it is wiped and
@@ -681,12 +737,12 @@ for venv in $VENVDIRS; do
     # pylibmc's C extension is a top-level module (installed outside the
     # pylibmc package directory), so it is audited alongside the packages.
     audit_macho "$site/libtiff" "$site/glymur" "$site/openslide" \
-        "$site/pylibmc" "$site"/_pylibmc*.so >>"$REPORT" 2>&1 || audit_fail=1
+        "$site/pylibmc" "$site/pyvips" "$site"/_pylibmc*.so >>"$REPORT" 2>&1 || audit_fail=1
     if [ "$audit_fail" != 0 ]; then
         log "FAIL python $req: otool audit found forbidden library references"
         FAILURES=$((FAILURES + 1))
     else
-        log "OK python $req: otool audit clean (libtiff, glymur, openslide, pylibmc)"
+        log "OK python $req: otool audit clean (libtiff, glymur, openslide, pylibmc, pyvips)"
     fi
     if "$venv/bin/python" "$TESTROOT/test_libtiff.py" >>"$REPORT" 2>&1; then
         log "OK python $req: python functional test passed"
@@ -706,6 +762,22 @@ for venv in $VENVDIRS; do
             log "OK python $req: pylibmc bundled-library check passed"
         else
             log "FAIL python $req: pylibmc bundled-library check failed"
+            FAILURES=$((FAILURES + 1))
+        fi
+    fi
+    if [ -n "$(ls "$WHEELDIR"/pyvips-*.whl 2>/dev/null)" ]; then
+        if "$venv/bin/python" "$TESTROOT/test_pyvips.py" >>"$REPORT" 2>&1; then
+            log "OK python $req: pyvips bundled-library check passed"
+        else
+            log "FAIL python $req: pyvips bundled-library check failed"
+            FAILURES=$((FAILURES + 1))
+        fi
+        # The bundled vips tool (exposed as a console script) exercises the
+        # bundled dylibs the way the linux wheel's vips does.
+        if "$venv/bin/vips" --version >>"$REPORT" 2>&1; then
+            log "OK python $req: bundled vips tool ran"
+        else
+            log "FAIL python $req: bundled vips tool failed"
             FAILURES=$((FAILURES + 1))
         fi
     fi
@@ -738,7 +810,7 @@ for venv in $VENVDIRS; do
         venvsite="$(ls -d "$rundir/venv/lib/python3."*/site-packages 2>/dev/null | head -1)"
         audit_fail=0
         audit_macho "$venvsite/libtiff" "$venvsite/glymur" "$venvsite/openslide" \
-            "$venvsite/pylibmc" "$venvsite"/_pylibmc*.so >>"$REPORT" 2>&1 || audit_fail=1
+            "$venvsite/pylibmc" "$venvsite/pyvips" "$venvsite"/_pylibmc*.so >>"$REPORT" 2>&1 || audit_fail=1
         if [ "$audit_fail" != 0 ]; then
             log "FAIL python $req: otool audit of the test_script.sh venv found forbidden library references"
             FAILURES=$((FAILURES + 1))
