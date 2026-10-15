@@ -248,11 +248,13 @@ runs, not just what the scripts are expected to do):
   failed run leaves the VM stopped and kept).  The first full default
   run (2026-10-15) rebuilt all four existing packages successfully and
   died at the (since fixed) jpeg-xl feature assertion; the builders
-  from lz4 through libhwy passed their in-VM assertions.  Decision
-  (2026-10-15): verification runs are always full builds from a fresh
-  base-VM clone; the resume-in-a-kept-VM path (stamps) is not used for
-  verification -- there is no interest in trading certainty about
-  ordering dependencies for cycle time.
+  from lz4 through libhwy passed their in-VM assertions.  The second
+  full run (2026-10-15) passed jpeg-xl and libimagequant and died at
+  the (since fixed) libexif autoreconf.  Decision (2026-10-15):
+  verification runs are always full builds from a fresh base-VM clone;
+  the resume-in-a-kept-VM path (stamps) is not used for verification --
+  there is no interest in trading certainty about ordering dependencies
+  for cycle time.
 
 ## Hard-won details (do not lose these)
 
@@ -595,7 +597,15 @@ Notes on the remaining packages:
   libimagequant (rust), libexif, libarchive, libraw, harfbuzz, pango,
   librsvg (rust), libde265 + libheif, poppler, cfitsio, hdf5, matio
   (hdf5 first, like the linux build order), openexr, and imagemagick
-  (after librsvg, so --with-rsvg finds it).  The rust toolchain mirrors
+  (after librsvg, so --with-rsvg finds it).  libexif is built from its
+  release tarball (which ships a pre-generated configure) with
+  --disable-nls: its configure.ac cannot be re-generated in the VM
+  because the NLS macros (AM_PO_SUBDIRS, AM_GNU_GETTEXT, AM_ICONV) and
+  autopoint come from gettext, which the VM deliberately does not have
+  (the linux build gets them from its gettext-devel package); NLS only
+  adds translated messages, the same reasoning as fontconfig's
+  -Dnls=disabled, and the linux dylib gets NLS from glibc's gettext,
+  not a bundled library.  The rust toolchain mirrors
   the Dockerfile: rustup minimal profile installed at base-VM
   provisioning time, `cargo install cargo-c` for libimagequant,
   `cargo cinstall --prefix=$LIW_PREFIX` for the library itself.
