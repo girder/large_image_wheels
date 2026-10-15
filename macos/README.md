@@ -156,7 +156,7 @@ only redoes unfinished work.
 
 ## Status
 
-Verified end to end as of 2026-10-14 (build VM and test VM runs on the
+Verified end to end as of 2026-10-15 (build VM and test VM runs on the
 current code; the list reflects what has actually been observed in VM
 runs, not just what the scripts are expected to do):
 
@@ -164,11 +164,12 @@ runs, not just what the scripts are expected to do):
   including the openjpeg feature assertions (lcms2, libpng, libtiff
   linkage verified via otool after the libpng framework fix).
 - Wheels for 3.11, 3.12, 3.13, 3.14, 3.15, 3.14t, 3.15t: pylibtiff,
-  Glymur, and openslide_python built.  Glymur is one wheel per
+  Glymur, openslide_python, and pylibmc built.  Glymur is one wheel per
   architecture (py3-none-macosx, `packaging` declared); openslide_python
   is one cp311-abi3 wheel for the stable pythons plus one wheel per
-  free-threaded python.  Wheel-identity checks pass (pip picks our
-  wheels) for all three; otool audits clean with Homebrew hidden;
+  free-threaded python; pylibmc is one cp3XX-cp3XX wheel per python.
+  Wheel-identity checks pass (pip picks our wheels) for all four;
+  otool audits clean with Homebrew hidden;
   bundled dylibs load from `.dylibs`; tiff round trip, bundled
   `tiffinfo`, the openslide bundled-dylib check, and bundled
   `slidetool slide quickhash1` pass on every python.
@@ -197,11 +198,9 @@ runs, not just what the scripts are expected to do):
   keeps only one EXIT trap, so the Homebrew restore moved into the same
   trap).  The third run passed everything.
 - Next up, in rough effort order (see the remaining-packages notes
-  below for details): the first VM build and test run for pylibmc (its
-  build and test wiring is in place, but nothing about it has been
-  observed in a VM run yet), then mapnik (moderate), then pyvips, then
-  GDAL (the largest); python-javabridge / python-bioformats need a JDK
-  design decision first.  pyproj stays pypi-sourced.
+  below for details): mapnik (moderate), then pyvips, then GDAL (the
+  largest); python-javabridge / python-bioformats need a JDK design
+  decision first.  pyproj stays pypi-sourced.
 
 ## Hard-won details (do not lose these)
 
@@ -598,11 +597,15 @@ Notes on the remaining packages:
   Dockerfile's order.
 - **pylibmc**: implemented (`pylibmc` case: `build_zlib`,
   `build_bison`, `build_cyrus_sasl`, `build_libmemcached`,
-  `build_pylibmc`).  Verified end to end on the host (bison →
-  cyrus-sasl → libmemcached → wheel → delocate → install in a venv,
-  where the harness's bundled-library check and the otool audit pass);
-  not yet observed in a VM run, where the isolation, the 11.0
-  deployment target, and the full python matrix are exercised.  Order
+  `build_pylibmc`) and verified end to end in the VM (build, wheel
+  assertions, and the test run pass on every requested python; the
+  suite's pylibmc test is currently just `import pylibmc`, which does
+  exercise the bundled plugin loading -- pylibmc's module init runs
+  `sasl_client_init`, which dlopens every bundled sasl2 plugin and
+  aborts the import if one is missing or unparseable).
+  The dependency builds were first proven on the host, then observed
+  in the VM (two VM rounds: the autoconf C23 issue and the bison
+  assertion, both below).  Order
   mirrors the Dockerfile: cyrus-sasl is built before libmemcached
   because libmemcached's configure only compiles its SASL support in
   when libsasl2 is found; `build_libmemcached` asserts the libsasl2
