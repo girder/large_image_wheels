@@ -264,8 +264,13 @@ runs, not just what the scripts are expected to do):
   (2026-10-15) passed poppler, cfitsio, hdf5, matio, and openexr and
   died building pango: its darwin-only CoreText backend includes
   <hb-coretext.h>, which harfbuzz's coretext feature (default
-  disabled) provides -- fixed with harfbuzz -Dcoretext=enabled.
-  Decision (2026-10-15):
+  disabled) provides -- fixed with harfbuzz -Dcoretext=enabled.  The
+  sixth full run built harfbuzz with coretext (hb-coretext.h installed)
+  and died at harfbuzz's own assertion, which looked for the
+  ApplicationServices umbrella in the otool output; the modern linker
+  records the sub-frameworks it resolved the umbrella's symbols from
+  (CoreText, CoreFoundation, CoreGraphics) instead -- fixed by checking
+  for CoreText (verified on the host).  Decision (2026-10-15):
   verification runs are always full builds from a fresh base-VM clone;
   the resume-in-a-kept-VM path (stamps) is not used for verification --
   there is no interest in trading certainty about ordering dependencies
@@ -646,8 +651,11 @@ Notes on the remaining packages:
   test) always succeeds on darwin, there is no pango option to skip the
   resulting pangocoretext.c sources, and they include <hb-coretext.h>
   from harfbuzz (a darwin-only addition; the linux wheel has no
-  CoreText shaper, and libharfbuzz links the ApplicationServices system
-  framework, which the otool audits allow); librsvg passes `-Dpixbuf=disabled` (gdk-pixbuf is built in
+  CoreText shaper).  The linkage lands as the CoreText,
+  CoreFoundation, and CoreGraphics system frameworks -- the modern
+  linker resolves the ApplicationServices umbrella's symbols from its
+  sub-frameworks and records those instead -- all /System paths the
+  otool audits allow.  librsvg passes `-Dpixbuf=disabled` (gdk-pixbuf is built in
   neither pipeline, and leaving the feature auto could pull librsvg's
   gdk-pixbuf subproject wrap) and appends `lto = true` to Cargo.toml
   like the Dockerfile; jpeg-xl's highway is statically embedded by
