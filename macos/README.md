@@ -503,6 +503,18 @@ runs, not just what the scripts are expected to do):
 - fontconfig needs `gperf`, which is neither in the base VM's brew set
   nor in the CLT; fontconfig's meson falls back to its own gperf
   subproject, so nothing extra has to be provisioned.
+- The Dockerfile is deliberate about every flag; treat each library as
+  its own special case and check each flag against the upstream build
+  system at the pinned version instead of assuming a generic default.
+  Every pyvips-stage build failure so far came from substituting a
+  "reasonable generic" for something the Dockerfile spelled out:
+  jpeg-xl's vendored static highway (HWY_FORCE_STATIC_LIBS + the
+  submodule clone), libexif needing the image's gettext-devel for its
+  autoreconf, poppler hard-rejecting MinSizeRel (hence its explicit
+  -DCMAKE_BUILD_TYPE=Release), and imagemagick's linux-only -lrt.
+  Even flags that look inert may encode real constraints (cfitsio's
+  CMAKE_POLICY_VERSION_MINIMUM, hdf5's ZLIB_DIR) -- mirror them rather
+  than pruning them, and only drop a flag with a written reason.
 - The macOS linker rejects undefined symbols in dylibs where the Linux
   linker allows them.  jxrlib's shared-library rules rely on the Linux
   behavior (libjxrglue references symbols that live in libjpegxr); the
