@@ -198,9 +198,12 @@ runs, not just what the scripts are expected to do):
   keeps only one EXIT trap, so the Homebrew restore moved into the same
   trap).  The third run passed everything.
 - Next up, in rough effort order (see the remaining-packages notes
-  below for details): mapnik (moderate), then pyvips, then GDAL (the
-  largest); python-javabridge / python-bioformats need a JDK design
-  decision first.  pyproj stays pypi-sourced.
+  below for details): pyvips, then GDAL (the largest), then mapnik
+  (which must come after GDAL -- its cmake auto-detects the optional
+  GDAL input plugin through pkg-config, and the linux build has gdal
+  installed by the time mapnik's configure runs, so the same order is
+  required here); python-javabridge / python-bioformats need a JDK
+  design decision first.  pyproj stays pypi-sourced.
 
 ## Hard-won details (do not lose these)
 
@@ -653,7 +656,14 @@ Notes on the remaining packages:
   `javabridge/jutil.py` and `locate.py` patches reference `.so` paths and
   need macos equivalents (`.dylib`, and `lib/jvm/lib/libjvm.dylib`
   layout).  This is the package most likely to need real design work.
-- **mapnik**: needs mapnik + boost etc.; check the mapnik patches.
+- **mapnik**: needs boost, libicu, and the rest of mapnik's dependency
+  set, plus the repo's mapnik patches (mapnik.patch, mapnik_data_path.patch,
+  mapnik_tls.patch); check the mapnik sections of the Dockerfile.  It
+  must be built AFTER GDAL: mapnik's cmake builds the optional GDAL
+  input plugin when it finds libgdal, and the linux Dockerfile installs
+  GDAL immediately before mapnik, so doing GDAL first is required for
+  feature parity (and, per the case-order rules, the case must build
+  the full GDAL dependency tree before mapnik's configure runs).
 
 ## Test parity with the linux build
 
