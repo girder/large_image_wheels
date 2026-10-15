@@ -58,16 +58,23 @@ manylinux container plays for the linux builds:
 
 - `build_wheels.sh` -- the in-VM monolithic build.  Environment setup is at
   the top; helpers (`step`, `v`, `skip_if_done`/`done_stamp`, `git_retry`,
-  `fetch`, `cmake_build`, `meson_build`/`ensure_meson`, `find_version_dir`,
+  `fetch`, `cmake_build`, `meson_build`/`ensure_meson`, `ensure_rust`,
+  `find_version_dir`,
   `ensure_pythons`, `collect_pybins`, `ensure_tools`, `set_patch_python`,
   `scrub_python_sysconfig`, `sanitize_prefix_dylibs`) follow; then
   dependency builders (`build_zlib` ... `build_libtiff`, wrapped by
   `build_libtiff_deps`, plus `build_lcms2`, `build_libpng`,
-  `build_openjpeg`, `build_cyrus_sasl`, `build_libmemcached`, and the
+  `build_openjpeg`, `build_cyrus_sasl`, `build_libmemcached`, the
   openslide chain `build_libbrotli`,
   `build_libexpat`, `build_libffi`, `build_glib`, `build_sqlite`,
   `build_libxml2`, `build_pixman`, `build_freetype`, `build_fontconfig`,
-  `build_cairo`, `build_jxrlib`), then package builders (`build_pylibtiff`,
+  `build_cairo`, `build_jxrlib`, and the pyvips tree `build_orc`,
+  `build_nifti`, `build_lz4`, `build_fftw3`, `build_libhwy`,
+  `build_jpegxl`, `build_libimagequant`, `build_libexif`,
+  `build_libarchive`, `build_libraw`, `build_harfbuzz`, `build_pango`,
+  `build_librsvg`, `build_libde265`, `build_libheif`, `build_poppler`,
+  `build_fitsio`, `build_hdf5`, `build_matio`, `build_openexr`,
+  `build_imagemagick`), then package builders (`build_pylibtiff`,
   `build_glymur`, `build_openslide`, `build_openslide_python`,
   `build_pylibmc`; each package
   builder calls `sanitize_prefix_dylibs` after its dependencies are built),
@@ -205,6 +212,33 @@ runs, not just what the scripts are expected to do):
   required here); last, python-javabridge / python-bioformats, whose
   bundling approach is now decided (see the note) -- its first task is
   the JDK 8 arm64 macOS vendor check.  pyproj stays pypi-sourced.
+- pyvips work is staged (2026-10-15), each stage checkpointed with a VM
+  run before the next one lands (all reachable as `dep:<name>`;
+  `tart_build.sh` skips the expected-wheel validation for those
+  pseudo-packages).  Stage 1 -- the leaf dependencies (`build_lz4`,
+  `build_orc`, `build_nifti`, `build_fftw3`, `build_libhwy`,
+  `build_jpegxl`, `build_libimagequant`, `build_libexif`,
+  `build_libarchive`, `build_libraw`) plus the rust toolchain (rustup
+  minimal profile installed by provisioning; `ensure_rust` bootstraps
+  it on base VMs provisioned before that change) -- passed its
+  dependency-only checkpoint VM run.  Stage 2 -- `build_harfbuzz`,
+  `build_pango`, `build_librsvg`, `build_libde265`, `build_libheif`,
+  `build_poppler`, `build_fitsio`, `build_hdf5`, `build_matio`,
+  `build_openexr`, `build_imagemagick` -- is implemented in
+  `build_wheels.sh` but has NOT yet been run in a VM; its checkpoint
+  run must include every earlier dependency, because each run starts
+  from a pristine base VM with empty stamps:
+  `macos/tart_build.sh --packages "dep:zlib dep:zstd dep:jbigkit
+  dep:libwebp dep:libjpeg-turbo dep:libdeflate dep:xz dep:libtiff
+  dep:lcms2 dep:libpng dep:openjpeg dep:libbrotli dep:libexpat
+  dep:libffi dep:glib dep:sqlite dep:libxml2 dep:pixman dep:freetype
+  dep:fontconfig dep:cairo dep:jxrlib dep:openslide dep:orc dep:nifti
+  dep:lz4 dep:fftw3 dep:libhwy dep:jpeg-xl dep:libimagequant
+  dep:libexif dep:libarchive dep:libraw dep:harfbuzz dep:pango
+  dep:librsvg dep:libde265 dep:libheif dep:poppler dep:fitsio dep:hdf5
+  dep:matio dep:openexr dep:imagemagick"` (this is also the order the
+  future `pyvips` case will use).  Stage 3 (the `libvips` build and the
+  pyvips wheel itself, with the case wiring) follows that run.
 
 ## Hard-won details (do not lose these)
 
@@ -538,9 +572,52 @@ Notes on the remaining packages:
   Dockerfile patch is rebuilt).  Verified end to end in the VM: the
   wheel passes the identity, otool, and shared-suite checks on every
   requested python.
-- **pyvips**: needs libvips and its dependency tree (glib, gobject
-  introspection, and friends from the Dockerfile); the `pyvips` module
-  needs the same "find the bundled library" patch as pylibtiff.
+- **pyvips**: in progress (2026-10-15), staged (see the Status section
+  for which stages are verified).  The linux wheel bundles libvips and
+  its whole feature set, so the macos build must mirror the
+  Dockerfile's final state before libvips configures: the openslide
+  chain (libvips links openslide like any other loader), orc, nifti,
+  lz4, fftw3, libhwy, jpeg-xl (which needs libhwy and brotli),
+  libimagequant (rust), libexif, libarchive, libraw, harfbuzz, pango,
+  librsvg (rust), libde265 + libheif, poppler, cfitsio, hdf5, matio
+  (hdf5 first, like the linux build order), openexr, and imagemagick
+  (after librsvg, so --with-rsvg finds it).  The rust toolchain mirrors
+  the Dockerfile: rustup minimal profile installed at base-VM
+  provisioning time, `cargo install cargo-c` for libimagequant,
+  `cargo cinstall --prefix=$LIW_PREFIX` for the library itself.
+  Stage-2 decisions so far (all to be confirmed by the checkpoint run):
+  pango's fribidi is a hard dependency with no prefix copy, so pango is
+  configured with `--force-fallback-for=fribidi` to build its own
+  subproject wrap statically into libpango (meson's cmake fallback
+  method is not prefix-scoped, so a Homebrew fribidi could otherwise
+  leak in); librsvg passes `-Dpixbuf=disabled` (gdk-pixbuf is built in
+  neither pipeline, and leaving the feature auto could pull librsvg's
+  gdk-pixbuf subproject wrap) and appends `lto = true` to Cargo.toml
+  like the Dockerfile; poppler passes `-DENABLE_BOOST=OFF` (a
+  deviation: boost is not in the prefix yet -- it is a
+  splash-performance option that links nothing into the dylibs;
+  revisit when boost is built for mapnik/GDAL) while NSS, GPGME, and
+  the QT test options mirror the Dockerfile; hdf5 drops the
+  Dockerfile's MPI-dependent options (HDF5_ENABLE_PARALLEL and the MPI
+  variables -- the prefix has no MPI; parallel netcdf is a GDAL-stage
+  concern that will need an MPI built into the prefix) and
+  HDF5_ENABLE_DIRECT_VFD (linux-only, O_DIRECT); imagemagick drops
+  -lrt from LIBS (linux-only) and is asserted on libMagickCore's own
+  delegates (freetype, fontconfig, xml2, zlib) plus a populated coder
+  modules directory -- the wheel ships only libMagickCore/MagickWand
+  and the `magick` tool, exactly like the linux wheel (the dlopened
+  coder modules are not bundled by either delocate or auditwheel);
+  matio's hand-written matio.pc points at $LIW_PREFIX (mirroring the
+  Dockerfile's overwrite); libvips will need
+  `-Dnifti-prefix-dir=$LIW_PREFIX` (the Dockerfile passes /usr/local);
+  gobject-introspection is deferred (it produces metadata, not linked
+  features, and the macos openslide chain has been fine without it --
+  revisit only if libvips's meson requires it).  The `pyvips` module
+  needs the same "find the bundled library" patch as pylibtiff,
+  adapted to delocate's `pyvips/.dylibs` layout (with the linux
+  `pyvips.libs` location as fallback), and the bundled `vips` tools and
+  `magick` go into `pyvips/bin` with the `pyvips.bin:program` wrapper
+  (the linux wheel does exactly this).
 Notes on the remaining packages:
 
 - **openslide_python**: implemented (`openslide_python` case:
