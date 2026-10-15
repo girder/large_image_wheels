@@ -260,7 +260,12 @@ runs, not just what the scripts are expected to do):
   linking hdf5: its config-mode zlib find silently succeeds against
   the cmake-built zlib's ZLIBConfig.cmake without providing the module
   variables hdf5 links with (fixed by presetting ZLIB_LIBRARIES and
-  ZLIB_INCLUDE_DIR; verified on the host).  Decision (2026-10-15):
+  ZLIB_INCLUDE_DIR; verified on the host).  The fifth full run
+  (2026-10-15) passed poppler, cfitsio, hdf5, matio, and openexr and
+  died building pango: its darwin-only CoreText backend includes
+  <hb-coretext.h>, which harfbuzz's coretext feature (default
+  disabled) provides -- fixed with harfbuzz -Dcoretext=enabled.
+  Decision (2026-10-15):
   verification runs are always full builds from a fresh base-VM clone;
   the resume-in-a-kept-VM path (stamps) is not used for verification --
   there is no interest in trading certainty about ordering dependencies
@@ -636,7 +641,13 @@ Notes on the remaining packages:
   configured with `--force-fallback-for=fribidi` to build its own
   subproject wrap statically into libpango (meson's cmake fallback
   method is not prefix-scoped, so a Homebrew fribidi could otherwise
-  leak in); librsvg passes `-Dpixbuf=disabled` (gdk-pixbuf is built in
+  leak in); harfbuzz is built with `-Dcoretext=enabled` because pango's
+  macOS build requires it -- its HAVE_CORE_TEXT probe (a CoreText link
+  test) always succeeds on darwin, there is no pango option to skip the
+  resulting pangocoretext.c sources, and they include <hb-coretext.h>
+  from harfbuzz (a darwin-only addition; the linux wheel has no
+  CoreText shaper, and libharfbuzz links the ApplicationServices system
+  framework, which the otool audits allow); librsvg passes `-Dpixbuf=disabled` (gdk-pixbuf is built in
   neither pipeline, and leaving the feature auto could pull librsvg's
   gdk-pixbuf subproject wrap) and appends `lto = true` to Cargo.toml
   like the Dockerfile; jpeg-xl's highway is statically embedded by

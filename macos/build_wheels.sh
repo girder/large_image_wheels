@@ -1233,15 +1233,26 @@ build_harfbuzz() {
         sed -i '' 's!/usr/bin/python3!/usr/bin/env python3!g' \
             src/relative_to.py || exit 1
     ) || die "harfbuzz patch failed"
-    meson_build "$LIW_SRC/harfbuzz" -Dtests=disabled -Ddocs=disabled
+    meson_build "$LIW_SRC/harfbuzz" -Dtests=disabled -Ddocs=disabled \
+        -Dcoretext=enabled
+    # -Dcoretext=enabled: harfbuzz's coretext feature defaults to disabled
+    # even on darwin, but pango's macOS build requires it -- its
+    # HAVE_CORE_TEXT probe (a CoreText link test) always succeeds on
+    # darwin, there is no pango option to skip the resulting
+    # pangocoretext.c sources, and they include <hb-coretext.h> from
+    # harfbuzz.  libharfbuzz then links the ApplicationServices system
+    # framework, which the otool audits allow.  The linux wheel has no
+    # CoreText shaper; this is a darwin-only addition.
     # Feature assertions: glib and freetype are installed before this runs
     # (the openslide chain), so harfbuzz's auto features must light up the
-    # same way they do on linux.  cairo is only linked by the separate
-    # harfbuzz-cairo library, not by libharfbuzz itself.
+    # same way they do on linux; ApplicationServices must be linked
+    # because pango needs the coretext API it provides.  cairo is only
+    # linked by the separate harfbuzz-cairo library, not by libharfbuzz
+    # itself.
     local linked lib
     linked="$(otool -L "$LIW_PREFIX/lib"/libharfbuzz*.dylib 2>/dev/null || true)"
     [ -n "$linked" ] || die "harfbuzz produced no dylib to check"
-    for lib in libfreetype libglib; do
+    for lib in libfreetype libglib ApplicationServices; do
         printf '%s\n' "$linked" | grep -q "$lib" ||
             die "harfbuzz was not linked against $lib; an optional dependency was missed (check the build order)"
     done
