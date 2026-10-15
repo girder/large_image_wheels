@@ -58,7 +58,8 @@ manylinux container plays for the linux builds:
 
 - `build_wheels.sh` -- the in-VM monolithic build.  Environment setup is at
   the top; helpers (`step`, `v`, `skip_if_done`/`done_stamp`, `git_retry`,
-  `fetch`, `cmake_build`, `meson_build`/`ensure_meson`, `find_version_dir`,
+  `fetch`, `cmake_build`, `meson_build`/`ensure_meson`,
+  `ensure_rust`, `find_version_dir`,
   `ensure_pythons`, `collect_pybins`, `ensure_tools`, `set_patch_python`,
   `scrub_python_sysconfig`, `sanitize_prefix_dylibs`) follow; then
   dependency builders (`build_zlib` ... `build_libtiff`, wrapped by
@@ -205,6 +206,24 @@ runs, not just what the scripts are expected to do):
   required here); last, python-javabridge / python-bioformats, whose
   bundling approach is now decided (see the note) -- its first task is
   the JDK 8 arm64 macOS vendor check.  pyproj stays pypi-sourced.
+- pyvips work has started (2026-10-15), staged so each stage can be
+  checkpointed with a VM run before the next one lands.  Stage 1 added
+  the leaf dependency builders to `build_wheels.sh` (`build_lz4`,
+  `build_orc`, `build_nifti`, `build_fftw3`, `build_libhwy`,
+  `build_jpegxl`, `build_libimagequant`, `build_libexif`,
+  `build_libarchive`, `build_libraw`) plus the rust toolchain
+  (rustup minimal profile + cargo-c, mirroring the Dockerfile's image
+  install): provisioning now installs it, and `ensure_rust` bootstraps
+  it on base VMs provisioned before that change.  `tart_build.sh`
+  skips the expected-wheel validation for `dep:<name>` pseudo-packages
+  so a staged dependency-only checkpoint run works:
+  `macos/tart_build.sh --packages "dep:lz4 dep:orc dep:nifti dep:fftw3
+  dep:libhwy dep:libbrotli dep:jpeg-xl dep:libimagequant dep:libexif
+  dep:libarchive dep:lcms2 dep:libraw"` (lcms2 must precede libraw, as
+  on linux).  These builders have NOT yet been run in a VM; the
+  checkpoint run is the next step.  Later stages: harfbuzz + pango +
+  librsvg; libde265 + libheif + poppler + cfitsio + hdf5 + matio +
+  openexr; imagemagick; then libvips and the pyvips wheel itself.
 
 ## Hard-won details (do not lose these)
 
@@ -538,11 +557,29 @@ Notes on the remaining packages:
   Dockerfile patch is rebuilt).  Verified end to end in the VM: the
   wheel passes the identity, otool, and shared-suite checks on every
   requested python.
-- **pyvips**: needs libvips and its dependency tree (glib, gobject
-  introspection, and friends from the Dockerfile); the `pyvips` module
-  needs the same "find the bundled library" patch as pylibtiff.
-Notes on the remaining packages:
-
+- **pyvips**: in progress (2026-10-15), staged.  The linux wheel bundles
+  libvips and its whole feature set, so the macos build must mirror the
+  Dockerfile's final state before libvips configures: orc, nifti, lz4,
+  fftw3, libhwy, jpeg-xl (which needs libhwy and brotli),
+  libimagequant (rust), libexif, libarchive, libraw, harfbuzz, pango,
+  librsvg (rust), libde265 + libheif, poppler, cfitsio, hdf5, matio
+  (hdf5 first, like the linux build order), openexr, and imagemagick
+  (after librsvg, so --with-rsvg finds it); libvips also loads through
+  openslide, so the openslide chain is in the same case.  The rust
+  toolchain mirrors the Dockerfile: rustup minimal profile installed at
+  image/base-VM build time, `cargo install cargo-c` for libimagequant,
+  `cargo cinstall --prefix=$LIW_PREFIX` for the library itself.
+  Differences already known: imagemagick's `LIBS=-lrt ...` is
+  linux-only (drop -lrt); matio's hand-written matio.pc must point at
+  $LIW_PREFIX; libvips needs `-Dnifti-prefix-dir=$LIW_PREFIX` (the
+  Dockerfile passes /usr/local); gobject-introspection is deferred
+  (it produces metadata, not linked features, and the macos openslide
+  chain has been fine without it -- revisit only if libvips's meson
+  requires it).  The `pyvips` module needs the same "find the bundled
+  library" patch as pylibtiff, adapted to delocate's `pyvips/.dylibs`
+  layout (with the linux `pyvips.libs` location as fallback), and the
+  bundled `vips`/`magick` tools go into `pyvips/bin` with the
+  `pyvips.bin:program` wrapper.
 - **openslide_python**: implemented (`openslide_python` case:
   `build_libtiff_deps`, `build_lcms2`, `build_libpng`, `build_openjpeg`,
   then the openslide chain `build_libbrotli`, `build_libexpat`,
