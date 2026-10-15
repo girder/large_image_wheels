@@ -1200,6 +1200,322 @@ build_libraw() {
 }
 
 # --------------------------------------------------------------------------
+# Dependencies for pyvips, stage 2 (harfbuzz through imagemagick), mirroring
+# the Dockerfile's remaining VIPS-tree sections.  Like stage 1, each one is
+# also reachable as dep:<name> for staged verification inside a VM; the
+# pyvips case is not wired until the whole tree has been verified.
+# --------------------------------------------------------------------------
+
+build_harfbuzz() {
+    skip_if_done harfbuzz && return 0
+    step "harfbuzz"
+    cd "$LIW_SRC"
+    rm -rf harfbuzz
+    git_retry https://github.com/harfbuzz/harfbuzz.git "$(v harfbuzz)" harfbuzz
+    (
+        cd harfbuzz || exit 1
+        # Mirrors the Dockerfile's sed; at 14.6.0 the script already uses
+        # /usr/bin/env python3, so this is a no-op kept for parity.
+        sed -i '' 's!/usr/bin/python3!/usr/bin/env python3!g' \
+            src/relative_to.py || exit 1
+    ) || die "harfbuzz patch failed"
+    meson_build "$LIW_SRC/harfbuzz" -Dtests=disabled -Ddocs=disabled
+    # Feature assertions: glib and freetype are installed before this runs
+    # (the openslide chain), so harfbuzz's auto features must light up the
+    # same way they do on linux.  cairo is only linked by the separate
+    # harfbuzz-cairo library, not by libharfbuzz itself.
+    local linked lib
+    linked="$(otool -L "$LIW_PREFIX/lib"/libharfbuzz.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "harfbuzz produced no dylib to check"
+    for lib in libfreetype libglib; do
+        printf '%s\n' "$linked" | grep -q "$lib" ||
+            die "harfbuzz was not linked against $lib; an optional dependency was missed (check the build order)"
+    done
+    done_stamp harfbuzz
+}
+
+build_pango() {
+    skip_if_done pango && return 0
+    step "pango"
+    cd "$LIW_SRC"
+    rm -rf pango
+    git_retry https://github.com/GNOME/pango.git "$(v pango)" pango
+    # fribidi is a hard dependency that nothing in the prefix provides:
+    # force pango's own subproject wrap (meson's default wrap mode allows
+    # the fallback, like glib's pcre2) so it is built statically into
+    # libpango rather than risking a Homebrew leak through meson's cmake
+    # fallback method.
+    meson_build "$LIW_SRC/pango" -Dintrospection=disabled \
+        --force-fallback-for=fribidi
+    # Feature assertions: freetype, fontconfig, cairo, glib, and harfbuzz
+    # are all installed before this runs, so the pangoft2 and pangocairo
+    # variants (what librsvg and libvips consume) must exist and link the
+    # prefix libraries.
+    for lib in pango pangocairo pangoft2; do
+        [ -e "$LIW_PREFIX/lib/lib$lib-1.0.0.dylib" ] ||
+            die "pango did not install lib$lib-1.0.0.dylib"
+    done
+    local linked lib
+    linked="$(otool -L "$LIW_PREFIX/lib"/libpangoft2-1.0.0.dylib \
+        "$LIW_PREFIX/lib"/libpangocairo-1.0.0.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "pango produced no dylibs to check"
+    for lib in libharfbuzz libfreetype libcairo; do
+        printf '%s\n' "$linked" | grep -q "$lib" ||
+            die "pango was not linked against $lib; an optional dependency was missed (check the build order)"
+    done
+    done_stamp pango
+}
+
+build_librsvg() {
+    skip_if_done librsvg && return 0
+    step "librsvg"
+    ensure_rust
+    cd "$LIW_SRC"
+    rm -rf librsvg
+    git_retry https://github.com/GNOME/librsvg.git "$(v librsvg)" librsvg
+    (
+        cd librsvg || exit 1
+        # Make the output dylib much smaller (mirrors the Dockerfile).
+        printf '\n[profile.release]\nlto = true\n' >> Cargo.toml || exit 1
+    ) || die "librsvg patch failed"
+    # The Dockerfile's LDFLAGS addition (--no-as-needed,-ldl) and the
+    # makedef.py sed are linux/PE specifics and are not applied here.
+    # gdk-pixbuf is not built in either pipeline; its auto feature must
+    # drop out rather than pulling the subproject wrap, so it is disabled
+    # explicitly.
+    meson_build "$LIW_SRC/librsvg" -Dintrospection=disabled -Ddocs=disabled \
+        -Dtests=false -Dpixbuf=disabled
+    [ -n "$(ls "$LIW_PREFIX/lib"/librsvg-2*.dylib 2>/dev/null)" ] ||
+        die "librsvg did not install its library"
+    local linked lib
+    linked="$(otool -L "$LIW_PREFIX/lib"/librsvg-2*.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "librsvg produced no dylib to check"
+    for lib in libcairo libpango libglib libxml2; do
+        printf '%s\n' "$linked" | grep -q "$lib" ||
+            die "librsvg was not linked against $lib; an optional dependency was missed (check the build order)"
+    done
+    done_stamp librsvg
+}
+
+build_libde265() {
+    skip_if_done libde265 && return 0
+    step "libde265"
+    cd "$LIW_SRC"
+    rm -rf libde265
+    git_retry https://github.com/strukturag/libde265.git \
+        "v$(v libde265)" libde265
+    cmake_build "$LIW_SRC/libde265" \
+        -DBUILD_SHARED=ON -DBUILD_STATIC=OFF \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+        -DCMAKE_CXX_FLAGS="$CXXFLAGS -pthread" \
+        -DCMAKE_EXE_LINKER_FLAGS=-pthread \
+        -DENABLE_SDL=OFF
+    [ -n "$(ls "$LIW_PREFIX/lib"/libde265*.dylib 2>/dev/null)" ] ||
+        die "libde265 did not install its library"
+    done_stamp libde265
+}
+
+build_libheif() {
+    skip_if_done libheif && return 0
+    step "libheif"
+    cd "$LIW_SRC"
+    rm -rf libheif
+    git_retry https://github.com/strukturag/libheif.git "v$(v libheif)" libheif
+    cmake_build "$LIW_SRC/libheif" -DCMAKE_BUILD_TYPE=Release
+    # Feature assertion: libde265 is the HEVC decoder the linux wheel
+    # carries (the other codec plugins are absent on linux too).
+    local linked lib
+    linked="$(otool -L "$LIW_PREFIX/lib"/libheif*.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "libheif produced no dylib to check"
+    for lib in libde265; do
+        printf '%s\n' "$linked" | grep -q "$lib" ||
+            die "libheif was not linked against $lib; an optional dependency was missed (check the build order)"
+    done
+    done_stamp libheif
+}
+
+build_poppler() {
+    skip_if_done poppler && return 0
+    step "poppler"
+    cd "$LIW_SRC"
+    rm -rf poppler
+    git_retry https://gitlab.freedesktop.org/poppler/poppler.git \
+        "poppler-$(v poppler)" poppler
+    # The Dockerfile's devtoolset block is linux-only.  NSS and GPGME are
+    # disabled like on linux.  Boost is disabled: nothing in the macos
+    # prefix provides it yet (it is a splash-performance option and links
+    # nothing into the dylibs; revisit when boost is built for
+    # mapnik/GDAL).  libcurl resolves to the macOS system libcurl in
+    # /usr/lib, which the otool audits allow, matching the linux build
+    # where poppler links the image's own curl.
+    cmake_build "$LIW_SRC/poppler" \
+        -DENABLE_UNSTABLE_API_ABI_HEADERS=on \
+        -DBUILD_CPP_TESTS=OFF -DBUILD_GTK_TESTS=OFF \
+        -DBUILD_MANUAL_TESTS=OFF -DBUILD_QT5_TESTS=OFF -DBUILD_QT6_TESTS=OFF \
+        -DENABLE_NSS3=OFF -DENABLE_GPGME=OFF -DENABLE_QT5=OFF -DENABLE_QT6=OFF \
+        -DENABLE_BOOST=OFF
+    [ -n "$(ls "$LIW_PREFIX/lib"/libpoppler*.dylib 2>/dev/null)" ] ||
+        die "poppler did not install its libraries"
+    # Feature assertions over the union of the poppler libraries: freetype,
+    # jpeg, png, and openjpeg are the prefix-provided format features the
+    # linux wheel carries (tiff is linked by the tiff-writing utils).
+    local linked lib
+    linked="$(otool -L "$LIW_PREFIX/lib"/libpoppler*.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "poppler produced no dylib to check"
+    for lib in libfreetype libjpeg libpng libopenjp; do
+        printf '%s\n' "$linked" | grep -q "$lib" ||
+            die "poppler was not linked against $lib; an optional dependency was missed (check the build order)"
+    done
+    done_stamp poppler
+}
+
+build_fitsio() {
+    skip_if_done fitsio && return 0
+    step "cfitsio"
+    cd "$LIW_SRC"
+    rm -rf cfitsio
+    git_retry https://github.com/HEASARC/cfitsio.git \
+        "cfitsio-$(v fitsio)" cfitsio
+    cmake_build "$LIW_SRC/cfitsio" -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    [ -n "$(ls "$LIW_PREFIX/lib"/libcfitsio*.dylib 2>/dev/null)" ] ||
+        die "cfitsio did not install its library"
+    done_stamp fitsio
+}
+
+build_hdf5() {
+    skip_if_done hdf5 && return 0
+    step "hdf5"
+    cd "$LIW_SRC"
+    rm -rf hdf5
+    git_retry https://github.com/HDFGroup/hdf5.git "hdf5-$(v hdf5)" hdf5
+    # The Dockerfile's MPI-dependent options (HDF5_ENABLE_PARALLEL and the
+    # MPI_* variables) are dropped: the macos prefix has no MPI (parallel
+    # netcdf is a GDAL-stage concern and will need an MPI built into the
+    # prefix).  HDF5_ENABLE_DIRECT_VFD is linux-only (O_DIRECT).
+    cmake_build "$LIW_SRC/hdf5" \
+        -DDEFAULT_API_VERSION=v18 \
+        -DHDF5_BUILD_EXAMPLES=OFF \
+        -DHDF5_BUILD_FORTRAN=OFF \
+        -DHDF5_ENABLE_Z_LIB_SUPPORT=ON \
+        -DHDF5_BUILD_GENERATORS=ON \
+        -DHDF5_BUILD_CPP_LIB=ON \
+        -DHDF5_DISABLE_COMPILER_WARNINGS=ON \
+        -DBUILD_TESTING=OFF \
+        -DZLIB_DIR="$LIW_PREFIX/lib" \
+        -DHDF5_BUILD_DOC=OFF \
+        -DALLOW_UNSUPPORTED=ON \
+        -DHDF5_ENABLE_THREADSAFE=ON
+    [ -e "$LIW_PREFIX/lib/libhdf5.dylib" ] ||
+        die "hdf5 did not install its library"
+    local linked lib
+    linked="$(otool -L "$LIW_PREFIX/lib"/libhdf5.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "hdf5 produced no dylib to check"
+    for lib in "libz." ; do
+        printf '%s\n' "$linked" | grep -q "$lib" ||
+            die "hdf5 was not linked against $lib; Z_LIB_SUPPORT was not enabled"
+    done
+    done_stamp hdf5
+}
+
+build_matio() {
+    skip_if_done matio && return 0
+    step "matio"
+    cd "$LIW_SRC"
+    rm -rf matio
+    git_retry https://github.com/tbeu/matio.git "v$(v matio)" matio
+    cmake_build "$LIW_SRC/matio" -DCMAKE_BUILD_TYPE=MinSizeRel
+    # matio's own matio.pc does not carry the version or the correct libdir
+    # (the Dockerfile overwrites it as well), so write one that points at
+    # the private prefix; libvips resolves matio through pkg-config.
+    cat > "$LIW_PREFIX/lib/pkgconfig/matio.pc" <<EOF
+Name: matio
+Description: matio library
+Version: $(v matio)
+Cflags: -I$LIW_PREFIX/include
+Libs: -L$LIW_PREFIX/lib -lmatio
+EOF
+    [ -e "$LIW_PREFIX/lib/libmatio.dylib" ] ||
+        die "matio did not install its library"
+    local linked lib
+    linked="$(otool -L "$LIW_PREFIX/lib"/libmatio.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "matio produced no dylib to check"
+    for lib in libhdf5; do
+        printf '%s\n' "$linked" | grep -q "$lib" ||
+            die "matio was not linked against $lib; hdf5 was not found (check the build order)"
+    done
+    done_stamp matio
+}
+
+build_openexr() {
+    skip_if_done openexr && return 0
+    step "openexr"
+    cd "$LIW_SRC"
+    rm -rf openexr
+    git_retry https://github.com/AcademySoftwareFoundation/openexr.git \
+        "v$(v openexr)" openexr
+    # The Imath submodule is not cloned (the Dockerfile's plain clone does
+    # not recurse either); openexr's cmake fetches Imath at configure time
+    # using OPENEXR_IMATH_TAG.
+    cmake_build "$LIW_SRC/openexr" \
+        -DBUILD_TESTING=OFF \
+        -DOPENEXR_BUILD_EXAMPLES=OFF \
+        -DOPENEXR_IMATH_TAG=v3.2.1
+    [ -n "$(ls "$LIW_PREFIX/lib"/libOpenEXR*.dylib 2>/dev/null)" ] ||
+        die "openexr did not install its libraries"
+    local linked lib
+    linked="$(otool -L "$LIW_PREFIX/lib"/libOpenEXR-*.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "openexr produced no dylib to check"
+    for lib in "libz." ; do
+        printf '%s\n' "$linked" | grep -q "$lib" ||
+            die "openexr was not linked against $lib; zlib was not found"
+    done
+    done_stamp openexr
+}
+
+build_imagemagick() {
+    skip_if_done imagemagick && return 0
+    step "imagemagick"
+    cd "$LIW_SRC"
+    rm -rf ImageMagick
+    git_retry https://github.com/ImageMagick/ImageMagick.git \
+        "$(v imagemagick)" ImageMagick
+    (
+        cd ImageMagick || exit 1
+        # The linux LIBS adds -lrt, which does not exist on darwin; zlib is
+        # resolved through the prefix's pkgconf like on linux.  Built after
+        # librsvg so --with-rsvg finds it (and after the whole dependency
+        # tree so every delegate configure can detect lights up).
+        ./configure --prefix="$LIW_PREFIX" --with-modules --with-rsvg \
+            --with-fftw --with-jxl \
+            LIBS="$([ -n "$PKG_CONFIG" ] && "$PKG_CONFIG" --libs zlib)" \
+            --disable-static || exit 1
+        make -j "$LIW_JOBS" || exit 1
+        make install || exit 1
+    ) || die "imagemagick build failed"
+    [ -n "$(ls "$LIW_PREFIX/lib"/libMagickCore*.dylib 2>/dev/null)" ] ||
+        die "imagemagick did not install libMagickCore"
+    [ -n "$(ls "$LIW_PREFIX/lib"/libMagickWand*.dylib 2>/dev/null)" ] ||
+        die "imagemagick did not install libMagickWand"
+    # --with-modules builds the coders as loadable modules (like on
+    # linux); the prefix's modules directory must be populated.  The wheel
+    # itself ships only the libraries, exactly like the linux wheel.
+    [ -n "$(ls "$LIW_PREFIX/lib"/ImageMagick-*/modules-MagickCore/coders/ 2>/dev/null)" ] ||
+        die "imagemagick built no coder modules"
+    # Feature assertions on the core library: the delegates compiled into
+    # MagickCore itself (annotate's freetype/fontconfig, lcms color
+    # management, xml2).  The coder delegates (png, jpeg, heif, jxl, ...)
+    # live in the module dylibs, not the core.
+    local linked lib
+    linked="$(otool -L "$LIW_PREFIX/lib"/libMagickCore*.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "imagemagick produced no dylib to check"
+    for lib in libfreetype libfontconfig libxml2 "libz."; do
+        printf '%s\n' "$linked" | grep -q "$lib" ||
+            die "libMagickCore was not linked against $lib; an optional dependency was missed (check the build order)"
+    done
+    done_stamp imagemagick
+}
+
+# --------------------------------------------------------------------------
 # Packages.
 # --------------------------------------------------------------------------
 
