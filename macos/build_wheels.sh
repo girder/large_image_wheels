@@ -383,6 +383,36 @@ meson_build() { # meson_build <source dir> [extra meson setup args...]
     ) || die "meson build failed in $src"
 }
 
+# The Dockerfile installs rust (rustup, minimal profile) into the linux
+# image and prepends ~/.cargo/bin to PATH for the builds that need it
+# (libimagequant; librsvg later).  The base VM provisioning installs the
+# same toolchain; this helper bootstraps it on a base VM that was
+# provisioned before rust was added.  Like meson, rust is a build tool
+# only: the wheels never contain the toolchain, only the dylibs it
+# produces (which are installed into the private prefix and audited like
+# every other bundled library).
+ensure_rust() {
+    if [ ! -x "$HOME/.cargo/bin/cargo" ]; then
+        step "installing rust (rustup, minimal profile)"
+        if ! curl --retry 5 --silent -sSf https://sh.rustup.rs |
+            sh -s -- -y --profile minimal; then
+            die "rustup installation failed"
+        fi
+    fi
+    [ -x "$HOME/.cargo/bin/cargo" ] || die "cargo unavailable after tool setup"
+    if [ ! -x "$HOME/.cargo/bin/cargo-cinstall" ]; then
+        step "installing cargo-c (several minutes)"
+        PATH="$HOME/.cargo/bin:$PATH" cargo install cargo-c --locked ||
+            die "cargo-c installation failed"
+    fi
+    [ -x "$HOME/.cargo/bin/cargo-cinstall" ] ||
+        die "cargo-c unavailable after tool setup"
+    case ":$PATH:" in
+    *":$HOME/.cargo/bin:"*) ;;
+    *) export PATH="$HOME/.cargo/bin:$PATH" ;;
+    esac
+}
+
 # --------------------------------------------------------------------------
 # Dependencies (mirroring the Dockerfile's build order and flags).
 # --------------------------------------------------------------------------
@@ -933,6 +963,240 @@ build_libmemcached() {
     printf '%s\n' "$linked" | grep -q libsasl2 ||
         die "libmemcached was not linked against libsasl2; SASL support was missed (check the cyrus-sasl build)"
     done_stamp libmemcached
+}
+
+# --------------------------------------------------------------------------
+# Dependencies for pyvips (libvips and its tree), mirroring the Dockerfile's
+# VIPS section and everything else the linux build installs before libvips.
+# These were added in stages; each one is also reachable as dep:<name> for
+# incremental verification inside a VM.
+# --------------------------------------------------------------------------
+
+# lz4 is used by libarchive (and later by gdal/mapnik).
+build_lz4() {
+    skip_if_done lz4 && return 0
+    step "lz4"
+    cd "$LIW_SRC"
+    rm -rf lz4
+    git_retry https://github.com/lz4/lz4.git "v$(v lz4)" lz4
+    (
+        cd lz4 || exit 1
+        # PREFIX must be set at build time, not just install time: lz4's
+        # darwin rules bake the install-time libdir into the dylib's
+        # install name when it is built (verified on the host: installing
+        # with a different PREFIX than the build leaves /usr/local in the
+        # install name, which delocate cannot rewrite).
+        make PREFIX="$LIW_PREFIX" -j "$LIW_JOBS" || exit 1
+        make install PREFIX="$LIW_PREFIX" || exit 1
+    ) || die "lz4 build failed"
+    # The install name must be absolute so delocate can rewrite bundled
+    # copies (sanitize_prefix_dylibs handles rpaths and re-signing later).
+    local name
+    name="$(otool -D "$LIW_PREFIX/lib/liblz4.1.dylib" 2>/dev/null | sed -n 2p)"
+    case "$name" in
+    "$LIW_PREFIX"/*) ;;
+    *) die "liblz4's install name is not absolute ('$name')" ;;
+    esac
+    done_stamp lz4
+}
+
+build_orc() {
+    skip_if_done orc && return 0
+    step "orc"
+    cd "$LIW_SRC"
+    rm -rf orc
+    fetch "https://github.com/GStreamer/orc/archive/$(v orc).tar.gz" orc.tar.gz
+    mkdir orc
+    tar -zxf orc.tar.gz -C orc --strip-components 1
+    meson_build "$LIW_SRC/orc" -Dtests=disabled -Dexamples=disabled \
+        -Dbenchmarks=disabled
+    [ -e "$LIW_PREFIX/lib/liborc-0.4.dylib" ] ||
+        die "orc did not install liborc-0.4"
+    done_stamp orc
+}
+
+build_nifti() {
+    skip_if_done nifti && return 0
+    step "nifti"
+    cd "$LIW_SRC"
+    rm -rf nifti
+    git_retry https://github.com/NIFTI-Imaging/nifti_clib.git \
+        "v$(v nifti)" nifti
+    cmake_build "$LIW_SRC/nifti" -DBUILD_SHARED_LIBS=ON
+    [ -n "$(ls "$LIW_PREFIX/lib"/libnifti*.dylib 2>/dev/null)" ] ||
+        die "nifti did not install its libraries"
+    done_stamp nifti
+}
+
+# The arm64 branch of the Dockerfile's fftw configure: the x86 SIMD options
+# are accepted but inert on aarch64, where fftw's cmake picks its NEON
+# support by itself.
+build_fftw3() {
+    skip_if_done fftw3 && return 0
+    step "fftw3"
+    cd "$LIW_SRC"
+    rm -rf fftw3
+    fetch "https://fftw.org/pub/fftw/fftw-$(v fftw3).tar.gz" fftw3.tar.gz
+    mkdir fftw3
+    tar -zxf fftw3.tar.gz -C fftw3 --strip-components 1
+    cmake_build "$LIW_SRC/fftw3" -DBUILD_TESTS=OFF -DENABLE_AVX=ON \
+        -DENABLE_AVX2=ON -DENABLE_SSE=ON -DENABLE_SSE2=ON -DENABLE_THREADS=ON \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    [ -n "$(ls "$LIW_PREFIX/lib"/libfftw3*.dylib 2>/dev/null)" ] ||
+        die "fftw3 did not install its libraries"
+    done_stamp fftw3
+}
+
+build_libhwy() {
+    skip_if_done libhwy && return 0
+    step "libhwy"
+    cd "$LIW_SRC"
+    rm -rf highway
+    git_retry https://github.com/google/highway.git "$(v libhwy)" highway
+    # The CXX_FLAGS value overrides the cache variable that cmake derives
+    # from the environment, so keep our flags in front of the seed pin.
+    cmake_build "$LIW_SRC/highway" -DBUILD_TESTING=OFF \
+        -DHWY_ENABLE_EXAMPLES=OFF -DBUILD_SHARED_LIBS=ON \
+        -DCMAKE_CXX_FLAGS="$CXXFLAGS -DVQSORT_SECURE_SEED=0"
+    [ -n "$(ls "$LIW_PREFIX/lib"/libhwy*.dylib 2>/dev/null)" ] ||
+        die "libhwy did not install its library"
+    done_stamp libhwy
+}
+
+build_jpegxl() {
+    skip_if_done jpeg-xl && return 0
+    step "jpeg-xl (libjxl)"
+    cd "$LIW_SRC"
+    rm -rf libjxl
+    # libjxl's third_party libraries (highway, brotli, ...) are git
+    # submodules, so the clone needs --recurse-submodules like the
+    # Dockerfile's.  git_retry has no provision for extra clone options,
+    # so the retry loop is inline here.
+    local n=0
+    until git clone --depth=1 --single-branch -b "v$(v jpeg-xl)" \
+        -c advice.detachedHead=false --recurse-submodules -j "$LIW_JOBS" \
+        https://github.com/libjxl/libjxl.git libjxl; do
+        n=$((n + 1))
+        [ "$n" -ge 10 ] &&
+            die "git clone failed after $n attempts: libjxl (v$(v jpeg-xl))"
+        echo "retrying git clone: https://github.com/libjxl/libjxl.git"
+        sleep 5
+    done
+    # Remove the .git directories (as the Dockerfile does) so libjxl's
+    # version detection uses its fallback version instead of a git
+    # describe of the shallow clone.
+    (cd libjxl && find . -name '.git' -exec rm -rf {} +) 2>/dev/null || true
+    # libhwy is installed into the prefix before this runs; with it found,
+    # -DHWY_ENABLE_INSTALL=OFF keeps libjxl from installing its vendored
+    # copy over ours (same as the linux build).  brotli comes from the
+    # libbrotli builder.
+    cmake_build "$LIW_SRC/libjxl" \
+        -DBUILD_TESTING=OFF \
+        -DCMAKE_CXX_FLAGS="$CXXFLAGS -fpermissive" \
+        -DJPEGXL_ENABLE_EXAMPLES=OFF \
+        -DJPEGXL_ENABLE_MANPAGES=OFF \
+        -DJPEGXL_ENABLE_BENCHMARK=OFF \
+        -DHWY_ENABLE_INSTALL=OFF \
+        -DHWY_ENABLE_TESTS=OFF \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    # Feature assertions: libjxl links highway and brotli; without them it
+    # would have fallen back to (or failed on) the vendored copies.
+    local linked lib
+    linked="$(otool -L "$LIW_PREFIX/lib"/libjxl*.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "jpeg-xl produced no dylib to check"
+    for lib in libhwy libbrotli; do
+        printf '%s\n' "$linked" | grep -q "$lib" ||
+            die "libjxl was not linked against $lib; an optional dependency was missed (check the build order)"
+    done
+    done_stamp jpeg-xl
+}
+
+# libimagequant 4.x builds through cargo-c (the Dockerfile installs cargo-c
+# and runs `cargo cinstall` in this directory; the macos variant points the
+# install at the private prefix).  Rust is provisioned by ensure_rust.
+build_libimagequant() {
+    skip_if_done libimagequant && return 0
+    step "libimagequant"
+    ensure_rust
+    cd "$LIW_SRC"
+    rm -rf libimagequant
+    git_retry https://github.com/ImageOptim/libimagequant.git \
+        "$(v libimagequant)" libimagequant
+    (
+        cd libimagequant/imagequant-sys || exit 1
+        cargo cinstall --prefix="$LIW_PREFIX" --libdir="$LIW_PREFIX/lib" || exit 1
+        # rust leaves huge build artifacts that are not useful to us (the
+        # Dockerfile does the same cleanup).
+        rm -rf target/release/deps || true
+        find . -name '*.a' -delete || true
+    ) || die "libimagequant build failed"
+    [ -n "$(ls "$LIW_PREFIX/lib"/libimagequant*.dylib 2>/dev/null)" ] ||
+        die "libimagequant did not install its library"
+    done_stamp libimagequant
+}
+
+build_libexif() {
+    skip_if_done libexif && return 0
+    step "libexif"
+    cd "$LIW_SRC"
+    rm -rf libexif
+    git_retry https://github.com/libexif/libexif.git "v$(v libexif)" libexif
+    (
+        cd libexif || exit 1
+        autoreconf -ifv
+        # -std=gnu17: the VM's autoconf 2.73 bakes -std=gnu23 into $CC for
+        # pre-C23 code (see build_cyrus_sasl); libexif is old enough that
+        # the same flag is applied defensively.
+        CFLAGS="$CFLAGS -std=gnu17" \
+            ./configure --prefix="$LIW_PREFIX" --disable-static
+        make -j "$LIW_JOBS" || exit 1
+        make install || exit 1
+    ) || die "libexif build failed"
+    [ -e "$LIW_PREFIX/lib/libexif.dylib" ] ||
+        die "libexif did not install its library"
+    done_stamp libexif
+}
+
+build_libarchive() {
+    skip_if_done libarchive && return 0
+    step "libarchive"
+    cd "$LIW_SRC"
+    rm -rf libarchive
+    git_retry https://github.com/libarchive/libarchive.git \
+        "v$(v libarchive)" libarchive
+    # zlib, zstd, lzma (xz), and lz4 are found in the prefix; bzip2
+    # resolves to the macOS system libbz2 in /usr/lib, which the otool
+    # audits allow.
+    cmake_build "$LIW_SRC/libarchive" -DBUILD_TESTING=OFF \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    # Feature assertions: the formats the linux wheel's libarchive carries
+    # through our prefix libraries (gzip, zstd, xz, lz4).
+    local linked lib
+    linked="$(otool -L "$LIW_PREFIX/lib"/libarchive*.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "libarchive produced no dylib to check"
+    for lib in "libz." libzstd liblzma liblz4; do
+        printf '%s\n' "$linked" | grep -q "$lib" ||
+            die "libarchive was not linked against $lib; an optional dependency was missed (check the build order)"
+    done
+    done_stamp libarchive
+}
+
+build_libraw() {
+    skip_if_done libraw && return 0
+    step "libraw"
+    cd "$LIW_SRC"
+    rm -rf LibRaw
+    git_retry https://github.com/LibRaw/LibRaw.git "$(v libraw)" LibRaw
+    (
+        cd LibRaw || exit 1
+        autoreconf -ifv
+        ./configure --prefix="$LIW_PREFIX" --disable-static
+        make -j "$LIW_JOBS" || exit 1
+        make install || exit 1
+    ) || die "libraw build failed"
+    [ -n "$(ls "$LIW_PREFIX/lib"/libraw*.dylib 2>/dev/null)" ] ||
+        die "libraw did not install its library"
+    done_stamp libraw
 }
 
 # --------------------------------------------------------------------------
