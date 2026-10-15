@@ -600,7 +600,12 @@ Notes on the remaining packages:
   leak in); librsvg passes `-Dpixbuf=disabled` (gdk-pixbuf is built in
   neither pipeline, and leaving the feature auto could pull librsvg's
   gdk-pixbuf subproject wrap) and appends `lto = true` to Cargo.toml
-  like the Dockerfile; poppler passes `-DENABLE_BOOST=OFF` (a
+  like the Dockerfile; jpeg-xl's highway is statically embedded by
+  libjxl itself (its third_party/CMakeLists.txt sets
+  HWY_FORCE_STATIC_LIBS and the --recurse-submodules clone provides the
+  vendored copy, exactly as on linux -- the prefix's libhwy mirrors the
+  Dockerfile but is not what libjxl links), and libjxl's vendored brotli
+  (shared, same 1.2.0 sonames) is installed over the prefix's copy; poppler passes `-DENABLE_BOOST=OFF` (a
   deviation: boost is not in the prefix yet -- it is a
   splash-performance option that links nothing into the dylibs;
   revisit when boost is built for mapnik/GDAL) while NSS, GPGME, and
