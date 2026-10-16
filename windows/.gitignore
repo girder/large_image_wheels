@@ -1,0 +1,4 @@
+# Per-run exchange folder (host-side state of sandbox_build.ps1)
+run/
+# Download cache (upstream artifacts only; never build outputs)
+cache/
