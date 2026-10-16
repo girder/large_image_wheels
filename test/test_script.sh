@@ -280,7 +280,13 @@ pprint.pprint(ti)
 print(ti['tile'].size)
 pprint.pprint(ti['tile'][:4,:4].tolist())
 EOF
-echo 'Use large_image to read a geotiff file with a projection'
+if $TEST_GDAL; then
+  # The projected read's hardcoded tile position assumes the gdal
+  # source's projected level structure; without a gdal wheel the plain
+  # getTileSource falls to the vips source, whose projected reads have a
+  # different level count, so skip rather than fail (seen on the macos
+  # wheelhouse, which does not build gdal yet).
+  echo 'Use large_image to read a geotiff file with a projection'
 python <<EOF
 import large_image, pprint
 ts = large_image.getTileSource('landcover.tif', projection='EPSG:3857')
@@ -292,6 +298,7 @@ pprint.pprint(ti['tile'][:4,:4].tolist())
 tile = ts.getTile(1178, 1507, 12)
 pprint.pprint(repr(tile[1400:1440]))
 EOF
+fi
 fi
 if $TEST_GDAL; then
   echo 'Use large_image to read a geotiff file with a projection via gdal'
