@@ -1358,6 +1358,44 @@ build_libzip() {
     done_stamp libzip
 }
 
+# The Dockerfile builds its own curl so that libcurl.pc exists for other
+# packages' pkg-config lookups -- on macOS poppler-glib.pc's
+# "Requires.private: libcurl" cannot resolve the system libcurl (it ships
+# no .pc file), which made meson treat the whole poppler-glib dependency
+# as missing and silently dropped libvips's pdf loader.
+build_curl() {
+    skip_if_done curl && return 0
+    step "curl"
+    cd "$LIW_SRC"
+    rm -rf curl
+    # The Dockerfile uses the github release tarball (its headers are
+    # slightly different from the git tag); the tag carries underscores
+    # while the tarball name carries dots (the Dockerfile's getver.py
+    # field trick).
+    ver="$(v curl)"
+    fetch "https://github.com/curl/curl/releases/download/curl-${ver}/curl-$(printf '%s' "$ver" | tr _ .).tar.gz" \
+        curl.tar.gz
+    mkdir curl
+    tar -zxf curl.tar.gz -C curl --strip-components 1
+    # Two deviations forced by the isolated prefix, both verified on the
+    # host: with Homebrew out of reach the VM has no OpenSSL (curl's cmake
+    # hard-requires a TLS backend otherwise) and no libpsl, so TLS and
+    # psl support are disabled -- nothing in the wheel's dependency tree
+    # uses curl for TLS (poppler's libcurl use is URI loading, and libvips
+    # itself never links curl).  CURL_CA_FALLBACK mirrors the Dockerfile;
+    # LDAP resolves to the system LDAP.framework, which the audits allow.
+    cmake_build "$LIW_SRC/curl" \
+        -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF -DBUILD_STATIC=OFF \
+        -DCURL_CA_FALLBACK=ON \
+        -DBUILD_LIBCURL_DOCS=OFF -DBUILD_MISC_DOCS=OFF \
+        -DCURL_ENABLE_SSL=OFF -DCURL_USE_LIBPSL=OFF
+    [ -e "$LIW_PREFIX/lib/pkgconfig/libcurl.pc" ] ||
+        die "curl did not install its libcurl.pc"
+    [ -n "$(ls "$LIW_PREFIX/lib"/libcurl*.dylib 2>/dev/null)" ] ||
+        die "curl did not install its library"
+    done_stamp curl
+}
+
 build_libde265() {
     skip_if_done libde265 && return 0
     step "libde265"
@@ -1409,9 +1447,10 @@ build_poppler() {
     # disabled like on linux.  Boost is disabled: nothing in the macos
     # prefix provides it yet (it is a splash-performance option and links
     # nothing into the dylibs; revisit when boost is built for
-    # mapnik/GDAL).  libcurl resolves to the macOS system libcurl in
-    # /usr/lib, which the otool audits allow, matching the linux build
-    # where poppler links the image's own curl.
+    # mapnik/GDAL).  libcurl comes from the prefix's own curl build (see
+    # build_curl): poppler-glib.pc's "Requires.private: libcurl" cannot
+    # resolve the system libcurl, which made pkg-config fail the whole
+    # poppler-glib lookup.
     cmake_build "$LIW_SRC/poppler" \
         -DCMAKE_BUILD_TYPE=Release \
         -DENABLE_UNSTABLE_API_ABI_HEADERS=on \
@@ -1427,7 +1466,7 @@ build_poppler() {
     local linked lib
     linked="$(otool -L "$LIW_PREFIX/lib"/libpoppler*.dylib 2>/dev/null || true)"
     [ -n "$linked" ] || die "poppler produced no dylib to check"
-    for lib in libfreetype libjpeg libpng libopenjp; do
+    for lib in libfreetype libjpeg libpng libopenjp libcurl; do
         printf '%s\n' "$linked" | grep -q "$lib" ||
             die "poppler was not linked against $lib; an optional dependency was missed (check the build order)"
     done
@@ -2724,9 +2763,10 @@ for pkg in ${PACKAGES[@]+"${PACKAGES[@]}"}; do
         build_hdf5
         build_matio
         build_openexr
+        build_libzip
+        build_curl
         build_pango
         build_librsvg
-        build_libzip
         build_imagemagick
         build_libvips
         build_pyvips
