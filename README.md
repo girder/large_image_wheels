@@ -339,8 +339,15 @@ runs, not just what the scripts are expected to do):
   ungated and passes via vips).  Also observed: pyvips and openslide
   both load their own libgio copies in one process, which macOS reports
   as an objc class duplicate warning -- the linux wheels ship their own
-  .libs copies the same way, so this is parity, not a defect.  Decision
-  (2026-10-15):
+  .libs copies the same way, so this is parity, not a defect.  The
+  fourteenth run (2026-10-16) cleared the pyvips bundled-library check
+  on every python; the remaining per-python failure was the suite's
+  'test libvips and webp'/'jpeg' steps importing large_image_converter,
+  whose install is gated on TEST_GDAL && TEST_PYVIPS because the
+  converter extra needs the gdal source -- the macos wheelhouse does
+  not build gdal yet, so the two steps now carry the same gate (the
+  steps exercise the converter package, not the pyvips wheel, so
+  nothing is lost on macos).  Decision (2026-10-15):
   verification runs are always full builds from a fresh base-VM clone;
   the resume-in-a-kept-VM path (stamps) is not used for verification --
   there is no interest in trading certainty about ordering dependencies
