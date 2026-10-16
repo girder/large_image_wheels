@@ -355,7 +355,11 @@ runs, not just what the scripts are expected to do):
   shared suite passes with the gdal-dependent steps skipped: the
   projected-geotiff getTileSource read, the two converter steps, and
   the GDAL/vsicurl steps, which all light back up when the gdal wheel
-  lands).  Decision (2026-10-15):
+  lands).  Decisions (2026-10-16) for the GDAL prerequisites: an MPI
+  (openmpi, then parallel-netcdf and netcdf) WILL be built, and an
+  OpenSSL WILL be built so the prefix curl gains TLS (see the GDAL note
+  for the recipes and the openssl 3.6.2 pin trap).  Decision
+  (2026-10-15):
   verification runs are always full builds from a fresh base-VM clone;
   the resume-in-a-kept-VM path (stamps) is not used for verification --
   there is no interest in trading certainty about ordering dependencies
@@ -905,16 +909,44 @@ Notes on the remaining packages:
   lib, cfitsio, openexr, brotli, and the whole glib/cairo/pango chain)
   -- the pyvips `case` is the template for reusing them, but per the
   completeness rule the case must still build the full tree on a fresh
-  VM; hdf5 was built WITHOUT the MPI-dependent options (parallel
-  netcdf, which the linux GDAL chain uses, will need an MPI built into
-  the prefix -- see build_hdf5's comment); the prefix curl is
-  TLS-less (no OpenSSL in the prefix -- see build_curl), so GDAL's
-  network/vsicurl drivers would either need an OpenSSL built into the
-  prefix first (the linux image builds its own OpenSSL) or a documented
-  no-TLS deviation, decide before writing build_gdal; poppler is built
-  WITHOUT boost, so if GDAL wants the poppler pdf driver unchanged
-  that is fine, but do not expect poppler's splash performance build;
-  and imagemagick is --without-modules (see its note).
+  VM.  Decisions (2026-10-16) for the two open questions:
+  - MPI and parallel netcdf WILL be built.  openmpi (versions.txt pin
+    5.0.11) should use the Dockerfile's release-tarball branch (its git
+    branch runs autogen.pl and is slow): download
+    openmpi-<ver>.tar.gz from download.open-mpi.org and configure with
+    the Dockerfile's flags (--prefix=$LIW_PREFIX --disable-picky
+    --disable-dependency-tracking --enable-silent-rules --disable-dlopen
+    --disable-libompitrace --disable-opal-btl-usnic-unit-tests
+    --disable-debug --disable-mem-profile --disable-mem-debug
+    --disable-static --disable-mpi-java -disable-oshmem-profile; macos
+    deltas to be worked out when writing the builder).  parallel-netcdf
+    follows (branch checkpoint.<ver>, the LT_PREREQ 2.5.4->2.4.6 sed,
+    autoreconf, configure --enable-shared --disable-fortran
+    --enable-thread-safe --disable-static).  build_hdf5 then gains the
+    Dockerfile's MPI options (HDF5_ENABLE_PARALLEL=ON plus
+    MPI_C_COMPILER=$LIW_PREFIX/bin/mpicc, MPI_mpi_LIBRARY=$LIW_PREFIX/lib/libmpi.dylib,
+    MPI_C_LIB_NAMES=mpi; the linux MPI_C_HEADER_DIR hint may not apply
+    on macos) -- ALLOW_UNSUPPORTED and THREADSAFE are already passed
+    and the Dockerfile runs with both parallel and threadsafe on.
+    netcdf (pin 4.10.1) comes after parallel-netcdf for the gdal netcdf
+    driver.
+  - An OpenSSL WILL be built for curl-TLS.  Mirror the Dockerfile's
+    recipe but note the pin: versions.txt says openssl 4.0.3, and the
+    Dockerfile deliberately ignores it -- "PINNED - openldap doesn't
+    handle version 4.x yet" -- and builds the 3.6.2 tag
+    (./config --prefix=$LIW_PREFIX --openssldir=$LIW_PREFIX/ssl shared
+    zlib no-tests; `make all install_sw` to skip the docs).  The
+    builder must pin 3.6.2 the same way (a literal or an explicit
+    override, with the reason in a comment; check_versions.py may flag
+    the mismatch).  build_curl then drops -DCURL_ENABLE_SSL=OFF so curl
+    gains TLS (CURL_USE_LIBPSL=OFF stays unless libpsl is built -- an
+    open question), and BOTH the pyvips and gdal cases must place
+    openssl before curl so every fresh-VM run converges on the linux
+    final state (a TLS curl); the pyvips wheel will then bundle
+    libcrypto/libssl through the libcurl linkage.  Poppler is built
+    WITHOUT boost, so if GDAL wants the poppler pdf driver unchanged
+    that is fine, but do not expect poppler's splash performance build;
+    and imagemagick is --without-modules (see its note).
 - **pyproj**: intentionally not built for macOS.  pyproj4 publishes
   macosx arm64 wheels, so the tests install pyproj from pypi like any
   other dependency; the linux pipeline no longer builds a pyproj wheel
