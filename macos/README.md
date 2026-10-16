@@ -522,6 +522,21 @@ runs, not just what the scripts are expected to do):
 - fontconfig needs `gperf`, which is neither in the base VM's brew set
   nor in the CLT; fontconfig's meson falls back to its own gperf
   subproject, so nothing extra has to be provisioned.
+- fontconfig's meson option `cache-build` (default enabled) runs the
+  just-built `fc-cache -s -f -v` as an install script, exactly like the
+  linux build.  On macOS this floods the log with ~25k
+  "invalid cache file: ...-le64.cache-N" lines from the fontconfig
+  step: fontconfig's own `05-macos.conf` adds the system font-asset
+  stores (/System/Library/AssetsV2/* and Assets/*) as font dirs, so
+  fc-cache writes a 0-font cache for every directory in the live
+  UnifiedAssetFramework tree (as four names each -- cache-9/10/11 are
+  compat symlinks to the real cache-12), and its final cleaning pass
+  then finds them stale because the system's asset daemons changed the
+  directory mtimes in between.  The message is fc-cache -v's own
+  cleanup reporting; it unlinks the stale files itself, the real font
+  caches survive, and runtime fontconfig never prints anything like it
+  (cache validation failures in the library are silent without
+  FC_DEBUG=cache).  Cosmetic; do not chase it.
 - The Dockerfile is deliberate about every flag; treat each library as
   its own special case and check each flag against the upstream build
   system at the pinned version instead of assuming a generic default.
