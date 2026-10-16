@@ -1684,14 +1684,19 @@ build_libvips() {
     # Feature assertions over the union of the installed libvips dylibs:
     # every loader library the linux wheel links must have resolved from
     # the prefix.  (libhwy enters through libjxl and hdf5 through matio;
-    # only direct linkage is asserted here.)
+    # only direct linkage is asserted here.  orc is NOT asserted: it is
+    # libvips's fallback SIMD package, used only when libhwy is missing,
+    # and the prefix always has libhwy because jpeg-xl needs it -- the
+    # linux build behaves identically and the Dockerfile's orc is dead
+    # weight there too.  Verified from meson's output: with libhwy found,
+    # the orc dependency is never even looked up.)
     local linked lib
     linked="$(otool -L "$LIW_PREFIX/lib"/libvips*.dylib 2>/dev/null || true)"
     [ -n "$linked" ] || die "libvips produced no dylib to check"
     for lib in libgobject openslide MagickCore libheif libjxl libjpeg \
         libtiff libpng libwebp librsvg libpoppler libcfitsio libmatio \
-        nifti libarchive libraw libopenjp libexif liborc fftw lcms \
-        imagequant pangocairo; do
+        nifti libarchive libraw libopenjp libexif fftw lcms \
+        imagequant pangocairo libhwy; do
         printf '%s\n' "$linked" | grep -q "$lib" ||
             die "libvips was not linked against $lib; an optional dependency was missed (check the build order)"
     done
