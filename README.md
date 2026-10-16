@@ -74,7 +74,7 @@ manylinux container plays for the linux builds:
   `build_libarchive`, `build_libraw`, `build_harfbuzz`, `build_pango`,
   `build_librsvg`, `build_libde265`, `build_libheif`, `build_poppler`,
   `build_fitsio`, `build_hdf5`, `build_matio`, `build_openexr`,
-  `build_libzip`, `build_imagemagick`), then package builders (`build_pylibtiff`,
+  `build_libzip`, `build_curl`, `build_imagemagick`), then package builders (`build_pylibtiff`,
   `build_glymur`, `build_openslide`, `build_openslide_python`,
   `build_pylibmc`, `build_pyvips`, with `build_libvips` in the
   dependency section; each package
@@ -238,7 +238,7 @@ runs, not just what the scripts are expected to do):
   dep:lz4 dep:fftw3 dep:libhwy dep:jpeg-xl dep:libimagequant
   dep:libexif dep:libarchive dep:libraw dep:harfbuzz dep:pango
   dep:librsvg dep:libde265 dep:libheif dep:poppler dep:fitsio dep:hdf5
-  dep:matio dep:openexr dep:libzip dep:imagemagick"` (this is also the
+  dep:matio dep:openexr dep:libzip dep:curl dep:imagemagick"` (this is also the
   order the `pyvips` case uses; the list has grown as full runs found
   missed Dockerfile dependencies such as libzip).  Stage 3 -- `build_libvips`, `build_pyvips`, the
   `pyvips` case wiring, and the test-harness additions -- is implemented
@@ -281,7 +281,13 @@ runs, not just what the scripts are expected to do):
   --with-modules (the linux base image has it, the macos VM does not),
   and libzip -- a Dockerfile dependency missed in stage 2 -- was not
   installed either; fixed with build_libzip and --without-modules
-  (see the pyvips note for the reasoning).  Decision (2026-10-15):
+  (see the pyvips note for the reasoning).  The ninth full run
+  (2026-10-16) passed imagemagick (with libzip and --without-modules)
+  and built and installed libvips itself, but its meson dropped the
+  poppler-glib dependency because pkg-config could not resolve
+  poppler-glib.pc's "Requires.private: libcurl" (fixed with the prefix
+  curl build); everything else in the libvips assertion passed.  The
+  poppler assertion now also checks libcurl.  Decision (2026-10-15):
   verification runs are always full builds from a fresh base-VM clone;
   the resume-in-a-kept-VM path (stamps) is not used for verification --
   there is no interest in trading certainty about ordering dependencies
@@ -724,8 +730,17 @@ Notes on the remaining packages:
   jxl, raw, rsvg, openjpeg, zip, fftw, lzma, zstd, bzip2) is asserted
   on the core library's own linkage.  clang's lack of OpenMP also
   means IM builds without it (linux's gcc builds with OpenMP) -- an
-  unavoidable platform delta; libzip was added to the chain (a
-  Dockerfile dependency missed in stage 2) for IM's zip support;
+  unavoidable platform delta; libzip and curl were added to the chain
+  (Dockerfile dependencies missed in stage 2).  curl mirrors the
+  Dockerfile's release-tarball build (which exists so libcurl.pc
+  exists for pkg-config consumers -- poppler-glib.pc's
+  "Requires.private: libcurl" cannot resolve the macOS system libcurl,
+  which made meson silently drop the whole poppler-glib dependency and
+  libvips's pdf loader) with two forced deviations, verified on the
+  host: -DCURL_ENABLE_SSL=OFF (the VM has no OpenSSL and curl's cmake
+  hard-requires a TLS backend; nothing in the wheel's tree uses curl
+  for TLS) and -DCURL_USE_LIBPSL=OFF (no libpsl in the prefix); LDAP
+  resolves to the system LDAP.framework, which the audits allow;
   matio's hand-written matio.pc points at $LIW_PREFIX (mirroring the
   Dockerfile's overwrite); libvips will need
   `-Dnifti-prefix-dir=$LIW_PREFIX` (the Dockerfile passes /usr/local);
