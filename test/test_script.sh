@@ -608,7 +608,10 @@ if $TEST_PYVIPS; then
   ls -l sample.jpeg.tif
 fi
 
-if $TEST_PYVIPS; then
+# The converter extra is installed only when the gdal wheel is present
+# (large_image_converter needs it), so gate the converter steps the same
+# way the install above does.
+if $TEST_GDAL && $TEST_PYVIPS; then
   echo 'test libvips and webp'
   python <<EOF
 import large_image_converter.__main__ as main
@@ -617,7 +620,7 @@ main.main(['d042-353.crop.small.float32.tif', '/tmp/outfloat.tiff', '--compressi
 EOF
 fi
 
-if $TEST_PYVIPS; then
+if $TEST_GDAL && $TEST_PYVIPS; then
   echo 'test libvips and jpeg'
   python <<EOF
 import large_image_converter.__main__ as main
