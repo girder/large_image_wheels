@@ -1492,17 +1492,19 @@ build_hdf5() {
     cd "$LIW_SRC"
     rm -rf hdf5
     git_retry https://github.com/HDFGroup/hdf5.git "hdf5-$(v hdf5)" hdf5
-    # hdf5's HDFMacros.cmake hardcodes CMAKE_INSTALL_NAME_DIR to @rpath on
-    # Apple, overriding the -DCMAKE_INSTALL_NAME_DIR that cmake_build
-    # passes; its dylibs then install with an @rpath install name, and
-    # consumers (matio) record "@rpath/libhdf5.310.dylib" with nothing to
-    # resolve it against once sanitize_prefix_dylibs strips the prefix
-    # rpaths before wheel building -- delocate failed the first pyvips
-    # wheel with "Could not find all dependencies" on exactly that
-    # (@rpath/libhdf5.310.dylib, requested by libmatio).  Point the
-    # macro's override at the prefix's absolute lib dir instead, so hdf5
-    # behaves like every other cmake project here and the exported
-    # HDF5Config.cmake records an absolute soname for its consumers.
+    # -DHDF5_BUILD_WITH_INSTALL_NAME=ON: hdf5's HDFMacros.cmake hardcodes
+    # CMAKE_INSTALL_NAME_DIR to @rpath on Apple, overriding the
+    # -DCMAKE_INSTALL_NAME_DIR that cmake_build passes, so its dylibs
+    # would install with an @rpath install name; consumers (matio) then
+    # record "@rpath/libhdf5.310.dylib" with nothing to resolve it
+    # against once sanitize_prefix_dylibs strips the prefix rpaths before
+    # wheel building -- delocate failed the first pyvips wheel with
+    # "Could not find all dependencies" on exactly that
+    # (@rpath/libhdf5.310.dylib, requested by libmatio).  hdf5's own
+    # option sets each library's INSTALL_NAME_DIR to
+    # ${CMAKE_INSTALL_PREFIX}/lib, so hdf5 behaves like every other
+    # cmake project here and the exported HDF5Config.cmake records an
+    # absolute soname for its consumers.
     # The Dockerfile's MPI-dependent options (HDF5_ENABLE_PARALLEL and the
     # MPI_* variables) are dropped: the macos prefix has no MPI (parallel
     # netcdf is a GDAL-stage concern and will need an MPI built into the
@@ -1536,7 +1538,8 @@ build_hdf5() {
         -DZLIB_INCLUDE_DIR="$LIW_PREFIX/include" \
         -DHDF5_BUILD_DOC=OFF \
         -DALLOW_UNSUPPORTED=ON \
-        -DHDF5_ENABLE_THREADSAFE=ON
+        -DHDF5_ENABLE_THREADSAFE=ON \
+        -DHDF5_BUILD_WITH_INSTALL_NAME=ON
     # The install name must be absolute so delocate can rewrite the
     # bundled copies and consumers record an absolute dependency name
     # (the same check build_lz4 makes for the same reason).
