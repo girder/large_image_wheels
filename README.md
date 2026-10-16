@@ -318,7 +318,28 @@ runs, not just what the scripts are expected to do):
   at delocate; the sed is replaced outright by hdf5's own first-class
   option -DHDF5_BUILD_WITH_INSTALL_NAME=ON (its
   HDF5Macros.cmake sets each library's INSTALL_NAME_DIR to
-  ${CMAKE_INSTALL_PREFIX}/lib when it is on).  Decision
+  ${CMAKE_INSTALL_PREFIX}/lib when it is on).  The thirteenth run
+  (2026-10-16) built everything and passed delocate, producing wheels
+  for all seven pythons; the test VM run then surfaced two issues, both
+  test-side, no wheel defects: (1) the pyvips bundled-library check
+  assumed the pylibmc model (the extension links the bundled dylib),
+  but pyvips's cffi extension is linked with -undefined dynamic_lookup
+  and has no libvips load command at all -- its symbols bind to
+  whatever libvips the patched __init__.py preloaded -- so the check
+  now verifies the preload by running a fresh interpreter with
+  DYLD_PRINT_LIBRARIES=1 and requiring the pyvips/.dylibs/libvips path
+  in the loaded images (plus the API-mode and .dylibs-content checks it
+  already had); and (2) the shared suite's projected-geotiff
+  getTileSource test hardcodes getTile(1178, 1507, 12), which assumes
+  the gdal source's projected level structure -- without a gdal wheel
+  the plain getTileSource falls to the vips source, whose projected
+  reads have a different level count (z=12 out of its 8 levels) -- so
+  the test is now gated on TEST_GDAL (true on linux, where
+  getTileSource prefers gdal anyway; the unprojected geotiff test stays
+  ungated and passes via vips).  Also observed: pyvips and openslide
+  both load their own libgio copies in one process, which macOS reports
+  as an objc class duplicate warning -- the linux wheels ship their own
+  .libs copies the same way, so this is parity, not a defect.  Decision
   (2026-10-15):
   verification runs are always full builds from a fresh base-VM clone;
   the resume-in-a-kept-VM path (stamps) is not used for verification --

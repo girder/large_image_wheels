@@ -697,21 +697,29 @@ if not pyvips.API_mode:
     sys.exit("pyvips is not in API mode: the cffi extension did not import")
 print("pyvips API mode OK")
 
-# The extension must load libvips from the wheel's .dylibs directory
-# (delocate rewrites the load command to an @loader_path-relative path;
-# a system, Homebrew, or pypi libvips would mean the bundled library was
-# bypassed).
-exts = glob.glob(os.path.join(os.path.dirname(pyvips.__file__), "_libvips*.so"))
-if not exts:
-    sys.exit("the cffi extension was not found in the installed pyvips package")
+package_dir = os.path.dirname(pyvips.__file__)
+if not glob.glob(os.path.join(package_dir, ".dylibs", "libvips*.dylib")):
+    sys.exit("the installed pyvips package has no bundled libvips dylib")
+
+# The cffi extension is linked with -undefined dynamic_lookup (the macOS
+# default for python extensions), so otool -L shows no libvips load
+# command at all -- its symbols bind to whatever libvips the preload put
+# in the process.  Run a fresh interpreter with dyld's library printing
+# enabled and check that the preloaded libvips is the bundled one.
+env = dict(os.environ)
+env["DYLD_PRINT_LIBRARIES"] = "1"
 out = subprocess.run(
-    ["otool", "-L", exts[0]],
-    capture_output=True, text=True, check=True).stdout
-line = next(
-    (line for line in out.splitlines() if "libvips" in line), "")
-print(line.strip() or "no libvips load command found")
-if "@loader_path" not in line or ".dylibs/" not in line:
-    sys.exit("libvips was not loaded from the bundled .dylibs directory")
+    [sys.executable, "-c", "import pyvips"],
+    capture_output=True, text=True, env=env)
+bundled = [line for line in (out.stderr or "").splitlines()
+           if "/pyvips/.dylibs/libvips" in line]
+if not bundled:
+    sys.exit(
+        "the process did not load the bundled libvips dylib; loaded "
+        "libvips images:\n" + "\n".join(
+            line for line in (out.stderr or "").splitlines()
+            if "libvips" in line))
+print(bundled[0].strip())
 print("pyvips bundled-library check OK")
 PYEOF
 
