@@ -536,7 +536,12 @@ runs, not just what the scripts are expected to do):
   cleanup reporting; it unlinks the stale files itself, the real font
   caches survive, and runtime fontconfig never prints anything like it
   (cache validation failures in the library are silent without
-  FC_DEBUG=cache).  Cosmetic; do not chase it.
+  FC_DEBUG=cache).  The meson_build helper filters the install step's
+  output for these three patterns (`: invalid cache file: `,
+  `: skipping, looped directory detected`,
+  `: caching, new cache contents: 0 fonts,` -- exclusive to fc-cache's
+  verbose output) purely to reduce the log volume; the fc-cache run
+  itself is untouched.  Cosmetic; do not chase it further.
 - The Dockerfile is deliberate about every flag; treat each library as
   its own special case and check each flag against the upstream build
   system at the pinned version instead of assuming a generic default.
