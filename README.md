@@ -310,7 +310,16 @@ runs, not just what the scripts are expected to do):
   build_pyvips that dies if any prefix dylib installs without an
   absolute install name (autotools/meson installs are absolute
   already; this catches cmake projects that override
-  CMAKE_INSTALL_NAME_DIR).  Decision (2026-10-15):
+  CMAKE_INSTALL_NAME_DIR).  The twelfth full run (2026-10-16) proved
+  that catch worthwhile twice over: the previous fix had been recorded
+  as a comment without the sed command it described -- the exact
+  verify-the-edit failure the hard-won notes warn about -- and the
+  assertion stopped the build at hdf5 with a clear message instead of
+  at delocate; the sed is replaced outright by hdf5's own first-class
+  option -DHDF5_BUILD_WITH_INSTALL_NAME=ON (its
+  HDF5Macros.cmake sets each library's INSTALL_NAME_DIR to
+  ${CMAKE_INSTALL_PREFIX}/lib when it is on).  Decision
+  (2026-10-15):
   verification runs are always full builds from a fresh base-VM clone;
   the resume-in-a-kept-VM path (stamps) is not used for verification --
   there is no interest in trading certainty about ordering dependencies
