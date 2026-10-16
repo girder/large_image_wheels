@@ -61,7 +61,8 @@ manylinux container plays for the linux builds:
   `fetch`, `cmake_build`, `meson_build`/`ensure_meson`, `ensure_rust`,
   `find_version_dir`,
   `ensure_pythons`, `collect_pybins`, `ensure_tools`, `set_patch_python`,
-  `scrub_python_sysconfig`, `sanitize_prefix_dylibs`) follow; then
+  `scrub_python_sysconfig`, `sanitize_prefix_dylibs`, `fix_dylib_ids`)
+  follow; then
   dependency builders (`build_zlib` ... `build_libtiff`, wrapped by
   `build_libtiff_deps`, plus `build_lcms2`, `build_libpng`,
   `build_openjpeg`, `build_cyrus_sasl`, `build_libmemcached`, the
@@ -74,9 +75,18 @@ manylinux container plays for the linux builds:
   `build_libarchive`, `build_libraw`, `build_harfbuzz`, `build_pango`,
   `build_librsvg`, `build_libde265`, `build_libheif`, `build_poppler`,
   `build_fitsio`, `build_hdf5`, `build_matio`, `build_openexr`,
-  `build_libzip`, `build_curl`, `build_imagemagick`), then package builders (`build_pylibtiff`,
+  `build_libzip`, `build_curl`, `build_imagemagick`, plus the GDAL tree
+  `build_giflib`, `build_openssl`, `build_json_c`, `build_lerc`,
+  `build_swig`, `build_openmpi`, `build_boost`, `build_proj4`,
+  `build_minizip`, `build_fossil`, `build_freexl`, `build_libgeos`,
+  `build_librttopo`, `build_libspatialite`, `build_libgeotiff`,
+  `build_librasterlite2`, `build_fyba`, `build_hdf4`,
+  `build_parallel_netcdf`, `build_netcdf`, `build_mysql`,
+  `build_postgresql`, `build_libgta`, `build_xerces_c`, `build_armadillo`,
+  `build_blosc`, `build_highfive`, `build_kealib`, `build_libopendrive`,
+  `build_libavif`, and `build_gdal`), then package builders (`build_pylibtiff`,
   `build_glymur`, `build_openslide`, `build_openslide_python`,
-  `build_pylibmc`, `build_pyvips`, with `build_libvips` in the
+  `build_pylibmc`, `build_pyvips`, `build_gdal_python`, with `build_libvips` in the
   dependency section; each package
   builder calls `sanitize_prefix_dylibs` after its dependencies are built),
   then the main `case` that maps package names to builders
@@ -92,6 +102,10 @@ manylinux container plays for the linux builds:
   requested python (dying on a missing one -- the counterpart of
   `build.sh`'s copy-out of the expected wheels), and deletes the VM.
   On failure a copy of the build log is saved to `/tmp/macos_build.log`.
+  Its default package set includes `gdal`, and the overall build timeout
+  default was raised to 12 hours because the gdal tree (mysql, openmpi,
+  boost, gdal itself) pushes a full default run past the previous 6-hour
+  default.
 - `test_via_tart.sh` -- host-side isolation test: clone another fresh VM
   and run an embedded in-VM test script (phase 0: install/rebuild missing
   or Homebrew-linked pythons; phase 1: install the wheels into a venv per
@@ -209,8 +223,9 @@ runs, not just what the scripts are expected to do):
   keeps only one EXIT trap, so the Homebrew restore moved into the same
   trap).  The third run passed everything.
 - Next up, in rough effort order (see the remaining-packages notes
-  below for details): GDAL (the largest; pyvips is done -- see its note
-  and the status entries), then mapnik
+  below for details): GDAL is implemented (2026-10-16, see its status
+  entry -- builders written, not yet VM-verified; the next action is the
+  verification run), then mapnik
   (which must come after GDAL -- its cmake auto-detects the optional
   GDAL input plugin through pkg-config, and the linux build has gdal
   installed by the time mapnik's configure runs, so the same order is
@@ -364,6 +379,106 @@ runs, not just what the scripts are expected to do):
   the resume-in-a-kept-VM path (stamps) is not used for verification --
   there is no interest in trading certainty about ordering dependencies
   for cycle time.
+- GDAL work is implemented (2026-10-16) but has NOT yet been run in a
+  VM; the GDAL note below records every decision taken while writing it.
+  What changed, in order of blast radius:
+  - The prefix gains an OpenSSL (pinned 3.6.2 like the linux build) and
+    build_curl no longer passes -DCURL_ENABLE_SSL=OFF, so curl has TLS;
+    the builder asserts the libssl linkage.  BOTH the pyvips and gdal
+    cases now place `build_openssl` before `build_curl` (openssl+curl
+    are the first two steps after `build_libtiff_deps` in both), so the
+    fresh-VM final state converges on the linux one (a TLS prefix curl).
+    CONSEQUENCE: the pyvips wheel changes (poppler now links the prefix
+    curl, so libcrypto/libssl ride along in pyvips/.dylibs), and the
+    previously-verified pyvips wheel state needs a re-verified run --
+    the next full default run produces both wheels together and the
+    test run covers both.
+  - build_hdf5 gains the Dockerfile's MPI options
+    (HDF5_ENABLE_PARALLEL=ON, MPI_C_COMPILER, MPI_mpi_LIBRARY,
+    MPI_C_LIB_NAMES; the linux MPI_C_HEADER_DIR hint is not passed),
+    and the pyvips case builds `build_openmpi` before `build_hdf5` --
+    so a fresh pyvips run converges on the linux final state (a
+    parallel hdf5 that links libmpi, like the linux pyvips wheel).
+  - The default package set gained `gdal` (in both build_wheels.sh's
+    PACKAGES default and tart_build.sh's LIW_DEFAULT_PACKAGES), and
+    tart_build.sh's LIW_TIMEOUT default rose from 21600 to 43200 s (the
+    gdal tree -- mysql, openmpi, boost, gdal itself -- pushes a full
+    default run past six hours).
+  - New builders in build_wheels.sh for the GDAL tree: giflib, openssl,
+    json-c, lerc, swig (+ a pcre2 bootstrap via swig's
+    Tools/pcre-build.sh -- swig is a hard requirement of GDAL's python
+    bindings and the linux base image supplies it while the macos VM
+    does not), openmpi, boost (superproject with submodules; mysql
+    fetches its own boost, exactly like on linux), proj4, minizip,
+    fossil (a build tool -- the gaia-gis sources live in fossil
+    repositories), freexl, libgeos, librttopo, libspatialite,
+    libgeotiff, librasterlite2, fyba, hdf4, parallel-netcdf, netcdf,
+    mysql, postgresql, libgta, xerces-c, armadillo (linked against the
+    Accelerate framework -- no Fortran compiler exists in the VM, and a
+    Homebrew gfortran would drag its libgfortran into the wheels),
+    blosc, highfive, kealib, libopendrive, libavif, gdal, and
+    gdal_python.  Dockerfile sections deliberately skipped with reasons
+    recorded in the section comment: libtirpc/libnsl (GDAL's cmake has
+    no tirpc/nsl check at all -- verified against the pinned gdal
+    source; stale autotools-era comments), krb5 (macOS system Kerberos;
+    the pylibmc precedent), libaio (linux-only), libxcrypt (macOS
+    libSystem provides crypt), lapack (see armadillo), ogdi (GDAL 3.13's
+    cmake has no OGDI check and the shared suite's known-formats list --
+    which mirrors the linux wheel -- has no OGDI entry), and mrsid
+    (x86_64-only SDK, subtracted on arm64 by the shared suite too).
+  - A new `fix_dylib_ids` helper normalizes install names to absolute
+    prefix paths and rewrites sibling load commands before consumers
+    link (OpenSSL's makefile and boost's b2 record non-absolute ids on
+    macOS -- the hdf5 @rpath lesson, applied at the source).  openssl,
+    giflib, and boost call it right after installing.
+  - build_gdal mirrors the Dockerfile's master-at-sha flow (depth-1000
+    clone, checkout, the three .2-suffix seds, the bindings-version sed)
+    and cmake options (GDAL_USE_LERC=ON, ENABLE_DEFLATE64=OFF,
+    GDAL_USE_PUBLICDECOMPWT=ON); the Dockerfile's make USER_DEFS
+    (-Werror plus gcc-only -Wno-* flags) is NOT passed -- clang warns
+    about unknown -Wno-* options and the build must not turn diagnostics
+    into errors on a different compiler.  The python bindings are part
+    of the cmake build (swig from the prefix, -DPython_EXECUTABLE pinned
+    to the patch python, numpy pip-installed into it first, like the
+    Dockerfile's numpy install).  build_gdal then asserts libgdal's
+    linkage against every external library the linux wheel links (geos,
+    proj, curl, tiff, png, jpeg, openjpeg, webp, heif, avif, jxl,
+    poppler, cfitsio, hdf5, netcdf, mysqlclient, pq, freexl,
+    spatialite, rasterlite2, rttopo, geotiff, fyba, xerces, expat,
+    xml2, json-c, lerc, gta, kea, blosc, archive, gif, deflate, zstd,
+    lzma, z, sqlite, crypto, ssl, OpenEXR); hdf4 is not asserted (a
+    static library absorbed into its consumers -- the shared suite's
+    HDF4 format entry covers it).
+  - build_gdal_python mirrors the Dockerfile's python section: the proj
+    and gdal data trees and the gdal/proj/libgeotiff tools are bundled
+    into osgeo/ (bin/ tools exposed through an `osgeo.bin:program`
+    wrapper with PROJ_DATA/GDAL_DATA and the macOS /etc/ssl/cert.pem CA
+    bundle), setup.py gains the package_data and console-script patches,
+    and osgeo/__init__.py gains the data-path + GDAL_LIBRARY_PATH /
+    GEOS_LIBRARY_PATH patch, reading osgeo/.dylibs first with the linux
+    GDAL.libs location as fallback (both patch scripts were verified by
+    applying them to the pinned gdal source and ast-parsing the
+    results).  Prefix dylibs are stripped (strip -x, re-signed) before
+    the wheel build, like the linux build strips before pip wheel;
+    wheels are built for every requested python, renamed gdal->GDAL,
+    and delocate-bundled; the wheel content is asserted (libgdal in
+    .dylibs, the _gdal_array extension, proj.db, gdalinfo, listgeo).
+  - test_via_tart.sh: the phase-1 identity check installs the GDAL wheel
+    like the other packages (the installed-version check is what catches
+    a pypi fallback), the otool audits (phase-1 venv and the shared
+    suite's venv) now include osgeo, and the macos-specific
+    test_gdal.py check verifies GDAL_LIBRARY_PATH/GEOS_LIBRARY_PATH in
+    .dylibs, the bundled libgdal actually loaded (DYLD_PRINT_LIBRARIES),
+    an EPSG:4326 lookup through the bundled proj data, and the bundled
+    `gdalinfo` console script.
+  The next step is the verification run (fresh VM, like every
+  verification): `macos/tart_build.sh gdal` first (its chain is
+  self-sufficient; if a builder fails, the VM is kept and stamps make
+  the in-VM rerun cheap), then the full default run and
+  `macos/test_via_tart.sh`, which lights up the shared suite's
+  gdal-dependent steps (projected geotiff read, the two converter steps,
+  the GDAL/vsicurl and format-list steps) that were gated off in the
+  pyvips-only wheelhouse.
 
 ## Hard-won details (do not lose these)
 
@@ -853,6 +968,19 @@ Notes on the remaining packages:
   (gobject, openslide, MagickCore, heif, jxl, jpeg, tiff, png, webp,
   rsvg, poppler, cfitsio, matio, nifti, archive, raw, openjp, exif,
   orc, fftw, lcms, imagequant, pangocairo).
+  The GDAL work (2026-10-16) changed two things in this chain, so the
+  previously verified pyvips wheel state needs a re-verified run: the
+  case now builds `build_openssl` and `build_curl` first (right after
+  `build_libtiff_deps`), so the prefix curl has TLS like the linux one
+  and poppler links it (the libcrypto/libssl dylibs then ride along in
+  `pyvips/.dylibs` through the libcurl linkage; build_curl asserts the
+  libssl linkage, replacing the old "nothing uses curl for TLS"
+  deviation comment), and the case builds `build_openmpi` before
+  `build_hdf5`, whose builder now carries the Dockerfile's MPI options
+  (a parallel hdf5 linking libmpi, like the linux pyvips wheel).  The
+  full default run (which now ends with the gdal case) produces both
+  wheels in one VM, so one build-plus-test cycle re-verifies pyvips
+  together with gdal.
 Notes on the remaining packages:
 
 - **openslide_python**: implemented (`openslide_python` case:
@@ -898,55 +1026,83 @@ Notes on the remaining packages:
   test harness verifies the version identity per python.  Verified end
   to end in the VM (see the hard-won details for the openslide-bin
   shadowing issue the first VM run exposed and its fix).
-- **GDAL**: the largest build; the Dockerfile's full dependency tree
-  applies, and the licensing-inclusive feature set should be mirrored.
-  The python bindings link libgdal directly and need the bundled-library
-  treatment plus the `GDAL_LIBRARY_PATH`/`GEOS_LIBRARY_PATH` exports that
-  the linux wheels provide.  Facts from the pyvips work that matter
-  here: several of GDAL's dependencies already have verified builders
-  in this file (zlib, zstd, xz, libjpeg, libpng, libtiff, openjpeg,
-  expat, sqlite, libxml2, curl, libzip, hdf5 with the v18 API and CPP
-  lib, cfitsio, openexr, brotli, and the whole glib/cairo/pango chain)
-  -- the pyvips `case` is the template for reusing them, but per the
-  completeness rule the case must still build the full tree on a fresh
-  VM.  Decisions (2026-10-16) for the two open questions:
-  - MPI and parallel netcdf WILL be built.  openmpi (versions.txt pin
-    5.0.11) should use the Dockerfile's release-tarball branch (its git
-    branch runs autogen.pl and is slow): download
-    openmpi-<ver>.tar.gz from download.open-mpi.org and configure with
-    the Dockerfile's flags (--prefix=$LIW_PREFIX --disable-picky
-    --disable-dependency-tracking --enable-silent-rules --disable-dlopen
-    --disable-libompitrace --disable-opal-btl-usnic-unit-tests
-    --disable-debug --disable-mem-profile --disable-mem-debug
-    --disable-static --disable-mpi-java -disable-oshmem-profile; macos
-    deltas to be worked out when writing the builder).  parallel-netcdf
-    follows (branch checkpoint.<ver>, the LT_PREREQ 2.5.4->2.4.6 sed,
-    autoreconf, configure --enable-shared --disable-fortran
-    --enable-thread-safe --disable-static).  build_hdf5 then gains the
-    Dockerfile's MPI options (HDF5_ENABLE_PARALLEL=ON plus
-    MPI_C_COMPILER=$LIW_PREFIX/bin/mpicc, MPI_mpi_LIBRARY=$LIW_PREFIX/lib/libmpi.dylib,
-    MPI_C_LIB_NAMES=mpi; the linux MPI_C_HEADER_DIR hint may not apply
-    on macos) -- ALLOW_UNSUPPORTED and THREADSAFE are already passed
-    and the Dockerfile runs with both parallel and threadsafe on.
-    netcdf (pin 4.10.1) comes after parallel-netcdf for the gdal netcdf
-    driver.
-  - An OpenSSL WILL be built for curl-TLS.  Mirror the Dockerfile's
-    recipe but note the pin: versions.txt says openssl 4.0.3, and the
-    Dockerfile deliberately ignores it -- "PINNED - openldap doesn't
-    handle version 4.x yet" -- and builds the 3.6.2 tag
-    (./config --prefix=$LIW_PREFIX --openssldir=$LIW_PREFIX/ssl shared
-    zlib no-tests; `make all install_sw` to skip the docs).  The
-    builder must pin 3.6.2 the same way (a literal or an explicit
-    override, with the reason in a comment; check_versions.py may flag
-    the mismatch).  build_curl then drops -DCURL_ENABLE_SSL=OFF so curl
-    gains TLS (CURL_USE_LIBPSL=OFF stays unless libpsl is built -- an
-    open question), and BOTH the pyvips and gdal cases must place
-    openssl before curl so every fresh-VM run converges on the linux
-    final state (a TLS curl); the pyvips wheel will then bundle
-    libcrypto/libssl through the libcurl linkage.  Poppler is built
-    WITHOUT boost, so if GDAL wants the poppler pdf driver unchanged
-    that is fine, but do not expect poppler's splash performance build;
-    and imagemagick is --without-modules (see its note).
+- **GDAL**: implemented (2026-10-16; see the status entry for the full
+  change list and the verification recipe -- the builders are written
+  but have NOT been run in a VM yet).  The `gdal` case is self-sufficient
+  on a fresh VM: the base format libraries (libtiff chain, giflib),
+  openssl+curl (TLS, first, like the linux order), json-c, lerc,
+  jpeg-xl, the openjpeg feature set, the XML/compression helpers (expat,
+  xml2, lz4, libarchive), sqlite, proj4, freetype+fontconfig (what
+  poppler needs here), swig, openmpi, boost, minizip, fossil, the
+  geos/spatialite/rasterlite2 tree, libgeotiff, fyba, hdf4, hdf5 (with
+  parallel), parallel-netcdf, netcdf, mysql, postgresql, libgta,
+  xerces-c, armadillo, blosc, highfive+kealib, libde265+libheif,
+  poppler, cfitsio, openexr, libopendrive, libavif, then gdal and its
+  python bindings.  The vips-only tree is deliberately NOT in the case
+  (GDAL's cmake checks none of it); the shared suite's known-formats
+  check polices the resulting driver set, and build_gdal asserts the
+  linked feature set.
+  Decisions taken while writing the builders (all with the reason
+  recorded in the builder's comment in build_wheels.sh):
+  - MPI and parallel netcdf are built, as decided: openmpi from the
+    release tarball with the Dockerfile's configure flags (its single-dash
+    '-disable-oshmem-profile' typo is spelled correctly here),
+    parallel-netcdf from the checkpoint branch with the LT_PREREQ
+    2.5.4->2.4.6 sed, and build_hdf5 carries the Dockerfile's MPI options
+    (the linux MPI_C_HEADER_DIR hint is not passed -- FindMPI resolves
+    everything from the prefix's mpicc on macOS).  The pyvips case also
+    builds openmpi before hdf5, so every fresh-VM run converges on the
+    linux final state (a parallel hdf5 linking libmpi).
+  - The OpenSSL is built with the linux 3.6.2 pin (versions.txt's 4.0.3
+    deliberately ignored, like the linux build) and curl drops
+    -DCURL_ENABLE_SSL=OFF; CURL_USE_LIBPSL=OFF stays (no prefix libpsl;
+    an open question whether one is worth building).  OpenSSL installs
+    relative install names on macOS, so build_openssl normalizes them
+    with the new fix_dylib_ids helper before any consumer links.
+  - GDAL's python bindings are a hard SWIG consumer, and the macos VM
+    has no swig: build_swig builds the sourceforge release tarball
+    (pre-generated configure) into the prefix, with PCRE2 from swig's own
+    Tools/pcre-build.sh (a downloaded pcre2 tarball built as a static
+    library inside the swig tree, never installed into the prefix).  Both
+    versions are pinned in the builder (like bison), not versions.txt.
+  - mysql is built for the MySQL driver (it is in the shared suite's
+    known-formats list).  Its WITH_BOOST expression is mirrored verbatim;
+    the find matches nothing in the boost superproject (the headers are
+    generated at build time), so mysql fetches its own boost -- the same
+    thing the linux build does.  libaio is skipped (linux-only).
+  - postgresql is configured --without-icu (PG 16+ fails configure
+    without it and the prefix has no ICU; ICU only affects collation
+    variants) and --without-readline (the prefix has none and the base
+    VM's Homebrew readline must not be linked), with --with-ssl=openssl
+    mirroring the linux libpq-openssl linkage.
+  - armadillo links the macOS Accelerate framework (its cmake does this
+    by default on APPLE when no BLAS/LAPACK is found): there is no
+    Fortran compiler in the VM to build the Dockerfile's lapack, and a
+    Homebrew gfortran would drag Homebrew's libgfortran into the wheels.
+    build_armadillo asserts the Accelerate linkage, which also satisfies
+    GDAL's ARMA_USE_LAPACK config check.
+  - Dockerfile sections skipped with reasons (recorded in the section
+    comment): libtirpc/libnsl (GDAL's cmake has no tirpc/nsl check --
+    stale autotools-era comments; the linux build installs both and
+    nothing links them), krb5 (macOS system Kerberos; the pylibmc
+    precedent), libxcrypt (macOS libSystem provides crypt), ogdi (GDAL
+    3.13's cmake has no OGDI check and the linux wheel has no OGDI
+    driver -- the known-formats list proves it), and mrsid (x86_64-only
+    SDK; the shared suite subtracts it on arm64).  librasterlite2 IS
+    built (linux builds it before gdal; GDAL's RASTERLITE2 check feeds
+    the SQLite raster driver).
+  - The Dockerfile's make USER_DEFS (-Werror + gcc-only -Wno-* flags)
+    is not passed to the gdal build: clang warns about unknown -Wno-*
+    options and the build must not turn diagnostics into errors on a
+    different compiler.
+  The python wheel: the osgeo patch exports GDAL_LIBRARY_PATH and
+  GEOS_LIBRARY_PATH from the bundled dylibs (osgeo/.dylibs first, the
+  linux GDAL.libs location as fallback), points PROJ and GDAL at the
+  bundled data trees, and adds the macOS CA bundle to CURL_CA_BUNDLE;
+  the bundled tools (gdal, proj, libgeotiff) are exposed as console
+  scripts through `osgeo.bin:program`.  The known-formats assertion in
+  the shared suite (>= 98 formats, every known format present except
+  mrsid on arm64) is the functional gate for the driver set.
 - **pyproj**: intentionally not built for macOS.  pyproj4 publishes
   macosx arm64 wheels, so the tests install pyproj from pypi like any
   other dependency; the linux pipeline no longer builds a pyproj wheel
@@ -998,7 +1154,15 @@ Notes on the remaining packages:
   system Kerberos framework (a /System path the otool audit allows).
   NTLM stays enabled like the Dockerfile but silently drops out
   without an OpenSSL in the prefix, and would light up automatically
-  if one is ever added.  Delocate puts
+  if one is ever added.  The GDAL work (2026-10-16) DID add an OpenSSL
+  to the prefix -- but only in the pyvips and gdal cases, and the
+  default run's package order (pylibmc before pyvips) keeps the
+  fresh-VM pylibmc state unchanged: cyrus-sasl still configures without
+  OpenSSL there.  The plugin set is therefore case-order-dependent for
+  mixed runs (e.g. `tart_build.sh gdal pylibmc` in one command would
+  build sasl after openssl and the NTLM plugin would light up); a
+  deliberate single-package `pylibmc` run keeps the documented
+  self-contained set.  Delocate puts
   libmemcached/libsasl2 into `pylibmc/.dylibs` (the pylibmc package is
   the wheel's only directory, and the build asserts the wheel content);
   note the C extension is a *top-level* module (`_pylibmc.cpython-*.so`
@@ -1083,18 +1247,22 @@ authoritative suite.
 The macOS harness (`test_via_tart.sh`) keeps only the platform layers
 around the shared script: phase 0 python rebuilding, phase 1 venv
 installation with wheel-identity checks (pylibtiff, Glymur,
-openslide-python, pylibmc, pyvips), Homebrew-hiding, the `otool` audits -- scoped to
+openslide-python, pylibmc, pyvips, gdal), Homebrew-hiding, the `otool` audits -- scoped to
 the packages our wheels provide (libtiff, glymur, openslide, pylibmc,
-pyvips),
+pyvips, gdal/osgeo),
 since the venvs
 also contain pypi wheels pulled in as dependencies whose build artifacts
 (e.g. Pillow's RPATH to its own build machine, lxml's self-referencing
 load commands) are not ours to police -- and the macos-specific checks
 (`@loader_path` verification that the bundled dylib is the one loaded,
 bundled `tiffinfo`, bundled `slidetool slide quickhash1` against the
-suite's downloaded slide, and the pylibmc bundled-library check:
+suite's downloaded slide, the pylibmc bundled-library check:
 SASL_PATH points into the installed package and the extension's otool
-output shows libmemcached loading from `.dylibs`).  The embedded
+output shows libmemcached loading from `.dylibs`, and the gdal
+bundled-library check: GDAL_LIBRARY_PATH and GEOS_LIBRARY_PATH point
+into `osgeo/.dylibs`, a fresh interpreter loads the bundled libgdal
+(DYLD_PRINT_LIBRARIES), and an EPSG lookup resolves through the bundled
+proj data -- plus the bundled `gdalinfo`).  The embedded
 duplicate functional checks were
 removed.  `li_script.sh` (large_image's own tox suite) remains
 linux-only; running it in the VM is a possible later extension.

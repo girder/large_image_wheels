@@ -16,7 +16,7 @@
 #   4. functionally exercises the wheels by running the shared
 #      test/test_script.sh (the same functional suite the linux containers
 #      run), plus macos-specific checks: the bundled dylib is the one
-#      actually loaded, and the bundled tiffinfo executable runs.
+#      actually loaded, and the bundled tiffinfo/gdalinfo executables run.
 #
 # A test report is written to /tmp/macos_test_report.txt and printed.  On
 # failure the VM is left in place for debugging.
@@ -280,7 +280,7 @@ wheel_for_python() { # wheel_for_python <version req> -> wheel file or empty
 }
 
 wheel_version() { # version embedded in the wheel file name
-    basename "$1" | sed -E 's/^(pylibtiff|Glymur|openslide_python|pylibmc|pyvips)-([0-9.]+)-.*/\2/'
+    basename "$1" | sed -E 's/^(pylibtiff|Glymur|openslide_python|pylibmc|pyvips|GDAL)-([0-9.]+)-.*/\2/'
 }
 
 find_version_dir() {
@@ -575,6 +575,29 @@ for req in $PYTHONS; do
         fi
         log "OK python $req: installed pyvips $pvinstalled"
     fi
+    # If a GDAL wheel is present, verify its identity the same way.  pypi
+    # publishes gdal sdists (and its version numbering can come close to
+    # ours), so the installed-version check is what detects a pypi
+    # fallback.
+    gdwhl="$(ls "$WHEELDIR"/GDAL-*.whl 2>/dev/null | head -1)"
+    if [ -n "$gdwhl" ]; then
+        gdver="$(wheel_version "$gdwhl")"
+        if ! "$venv/bin/pip" install --quiet --find-links "$WHEELDIR" \
+            "gdal==$gdver" >>"$REPORT" 2>&1; then
+            log "FAIL python $req: pip install of gdal failed"
+            FAILURES=$((FAILURES + 1))
+            rm -rf "$venv"
+            continue
+        fi
+        gdinstalled="$($venv/bin/pip show gdal 2>/dev/null | sed -n 's/^Version: //p')"
+        if [ "$gdinstalled" != "$gdver" ]; then
+            log "FAIL python $req: installed gdal $gdinstalled but expected $gdver (pip may have used pypi)"
+            FAILURES=$((FAILURES + 1))
+            rm -rf "$venv"
+            continue
+        fi
+        log "OK python $req: installed gdal $gdinstalled"
+    fi
     VENVDIRS="$VENVDIRS $venv"
 done
 
@@ -723,6 +746,63 @@ print(bundled[0].strip())
 print("pyvips bundled-library check OK")
 PYEOF
 
+cat >"$TESTROOT/test_gdal.py" <<'PYEOF'
+import os
+import subprocess
+import sys
+
+import osgeo
+import osgeo.gdal
+import osgeo.osr
+
+print("gdal version:", osgeo.gdal.__version__)
+
+# The patched osgeo/__init__.py exports the paths of the bundled libgdal
+# and libgeos_c dylibs (delocate puts them in osgeo/.dylibs inside the
+# wheel; the linux auditwheel-style GDAL.libs location is the fallback).
+gdal_path = getattr(osgeo, "GDAL_LIBRARY_PATH", "")
+geos_path = getattr(osgeo, "GEOS_LIBRARY_PATH", "")
+print("GDAL_LIBRARY_PATH:", gdal_path)
+print("GEOS_LIBRARY_PATH:", geos_path)
+if ".dylibs/" not in gdal_path:
+    sys.exit("GDAL_LIBRARY_PATH does not point into the bundled .dylibs directory")
+if ".dylibs/" not in geos_path:
+    sys.exit("GEOS_LIBRARY_PATH does not point into the bundled .dylibs directory")
+for path in (gdal_path, geos_path):
+    if not os.path.exists(path):
+        sys.exit("bundled library does not exist: " + path)
+
+# The proj and gdal data directories are bundled inside the package; the
+# patched __init__ points PROJ and GDAL at them.  A coordinate transform
+# from EPSG:4326 exercises proj.db through the bundled data.
+srs = osgeo.osr.SpatialReference()
+srs.ImportFromEPSG(4326)
+if srs.GetName() != "WGS 84":
+    sys.exit("EPSG:4326 did not resolve through the bundled proj data: " + srs.GetName())
+print("proj data lookup OK:", srs.GetName())
+
+# The extension links libgdal through an absolute install name that
+# delocate rewrote to an @loader_path-relative one; verify with dyld's
+# library printing that the loaded libgdal is the bundled one (a system or
+# Homebrew copy winning the load would mean the bundled library was
+# bypassed).
+env = dict(os.environ)
+env["DYLD_PRINT_LIBRARIES"] = "1"
+out = subprocess.run(
+    [sys.executable, "-c", "import osgeo.gdal"],
+    capture_output=True, text=True, env=env)
+bundled = [line for line in (out.stderr or "").splitlines()
+           if "/osgeo/.dylibs/libgdal" in line]
+if not bundled:
+    sys.exit(
+        "the process did not load the bundled libgdal dylib; loaded "
+        "libgdal images:\n" + "\n".join(
+            line for line in (out.stderr or "").splitlines()
+            if "libgdal" in line))
+print(bundled[0].strip())
+print("gdal bundled-library check OK")
+PYEOF
+
 for venv in $VENVDIRS; do
     req="$(basename "$venv" | sed 's/^venv-//')"
     # The per-python run directory is named here (it is wiped and
@@ -745,12 +825,13 @@ for venv in $VENVDIRS; do
     # pylibmc's C extension is a top-level module (installed outside the
     # pylibmc package directory), so it is audited alongside the packages.
     audit_macho "$site/libtiff" "$site/glymur" "$site/openslide" \
-        "$site/pylibmc" "$site/pyvips" "$site"/_pylibmc*.so >>"$REPORT" 2>&1 || audit_fail=1
+        "$site/pylibmc" "$site/pyvips" "$site/osgeo" \
+        "$site"/_pylibmc*.so >>"$REPORT" 2>&1 || audit_fail=1
     if [ "$audit_fail" != 0 ]; then
         log "FAIL python $req: otool audit found forbidden library references"
         FAILURES=$((FAILURES + 1))
     else
-        log "OK python $req: otool audit clean (libtiff, glymur, openslide, pylibmc, pyvips)"
+        log "OK python $req: otool audit clean (libtiff, glymur, openslide, pylibmc, pyvips, gdal)"
     fi
     if "$venv/bin/python" "$TESTROOT/test_libtiff.py" >>"$REPORT" 2>&1; then
         log "OK python $req: python functional test passed"
@@ -789,6 +870,22 @@ for venv in $VENVDIRS; do
             FAILURES=$((FAILURES + 1))
         fi
     fi
+    if [ -n "$(ls "$WHEELDIR"/GDAL-*.whl 2>/dev/null)" ]; then
+        if "$venv/bin/python" "$TESTROOT/test_gdal.py" >>"$REPORT" 2>&1; then
+            log "OK python $req: gdal bundled-library check passed"
+        else
+            log "FAIL python $req: gdal bundled-library check failed"
+            FAILURES=$((FAILURES + 1))
+        fi
+        # The bundled gdal tool (exposed as a console script) exercises the
+        # bundled dylibs and data the way the linux wheel's gdalinfo does.
+        if "$venv/bin/gdalinfo" --version >>"$REPORT" 2>&1; then
+            log "OK python $req: bundled gdalinfo tool ran"
+        else
+            log "FAIL python $req: bundled gdalinfo tool failed"
+            FAILURES=$((FAILURES + 1))
+        fi
+    fi
     if "$venv/bin/tiffinfo" /tmp/liw_test_image.tif >>"$REPORT" 2>&1; then
         log "OK python $req: bundled tiffinfo ran"
     else
@@ -818,12 +915,13 @@ for venv in $VENVDIRS; do
         venvsite="$(ls -d "$rundir/venv/lib/python3."*/site-packages 2>/dev/null | head -1)"
         audit_fail=0
         audit_macho "$venvsite/libtiff" "$venvsite/glymur" "$venvsite/openslide" \
-            "$venvsite/pylibmc" "$venvsite/pyvips" "$venvsite"/_pylibmc*.so >>"$REPORT" 2>&1 || audit_fail=1
+            "$venvsite/pylibmc" "$venvsite/pyvips" "$venvsite/osgeo" \
+            "$venvsite"/_pylibmc*.so >>"$REPORT" 2>&1 || audit_fail=1
         if [ "$audit_fail" != 0 ]; then
             log "FAIL python $req: otool audit of the test_script.sh venv found forbidden library references"
             FAILURES=$((FAILURES + 1))
         else
-            log "OK python $req: otool audit of the test_script.sh venv clean (libtiff, glymur, openslide, pylibmc)"
+            log "OK python $req: otool audit of the test_script.sh venv clean (libtiff, glymur, openslide, pylibmc, pyvips, gdal)"
         fi
         # The bundled openslide command line tool (slidetool, the only one
         # the linux wheels bundle too) is exposed as a console script; run
