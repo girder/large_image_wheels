@@ -74,7 +74,7 @@ manylinux container plays for the linux builds:
   `build_libarchive`, `build_libraw`, `build_harfbuzz`, `build_pango`,
   `build_librsvg`, `build_libde265`, `build_libheif`, `build_poppler`,
   `build_fitsio`, `build_hdf5`, `build_matio`, `build_openexr`,
-  `build_imagemagick`), then package builders (`build_pylibtiff`,
+  `build_libzip`, `build_imagemagick`), then package builders (`build_pylibtiff`,
   `build_glymur`, `build_openslide`, `build_openslide_python`,
   `build_pylibmc`, `build_pyvips`, with `build_libvips` in the
   dependency section; each package
@@ -238,8 +238,9 @@ runs, not just what the scripts are expected to do):
   dep:lz4 dep:fftw3 dep:libhwy dep:jpeg-xl dep:libimagequant
   dep:libexif dep:libarchive dep:libraw dep:harfbuzz dep:pango
   dep:librsvg dep:libde265 dep:libheif dep:poppler dep:fitsio dep:hdf5
-  dep:matio dep:openexr dep:imagemagick"` (this is also the order the
-  `pyvips` case uses).  Stage 3 -- `build_libvips`, `build_pyvips`, the
+  dep:matio dep:openexr dep:libzip dep:imagemagick"` (this is also the
+  order the `pyvips` case uses; the list has grown as full runs found
+  missed Dockerfile dependencies such as libzip).  Stage 3 -- `build_libvips`, `build_pyvips`, the
   `pyvips` case wiring, and the test-harness additions -- is implemented
   but has not been run in a VM either; the next step is a VM run of the
   full `pyvips` package (`macos/tart_build.sh pyvips`, which exercises
@@ -274,8 +275,13 @@ runs, not just what the scripts are expected to do):
   pango (fribidi wrap, pangocairo with the CoreText backend) but no
   libpangoft2 -- pango disables fontconfig by default on darwin, like
   cairo does; fixed with -Dfontconfig=enabled, mirroring build_cairo,
-  and the assertion now also checks the fontconfig linkage.  Decision
-  (2026-10-15):
+  and the assertion now also checks the fontconfig linkage.  The
+  eighth full run (2026-10-16) passed pango (with fontconfig) and
+  librsvg and died at imagemagick's configure: libltdl is required for
+  --with-modules (the linux base image has it, the macos VM does not),
+  and libzip -- a Dockerfile dependency missed in stage 2 -- was not
+  installed either; fixed with build_libzip and --without-modules
+  (see the pyvips note for the reasoning).  Decision (2026-10-15):
   verification runs are always full builds from a fresh base-VM clone;
   the resume-in-a-kept-VM path (stamps) is not used for verification --
   there is no interest in trading certainty about ordering dependencies
@@ -653,8 +659,8 @@ Notes on the remaining packages:
   lz4, fftw3, libhwy, jpeg-xl (which needs libhwy and brotli),
   libimagequant (rust), libexif, libarchive, libraw, harfbuzz, pango,
   librsvg (rust), libde265 + libheif, poppler, cfitsio, hdf5, matio
-  (hdf5 first, like the linux build order), openexr, and imagemagick
-  (after librsvg, so --with-rsvg finds it).  libexif is built from its
+  (hdf5 first, like the linux build order), openexr, libzip, and
+  imagemagick (after librsvg, so --with-rsvg finds it).  libexif is built from its
   release tarball (which ships a pre-generated configure) with
   --disable-nls: its configure.ac cannot be re-generated in the VM
   because the NLS macros (AM_PO_SUBDIRS, AM_GNU_GETTEXT, AM_ICONV) and
@@ -706,12 +712,20 @@ Notes on the remaining packages:
   which provides imported targets but not the module variables hdf5's
   filter code consumes, leaving the deflate filter compiled but zlib
   unlinked -- the linux linker tolerates the resulting undefined
-  symbols, the macOS one does not); imagemagick drops
-  -lrt from LIBS (linux-only) and is asserted on libMagickCore's own
-  delegates (freetype, fontconfig, xml2, zlib) plus a populated coder
-  modules directory -- the wheel ships only libMagickCore/MagickWand
-  and the `magick` tool, exactly like the linux wheel (the dlopened
-  coder modules are not bundled by either delocate or auditwheel);
+  symbols, the macOS one does not); imagemagick drops -lrt from LIBS
+  (linux-only) and is built with `--without-modules` -- a deliberate
+  deviation: --with-modules needs libltdl (in the linux base image,
+  absent here and Homebrew is forbidden) and, more importantly, the
+  dlopened coder modules are never bundled into a wheel by either
+  delocate or auditwheel, so the linux wheel ships a MagickCore whose
+  coders cannot load at runtime; with --without-modules every coder is
+  compiled into libMagickCore, the bundled dylib is fully functional,
+  and the whole delegate feature set (png, jpeg, tiff, webp, heif,
+  jxl, raw, rsvg, openjpeg, zip, fftw, lzma, zstd, bzip2) is asserted
+  on the core library's own linkage.  clang's lack of OpenMP also
+  means IM builds without it (linux's gcc builds with OpenMP) -- an
+  unavoidable platform delta; libzip was added to the chain (a
+  Dockerfile dependency missed in stage 2) for IM's zip support;
   matio's hand-written matio.pc points at $LIW_PREFIX (mirroring the
   Dockerfile's overwrite); libvips will need
   `-Dnifti-prefix-dir=$LIW_PREFIX` (the Dockerfile passes /usr/local);
