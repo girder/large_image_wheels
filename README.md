@@ -287,7 +287,17 @@ runs, not just what the scripts are expected to do):
   poppler-glib dependency because pkg-config could not resolve
   poppler-glib.pc's "Requires.private: libcurl" (fixed with the prefix
   curl build); everything else in the libvips assertion passed.  The
-  poppler assertion now also checks libcurl.  Decision (2026-10-15):
+  poppler assertion now also checks libcurl.  The tenth full run
+  (2026-10-16) passed imagemagick again (with libzip and curl) and
+  built and installed libvips with every loader found -- poppler-glib,
+  openslide, matio, cfitsio, raw, openjp, exif, pangocairo, lcms,
+  imagequant, fftw all resolved -- but died at the assertion on orc:
+  orc is libvips's FALLBACK SIMD package, used only when libhwy is
+  absent (libvips's meson says so outright), and the prefix always has
+  libhwy because jpeg-xl needs it -- the linux build behaves the same
+  and the Dockerfile's orc is dead weight there too.  The assertion now
+  checks libhwy instead (libvips links it directly), mirroring the
+  jpeg-xl/highway finding.  Decision (2026-10-15):
   verification runs are always full builds from a fresh base-VM clone;
   the resume-in-a-kept-VM path (stamps) is not used for verification --
   there is no interest in trading certainty about ordering dependencies
