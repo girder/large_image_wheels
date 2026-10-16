@@ -270,7 +270,12 @@ runs, not just what the scripts are expected to do):
   ApplicationServices umbrella in the otool output; the modern linker
   records the sub-frameworks it resolved the umbrella's symbols from
   (CoreText, CoreFoundation, CoreGraphics) instead -- fixed by checking
-  for CoreText (verified on the host).  Decision (2026-10-15):
+  for CoreText (verified on the host).  The seventh full run built
+  pango (fribidi wrap, pangocairo with the CoreText backend) but no
+  libpangoft2 -- pango disables fontconfig by default on darwin, like
+  cairo does; fixed with -Dfontconfig=enabled, mirroring build_cairo,
+  and the assertion now also checks the fontconfig linkage.  Decision
+  (2026-10-15):
   verification runs are always full builds from a fresh base-VM clone;
   the resume-in-a-kept-VM path (stamps) is not used for verification --
   there is no interest in trading certainty about ordering dependencies
@@ -646,7 +651,11 @@ Notes on the remaining packages:
   configured with `--force-fallback-for=fribidi` to build its own
   subproject wrap statically into libpango (meson's cmake fallback
   method is not prefix-scoped, so a Homebrew fribidi could otherwise
-  leak in); harfbuzz is built with `-Dcoretext=enabled` because pango's
+  leak in); pango is built with `-Dfontconfig=enabled` for the same
+  reason cairo is: pango (like cairo) disables fontconfig by default on
+  darwin because it prefers CoreText, and without the flag it silently
+  builds no libpangoft2 at all -- the linux build gets pangoft2 because
+  fontconfig is required on linux; harfbuzz is built with `-Dcoretext=enabled` because pango's
   macOS build requires it -- its HAVE_CORE_TEXT probe (a CoreText link
   test) always succeeds on darwin, there is no pango option to skip the
   resulting pangocoretext.c sources, and they include <hb-coretext.h>
