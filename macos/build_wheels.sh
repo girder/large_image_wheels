@@ -379,7 +379,20 @@ meson_build() { # meson_build <source dir> [extra meson setup args...]
             -Doptimization=3 \
             "$@" || exit 1
         ninja -C _build -j "$LIW_JOBS" || exit 1
-        ninja -C _build install
+        # The install step's output is filtered through grep to drop
+        # fontconfig's known install-time noise: its cache-build script
+        # runs `fc-cache -s -f -v`, which floods the log with ~25k
+        # "invalid cache file" lines plus thousands of 0-font "caching"
+        # and "skipping, looped directory" lines (see the README's
+        # fontconfig note).  The patterns are exclusive to that output;
+        # nothing else in the tree emits them.  grep exits 1 when every
+        # line is filtered out, which is not an error, so ninja's real
+        # status is taken from PIPESTATUS[0] (bash 3.2-compatible).
+        ninja -C _build install 2>&1 |
+            grep -v -e ': invalid cache file: ' \
+                -e ': skipping, looped directory detected' \
+                -e ': caching, new cache contents: 0 fonts,'
+        [ "${PIPESTATUS[0]}" -eq 0 ] || exit 1
     ) || die "meson build failed in $src"
 }
 
