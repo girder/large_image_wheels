@@ -297,7 +297,20 @@ runs, not just what the scripts are expected to do):
   libhwy because jpeg-xl needs it -- the linux build behaves the same
   and the Dockerfile's orc is dead weight there too.  The assertion now
   checks libhwy instead (libvips links it directly), mirroring the
-  jpeg-xl/highway finding.  Decision (2026-10-15):
+  jpeg-xl/highway finding.  The eleventh full run (2026-10-16) passed
+  the entire libvips chain and built all seven pyvips wheels; delocate
+  then failed resolving "@rpath/libhdf5.310.dylib" requested by
+  libmatio: hdf5's HDFMacros.cmake hardcodes CMAKE_INSTALL_NAME_DIR to
+  @rpath on Apple, overriding cmake_build's absolute setting, and the
+  @rpath reference cannot be resolved once sanitize_prefix_dylibs
+  strips the prefix rpaths.  Fixed by sed'ing hdf5's macro to the
+  absolute prefix libdir (so the exported HDF5Config.cmake records an
+  absolute soname too), adding the same absolute-install-name check
+  build_lz4 makes to build_hdf5, and adding a catch-all audit to
+  build_pyvips that dies if any prefix dylib installs without an
+  absolute install name (autotools/meson installs are absolute
+  already; this catches cmake projects that override
+  CMAKE_INSTALL_NAME_DIR).  Decision (2026-10-15):
   verification runs are always full builds from a fresh base-VM clone;
   the resume-in-a-kept-VM path (stamps) is not used for verification --
   there is no interest in trading certainty about ordering dependencies
