@@ -1344,6 +1344,20 @@ build_librsvg() {
     done_stamp librsvg
 }
 
+# Used by ImageMagick's zip coder/archive support (the linux build has
+# libzip installed long before imagemagick configures).
+build_libzip() {
+    skip_if_done libzip && return 0
+    step "libzip"
+    cd "$LIW_SRC"
+    rm -rf libzip
+    git_retry https://github.com/nih-at/libzip.git "v$(v libzip)" libzip
+    cmake_build "$LIW_SRC/libzip" -DBUILD_EXAMPLES=OFF
+    [ -n "$(ls "$LIW_PREFIX/lib"/libzip*.dylib 2>/dev/null)" ] ||
+        die "libzip did not install its library"
+    done_stamp libzip
+}
+
 build_libde265() {
     skip_if_done libde265 && return 0
     step "libde265"
@@ -1552,8 +1566,17 @@ build_imagemagick() {
         # The linux LIBS adds -lrt, which does not exist on darwin; zlib is
         # resolved through the prefix's pkgconf like on linux.  Built after
         # librsvg so --with-rsvg finds it (and after the whole dependency
-        # tree so every delegate configure can detect lights up).
-        ./configure --prefix="$LIW_PREFIX" --with-modules --with-rsvg \
+        # tree so every delegate configure check lights up).
+        #
+        # --without-modules is a deliberate deviation: --with-modules needs
+        # libltdl (present in the linux base image, absent here), and the
+        # dlopened coder modules are never bundled into a wheel by either
+        # delocate or auditwheel -- the linux wheel ships a MagickCore whose
+        # coders cannot load at runtime.  With --without-modules every
+        # coder is compiled into libMagickCore, so the bundled dylib is
+        # fully functional and the whole delegate feature set becomes
+        # assertable on the core library's own linkage.
+        ./configure --prefix="$LIW_PREFIX" --without-modules --with-rsvg \
             --with-fftw --with-jxl \
             LIBS="$("$PKG_CONFIG" --libs zlib)" \
             --disable-static || exit 1
@@ -1564,19 +1587,18 @@ build_imagemagick() {
         die "imagemagick did not install libMagickCore"
     [ -n "$(ls "$LIW_PREFIX/lib"/libMagickWand*.dylib 2>/dev/null)" ] ||
         die "imagemagick did not install libMagickWand"
-    # --with-modules builds the coders as loadable modules (like on
-    # linux); the prefix's modules directory must be populated.  The wheel
-    # itself ships only the libraries, exactly like the linux wheel.
-    [ -n "$(ls "$LIW_PREFIX/lib"/ImageMagick-*/modules-MagickCore/coders/ 2>/dev/null)" ] ||
-        die "imagemagick built no coder modules"
     # Feature assertions on the core library: the delegates compiled into
     # MagickCore itself (annotate's freetype/fontconfig, lcms color
-    # management, xml2).  The coder delegates (png, jpeg, heif, jxl, ...)
-    # live in the module dylibs, not the core.
+    # management, xml2, and the coder delegates, which are internal
+    # because of --without-modules: png, jpeg, tiff, webp, heif, jxl,
+    # raw, rsvg, openjpeg, zip, fftw, lzma, zstd, bzip2).  A missing
+    # optional delegate here means configure silently dropped it.
     local linked lib
     linked="$(otool -L "$LIW_PREFIX/lib"/libMagickCore*.dylib 2>/dev/null || true)"
     [ -n "$linked" ] || die "imagemagick produced no dylib to check"
-    for lib in libfreetype libfontconfig libxml2 "libz."; do
+    for lib in libfreetype libfontconfig libxml2 "libz." libpng libjpeg \
+        libtiff libwebp libheif libjxl libraw librsvg libopenjp lcms \
+        fftw libzip liblzma libzstd libbz2.; do
         printf '%s\n' "$linked" | grep -q "$lib" ||
             die "libMagickCore was not linked against $lib; an optional dependency was missed (check the build order)"
     done
@@ -2704,6 +2726,7 @@ for pkg in ${PACKAGES[@]+"${PACKAGES[@]}"}; do
         build_openexr
         build_pango
         build_librsvg
+        build_libzip
         build_imagemagick
         build_libvips
         build_pyvips
