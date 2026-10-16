@@ -1492,6 +1492,17 @@ build_hdf5() {
     cd "$LIW_SRC"
     rm -rf hdf5
     git_retry https://github.com/HDFGroup/hdf5.git "hdf5-$(v hdf5)" hdf5
+    # hdf5's HDFMacros.cmake hardcodes CMAKE_INSTALL_NAME_DIR to @rpath on
+    # Apple, overriding the -DCMAKE_INSTALL_NAME_DIR that cmake_build
+    # passes; its dylibs then install with an @rpath install name, and
+    # consumers (matio) record "@rpath/libhdf5.310.dylib" with nothing to
+    # resolve it against once sanitize_prefix_dylibs strips the prefix
+    # rpaths before wheel building -- delocate failed the first pyvips
+    # wheel with "Could not find all dependencies" on exactly that
+    # (@rpath/libhdf5.310.dylib, requested by libmatio).  Point the
+    # macro's override at the prefix's absolute lib dir instead, so hdf5
+    # behaves like every other cmake project here and the exported
+    # HDF5Config.cmake records an absolute soname for its consumers.
     # The Dockerfile's MPI-dependent options (HDF5_ENABLE_PARALLEL and the
     # MPI_* variables) are dropped: the macos prefix has no MPI (parallel
     # netcdf is a GDAL-stage concern and will need an MPI built into the
@@ -1526,6 +1537,15 @@ build_hdf5() {
         -DHDF5_BUILD_DOC=OFF \
         -DALLOW_UNSUPPORTED=ON \
         -DHDF5_ENABLE_THREADSAFE=ON
+    # The install name must be absolute so delocate can rewrite the
+    # bundled copies and consumers record an absolute dependency name
+    # (the same check build_lz4 makes for the same reason).
+    local name
+    name="$(otool -D "$LIW_PREFIX/lib/libhdf5.310.dylib" 2>/dev/null | sed -n 2p)"
+    case "$name" in
+    "$LIW_PREFIX"/*) ;;
+    *) die "libhdf5's install name is not absolute ('$name')" ;;
+    esac
     [ -n "$(ls "$LIW_PREFIX/lib"/libhdf5*.dylib 2>/dev/null)" ] ||
         die "hdf5 did not install its library"
     local linked lib
@@ -2468,6 +2488,25 @@ build_pyvips() {
     # Dependencies may have just been built (fresh VM); strip any build-tree
     # RPATHs they installed before the wheels bundle them.
     sanitize_prefix_dylibs
+
+    # Belt-and-braces check before delocate: every prefix dylib must have
+    # an absolute install name.  A consumer records the dependency name
+    # from the dylib's install ID at its own build time, so a dylib that
+    # installs with an @rpath install name leaves its consumers with a
+    # reference nothing can resolve once the prefix rpaths are stripped
+    # -- delocate then fails with "Could not find all dependencies"
+    # (hdf5's @rpath override was found exactly this way).  Autotools and
+    # meson installs are absolute already; this catches cmake projects
+    # that override CMAKE_INSTALL_NAME_DIR.  Symlinked names double-check
+    # their targets, which is harmless.
+    local d name
+    while IFS= read -r -d '' d; do
+        name="$(otool -D "$d" 2>/dev/null | sed -n 2p)"
+        case "$name" in
+        "$LIW_PREFIX"/*) ;;
+        *) die "install name of $d is not absolute ('$name')" ;;
+        esac
+    done < <(find "$LIW_PREFIX/lib" -maxdepth 1 -name '*.dylib' -print0)
 
     cd "$LIW_SRC"
     rm -rf pyvips
