@@ -1272,8 +1272,14 @@ build_pango() {
     # force pango's own subproject wrap (meson's default wrap mode allows
     # the fallback, like glib's pcre2) so it is built statically into
     # libpango rather than risking a Homebrew leak through meson's cmake
-    # fallback method.
+    # fallback method.  -Dfontconfig=enabled mirrors build_cairo: pango
+    # disables fontconfig by default on darwin (it prefers CoreText,
+    # like cairo does), but the linux wheel's pango builds pangoft2
+    # (fontconfig is required on linux), and pangocairo's cairo-freetype
+    # font backend needs it -- without the flag this build silently
+    # produced no libpangoft2 at all.
     meson_build "$LIW_SRC/pango" -Dintrospection=disabled \
+        -Dfontconfig=enabled \
         --force-fallback-for=fribidi
     # Feature assertions: freetype, fontconfig, cairo, glib, and harfbuzz
     # are all installed before this runs, so the pangoft2 and pangocairo
@@ -1287,7 +1293,7 @@ build_pango() {
     linked="$(otool -L "$LIW_PREFIX/lib"/libpangoft2-1.0.0.dylib \
         "$LIW_PREFIX/lib"/libpangocairo-1.0.0.dylib 2>/dev/null || true)"
     [ -n "$linked" ] || die "pango produced no dylibs to check"
-    for lib in libharfbuzz libfreetype libcairo; do
+    for lib in libharfbuzz libfreetype libfontconfig libcairo; do
         printf '%s\n' "$linked" | grep -q "$lib" ||
             die "pango was not linked against $lib; an optional dependency was missed (check the build order)"
     done
