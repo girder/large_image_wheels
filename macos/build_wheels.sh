@@ -351,6 +351,48 @@ sanitize_prefix_dylibs() {
     done < <(find "$LIW_PREFIX/lib" -name '*.dylib' -type f -print0)
 }
 
+# Normalize the install names (ids) of a set of prefix dylibs to absolute
+# $LIW_PREFIX/lib paths and rewrite load commands inside the group that
+# referenced an old id.  Some build systems install dylibs whose install
+# name is not an absolute prefix path (OpenSSL's makefile records a
+# relative "lib/libcrypto.*", boost's b2 records the bare file name); a
+# consumer linking such a dylib records an unresolvable reference, and
+# after sanitize_prefix_dylibs strips the prefix rpaths nothing can resolve
+# it -- delocate then fails long after the offending build (the hdf5
+# @rpath lesson).  Call this right after a build whose install names are
+# suspect and BEFORE any consumer links the dylibs.  Re-signs afterwards
+# (arm64 requires a valid signature after install_name_tool).
+fix_dylib_ids() { # fix_dylib_ids <dylib>...
+    local f id base i
+    local -a files=() oldids=() newpaths=()
+    for f in "$@"; do
+        [ -f "$f" ] || continue
+        [ -L "$f" ] && continue
+        id="$(otool -D "$f" 2>/dev/null | sed -n 2p)"
+        [ -n "$id" ] || continue
+        files+=("$f")
+        case "$id" in
+        "$LIW_PREFIX"/*) continue ;;
+        esac
+        base="${id##*/}"
+        install_name_tool -id "$LIW_PREFIX/lib/$base" "$f" ||
+            die "install_name_tool -id failed for $f"
+        oldids+=("$id")
+        newpaths+=("$LIW_PREFIX/lib/$base")
+    done
+    [ "${#oldids[@]}" -gt 0 ] || return 0
+    for f in ${files[@]+"${files[@]}"}; do
+        for i in ${!oldids[@]}; do
+            # A failed -change only means the load command is not present
+            # (a dylib does not resolve itself through its own old id, and
+            # files whose id was already absolute may still reference a
+            # sibling by that sibling's old id).
+            install_name_tool -change "${oldids[$i]}" "${newpaths[$i]}" "$f" 2>/dev/null || true
+        done
+        codesign -f -s - "$f" 2>/dev/null || true
+    done
+}
+
 # The base VM's Homebrew set does not include meson (glib, pixman,
 # freetype, fontconfig, cairo, and openslide are meson builds).  Install
 # it into the patch python instead -- it is a build tool only and never
@@ -1377,22 +1419,32 @@ build_curl() {
         curl.tar.gz
     mkdir curl
     tar -zxf curl.tar.gz -C curl --strip-components 1
-    # Two deviations forced by the isolated prefix, both verified on the
-    # host: with Homebrew out of reach the VM has no OpenSSL (curl's cmake
-    # hard-requires a TLS backend otherwise) and no libpsl, so TLS and
-    # psl support are disabled -- nothing in the wheel's dependency tree
-    # uses curl for TLS (poppler's libcurl use is URI loading, and libvips
-    # itself never links curl).  CURL_CA_FALLBACK mirrors the Dockerfile;
-    # LDAP resolves to the system LDAP.framework, which the audits allow.
+    # The one remaining deviation from the Dockerfile: the linux base image
+    # has libpsl, the isolated prefix does not, so psl support is disabled
+    # (whether a prefix libpsl is worth building is an open question).
+    # TLS is enabled through the prefix's OpenSSL, which build_openssl
+    # installs before this in the cases that build curl.  The first curl
+    # build passed -DCURL_ENABLE_SSL=OFF because the VM had no OpenSSL at
+    # all (curl's cmake hard-requires a TLS backend); that deviation is
+    # gone now that OpenSSL is part of the prefix -- the linux final state
+    # is a TLS curl.  CURL_CA_FALLBACK mirrors the Dockerfile; LDAP
+    # resolves to the system LDAP.framework, which the audits allow.
     cmake_build "$LIW_SRC/curl" \
         -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF -DBUILD_STATIC=OFF \
         -DCURL_CA_FALLBACK=ON \
         -DBUILD_LIBCURL_DOCS=OFF -DBUILD_MISC_DOCS=OFF \
-        -DCURL_ENABLE_SSL=OFF -DCURL_USE_LIBPSL=OFF
+        -DCURL_USE_LIBPSL=OFF
     [ -e "$LIW_PREFIX/lib/pkgconfig/libcurl.pc" ] ||
         die "curl did not install its libcurl.pc"
     [ -n "$(ls "$LIW_PREFIX/lib"/libcurl*.dylib 2>/dev/null)" ] ||
         die "curl did not install its library"
+    # Feature assertion: with OpenSSL in the prefix, curl must have picked
+    # it up; a silently TLS-less curl would only show up as failures in
+    # https-dependent tests (the shared suite's vsicurl step).
+    local linked
+    linked="$(otool -L "$LIW_PREFIX/lib"/libcurl*.dylib 2>/dev/null || true)"
+    printf '%s\n' "$linked" | grep -q libssl ||
+        die "libcurl was not linked against libssl; TLS was not enabled (build_openssl must run before build_curl)"
     done_stamp curl
 }
 
@@ -1505,10 +1557,13 @@ build_hdf5() {
     # ${CMAKE_INSTALL_PREFIX}/lib, so hdf5 behaves like every other
     # cmake project here and the exported HDF5Config.cmake records an
     # absolute soname for its consumers.
-    # The Dockerfile's MPI-dependent options (HDF5_ENABLE_PARALLEL and the
-    # MPI_* variables) are dropped: the macos prefix has no MPI (parallel
-    # netcdf is a GDAL-stage concern and will need an MPI built into the
-    # prefix).  HDF5_ENABLE_DIRECT_VFD is linux-only (O_DIRECT).
+    # HDF5_ENABLE_PARALLEL mirrors the Dockerfile (parallel netcdf needs a
+    # parallel hdf5; the Dockerfile runs with parallel and threadsafe both
+    # on, ALLOW_UNSUPPORTED already covers the combination): build_openmpi
+    # runs first in every case that builds hdf5.  The linux build's
+    # MPI_C_HEADER_DIR hint is not passed: FindMPI resolves everything it
+    # needs from the prefix's mpicc on macOS.
+    # HDF5_ENABLE_DIRECT_VFD is linux-only (O_DIRECT).
     #
     # ZLIB_LIBRARIES/ZLIB_INCLUDE_DIR must be preset: hdf5's
     # CMakeFilters.cmake first runs a CONFIG-mode
@@ -1539,7 +1594,11 @@ build_hdf5() {
         -DHDF5_BUILD_DOC=OFF \
         -DALLOW_UNSUPPORTED=ON \
         -DHDF5_ENABLE_THREADSAFE=ON \
-        -DHDF5_BUILD_WITH_INSTALL_NAME=ON
+        -DHDF5_BUILD_WITH_INSTALL_NAME=ON \
+        -DHDF5_ENABLE_PARALLEL=ON \
+        -DMPI_C_COMPILER="$LIW_PREFIX/bin/mpicc" \
+        -DMPI_mpi_LIBRARY="$LIW_PREFIX/lib/libmpi.dylib" \
+        -DMPI_C_LIB_NAMES=mpi
     # The install name must be absolute so delocate can rewrite the
     # bundled copies and consumers record an absolute dependency name
     # (the same check build_lz4 makes for the same reason).
@@ -1724,6 +1783,1190 @@ build_libvips() {
             die "libvips was not linked against $lib; an optional dependency was missed (check the build order)"
     done
     done_stamp libvips
+}
+
+# --------------------------------------------------------------------------
+# Dependencies for GDAL and mapnik (the Dockerfile's GDAL tree), mirroring
+# the Dockerfile's build order and flags.  The gdal case below builds the
+# full tree on a fresh VM; each builder is also reachable as dep:<name>.
+#
+# The Dockerfile sections that have no macos counterpart are skipped with a
+# reason:
+#   - libtirpc / libnsl ("Used by GDAL"): GDAL's cmake has no tirpc or
+#     nsl check at all (verified against the pinned gdal source) -- the
+#     comment is stale from the autotools era; the linux build installs
+#     both and nothing links them.
+#   - krb5: the macOS system Kerberos framework plays the same role for
+#     everything here (the pylibmc cyrus-sasl precedent); the linux prefix
+#     krb5 feeds curl's and libpq's optional GSS support, which no test
+#     exercises.
+#   - libaio: "Linux async i/o library" for mysql.
+#   - libxcrypt: provides libcrypt (GDAL and postgresql on linux); macOS
+#     libSystem provides crypt.
+#   - lapack: there is no Fortran compiler in the VM (the linux build uses
+#     the base image's gcc-gfortran), and a Homebrew gfortran would drag
+#     Homebrew's libgfortran into the wheels.  Armadillo instead links the
+#     macOS Accelerate framework (its cmake does this by default on APPLE
+#     when no BLAS/LAPACK is found), which provides BLAS and LAPACK as
+#     system frameworks the otool audits allow.  build_armadillo asserts
+#     the Accelerate linkage.
+#   - ogdi: GDAL 3.13's cmake has no OGDI check at all, and the shared
+#     suite's known-formats list (which mirrors the linux wheel) has no
+#     OGDI entry -- the linux wheel has no OGDI driver either, so building
+#     it cannot light up a tested feature while its linux-tuned makefiles
+#     are a pure build risk.
+#   - mrsid: the DSDK is x86_64-only (the linux build gates it on
+#     AUDITWHEEL_ARCH too); the shared suite subtracts mrsid on arm64.
+# --------------------------------------------------------------------------
+
+# GDAL's GIF driver links the external giflib when it is installed (the
+# cmake-era default is external-when-found), so the linux wheel's libgif
+# must have a macos counterpart.  giflib's Makefile already has a darwin
+# branch (-dynamiclib), but its installed dylibs carry bare install names
+# (fixed with fix_dylib_ids), and its install rules descend into a doc
+# directory that cannot build here (the Dockerfile seds that rule out).
+build_giflib() {
+    skip_if_done giflib && return 0
+    step "giflib"
+    cd "$LIW_SRC"
+    rm -rf giflib
+    fetch "https://downloads.sourceforge.net/project/giflib/giflib-6.x/giflib-$(v giflib).tar.gz" \
+        giflib.tar.gz
+    mkdir giflib
+    tar -zxf giflib.tar.gz -C giflib --strip-components 1
+    (
+        cd giflib || exit 1
+        sed -i '' 's/\$(MAKE) -C doc/echo/g' Makefile || exit 1
+        make -j "$LIW_JOBS" PREFIX="$LIW_PREFIX" || exit 1
+        make install PREFIX="$LIW_PREFIX" || exit 1
+    ) || die "giflib build failed"
+    [ -e "$LIW_PREFIX/lib/libgif.dylib" ] ||
+        die "giflib did not install libgif"
+    fix_dylib_ids "$LIW_PREFIX/lib"/libgif*.dylib "$LIW_PREFIX/lib"/libutil*.dylib
+    done_stamp giflib
+}
+
+# The Dockerfile's openssl section is deliberately pinned: versions.txt
+# says 4.0.3, and the linux build ignores it ("PINNED - openldap doesn't
+# handle version 4.x yet") and builds the 3.6.2 tag.  The macos build pins
+# the same literal (not $(v openssl)) so a future versions.txt change
+# cannot silently move it either; check_versions.py may flag the mismatch.
+# This is what gives the prefix's curl TLS (build_curl's assertion), and
+# GDAL links libcrypto directly for its CPL crypto.
+build_openssl() {
+    skip_if_done openssl && return 0
+    step "openssl (pinned 3.6.2; versions.txt's 4.x is deliberately ignored, like the linux build)"
+    cd "$LIW_SRC"
+    rm -rf openssl
+    git_retry https://github.com/openssl/openssl.git "openssl-3.6.2" openssl
+    (
+        cd openssl || exit 1
+        ./config --prefix="$LIW_PREFIX" --openssldir="$LIW_PREFIX/ssl" \
+            shared zlib no-tests || exit 1
+        make -j "$LIW_JOBS" || exit 1
+        # "all install_sw" installs without the docs, like the linux build.
+        make -j "$LIW_JOBS" all install_sw || exit 1
+    ) || die "openssl build failed"
+    # OpenSSL's makefile records relative install names on macOS; fix them
+    # BEFORE any consumer (curl, mysql, postgresql, gdal) links the
+    # libraries, so the consumers record absolute names (the hdf5 lesson).
+    fix_dylib_ids "$LIW_PREFIX/lib"/libcrypto*.dylib "$LIW_PREFIX/lib"/libssl*.dylib
+    [ -e "$LIW_PREFIX/lib/libcrypto.dylib" ] ||
+        die "openssl did not install libcrypto"
+    [ -e "$LIW_PREFIX/lib/libssl.dylib" ] ||
+        die "openssl did not install libssl"
+    local linked
+    linked="$(otool -L "$LIW_PREFIX/lib"/libssl*.dylib 2>/dev/null || true)"
+    printf '%s\n' "$linked" | grep -q libcrypto ||
+        die "libssl was not linked against libcrypto"
+    done_stamp openssl
+}
+
+# Used by GDAL (its cmake prefers external json-c when found; the linux
+# wheel links libjson-c).
+build_json_c() {
+    skip_if_done json-c && return 0
+    step "json-c"
+    cd "$LIW_SRC"
+    rm -rf json-c
+    git_retry https://github.com/json-c/json-c.git "json-c-$(v json-c)" json-c
+    cmake_build "$LIW_SRC/json-c" -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    [ -n "$(ls "$LIW_PREFIX/lib"/libjson-c*.dylib 2>/dev/null)" ] ||
+        die "json-c did not install its library"
+    done_stamp json-c
+}
+
+# Used by GDAL (GDAL_USE_LERC=ON; the linux wheel links the external
+# liblerc).
+build_lerc() {
+    skip_if_done lerc && return 0
+    step "lerc"
+    cd "$LIW_SRC"
+    rm -rf lerc
+    git_retry https://github.com/Esri/lerc.git "v$(v lerc)" lerc
+    cmake_build "$LIW_SRC/lerc"
+    [ -n "$(ls "$LIW_PREFIX/lib"/lib*erc*.dylib 2>/dev/null)" ] ||
+        die "lerc did not install its library"
+    done_stamp lerc
+}
+
+# SWIG generates the GDAL python bindings' wrapper sources; the linux base
+# image ships it and the VM's Homebrew set does not, so build it into the
+# prefix as a build tool only (like bison).  The sourceforge release
+# tarball carries a pre-generated configure (the git tarball would need
+# autogen.sh and bison); PCRE2 comes from swig's own Tools/pcre-build.sh,
+# which builds a downloaded PCRE2 tarball as a static library into the
+# swig source tree where swig's configure finds it automatically -- it is
+# never installed into the prefix.
+build_swig() {
+    skip_if_done swig && return 0
+    step "swig (pinned 4.3.1; a build tool for the GDAL python bindings)"
+    local swig_version=4.3.1 pcre2_version=10.45
+    cd "$LIW_SRC"
+    rm -rf swig
+    fetch "https://downloads.sourceforge.net/project/swig/swig/swig-$swig_version/swig-$swig_version.tar.gz" \
+        swig.tar.gz
+    mkdir swig
+    tar -zxf swig.tar.gz -C swig --strip-components 1
+    (
+        cd swig || exit 1
+        fetch "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-$pcre2_version/pcre2-$pcre2_version.tar.gz" \
+            "pcre2-$pcre2_version.tar.gz" || exit 1
+        Tools/pcre-build.sh || exit 1
+        ./configure --prefix="$LIW_PREFIX" || exit 1
+        make -j "$LIW_JOBS" || exit 1
+        make install || exit 1
+    ) || die "swig build failed"
+    "$LIW_PREFIX/bin/swig" -version 2>/dev/null | grep -q "$swig_version" ||
+        die "swig did not install the expected version"
+    done_stamp swig
+}
+
+# openmpi: the MPI implementation hdf5's parallel build (HDF5_ENABLE_PARALLEL,
+# needed by parallel netcdf) requires.  The Dockerfile prefers the release
+# tarball over the git branch (the git branch runs autogen.pl and is slow).
+# The Dockerfile's '-disable-oshmem-profile' has a single dash (configure
+# parses it as a run of short options); it is spelled correctly here.
+build_openmpi() {
+    skip_if_done openmpi && return 0
+    step "openmpi"
+    cd "$LIW_SRC"
+    rm -rf openmpi
+    fetch "https://download.open-mpi.org/release/open-mpi/v$(v openmpi 2)/openmpi-$(v openmpi).tar.gz" \
+        openmpi.tar.gz
+    mkdir openmpi
+    tar -zxf openmpi.tar.gz -C openmpi --strip-components 1
+    (
+        cd openmpi || exit 1
+        ./configure --prefix="$LIW_PREFIX" \
+            --disable-picky --disable-dependency-tracking \
+            --enable-silent-rules --disable-dlopen --disable-libompitrace \
+            --disable-opal-btl-usnic-unit-tests --disable-debug \
+            --disable-mem-profile --disable-mem-debug --disable-static \
+            --disable-mpi-java --disable-oshmem-profile || exit 1
+        make -j "$LIW_JOBS" || exit 1
+        make install || exit 1
+    ) || die "openmpi build failed"
+    [ -x "$LIW_PREFIX/bin/mpicc" ] || die "openmpi did not install mpicc"
+    [ -e "$LIW_PREFIX/lib/libmpi.dylib" ] ||
+        die "openmpi did not install libmpi"
+    done_stamp openmpi
+}
+
+# Boost: mysql needs its headers (WITH_BOOST; like the linux build, the
+# WITH_BOOST value the Dockerfile computes from the superproject matches
+# nothing and mysql fetches its own copy), and mapnik -- the package after
+# GDAL -- needs the libraries, so build them here exactly like the
+# Dockerfile does.  The superproject's submodules (the libs/* trees) are
+# required for the build; git_retry has no provision for extra clone
+# options, so the retry loop is inline (like jpeg-xl's).
+build_boost() {
+    skip_if_done boost && return 0
+    step "boost (the submodule clone is large)"
+    cd "$LIW_SRC"
+    rm -rf boost
+    local n=0
+    until git clone --depth=1 --single-branch -b "boost-$(v boost)" \
+        -c advice.detachedHead=false --quiet --recurse-submodules \
+        -j "$LIW_JOBS" https://github.com/boostorg/boost.git boost; do
+        n=$((n + 1))
+        [ "$n" -ge 10 ] &&
+            die "git clone failed after $n attempts: boost (boost-$(v boost))"
+        echo "retrying git clone: https://github.com/boostorg/boost.git"
+        sleep 5
+    done
+    (
+        cd boost || exit 1
+        # The same flags as the linux build: an empty user-config jam and
+        # the mpi line (harmless -- no --with-mpi is built), the clang
+        # toolset in place of gcc, and the same --with list.  gcc-only
+        # warning flags (-Wno-maybe-uninitialized) stay: they only produce
+        # clang warnings here, like on the linux gcc build.
+        echo "" >tools/build/src/user-config.jam || exit 1
+        echo "using mpi : $LIW_PREFIX/lib ;" >>tools/build/src/user-config.jam || exit 1
+        ./bootstrap.sh --prefix="$LIW_PREFIX" --with-toolset=clang \
+            variant=release || exit 1
+        ./b2 -d1 -j "$LIW_JOBS" toolset=clang variant=release link=shared \
+            --build-type=minimal \
+            --with-filesystem \
+            --with-thread \
+            --with-regex \
+            --with-atomic \
+            --with-program_options \
+            --with-url \
+            --with-context \
+            cxxflags="-std=c++14 -Wno-parentheses -Wno-deprecated-declarations -Wno-unused-variable -Wno-parentheses -Wno-maybe-uninitialized -Wno-attributes" \
+            install || exit 1
+    ) || die "boost build failed"
+    [ -n "$(ls "$LIW_PREFIX/lib"/libboost_*.dylib 2>/dev/null)" ] ||
+        die "boost did not install its libraries"
+    # b2 records bare install names for its darwin dylibs; fix them before
+    # mysql (or mapnik) links anything.
+    fix_dylib_ids "$LIW_PREFIX/lib"/libboost_*.dylib
+    done_stamp boost
+}
+
+# Used by gdal, mapnik, libgeotiff, libspatialite, and rasterlite2.  PROJ
+# is built from its cmake build (like the linux build); the sqlite3 binary
+# from build_sqlite generates proj.db.
+build_proj4() {
+    skip_if_done proj4 && return 0
+    step "proj4"
+    cd "$LIW_SRC"
+    rm -rf proj4
+    git_retry https://github.com/OSGeo/proj.4.git "$(v proj4)" proj4
+    cmake_build "$LIW_SRC/proj4" -DBUILD_TESTING=OFF
+    [ -e "$LIW_PREFIX/lib/libproj.dylib" ] ||
+        die "proj4 did not install libproj"
+    [ -x "$LIW_PREFIX/bin/proj" ] ||
+        die "proj4 did not install its tools"
+    [ -e "$LIW_PREFIX/share/proj/proj.db" ] ||
+        die "proj4 did not install its proj.db data"
+    local linked lib
+    linked="$(otool -L "$LIW_PREFIX/lib"/libproj*.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "proj4 produced no dylib to check"
+    for lib in libtiff libsqlite3 libcurl; do
+        printf '%s\n' "$linked" | grep -q "$lib" ||
+            die "libproj was not linked against $lib; an optional dependency was missed (check the build order)"
+    done
+    done_stamp proj4
+}
+
+# Used by libOpenDRIVE (zipped XODR bundles) and mapnik.  MZ_OPENSSL=yes
+# mirrors the linux build (the prefix's openssl is built before this in
+# the gdal case).
+build_minizip() {
+    skip_if_done minizip && return 0
+    step "minizip"
+    cd "$LIW_SRC"
+    rm -rf minizip
+    git_retry https://github.com/zlib-ng/minizip-ng.git "$(v minizip)" minizip
+    # The Dockerfile seds an add_compile_options(-fPIC) after the PPMD
+    # status message to keep those objects position-independent; it is not
+    # mirrored here: on arm64 every object is PIC anyway, and the BSD
+    # sed's replacement does not interpret GNU's \n escape, so the same
+    # substitution would corrupt the CMakeLists line.
+    cmake_build "$LIW_SRC/minizip" -DBUILD_SHARED_LIBS=ON -DMZ_OPENSSL=yes
+    [ -n "$(ls "$LIW_PREFIX/lib"/libminizip*.dylib 2>/dev/null)" ] ||
+        die "minizip did not install its library"
+    done_stamp minizip
+}
+
+# The gaia-gis sources (freexl, libspatialite, librasterlite2) live in
+# fossil repositories, so the fossil executable is a build tool like
+# bison and swig: it is built into the prefix and never bundled.  The
+# prefix's OpenSSL feeds its https support.
+build_fossil() {
+    skip_if_done fossil && return 0
+    step "fossil (build tool; clones the gaia-gis fossil repositories)"
+    cd "$LIW_SRC"
+    rm -rf fossil
+    fetch "https://github.com/drhsqlite/fossil-mirror/archive/refs/tags/version-$(v fossil).tar.gz" \
+        fossil.tar.gz
+    mkdir fossil
+    tar -zxf fossil.tar.gz -C fossil --strip-components 1
+    (
+        cd fossil || exit 1
+        ./configure --prefix="$LIW_PREFIX" --with-openssl="$LIW_PREFIX" || exit 1
+        make -j "$LIW_JOBS" || exit 1
+        make install || exit 1
+    ) || die "fossil build failed"
+    "$LIW_PREFIX/bin/fossil" version 2>/dev/null | grep -q "$(v fossil)" ||
+        die "fossil did not install the expected version"
+    done_stamp fossil
+}
+
+# Used by GDAL's XLS driver.  The gaia-gis fossil repository is the only
+# upstream source (the versions.txt pin is a fossil hash the linux build
+# does not use either -- it clones the trunk tip).  The macOS iconv lives
+# in libSystem, so the linux build's LIBS=-liconv is not needed here; the
+# linux --build triplet is linux-specific and is dropped.
+build_freexl() {
+    skip_if_done freexl && return 0
+    step "freexl"
+    cd "$LIW_SRC"
+    rm -rf freexl freexl.fossil
+    printf 'yes\nyes\n' | fossil --user=root clone \
+        https://www.gaia-gis.it/fossil/freexl freexl.fossil ||
+        die "fossil clone of freexl failed"
+    mkdir freexl
+    (
+        cd freexl || exit 1
+        fossil open ../freexl.fossil || exit 1
+        rm -f ../freexl.fossil
+        ./configure --prefix="$LIW_PREFIX" --disable-static || exit 1
+        make -j "$LIW_JOBS" || exit 1
+        make install || exit 1
+    ) || die "freexl build failed"
+    [ -e "$LIW_PREFIX/lib/libfreexl.dylib" ] ||
+        die "freexl did not install its library"
+    done_stamp freexl
+}
+
+# Used by GDAL (GEOS_LIBRARY_PATH in the python bindings' osgeo patch) and
+# by librttopo/libspatialite below.
+build_libgeos() {
+    skip_if_done libgeos && return 0
+    step "libgeos"
+    cd "$LIW_SRC"
+    rm -rf geos
+    git_retry https://github.com/libgeos/geos.git "$(v libgeos)" geos
+    cmake_build "$LIW_SRC/geos" -DGEOS_BUILD_DEVELOPER=NO -DBUILD_TESTING=OFF
+    [ -e "$LIW_PREFIX/lib/libgeos_c.dylib" ] ||
+        die "libgeos did not install libgeos_c"
+    [ -e "$LIW_PREFIX/lib/libgeos.dylib" ] ||
+        die "libgeos did not install libgeos"
+    done_stamp libgeos
+}
+
+# Used by libspatialite.
+build_librttopo() {
+    skip_if_done librttopo && return 0
+    step "librttopo"
+    cd "$LIW_SRC"
+    rm -rf rttopo
+    git_retry https://gitlab.com/rttopo/rttopo.git \
+        "librttopo-$(v librttopo)" rttopo
+    (
+        cd rttopo || exit 1
+        ./autogen.sh || exit 1
+        ./configure --prefix="$LIW_PREFIX" --disable-static || exit 1
+        make -j "$LIW_JOBS" || exit 1
+        make install || exit 1
+    ) || die "librttopo build failed"
+    [ -e "$LIW_PREFIX/lib/librttopo.dylib" ] ||
+        die "librttopo did not install its library"
+    done_stamp librttopo
+}
+
+# Used by GDAL and mapnik.  The gaia-gis fossil trunk tip (like the linux
+# build; the commented-out fossil checkout pin is disabled there too).
+build_libspatialite() {
+    skip_if_done libspatialite && return 0
+    step "libspatialite"
+    cd "$LIW_SRC"
+    rm -rf libspatialite libspatialite.fossil
+    fossil --user=root clone https://www.gaia-gis.it/fossil/libspatialite \
+        libspatialite.fossil || die "fossil clone of libspatialite failed"
+    mkdir libspatialite
+    (
+        cd libspatialite || exit 1
+        fossil open ../libspatialite.fossil || exit 1
+        rm -f ../libspatialite.fossil
+        # The linux build's --build triplet is linux-specific.
+        CFLAGS="$CFLAGS -Os" CXXFLAGS="$CXXFLAGS -Os" \
+            ./configure --prefix="$LIW_PREFIX" --disable-examples \
+            --disable-static || exit 1
+        make -j "$LIW_JOBS" || exit 1
+        make install || exit 1
+    ) || die "libspatialite build failed"
+    [ -e "$LIW_PREFIX/lib/libspatialite.dylib" ] ||
+        die "libspatialite did not install its library"
+    local linked lib
+    linked="$(otool -L "$LIW_PREFIX/lib"/libspatialite*.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "libspatialite produced no dylib to check"
+    for lib in libgeos_c libproj libfreexl; do
+        printf '%s\n' "$linked" | grep -q "$lib" ||
+            die "libspatialite was not linked against $lib; an optional dependency was missed (check the build order)"
+    done
+    done_stamp libspatialite
+}
+
+# Used by gdal and mapnik; the gdal python wheel also bundles libgeotiff's
+# command line tools (listgeo and friends), like the linux build does.
+# Autotools build like the linux build (its comment: cmake here breaks
+# librasterlite2's detection).
+build_libgeotiff() {
+    skip_if_done libgeotiff && return 0
+    step "libgeotiff"
+    cd "$LIW_SRC"
+    rm -rf libgeotiff
+    git_retry https://github.com/OSGeo/libgeotiff.git "$(v libgeotiff)" libgeotiff
+    (
+        cd libgeotiff/libgeotiff || exit 1
+        autoreconf -ifv || exit 1
+        ./configure --prefix="$LIW_PREFIX" --with-zlib=yes --with-jpeg=yes \
+            --disable-static || exit 1
+        make -j "$LIW_JOBS" || exit 1
+        make install || exit 1
+    ) || die "libgeotiff build failed"
+    [ -e "$LIW_PREFIX/lib/libgeotiff.dylib" ] ||
+        die "libgeotiff did not install its library"
+    [ -n "$(find "$LIW_SRC/libgeotiff/libgeotiff/bin/.libs" -type f -perm -111 2>/dev/null)" ] ||
+        die "libgeotiff produced no tools to bundle"
+    local linked lib
+    linked="$(otool -L "$LIW_PREFIX/lib"/libgeotiff*.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "libgeotiff produced no dylib to check"
+    for lib in libproj libtiff libjpeg "libz."; do
+        printf '%s\n' "$linked" | grep -q "$lib" ||
+            die "libgeotiff was not linked against $lib; an optional dependency was missed (check the build order)"
+    done
+    done_stamp libgeotiff
+}
+
+# Used by GDAL and mapnik (raster coverage via SpatiaLite).  The checkout
+# pin mirrors the linux build's fossil checkout (a commit hash the
+# versions.txt has no entry for).
+build_librasterlite2() {
+    skip_if_done librasterlite2 && return 0
+    step "librasterlite2"
+    cd "$LIW_SRC"
+    rm -rf librasterlite2 librasterlite2.fossil
+    fossil --user=root clone https://www.gaia-gis.it/fossil/librasterlite2 \
+        librasterlite2.fossil ||
+        die "fossil clone of librasterlite2 failed"
+    mkdir librasterlite2
+    (
+        cd librasterlite2 || exit 1
+        fossil open ../librasterlite2.fossil || exit 1
+        fossil checkout -f 9dd8217cb9 || exit 1
+        rm -f ../librasterlite2.fossil
+        # The linux build's --build triplet is linux-specific.
+        ./configure --prefix="$LIW_PREFIX" --disable-static || exit 1
+        make -j "$LIW_JOBS" || exit 1
+        make install || exit 1
+    ) || die "librasterlite2 build failed"
+    [ -e "$LIW_PREFIX/lib/librasterlite2.dylib" ] ||
+        die "librasterlite2 did not install its library"
+    done_stamp librasterlite2
+}
+
+# Used by gdal (the SOSI driver).  Clones the master tip like the linux
+# build ("PINNED VERSION - use master"; the fyba sha in versions.txt is
+# not used there either).  The patch moves the stdafx.h include below
+# <locale>, exactly like the linux build's inline patch.
+build_fyba() {
+    skip_if_done fyba && return 0
+    step "fyba"
+    cd "$LIW_SRC"
+    rm -rf fyba
+    git_retry https://github.com/kartverket/fyba.git "" fyba
+    cat >"$LIW_PATCHES/fyba_fylu.py" <<'EOF'
+path = "src/FYBA/FYLU.cpp"
+data = open(path, "rb").read()
+data = data.replace(
+    b"#include \"stdafx.h\"", b"")
+data = data.replace(
+    b"#include <locale>",
+    b"#include <locale>\n" +
+    b"#include \"stdafx.h\"")
+open(path, "wb").write(data)
+EOF
+    (
+        cd fyba || exit 1
+        "$LIW_PATCH_PYBIN" "$LIW_PATCHES/fyba_fylu.py" || exit 1
+        autoreconf -ifv || exit 1
+        CXXFLAGS="$CXXFLAGS -std=c++11" \
+            ./configure --prefix="$LIW_PREFIX" || exit 1
+        make -j "$LIW_JOBS" || exit 1
+        make install || exit 1
+    ) || die "fyba build failed"
+    for lib in fyba fygm fyut; do
+        [ -n "$(ls "$LIW_PREFIX/lib"/lib$lib*.dylib 2>/dev/null)" ] ||
+            die "fyba did not install lib$lib"
+    done
+    done_stamp fyba
+}
+
+# Used by GDAL (the HDF4 driver links hdf4 directly; netcdf's own HDF4
+# option is not passed -- the linux build's ENABLE_HDF4 spelling is inert
+# at netcdf 4.10.x, so its netcdf has no HDF4 either).
+build_hdf4() {
+    skip_if_done hdf4 && return 0
+    step "hdf4"
+    cd "$LIW_SRC"
+    rm -rf hdf4
+    git_retry https://github.com/HDFGroup/hdf4.git "hdf-$(v hdf4)" hdf4
+    cmake_build "$LIW_SRC/hdf4" \
+        -DHDF4_BUILD_FORTRAN=OFF \
+        -DHDF4_ENABLE_NETCDF=OFF \
+        -DHDF4_ENABLE_Z_LIB_SUPPORT=ON \
+        -DHDF4_DISABLE_COMPILER_WARNINGS=ON \
+        -DBUILD_TESTING=OFF \
+        -DZLIB_DIR="$LIW_PREFIX/lib"
+    [ -n "$(ls "$LIW_PREFIX/lib"/libdf* "$LIW_PREFIX/lib"/libmfhdf* 2>/dev/null)" ] ||
+        die "hdf4 did not install libdf/libmfhdf"
+    done_stamp hdf4
+}
+
+# parallel-netcdf, built from the checkpoint branch like the linux build
+# (with its LT_PREREQ downgrade -- the VM's libtool is older than the
+# branch's 2.5.4 requirement).  Needs build_openmpi's mpicc.
+build_parallel_netcdf() {
+    skip_if_done parallel-netcdf && return 0
+    step "parallel-netcdf"
+    cd "$LIW_SRC"
+    rm -rf PnetCDF
+    git_retry https://github.com/Parallel-NetCDF/PnetCDF \
+        "checkpoint.$(v parallel-netcdf)" PnetCDF
+    (
+        cd PnetCDF || exit 1
+        sed -i '' 's/LT_PREREQ(\[2.5.4\])/LT_PREREQ([2.4.6])/g' configure.ac || exit 1
+        autoreconf -ifv || exit 1
+        ./configure --prefix="$LIW_PREFIX" --enable-shared \
+            --disable-fortran --enable-thread-safe --disable-static || exit 1
+        make -j "$LIW_JOBS" || exit 1
+        make install || exit 1
+    ) || die "parallel-netcdf build failed"
+    [ -n "$(ls "$LIW_PREFIX/lib"/libpnetcdf*.dylib 2>/dev/null)" ] ||
+        die "parallel-netcdf did not install its library"
+    local linked
+    linked="$(otool -L "$LIW_PREFIX/lib"/libpnetcdf*.dylib 2>/dev/null || true)"
+    printf '%s\n' "$linked" | grep -q libmpi ||
+        die "libpnetcdf was not linked against libmpi; the MPI build was missed (check the build order)"
+    done_stamp parallel-netcdf
+}
+
+# The netcdf driver's library.  The Dockerfile's flag set is passed
+# verbatim even though netcdf 4.10.x renamed its options (the unprefixed
+# ENABLE_* spellings are inert there too, so this converges on the linux
+# final state: hdf5 found and parallel4 auto-enabled by hdf5's parallel
+# build, DAP and NCZARR on by default, no HDF4).  The linux
+# CMAKE_SHARED_LINKER_FLAGS=-ljpeg is kept: hdf4 is a static library and
+# consumers must carry its jpeg dependency (the macOS linker rejects the
+# resulting undefined symbols the linux linker tolerates).
+build_netcdf() {
+    skip_if_done netcdf && return 0
+    step "netcdf"
+    cd "$LIW_SRC"
+    rm -rf netcdf-c
+    git_retry https://github.com/Unidata/netcdf-c "v$(v netcdf)" netcdf-c
+    (
+        cd netcdf-c || exit 1
+        # The compiler throws an erroneous error because strlen is used as
+        # a function variable.  Avoid this (the linux seds).
+        sed -i '' 's/int strlen,/int strlenn,/g' libnczarr/zutil.c || exit 1
+        sed -i '' 's/format,strlen)/format,strlenn)/g' libnczarr/zutil.c || exit 1
+    ) || die "netcdf patch failed"
+    cmake_build "$LIW_SRC/netcdf-c" \
+        -DCMAKE_C_FLAGS="$CFLAGS -Wno-incompatible-pointer-types" \
+        -DENABLE_EXAMPLES=OFF -DENABLE_PARALLEL4=ON -DUSE_PARALLEL=ON \
+        -DUSE_PARALLEL4=ON -DENABLE_HDF4=ON -DENABLE_PNETCDF=ON \
+        -DENABLE_BYTERANGE=ON -DENABLE_JNA=ON \
+        -DCMAKE_SHARED_LINKER_FLAGS="-L$LIW_PREFIX/lib -ljpeg" \
+        -DENABLE_TESTS=OFF -DENABLE_HDF4_FILE_TESTS=OFF -DENABLE_DAP=ON \
+        -DENABLE_HDF5=ON -DENABLE_NCZARR=ON
+    [ -n "$(ls "$LIW_PREFIX/lib"/libnetcdf*.dylib 2>/dev/null)" ] ||
+        die "netcdf did not install its library"
+    local linked lib
+    linked="$(otool -L "$LIW_PREFIX/lib"/libnetcdf*.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "netcdf produced no dylib to check"
+    for lib in libhdf5 libcurl; do
+        printf '%s\n' "$linked" | grep -q "$lib" ||
+            die "libnetcdf was not linked against $lib; an optional dependency was missed (check the build order)"
+    done
+    done_stamp netcdf
+}
+
+# The MySQL client library for GDAL's MySQL driver.  Mirrors the
+# Dockerfile: the ndb CMakeLists.txt stub (bugs.mysql.com/87348),
+# WITHOUT_SERVER, bundled zlib, the ftls-model flags (clang accepts
+# -ftls-model), and the same WITH_BOOST expression.  The find matches
+# nothing in the boost superproject (its headers are generated at build
+# time), so mysql fetches its own boost -- the same thing that happens in
+# the linux build.  This is a long build even without the server.
+build_mysql() {
+    skip_if_done mysql && return 0
+    step "mysql (long)"
+    cd "$LIW_SRC"
+    rm -rf mysql
+    fetch "https://cdn.mysql.com/Downloads/MySQL-$(v mysql 2)/mysql-$(v mysql).tar.gz" \
+        mysql.tar.gz
+    mkdir mysql
+    tar -zxf mysql.tar.gz -C mysql --strip-components 1
+    (
+        cd mysql || exit 1
+        rm -rf mysql-test || exit 1
+        mkdir -p storage/ndb || exit 1
+        touch storage/ndb/CMakeLists.txt || exit 1
+    ) || die "mysql source preparation failed"
+    cmake_build "$LIW_SRC/mysql" \
+        -DBUILD_CONFIG=mysql_release \
+        -DBUILD_SHARED_LIBS=ON \
+        -DWITH_BOOST="$(find "$LIW_SRC/boost" -maxdepth 1 -name 'boost_*')" \
+        -DWITH_ZLIB=bundled \
+        -DCMAKE_BUILD_TYPE=MinSizeRel \
+        -DWITH_UNIT_TESTS=OFF \
+        -DWITHOUT_SERVER=ON \
+        -DREPRODUCIBLE_BUILD=ON \
+        -DINSTALL_MYSQLTESTDIR= \
+        -DCMAKE_C_FLAGS="$CFLAGS -ftls-model=global-dynamic" \
+        -DCMAKE_CXX_FLAGS="$CXXFLAGS -ftls-model=global-dynamic"
+    [ -n "$(ls "$LIW_PREFIX/lib"/libmysqlclient*.dylib 2>/dev/null)" ] ||
+        die "mysql did not install libmysqlclient"
+    [ -x "$LIW_PREFIX/bin/mysql_config" ] ||
+        die "mysql did not install mysql_config"
+    local linked
+    linked="$(otool -L "$LIW_PREFIX/lib"/libmysqlclient*.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "mysql produced no dylib to check"
+    printf '%s\n' "$linked" | grep -q libssl ||
+        die "libmysqlclient was not linked against libssl; the prefix OpenSSL was missed (check the build order)"
+    done_stamp mysql
+}
+
+# The postgresql client library for GDAL's PG/PGDump/PostGISRaster
+# drivers.  Two deviations from the bare linux configure, both forced by
+# the isolated prefix: --without-icu (the linux base image has ICU; the
+# prefix does not, and postgresql 16+ fails configure without the flag --
+# ICU only affects collation variants) and --without-readline (the prefix
+# has none, and the base VM's Homebrew readline must not be linked).
+# --with-ssl=openssl mirrors the linux final state (libpq links the
+# prefix's OpenSSL).
+build_postgresql() {
+    skip_if_done postgresql && return 0
+    step "postgresql"
+    cd "$LIW_SRC"
+    rm -rf postgresql
+    fetch "https://ftp.postgresql.org/pub/source/v$(v postgresql)/postgresql-$(v postgresql).tar.gz" \
+        postgresql.tar.gz
+    mkdir postgresql
+    tar -zxf postgresql.tar.gz -C postgresql --strip-components 1
+    (
+        cd postgresql || exit 1
+        ./configure --prefix="$LIW_PREFIX" --without-icu --without-readline \
+            --with-ssl=openssl || exit 1
+        make -j "$LIW_JOBS" || exit 1
+        make install || exit 1
+    ) || die "postgresql build failed"
+    [ -e "$LIW_PREFIX/lib/libpq.dylib" ] ||
+        die "postgresql did not install libpq"
+    [ -x "$LIW_PREFIX/bin/pg_config" ] ||
+        die "postgresql did not install pg_config"
+    local linked
+    linked="$(otool -L "$LIW_PREFIX/lib"/libpq*.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "postgresql produced no dylib to check"
+    printf '%s\n' "$linked" | grep -q libssl ||
+        die "libpq was not linked against libssl; --with-ssl=openssl was missed"
+    done_stamp postgresql
+}
+
+# Used by GDAL.  Generic Tagged Arrays.  Built with cmake (the linux
+# build's comment: its autotools path needs gettext's m4 macros, which the
+# isolated environments do not have).
+build_libgta() {
+    skip_if_done libgta && return 0
+    step "libgta"
+    cd "$LIW_SRC"
+    rm -rf gta-mirror
+    git_retry https://github.com/marlam/gta-mirror.git \
+        "libgta-$(v libgta)" gta-mirror
+    cmake_build "$LIW_SRC/gta-mirror/libgta" \
+        -DGTA_BUILD_DOCUMENTATION=OFF -DGTA_BUILD_STATIC_LIB=OFF
+    [ -n "$(ls "$LIW_PREFIX/lib"/libgta*.dylib 2>/dev/null)" ] ||
+        die "libgta did not install its library"
+    done_stamp libgta
+}
+
+# Used by GDAL (the GMLAS and ILI drivers).  The iconv transcoder mirrors
+# the linux build; on macOS iconv resolves to the system iconv in /usr/lib,
+# which the audits allow.
+build_xerces_c() {
+    skip_if_done xerces-c && return 0
+    step "xerces-c"
+    cd "$LIW_SRC"
+    rm -rf xerces-c
+    git_retry https://github.com/apache/xerces-c.git "v$(v xerces-c)" xerces-c
+    cmake_build "$LIW_SRC/xerces-c" -Dtranscoder=iconv
+    [ -n "$(ls "$LIW_PREFIX/lib"/libxerces-c*.dylib 2>/dev/null)" ] ||
+        die "xerces-c did not install its library"
+    done_stamp xerces-c
+}
+
+# Used by GDAL (TPS transformation).  No lapack is built (no Fortran in
+# the VM -- see the section comment): on APPLE armadillo's cmake defaults
+# to the Accelerate framework when no BLAS/LAPACK is found, which provides
+# both as system frameworks, and GDAL's armadillo test program links.
+build_armadillo() {
+    skip_if_done armadillo && return 0
+    step "armadillo"
+    cd "$LIW_SRC"
+    rm -rf armadillo
+    fetch "https://sourceforge.net/projects/arma/files/armadillo-$(v armadillo).tar.xz" \
+        armadillo.tar.xz
+    unxz -f armadillo.tar.xz
+    mkdir armadillo
+    tar -xf armadillo.tar -C armadillo --strip-components 1
+    rm -f armadillo.tar
+    cmake_build "$LIW_SRC/armadillo" -DBUILD_SHARED_LIBS=ON
+    [ -n "$(ls "$LIW_PREFIX/lib"/libarmadillo*.dylib 2>/dev/null)" ] ||
+        die "armadillo did not install its library"
+    local linked
+    linked="$(otool -L "$LIW_PREFIX/lib"/libarmadillo*.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "armadillo produced no dylib to check"
+    printf '%s\n' "$linked" | grep -q Accelerate ||
+        die "libarmadillo was not linked against the Accelerate framework; no BLAS/LAPACK backend was found (there is no Fortran compiler to build lapack)"
+    done_stamp armadillo
+}
+
+# Used by GDAL (block compression).  The external lz4/zstd/zlib from the
+# prefix mirror the Dockerfile's PREFER_EXTERNAL flags.
+build_blosc() {
+    skip_if_done blosc && return 0
+    step "blosc"
+    cd "$LIW_SRC"
+    rm -rf c-blosc
+    git_retry https://github.com/Blosc/c-blosc.git "v$(v blosc)" c-blosc
+    cmake_build "$LIW_SRC/c-blosc" \
+        -DBUILD_SHARED=ON -DBUILD_STATIC=OFF -DBUILD_BENCHMARKS=OFF \
+        -DBUILD_FUZZERS=OFF -DBUILD_TESTS=OFF -DPREFER_EXTERNAL_LZ4=ON \
+        -DPREFER_EXTERNAL_ZLIB=ON -DPREFER_EXTERNAL_ZSTD=ON \
+        -DDEACTIVATE_SNAPPY=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    [ -n "$(ls "$LIW_PREFIX/lib"/libblosc*.dylib 2>/dev/null)" ] ||
+        die "blosc did not install its library"
+    local linked lib
+    linked="$(otool -L "$LIW_PREFIX/lib"/libblosc*.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "blosc produced no dylib to check"
+    for lib in liblz4 libzstd "libz."; do
+        printf '%s\n' "$linked" | grep -q "$lib" ||
+            die "libblosc was not linked against $lib; an optional dependency was missed (check the build order)"
+    done
+    done_stamp blosc
+}
+
+# Used by kealib (header-only).
+build_highfive() {
+    skip_if_done highfive && return 0
+    step "highfive"
+    cd "$LIW_SRC"
+    rm -rf highfive
+    # The submodules are required (its thirdparty headers); like boost and
+    # jpeg-xl, the retry loop is inline because git_retry has no provision
+    # for extra clone options.
+    local n=0
+    until git clone --depth=1 --single-branch -b "v$(v highfive)" \
+        -c advice.detachedHead=false --recurse-submodules -j "$LIW_JOBS" \
+        https://github.com/highfive-devs/highfive.git highfive; do
+        n=$((n + 1))
+        [ "$n" -ge 10 ] &&
+            die "git clone failed after $n attempts: highfive (v$(v highfive))"
+        echo "retrying git clone: https://github.com/highfive-devs/highfive.git"
+        sleep 5
+    done
+    cmake_build "$LIW_SRC/highfive" \
+        -DHIGHFIVE_UNIT_TESTS=OFF -DHIGHFIVE_BUILD_DOCS=OFF \
+        -DHIGHFIVE_EXAMPLES=OFF
+    [ -d "$LIW_PREFIX/include/highfive" ] ||
+        die "highfive did not install its headers"
+    done_stamp highfive
+}
+
+# Used by GDAL (the KEA driver); needs hdf5's C++ library (built with
+# HDF5_BUILD_CPP_LIB=ON).
+build_kealib() {
+    skip_if_done kealib && return 0
+    step "kealib"
+    cd "$LIW_SRC"
+    rm -rf kealib
+    git_retry https://github.com/ubarsc/kealib.git "kealib-$(v kealib)" kealib
+    cmake_build "$LIW_SRC/kealib"
+    [ -n "$(ls "$LIW_PREFIX/lib"/libkea*.dylib 2>/dev/null)" ] ||
+        die "kealib did not install libkea"
+    local linked
+    linked="$(otool -L "$LIW_PREFIX/lib"/libkea*.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "kealib produced no dylib to check"
+    printf '%s\n' "$linked" | grep -q libhdf5 ||
+        die "libkea was not linked against libhdf5 (check the build order)"
+    done_stamp kealib
+}
+
+# Used by GDAL (the XODR driver).  The 0.6.0-gdal tag is pinned by the
+# Dockerfile comment (0.6.1-gdal requires external pugixml and more).
+build_libopendrive() {
+    skip_if_done libopendrive && return 0
+    step "libopendrive"
+    cd "$LIW_SRC"
+    rm -rf libOpenDRIVE
+    git_retry https://github.com/DLR-TS/libOpenDRIVE.git "0.6.0-gdal" libOpenDRIVE
+    cmake_build "$LIW_SRC/libOpenDRIVE" -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+    [ -n "$(ls "$LIW_PREFIX/lib"/libOpenDRIVE*.dylib 2>/dev/null)" ] ||
+        die "libopendrive did not install its library"
+    done_stamp libopendrive
+}
+
+# Used by GDAL and mapnik (the AVIF driver).  The libyuv URL sed mirrors
+# the linux build (the default googlesource URL serves a captcha).
+build_libavif() {
+    skip_if_done libavif && return 0
+    step "libavif"
+    cd "$LIW_SRC"
+    rm -rf libavif
+    git_retry https://github.com/AOMediaCodec/libavif.git "v$(v libavif)" libavif
+    (
+        cd libavif || exit 1
+        sed -i '' \
+            's#https://chromium.googlesource.com/libyuv/libyuv#https://github.com/lemenkov/libyuv#g' \
+            cmake/Modules/LocalLibyuv.cmake || exit 1
+    ) || die "libavif patch failed"
+    cmake_build "$LIW_SRC/libavif" \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DAVIF_LIBYUV=LOCAL
+    [ -n "$(ls "$LIW_PREFIX/lib"/libavif*.dylib 2>/dev/null)" ] ||
+        die "libavif did not install its library"
+    done_stamp libavif
+}
+
+# GDAL itself.  Mirrors the Dockerfile: master at the recorded sha (the
+# release clone branch is disabled there), the .2 local build suffix in
+# three places, and the same explicit cmake options (GDAL_USE_LERC,
+# ENABLE_DEFLATE64=OFF, GDAL_USE_PUBLICDECOMPWT=ON -- the last fetches
+# EUMETSAT's PublicDecompWT for the MSG driver at build time).  The
+# Dockerfile's make USER_DEFS (-Werror plus gcc-only -Wno-* flags) is not
+# passed: clang warns about unknown -Wno-* options and the build must not
+# turn compiler diagnostics into errors on a different compiler.  The
+# MRSID cmake variables are not passed (the SDK is x86_64-only, like the
+# linux build's arch gate).  cmake_build's MinSizeRel matches.
+#
+# The python bindings are part of the cmake build (swig from the prefix;
+# -DPython_EXECUTABLE pins the interpreter): the bindings need numpy at
+# configure and build time (the Dockerfile pip-installs numpy before
+# cmake for the same reason), so numpy is installed into the patch python
+# here and left installed -- it is a build VM, and no other wheel build
+# picks it up (each wheel build runs in pip's isolated environment).
+build_gdal() {
+    skip_if_done gdal && return 0
+    step "gdal (long)"
+    cd "$LIW_SRC"
+    rm -rf gdal
+    git clone --depth=1000 --single-branch -c advice.detachedHead=false \
+        https://github.com/OSGeo/gdal.git gdal || die "git clone failed: gdal"
+    (
+        cd gdal || exit 1
+        git checkout -q "$(v gdal-sha)" || exit 1
+        git gc --prune=all || exit 1
+        # use .2 as a suffix (three spots), like the linux build
+        sed -i '' 's/define GDAL_VERSION_BUILD    0/define GDAL_VERSION_BUILD    2/g' \
+            gcore/gdal_version.h.in || exit 1
+        sed -i '' 's/dev/.2dev/g' gcore/gdal_version.h.in || exit 1
+        sed -i '' 's/\([0-9]\)$/\1.2/g' VERSION || exit 1
+        sed -i '' 's/if library_version_num < gdal_python_version/if False/g' \
+            swig/python/setup.py.in || exit 1
+    ) || die "gdal source preparation failed"
+    "$LIW_PATCH_PIPBIN" install -q numpy
+    cmake_build "$LIW_SRC/gdal" \
+        -DGDAL_USE_LERC=ON \
+        -DENABLE_DEFLATE64=OFF \
+        -DGDAL_USE_PUBLICDECOMPWT=ON \
+        -DPython_EXECUTABLE="$LIW_PATCH_PYBIN"
+    [ -e "$LIW_PREFIX/lib/libgdal.dylib" ] ||
+        die "gdal did not install libgdal"
+    [ -x "$LIW_PREFIX/bin/gdalinfo" ] ||
+        die "gdal did not install its tools"
+    [ -x "$LIW_PREFIX/bin/gdal-config" ] ||
+        die "gdal did not install gdal-config"
+    [ -e "$LIW_PREFIX/share/gdal" ] ||
+        die "gdal did not install its data files"
+    # Feature assertions over libgdal's own linkage: every optional
+    # library the linux wheel links must have resolved from the prefix.  A
+    # missing one would otherwise only surface as a reduced-capability
+    # wheel (or a missing format in the shared suite's known-formats
+    # check).  hdf4 is NOT asserted: it is a static library, absorbed into
+    # its consumers, so it has no load command of its own (the shared
+    # suite's HDF4 format entry covers it).
+    local linked lib
+    linked="$(otool -L "$LIW_PREFIX/lib"/libgdal*.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "gdal produced no dylib to check"
+    for lib in libgeos_c libproj libcurl libtiff libpng libjpeg libopenjp2 \
+        libwebp libheif libavif libjxl libpoppler libcfitsio libhdf5 \
+        libnetcdf libmysqlclient libpq libfreexl libspatialite \
+        librasterlite2 librttopo libgeotiff fyba libxerces-c libexpat \
+        libxml2 libjson-c liblerc libgta libkea libblosc libarchive \
+        libgif libdeflate libzstd liblzma "libz." libsqlite3 libcrypto \
+        libssl OpenEXR Lerc; do
+        printf '%s\n' "$linked" | grep -q "$lib" ||
+            die "libgdal was not linked against $lib; an optional dependency was missed (check the build order)"
+    done
+    done_stamp gdal
+}
+
+# The GDAL python wheel: bundles libgdal and its whole dependency tree,
+# the proj and gdal data files, and the gdal/proj/libgeotiff command line
+# tools, exactly like the linux wheel.  The osgeo patch exports
+# GDAL_LIBRARY_PATH and GEOS_LIBRARY_PATH pointing at the bundled dylibs
+# (delocate puts them in osgeo/.dylibs inside the wheel; the linux
+# auditwheel-style GDAL.libs location stays as a fallback) and the data
+# directories, so a clean install needs nothing from the system.
+build_gdal_python() {
+    skip_if_done gdal_python && return 0
+    step "gdal python"
+
+    # Dependencies may have just been built (fresh VM); strip any build-tree
+    # RPATHs they installed before the wheels bundle them.
+    sanitize_prefix_dylibs
+
+    # Belt-and-braces check before delocate: every prefix dylib must have
+    # an absolute install name (the same audit build_pyvips runs; this
+    # catches cmake projects that override CMAKE_INSTALL_NAME_DIR).
+    local d name
+    while IFS= read -r -d '' d; do
+        name="$(otool -D "$d" 2>/dev/null | sed -n 2p)"
+        case "$name" in
+        "$LIW_PREFIX"/*) ;;
+        *) die "install name of $d is not absolute ('$name')" ;;
+        esac
+    done < <(find "$LIW_PREFIX/lib" -maxdepth 1 -name '*.dylib' -print0)
+
+    # Strip the prefix dylibs before the wheel build (the linux build
+    # strips everything before building wheels; libgdal alone is hundreds
+    # of MB unstripped).  strip -x keeps the exported symbols; the arm64
+    # signature is renewed after the strip.
+    step "stripping prefix dylibs for the gdal wheels"
+    while IFS= read -r -d '' f; do
+        strip -x "$f" 2>/dev/null || true
+    done < <(find "$LIW_PREFIX/lib" -name '*.dylib' -type f -print0)
+    while IFS= read -r -d '' f; do
+        codesign -f -s - "$f" 2>/dev/null || true
+    done < <(find "$LIW_PREFIX/lib" -name '*.dylib' -type f -print0)
+
+    cd "$LIW_SRC/gdal/_build/swig/python" ||
+        die "the gdal python bindings were not configured under _build/swig/python"
+
+    # Bundle the proj and gdal data files with the wheel, like the linux
+    # build does (osgeo/proj and osgeo/gdal, wired up by the __init__
+    # patch below).
+    cp -R "$LIW_PREFIX/share/proj" osgeo/proj
+    cp -R "$LIW_PREFIX/share/gdal" osgeo/gdal
+
+    # Bundle the gdal, proj, and libgeotiff command line tools: for each
+    # tool in gdal's apps build directory, the matching installed
+    # executable; then gdal-config, libgeotiff's tools, and proj's tools.
+    mkdir -p osgeo/bin
+    local f base
+    while IFS= read -r f; do
+        base="$(basename "$f")"
+        if [ -f "$LIW_PREFIX/bin/$base" ]; then
+            cp -L "$LIW_PREFIX/bin/$base" osgeo/bin/
+        fi
+    done < <(find "$LIW_SRC/gdal/_build/apps" -type f -perm -111)
+    rm -f osgeo/bin/gdal-config
+    cp -L "$LIW_PREFIX/bin/gdal-config" osgeo/bin/
+    while IFS= read -r f; do
+        cp -L "$f" "osgeo/bin/$(basename "$f")"
+    done < <(find "$LIW_SRC/libgeotiff/libgeotiff/bin/.libs" -type f -perm -111)
+    while IFS= read -r f; do
+        base="$(basename "$f")"
+        if [ -f "$LIW_PREFIX/bin/$base" ]; then
+            cp -L "$LIW_PREFIX/bin/$base" osgeo/bin/
+        fi
+    done < <(find "$LIW_SRC/proj4/_build/bin" -type f -perm -111)
+    [ -e osgeo/bin/gdalinfo ] || die "no gdal tools found to bundle"
+    [ -e osgeo/bin/gdal-config ] || die "gdal-config was not bundled"
+    # Strip only the Mach-O tools (gdal-config is a shell script).
+    while IFS= read -r -d '' f; do
+        if file "$f" 2>/dev/null | grep -q Mach-O; then
+            strip -x "$f" 2>/dev/null || true
+        fi
+    done < <(find osgeo/bin -type f -perm -111 -print0)
+    # cmake-installed executables keep build-tree RPATHs; delocate's rpath
+    # sanitizer only processes files that require other libraries, so
+    # strip every non-@ RPATH and re-sign (arm64 requires a valid
+    # signature after install_name_tool).
+    local rp
+    while IFS= read -r -d '' f; do
+        file "$f" 2>/dev/null | grep -q Mach-O || continue
+        while IFS= read -r rp; do
+            case "$rp" in
+            @loader_path/* | @executable_path/* | @rpath/*) ;;
+            *) install_name_tool -delete_rpath "$rp" "$f" 2>/dev/null || true ;;
+            esac
+        done < <(otool -l "$f" |
+            awk '/LC_RPATH/{inr=1; next} inr && $1=="path" {print $2; inr=0}')
+        codesign -f -s - "$f" 2>/dev/null || true
+    done < <(find osgeo/bin -type f -perm -111 -print0)
+
+    # Wrapper module so each bundled tool is exposed as a console script
+    # (same wrapper the linux wheel ships, with the macOS CA bundle added).
+    cat >osgeo/bin/__init__.py <<'EOF'
+import os
+import sys
+
+def program():
+    environ = os.environ.copy()
+    localpath = os.path.dirname(os.path.abspath( __file__ ))
+    environ.setdefault("PROJ_DATA", os.path.join(localpath, "proj"))
+    environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal"))
+    caPath = "/etc/ssl/certs/ca-certificates.crt"
+    if not os.path.exists(caPath):
+        caPath = "/etc/ssl/cert.pem"
+    if os.path.exists(caPath):
+        environ.setdefault("CURL_CA_BUNDLE", caPath)
+
+    path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0]))
+    os.execve(path, sys.argv, environ)
+EOF
+
+    # Patch setup.py: name the bundled tools as console scripts, include
+    # the bundled data and tools as package data, and (for parity with the
+    # linux patch) recompute the version from gdal-config -- a no-op at
+    # this source revision, whose version already comes out right -- and
+    # drop a python_requires line that no longer matches upstream's text.
+    cat >"$LIW_PATCHES/gdal_setup.py" <<'EOF'
+import os
+import re
+path = "setup.py"
+data = open(path).read()
+data = re.sub(
+    r"gdal_version = '\d+.\d+.\d+(dev|)'",
+    "gdal_version = '" + os.popen("gdal-config --version").read().strip().split('.dev')[0].split('dev')[0] + "'",
+    data)
+data = data.replace(
+    "scripts/*.py'),",
+"""scripts/*.py'), 
+    package_data={'osgeo': ['proj/*', 'gdal/*', 'bin/*']},""")
+data = data.replace("console_scripts = []", """console_scripts = ['%s=osgeo.bin:program' % name for name in os.listdir('osgeo/bin') if not name.endswith('.py')]""")
+if "console_scripts" not in data: data = data.replace(
+    "scripts/*.py'),",
+"""scripts/*.py'), 
+    entry_points={'console_scripts': ['%s=osgeo.bin:program' % name for name in os.listdir('osgeo/bin') if not name.endswith('.py')]}""")
+data = data.replace("    python_requires='>=3.6.0',", "")
+open(path, "w").write(data)
+EOF
+    # Patch osgeo/__init__.py: set the bundled data paths and export
+    # GDAL_LIBRARY_PATH / GEOS_LIBRARY_PATH from the bundled dylibs.  The
+    # linux patch's TLS workaround (importing stdc++ first) is carried
+    # over unchanged (it is a no-op on macOS, where find_library finds no
+    # libstdc++).  delocate puts the bundled dylibs in osgeo/.dylibs; the
+    # linux auditwheel-style GDAL.libs location stays as a fallback.
+    cat >"$LIW_PATCHES/gdal_init.py" <<'EOF'
+path = "osgeo/__init__.py"
+s = open(path).read().replace(
+    "osgeo package.",
+"""osgeo package. 
+
+import os 
+import re 
+from . import osr 
+from . import gdal 
+
+_localpath = os.path.dirname(os.path.abspath( __file__ )) 
+# os.environ.setdefault("PROJ_DATA", os.path.join(_localpath, "proj")) 
+osr.SetPROJSearchPaths([os.path.join(_localpath, "proj")]) 
+# os.environ.setdefault("GDAL_DATA", os.path.join(_localpath, "gdal")) 
+gdal.SetConfigOption("GDAL_DATA", os.path.join(_localpath, "gdal")) 
+os.environ.setdefault("CPL_LOG", os.devnull) 
+_caPath = "/etc/ssl/certs/ca-certificates.crt" 
+if not os.path.exists(_caPath): 
+    _caPath = "/etc/ssl/cert.pem" 
+if os.path.exists(_caPath): 
+    os.environ.setdefault("CURL_CA_BUNDLE", _caPath) 
+
+_libsdir = os.path.join(_localpath, ".dylibs") 
+if not os.path.exists(_libsdir): 
+    _libsdir = os.path.join(os.path.dirname(_localpath), "GDAL.libs") 
+_libs = {} 
+if os.path.exists(_libsdir): 
+    _libs = { 
+        re.split(r"-|\.", name)[0]: os.path.join(_libsdir, name) 
+        for name in os.listdir(_libsdir) 
+    } 
+GDAL_LIBRARY_PATH = _libs.get("libgdal", "") 
+GEOS_LIBRARY_PATH = _libs.get("libgeos_c", "") 
+import ctypes.util 
+
+try: 
+    ctypes.CDLL(ctypes.util.find_library("stdc++"), mode=ctypes.RTLD_GLOBAL) 
+except Exception: 
+    pass 
+""")
+open(path, "w").write(s)
+EOF
+    "$LIW_PATCH_PYBIN" "$LIW_PATCHES/gdal_setup.py"
+    "$LIW_PATCH_PYBIN" "$LIW_PATCHES/gdal_init.py"
+    # The patch must actually have replaced something: verify the inserted
+    # markers exist (the verify-the-edit lesson).
+    grep -q "GDAL_LIBRARY_PATH" osgeo/__init__.py ||
+        die "the osgeo/__init__.py patch did not apply"
+    grep -q "osgeo.bin:program" setup.py ||
+        die "the setup.py patch did not apply"
+    grep -q "package_data={'osgeo'" setup.py ||
+        die "the setup.py package_data patch did not apply"
+
+    # Copy python ports of c utilities to scripts so they get bundled
+    # (mirrors the linux build; the setup.py glob these land in is
+    # inert at this revision, like on linux).
+    mkdir scripts
+    cp gdal-utils/osgeo_utils/samples/gdalinfo.py scripts/gdalinfo.py
+    cp gdal-utils/osgeo_utils/samples/ogrinfo.py scripts/ogrinfo.py
+
+    # Commit the patches and tag with the combined version (the master
+    # source version plus the .2 suffix the seds bake in).
+    git config user.email "wheels@example.com"
+    git config user.name "Wheel Builder"
+    git add -A
+    git commit -q -m "patch for wheel building"
+    git tag "$(v gdal-source).2"
+
+    # Build one wheel per python (the extensions link the build-tree
+    # libgdal, whose install name is the absolute prefix path thanks to
+    # BUILD_WITH_INSTALL_NAME_DIR), then bundle the dylibs with delocate
+    # (the auditwheel equivalent on macOS).  pip's isolated build
+    # environment installs numpy from the pyproject build requires, so the
+    # _gdal_array extension is built for every python.
+    collect_pybins
+    local pybin
+    for pybin in "${PYBINS[@]}"; do
+        step "gdal wheel: $(basename "$(dirname "$pybin")")"
+        (
+            cd "$LIW_SRC/gdal/_build/swig/python"
+            rm -rf build
+            "$pybin/python" -m pip wheel --no-deps -w "$LIW_WHEELHOUSE" .
+        ) || die "gdal wheel build failed for $pybin"
+    done
+
+    # pip writes the wheel filename in lowercase; the linux build renames
+    # it to the capitalized distribution name before repair.
+    local whl
+    for whl in "$LIW_WHEELHOUSE"/gdal-*.whl; do
+        [ -f "$whl" ] || continue
+        mv "$whl" "$(dirname "$whl")/$(basename "$whl" | sed 's/^gdal-/GDAL-/')"
+    done
+
+    step "delocate gdal wheels"
+    "$LIW_PATCH_PIPBIN" install -q -U delocate
+    for whl in "$LIW_WHEELHOUSE"/GDAL-*.whl; do
+        [ -f "$whl" ] || continue
+        case "$(basename "$whl")" in
+        *macosx*) "$LIW_PATCH_DIR/bin/delocate-wheel" "$whl" ||
+            die "delocate failed for $whl" ;;
+        esac
+    done
+    ls -l "$LIW_WHEELHOUSE"
+    [ -n "$(ls "$LIW_WHEELHOUSE"/GDAL-*macosx*.whl 2>/dev/null)" ] ||
+        die "no GDAL macosx wheels were built"
+    # Feature assertions on the wheel: the bundled libgdal dylib, the
+    # extensions (including the numpy-backed _gdal_array), the data
+    # directories, and the tools must all be present.
+    local contents
+    contents="$(unzip -l "$(ls "$LIW_WHEELHOUSE"/GDAL-*macosx*.whl | head -1)")"
+    printf '%s\n' "$contents" | grep -q 'osgeo/.dylibs/libgdal' ||
+        die "the gdal wheel does not bundle libgdal"
+    printf '%s\n' "$contents" | grep -q 'osgeo/_gdal_array' ||
+        die "the gdal wheel does not contain the _gdal_array extension"
+    printf '%s\n' "$contents" | grep -q 'osgeo/proj/proj.db' ||
+        die "the gdal wheel does not bundle the proj data"
+    printf '%s\n' "$contents" | grep -q 'osgeo/bin/gdalinfo' ||
+        die "the gdal wheel does not bundle the gdalinfo tool"
+    printf '%s\n' "$contents" | grep -q 'osgeo/bin/listgeo' ||
+        die "the gdal wheel does not bundle the listgeo tool"
+    done_stamp gdal_python
 }
 
 # --------------------------------------------------------------------------
@@ -2710,7 +3953,7 @@ fi
 PACKAGES=("$@")
 # Keep in sync with tart_build.sh's LIW_PACKAGES default: the expected-wheel
 # validation there assumes this same set when no packages are named.
-[ "${#PACKAGES[@]}" -eq 0 ] && PACKAGES=(pylibtiff glymur openslide_python pylibmc pyvips)
+[ "${#PACKAGES[@]}" -eq 0 ] && PACKAGES=(pylibtiff glymur openslide_python pylibmc pyvips gdal)
 
 # The "${var[@]+...}" guard keeps bash 3.2 (the VM's default bash) happy
 # about empty arrays under `set -u`.
@@ -2768,15 +4011,20 @@ for pkg in ${PACKAGES[@]+"${PACKAGES[@]}"}; do
         build_pylibmc
         ;;
     pyvips)
-        # Order mirrors the Dockerfile's final state: the openslide chain
-        # first (libvips links openslide like any other loader, and its
+        # Order mirrors the Dockerfile's final state: openssl and curl are
+        # built first (a TLS curl like the linux final state, so poppler
+        # and everything else links the prefix curl), then the openslide
+        # chain (libvips links openslide like any other loader, and its
         # glib/cairo/freetype/fontconfig/xml2 are shared with harfbuzz,
         # pango, and librsvg), then the leaf dependencies, then the pango
         # stack (harfbuzz before pango before librsvg), heif after
-        # libde265, matio after hdf5, and imagemagick after librsvg so
+        # libde265, openmpi before hdf5 (hdf5 builds with parallel
+        # support), matio after hdf5, and imagemagick after librsvg so
         # --with-rsvg finds it.  libvips's meson silently drops what is
         # missing; build_libvips asserts the linked feature set.
         build_libtiff_deps
+        build_openssl
+        build_curl
         build_lcms2
         build_libpng
         build_openjpeg
@@ -2807,16 +4055,91 @@ for pkg in ${PACKAGES[@]+"${PACKAGES[@]}"}; do
         build_libheif
         build_poppler
         build_fitsio
+        build_openmpi
         build_hdf5
         build_matio
         build_openexr
         build_libzip
-        build_curl
         build_pango
         build_librsvg
         build_imagemagick
         build_libvips
         build_pyvips
+        ;;
+    gdal)
+        # Order mirrors the Dockerfile's final state for everything GDAL's
+        # cmake can detect: the base format libraries (libtiff chain,
+        # giflib), openssl and curl (TLS, early like the linux order, so
+        # netcdf's DAP, spatialite, rasterlite2, and poppler all link the
+        # same prefix curl), json-c, lerc, and jpeg-xl, the openjpeg
+        # feature set (lcms2/libpng must exist before build_openjpeg), the
+        # XML and compression helpers (expat, xml2, lz4, libarchive),
+        # sqlite and proj, the freetype/fontconfig pair poppler needs,
+        # swig (the python bindings' code generator), the MPI stack (hdf5's
+        # parallel build), boost and minizip (mysql and libOpenDRIVE), the
+        # geos/spatialite/rasterlite2 tree, the netcdf stack, the database
+        # clients, the remaining format libraries (gta, xerces-c,
+        # armadillo, blosc, highfive+kea, heif, poppler, cfitsio, openexr,
+        # libOpenDRIVE, libavif), and finally gdal and its python
+        # bindings.  Drivers whose absence would be silent are asserted on
+        # libgdal's linkage by build_gdal.  The vips-only tree (orc,
+        # nifti, fftw3, libhwy, libimagequant, libexif, harfbuzz, pango,
+        # librsvg, imagemagick, libvips, jxrlib, openslide, matio, libzip)
+        # is not built here: GDAL's cmake checks none of them, and the
+        # shared suite's known-formats check is what polices the resulting
+        # driver set.
+        build_libtiff_deps
+        build_giflib
+        build_openssl
+        build_curl
+        build_json_c
+        build_lerc
+        build_lcms2
+        build_libpng
+        build_openjpeg
+        build_libbrotli
+        build_jpegxl
+        build_libexpat
+        build_sqlite
+        build_libxml2
+        build_lz4
+        build_libarchive
+        build_proj4
+        build_freetype
+        build_fontconfig
+        build_swig
+        build_openmpi
+        build_boost
+        build_minizip
+        build_fossil
+        build_freexl
+        build_libgeos
+        build_librttopo
+        build_libspatialite
+        build_libgeotiff
+        build_librasterlite2
+        build_fyba
+        build_hdf4
+        build_hdf5
+        build_parallel_netcdf
+        build_netcdf
+        build_mysql
+        build_postgresql
+        build_libgta
+        build_xerces_c
+        build_armadillo
+        build_blosc
+        build_highfive
+        build_kealib
+        build_libde265
+        build_libheif
+        build_poppler
+        build_fitsio
+        build_openexr
+        build_libopendrive
+        build_libavif
+        build_gdal
+        build_gdal_python
         ;;
     # "dep:<name>" builds a single dependency; useful for debugging.
     # Hyphenated names map to their underscored builders (the stamps keep
@@ -2826,6 +4149,12 @@ for pkg in ${PACKAGES[@]+"${PACKAGES[@]}"}; do
         ;;
     dep:libjpeg-turbo)
         build_libjpeg_turbo || die "building libjpeg-turbo failed"
+        ;;
+    dep:json-c)
+        build_json_c || die "building json-c failed"
+        ;;
+    dep:parallel-netcdf)
+        build_parallel_netcdf || die "building parallel-netcdf failed"
         ;;
     dep:*)
         "build_${pkg#dep:}" || die "building $pkg failed"
