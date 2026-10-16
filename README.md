@@ -173,11 +173,13 @@ runs, not just what the scripts are expected to do):
   including the openjpeg feature assertions (lcms2, libpng, libtiff
   linkage verified via otool after the libpng framework fix).
 - Wheels for 3.11, 3.12, 3.13, 3.14, 3.15, 3.14t, 3.15t: pylibtiff,
-  Glymur, openslide_python, and pylibmc built.  Glymur is one wheel per
+  Glymur, openslide_python, pylibmc, and pyvips built.  Glymur is one
+  wheel per
   architecture (py3-none-macosx, `packaging` declared); openslide_python
   is one cp311-abi3 wheel for the stable pythons plus one wheel per
-  free-threaded python; pylibmc is one cp3XX-cp3XX wheel per python.
-  Wheel-identity checks pass (pip picks our wheels) for all four;
+  free-threaded python; pylibmc and pyvips are one cp3XX-cp3XX wheel
+  per python.
+  Wheel-identity checks pass (pip picks our wheels) for all five;
   otool audits clean with Homebrew hidden;
   bundled dylibs load from `.dylibs`; tiff round trip, bundled
   `tiffinfo`, the openslide bundled-dylib check, and bundled
@@ -207,7 +209,8 @@ runs, not just what the scripts are expected to do):
   keeps only one EXIT trap, so the Homebrew restore moved into the same
   trap).  The third run passed everything.
 - Next up, in rough effort order (see the remaining-packages notes
-  below for details): pyvips, then GDAL (the largest), then mapnik
+  below for details): GDAL (the largest; pyvips is done -- see its note
+  and the status entries), then mapnik
   (which must come after GDAL -- its cmake auto-detects the optional
   GDAL input plugin through pkg-config, and the linux build has gdal
   installed by the time mapnik's configure runs, so the same order is
@@ -347,7 +350,12 @@ runs, not just what the scripts are expected to do):
   converter extra needs the gdal source -- the macos wheelhouse does
   not build gdal yet, so the two steps now carry the same gate (the
   steps exercise the converter package, not the pyvips wheel, so
-  nothing is lost on macos).  Decision (2026-10-15):
+  nothing is lost on macos).  The fifteenth run (2026-10-16) passed
+  everything: pyvips is verified end to end on all seven pythons (the
+  shared suite passes with the gdal-dependent steps skipped: the
+  projected-geotiff getTileSource read, the two converter steps, and
+  the GDAL/vsicurl steps, which all light back up when the gdal wheel
+  lands).  Decision (2026-10-15):
   verification runs are always full builds from a fresh base-VM clone;
   the resume-in-a-kept-VM path (stamps) is not used for verification --
   there is no interest in trading certainty about ordering dependencies
@@ -358,8 +366,26 @@ runs, not just what the scripts are expected to do):
 - Process: when editing these scripts, **verify the edit is in the file
   before committing** (grep for the new content); an atomic multi-part
   edit that partially matches silently applies nothing, and a commit
-  message that over-claims is worse than no documentation.  This bit us
-  once already.
+  message that over-claims is worse than no documentation.  This bit
+  us twice: once with an atomic edit that partially matched, and once
+  when a fix was recorded as a comment describing a sed whose command
+  line was never written -- build_hdf5's assertion caught it two runs
+  later.
+- CMake projects can silently override `CMAKE_INSTALL_NAME_DIR` (hdf5
+  hardcodes `@rpath` on Apple via HDFMacros.cmake); a consumer then
+  records the @rpath name at its own build time, and nothing resolves
+  it after the prefix rpaths are stripped, so delocate fails with
+  "Could not find all dependencies" long after the offending build.
+  Check each new cmake project for INSTALL_NAME_DIR overrides, and the
+  build_pyvips catch-all audit (every prefix dylib must have an
+  absolute install name) is the backstop.  meson and libtool installs
+  mangle install names to absolute paths themselves.
+- Python cffi extensions are linked with `-undefined dynamic_lookup`
+  on macOS, so otool -L shows no load command for libraries their
+  symbols bind to at import time (pyvips's `_libvips.abi3.so` shows no
+  libvips at all -- the patched `__init__.py` ctypes preload provides
+  it).  Verify such a preload with `DYLD_PRINT_LIBRARIES=1` in a fresh
+  interpreter rather than with otool.
 - If a build fails with `retrying git clone: <url> (v)` -- the tag is
   literally `v` -- the version lookup returned nothing: check
   `versions.txt` first (it is shared with the linux build and is updated
@@ -717,8 +743,9 @@ Notes on the remaining packages:
   Dockerfile patch is rebuilt).  Verified end to end in the VM: the
   wheel passes the identity, otool, and shared-suite checks on every
   requested python.
-- **pyvips**: in progress (2026-10-15), staged (see the Status section
-  for which stages are verified).  The linux wheel bundles libvips and
+- **pyvips**: implemented and verified end to end (2026-10-16; the
+  status entries record how each stage was proven).  The linux wheel
+  bundles libvips and
   its whole feature set, so the macos build must mirror the
   Dockerfile's final state before libvips configures: the openslide
   chain (libvips links openslide like any other loader), orc, nifti,
@@ -871,7 +898,23 @@ Notes on the remaining packages:
   applies, and the licensing-inclusive feature set should be mirrored.
   The python bindings link libgdal directly and need the bundled-library
   treatment plus the `GDAL_LIBRARY_PATH`/`GEOS_LIBRARY_PATH` exports that
-  the linux wheels provide.
+  the linux wheels provide.  Facts from the pyvips work that matter
+  here: several of GDAL's dependencies already have verified builders
+  in this file (zlib, zstd, xz, libjpeg, libpng, libtiff, openjpeg,
+  expat, sqlite, libxml2, curl, libzip, hdf5 with the v18 API and CPP
+  lib, cfitsio, openexr, brotli, and the whole glib/cairo/pango chain)
+  -- the pyvips `case` is the template for reusing them, but per the
+  completeness rule the case must still build the full tree on a fresh
+  VM; hdf5 was built WITHOUT the MPI-dependent options (parallel
+  netcdf, which the linux GDAL chain uses, will need an MPI built into
+  the prefix -- see build_hdf5's comment); the prefix curl is
+  TLS-less (no OpenSSL in the prefix -- see build_curl), so GDAL's
+  network/vsicurl drivers would either need an OpenSSL built into the
+  prefix first (the linux image builds its own OpenSSL) or a documented
+  no-TLS deviation, decide before writing build_gdal; poppler is built
+  WITHOUT boost, so if GDAL wants the poppler pdf driver unchanged
+  that is fine, but do not expect poppler's splash performance build;
+  and imagemagick is --without-modules (see its note).
 - **pyproj**: intentionally not built for macOS.  pyproj4 publishes
   macosx arm64 wheels, so the tests install pyproj from pypi like any
   other dependency; the linux pipeline no longer builds a pyproj wheel
