@@ -2149,7 +2149,19 @@ build_libgeos() {
     cd "$LIW_SRC"
     rm -rf geos
     git_retry https://github.com/libgeos/geos.git "$(v libgeos)" geos
-    cmake_build "$LIW_SRC/geos" -DGEOS_BUILD_DEVELOPER=NO -DBUILD_TESTING=OFF
+    # CMAKE_BUILD_WITH_INSTALL_NAME_DIR must be ON (the hdf4 lesson:
+    # with modern cmake the build-tree install names are @rpath
+    # regardless of CMAKE_INSTALL_NAME_DIR).  libgeos_c links libgeos
+    # inside this same build tree, and the gdal wheel bundles both --
+    # without this, libgeos_c records an @rpath/libgeos reference that
+    # stops resolving once the prefix RPATHs are stripped and delocate
+    # fails (geos's own INSTALL_NAME_DIR lines are commented out
+    # upstream, so no target property would fix it).  Verified on the
+    # host against the pinned 3.15.0: without the flag libgeos_c's
+    # libgeos reference is @rpath; with it both ids and the reference
+    # are absolute.
+    cmake_build "$LIW_SRC/geos" -DGEOS_BUILD_DEVELOPER=NO -DBUILD_TESTING=OFF \
+        -DCMAKE_BUILD_WITH_INSTALL_NAME_DIR=ON
     [ -e "$LIW_PREFIX/lib/libgeos_c.dylib" ] ||
         die "libgeos did not install libgeos_c"
     [ -e "$LIW_PREFIX/lib/libgeos.dylib" ] ||
@@ -2337,15 +2349,55 @@ build_hdf4() {
     cd "$LIW_SRC"
     rm -rf hdf4
     git_retry https://github.com/HDFGroup/hdf4.git "hdf-$(v hdf4)" hdf4
+    # ZLIB_LIBRARIES/ZLIB_INCLUDE_DIR must be preset (the hdf5 lesson:
+    # hdf4's CMakeFilters.cmake first runs a CONFIG-mode
+    # find_package(ZLIB ... COMPONENTS static shared), which silently
+    # succeeds against the prefix zlib's ZLIBConfig.cmake without
+    # defining the module variables hdf4's filter code appends to
+    # LINK_COMP_LIBS -- the shared libhdf then links with undefined
+    # inflate/deflate symbols, which the macOS linker rejects).
+    # JPEG is fine as-is: its config-mode find misses and a second find
+    # resolves the prefix libjpeg (verified in the failing run's log:
+    # no jpeg symbols in the undefined list).
+    # CMAKE_BUILD_WITH_INSTALL_NAME_DIR must be ON: hdf4's
+    # HDFMacros.cmake sets CMAKE_INSTALL_NAME_DIR to @rpath on Apple,
+    # and with modern cmake the build-tree install names are @rpath
+    # regardless of CMAKE_INSTALL_NAME_DIR (the property that variable
+    # initializes only rewrites ids at install).  libmfhdf -- which
+    # netcdf and gdal link, so it ships in the wheel -- links libdf and
+    # libxdr inside this same build tree and would record @rpath
+    # references that stop resolving once the prefix RPATHs are stripped
+    # (the hdf5 @rpath lesson; hdf5 escaped it only because no
+    # wheel-shipped dylib links its dylibs within its own build).  The
+    # variable makes every target's build-tree install name absolute,
+    # so consumers record absolute references (verified on the host:
+    # full build, install, and otool audit of libhdf/libxdr/libmfhdf).
     cmake_build "$LIW_SRC/hdf4" \
         -DHDF4_BUILD_FORTRAN=OFF \
         -DHDF4_ENABLE_NETCDF=OFF \
         -DHDF4_ENABLE_Z_LIB_SUPPORT=ON \
         -DHDF4_DISABLE_COMPILER_WARNINGS=ON \
         -DBUILD_TESTING=OFF \
-        -DZLIB_DIR="$LIW_PREFIX/lib"
+        -DZLIB_DIR="$LIW_PREFIX/lib" \
+        -DZLIB_LIBRARIES="$LIW_PREFIX/lib/libz.dylib" \
+        -DZLIB_INCLUDE_DIR="$LIW_PREFIX/include" \
+        -DCMAKE_BUILD_WITH_INSTALL_NAME_DIR=ON
     [ -n "$(ls "$LIW_PREFIX/lib"/libdf* "$LIW_PREFIX/lib"/libmfhdf* 2>/dev/null)" ] ||
         die "hdf4 did not install libdf/libmfhdf"
+    local f id links
+    for f in "$LIW_PREFIX/lib"/libdf*.dylib "$LIW_PREFIX/lib"/libmfhdf*.dylib; do
+        [ -f "$f" ] || continue
+        [ -L "$f" ] && continue
+        id="$(otool -D "$f" 2>/dev/null | sed -n 2p)"
+        case "$id" in
+        "$LIW_PREFIX"/*) ;;
+        *) die "hdf4 installed a dylib without an absolute install id ('$f': '$id')" ;;
+        esac
+        links="$(otool -L "$f" 2>/dev/null || true)"
+        if printf '%s\n' "$links" | grep -q "@rpath"; then
+            die "hdf4 installed $f with an @rpath load command:\n$links"
+        fi
+    done
     done_stamp hdf4
 }
 
