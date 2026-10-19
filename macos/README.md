@@ -506,7 +506,20 @@ runs, not just what the scripts are expected to do):
   do not.  Fixed by sed'ing the include into the header in
   build_librasterlite2 (verified on the host: the sed's diff is exactly
   that one line, and a darwin TU using time_t without time.h reproduces
-  the log's "unknown type name 'time_t'").
+  the log's "unknown type name 'time_t'").  The fourth run cleared
+  librasterlite2's compilation and died linking librasterlite2.la with
+  undefined sqlite3 symbols: configure.ac header-checks sqlite3.h but
+  never adds -lsqlite3 (only jpeg/gif/tiff/geotiff get AC_CHECK_LIB),
+  so the library links with undefined symbols -- the linux linker
+  permits that in a .so (they resolve at load time from libgdal's
+  libsqlite3), the macOS linker does not.  Fixed by configuring
+  librasterlite2 with LIBS="-lsqlite3": both the librasterlite2.la and
+  mod_rasterlite2.la link rules append $(LIBS), so the dylibs get real
+  libsqlite3 load commands (an explicit link rather than
+  -undefined dynamic_lookup -- the dependency is real and one-way, and
+  libgdal bundles libsqlite3 regardless).  Verified on the host: the
+  Makefile.in rules append $(LIBS), and a minimal configure project
+  shows an environment LIBS survives into the generated Makefile.
 
 ## Hard-won details (do not lose these)
 
