@@ -2271,7 +2271,18 @@ build_librasterlite2() {
 #include <time.h>|' headers/rasterlite2_private.h || exit 1
         rm -f ../librasterlite2.fossil
         # The linux build's --build triplet is linux-specific.
-        ./configure --prefix="$LIW_PREFIX" --disable-static || exit 1
+        # configure.ac header-checks sqlite3.h but never adds -lsqlite3
+        # (only jpeg/gif/tiff/geotiff get AC_CHECK_LIB), so librasterlite2
+        # links with undefined sqlite3 symbols: the linux linker permits
+        # that in a .so and they resolve at load time from libgdal's
+        # libsqlite3; the macOS linker rejects them.  Both the
+        # librasterlite2.la and mod_rasterlite2.la link rules append
+        # $(LIBS), so supply -lsqlite3 through the environment -- an
+        # explicit load command rather than -undefined dynamic_lookup,
+        # since the dependency is real and one-way (no jxrlib-style
+        # circularity) and delocate follows it (libgdal bundles
+        # libsqlite3 regardless).
+        LIBS="-lsqlite3" ./configure --prefix="$LIW_PREFIX" --disable-static || exit 1
         make -j "$LIW_JOBS" || exit 1
         make install || exit 1
     ) || die "librasterlite2 build failed"
