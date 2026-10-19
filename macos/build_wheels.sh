@@ -1837,6 +1837,17 @@ build_giflib() {
     (
         cd giflib || exit 1
         sed -i '' 's/\$(MAKE) -C doc/echo/g' Makefile || exit 1
+        # Upstream's Makefile has a Darwin branch, and its Darwin
+        # libutil.dylib rule links only qprintf.o/getarg.o --
+        # GifErrorString (which lives in libgif) stays undefined.  The
+        # Linux linker allows undefined symbols in shared libraries, so
+        # the Dockerfile's libutil.so builds as-is there; the macOS
+        # linker rejects them.  Restore the Linux semantics with
+        # -undefined dynamic_lookup (the jxrlib lesson).  libutil is not
+        # installed by the Darwin install target (only libgif is); it
+        # only has to build so 'all' succeeds.
+        sed -i '' 's|-o \$(LIBUTILSO)$|& -Wl,-undefined,dynamic_lookup|' Makefile ||
+            exit 1
         make -j "$LIW_JOBS" PREFIX="$LIW_PREFIX" || exit 1
         make install PREFIX="$LIW_PREFIX" || exit 1
     ) || die "giflib build failed"
