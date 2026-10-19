@@ -2262,6 +2262,13 @@ build_librasterlite2() {
         cd librasterlite2 || exit 1
         fossil open ../librasterlite2.fossil || exit 1
         fossil checkout -f 9dd8217cb9 || exit 1
+        # rasterlite2_private.h uses time_t (struct rl2_cached_raster's
+        # last_used) without including <time.h>.  glibc's headers define
+        # time_t transitively, so the linux build never notices; the
+        # darwin headers do not, and the library's TUs die with "unknown
+        # type name 'time_t'".  Include it explicitly.
+        sed -i '' 's|#include "config.h"|#include "config.h"\
+#include <time.h>|' headers/rasterlite2_private.h || exit 1
         rm -f ../librasterlite2.fossil
         # The linux build's --build triplet is linux-specific.
         ./configure --prefix="$LIW_PREFIX" --disable-static || exit 1

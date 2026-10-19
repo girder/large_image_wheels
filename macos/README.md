@@ -497,7 +497,16 @@ runs, not just what the scripts are expected to do):
   fixed by passing --admin-user root to all three gaia-gis clones
   (freexl, libspatialite, librasterlite2), verified by building the
   pinned fossil 2.28 on the host and running the exact clone+open
-  sequence with a non-root $USER.
+  sequence with a non-root $USER.  The third run cleared giflib
+  through freexl (both fixes active in the log), libgeos, librttopo,
+  libspatialite, and libgeotiff and died at librasterlite2:
+  rasterlite2_private.h uses time_t (struct rl2_cached_raster's
+  last_used) without including <time.h> -- glibc defines time_t
+  transitively so the linux build never notices, the darwin headers
+  do not.  Fixed by sed'ing the include into the header in
+  build_librasterlite2 (verified on the host: the sed's diff is exactly
+  that one line, and a darwin TU using time_t without time.h reproduces
+  the log's "unknown type name 'time_t'").
 
 ## Hard-won details (do not lose these)
 
