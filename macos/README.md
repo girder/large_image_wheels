@@ -478,7 +478,18 @@ runs, not just what the scripts are expected to do):
   `macos/test_via_tart.sh`, which lights up the shared suite's
   gdal-dependent steps (projected geotiff read, the two converter steps,
   the GDAL/vsicurl and format-list steps) that were gated off in the
-  pyvips-only wheelhouse.
+  pyvips-only wheelhouse.  The first gdal verification run (2026-10-19)
+  passed every earlier package and died at the first GDAL-tree step,
+  giflib: upstream's Makefile has a Darwin branch whose libutil.dylib
+  rule links qprintf.o/getarg.o without libgif, leaving
+  GifErrorString undefined -- the Linux linker allows undefined symbols
+  in shared libraries, so the Dockerfile's libutil.so builds as-is
+  there, but the macOS linker rejects them.  Fixed by appending
+  -Wl,-undefined,dynamic_lookup to the Darwin rule (the jxrlib
+  lesson); libutil is not installed by the Darwin install target (only
+  libgif is), it only has to build.  The sed, the full make, the
+  install, and fix_dylib_ids's id normalization were verified on the
+  host against the pinned tarball.
 
 ## Hard-won details (do not lose these)
 
