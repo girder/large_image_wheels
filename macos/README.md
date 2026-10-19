@@ -520,6 +520,30 @@ runs, not just what the scripts are expected to do):
   libgdal bundles libsqlite3 regardless).  Verified on the host: the
   Makefile.in rules append $(LIBS), and a minimal configure project
   shows an environment LIBS survives into the generated Makefile.
+  The fifth run cleared librasterlite2 and fyba and died at hdf4: the
+  shared libhdf linked with undefined inflate/deflate symbols (the
+  hdf5 lesson's config-mode ZLIB find -- preset ZLIB_LIBRARIES and
+  ZLIB_INCLUDE_DIR fixed that).  The deeper issue is hdf4's
+  HDFMacros.cmake setting CMAKE_INSTALL_NAME_DIR to @rpath on Apple:
+  with modern cmake the build-tree install names are @rpath regardless
+  of CMAKE_INSTALL_NAME_DIR (the property that variable initializes
+  only rewrites ids at install), and libmfhdf -- which netcdf and gdal
+  link, so it ships in the wheel -- links libdf and libxdr inside
+  hdf4's own build tree, recording @rpath references that stop
+  resolving once the prefix RPATHs are stripped (hdf5 escaped this
+  only because no wheel-shipped dylib links its dylibs within its own
+  build; HDF4_BUILD_WITH_INSTALL_NAME does not help -- like hdf5's
+  option it only rewrites installed ids).  Fixed with the generic
+  cmake variable -DCMAKE_BUILD_WITH_INSTALL_NAME_DIR=ON, which makes
+  every target's build-tree install name absolute, plus an hdf4 audit
+  (every installed libdf/libmfhdf dylib must have an absolute id and
+  no @rpath load commands).  The same reasoning applied to the pinned
+  geos exposed the identical pending landmine in the already-passed
+  libgeos build: libgeos_c links libgeos in-tree and had recorded an
+  @rpath reference that would have broken the gdal wheel's delocate
+  later -- build_libgeos now passes the same variable (verified on the
+  host against 3.15.0: without it the reference is @rpath, with it
+  both ids and the reference are absolute).
 
 ## Hard-won details (do not lose these)
 
@@ -1340,6 +1364,26 @@ linux-only; running it in the VM is a possible later extension.
 - Free-threaded wheels import with a `RuntimeWarning` about re-enabling
   the GIL because the C extension is not annotated for free-threading;
   this matches upstream behavior and the linux wheels.
+- With modern cmake (4.x, the VM's Homebrew cmake), a cmake-built
+  dylib's BUILD-TREE install name is `@rpath/<soname>` regardless of
+  CMAKE_INSTALL_NAME_DIR: the INSTALL_NAME_DIR property that variable
+  initializes only rewrites ids when the dylib is installed.  This is
+  harmless unless a dylib that ships in a wheel links a SIBLING dylib
+  of the same build tree -- then the recorded `@rpath` reference stops
+  resolving once the prefix RPATHs are stripped (delocate: "Could not
+  find all dependencies", long after the offending build).  The fix is
+  `-DCMAKE_BUILD_WITH_INSTALL_NAME_DIR=ON` next to cmake_build's
+  `-DCMAKE_INSTALL_NAME_DIR`: it makes every target's build-tree
+  install name absolute, so sibling references and installed ids are
+  all absolute.  Project-specific options like
+  HDF4_BUILD_WITH_INSTALL_NAME / HDF5_BUILD_WITH_INSTALL_NAME only set
+  the INSTALL_NAME_DIR property -- they fix installed ids, not
+  build-tree references, and hdf5 only escaped the problem because no
+  wheel-shipped dylib links its dylibs within its own build (hdf4's
+  libmfhdf does exactly that, and geos's libgeos_c too).  When adding
+  a cmake-built dependency, check whether any target links a sibling
+  dylib of the same tree and audit the installed dylibs for @rpath
+  load commands (build_hdf4's audit is the template).
 - fossil's global `--user` option only names the login to select; it
   does not create it.  `fossil clone` seeds the fresh repository's user
   table from `--admin-user`, falling back to `$USER`, and then
