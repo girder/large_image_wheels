@@ -2117,7 +2117,14 @@ build_freexl() {
     step "freexl"
     cd "$LIW_SRC"
     rm -rf freexl freexl.fossil
-    printf 'yes\nyes\n' | fossil --user=root clone \
+    # The Dockerfile's global --user=root works in the container only
+    # because $USER is root there: clone seeds the fresh repository's
+    # user table from --admin-user, or from $USER when it is absent,
+    # and user_select() then dies with "no such user" when the global
+    # --user names a user the fresh repository does not have.  The VM's
+    # $USER is not root, so create the root user with --admin-user;
+    # user_select() still prefers the global --user, which now exists.
+    printf 'yes\nyes\n' | fossil --user=root clone --admin-user root \
         https://www.gaia-gis.it/fossil/freexl freexl.fossil ||
         die "fossil clone of freexl failed"
     mkdir freexl
@@ -2177,7 +2184,9 @@ build_libspatialite() {
     step "libspatialite"
     cd "$LIW_SRC"
     rm -rf libspatialite libspatialite.fossil
-    fossil --user=root clone https://www.gaia-gis.it/fossil/libspatialite \
+    # See build_freexl for why --admin-user is needed here.
+    fossil --user=root clone --admin-user root \
+        https://www.gaia-gis.it/fossil/libspatialite \
         libspatialite.fossil || die "fossil clone of libspatialite failed"
     mkdir libspatialite
     (
@@ -2243,7 +2252,9 @@ build_librasterlite2() {
     step "librasterlite2"
     cd "$LIW_SRC"
     rm -rf librasterlite2 librasterlite2.fossil
-    fossil --user=root clone https://www.gaia-gis.it/fossil/librasterlite2 \
+    # See build_freexl for why --admin-user is needed here.
+    fossil --user=root clone --admin-user root \
+        https://www.gaia-gis.it/fossil/librasterlite2 \
         librasterlite2.fossil ||
         die "fossil clone of librasterlite2 failed"
     mkdir librasterlite2

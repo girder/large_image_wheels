@@ -489,7 +489,15 @@ runs, not just what the scripts are expected to do):
   lesson); libutil is not installed by the Darwin install target (only
   libgif is), it only has to build.  The sed, the full make, the
   install, and fix_dylib_ids's id normalization were verified on the
-  host against the pinned tarball.
+  host against the pinned tarball.  The second run cleared giflib
+  through fossil and died at freexl's fossil clone: fossil's global
+  --user=root names a login that the freshly created repository does
+  not have (the Dockerfile works in the container only because $USER
+  is root there, which is the fallback seed for a clone's user table);
+  fixed by passing --admin-user root to all three gaia-gis clones
+  (freexl, libspatialite, librasterlite2), verified by building the
+  pinned fossil 2.28 on the host and running the exact clone+open
+  sequence with a non-root $USER.
 
 ## Hard-won details (do not lose these)
 
@@ -1310,3 +1318,13 @@ linux-only; running it in the VM is a possible later extension.
 - Free-threaded wheels import with a `RuntimeWarning` about re-enabling
   the GIL because the C extension is not annotated for free-threading;
   this matches upstream behavior and the linux wheels.
+- fossil's global `--user` option only names the login to select; it
+  does not create it.  `fossil clone` seeds the fresh repository's user
+  table from `--admin-user`, falling back to `$USER`, and then
+  `user_select()` dies with "no such user: <name>" when the global
+  `--user` names a user the fresh repository lacks.  The Dockerfile's
+  `--user=root` clones work in the container only because `$USER` is
+  root there; the VM's `$USER` is not, so the gaia-gis clones pass
+  `--admin-user root` in addition (verified with the pinned fossil 2.28
+  on the host: the un-fixed command reproduces the failure, the fixed
+  one clones and opens with a non-root `$USER`).
