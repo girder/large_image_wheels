@@ -566,7 +566,26 @@ runs, not just what the scripts are expected to do):
   relative to $LIW_SRC but runs before cmake_build cds into the
   checkout -- fixed by passing the full "$LIW_SRC/hdf4/..." path
   (the sed itself re-verified against the pinned tarball at that
-  exact path).
+  exact path).  The eighth run cleared hdf4 (audit passing),
+  parallel-netcdf, and netcdf, and died at mysql's configure:
+  mysql's cmake/ssl.cmake hints ${HOMEBREW_HOME}/openssl for APPLE
+  under WITH_SSL=system, found Homebrew's OpenSSL 4.0.3 whose
+  opensslv.h yields an empty version string ("Not a supported
+  openssl version"), and would have leaked Homebrew regardless.
+  Fixed with -DWITH_SSL="$LIW_PREFIX" (mysql's supported
+  custom-installation mode): the prefix's pinned 3.6.2 headers/libs,
+  prefix/bin/openssl for its runtime probe, and mysql's own
+  APPLE_WITH_CUSTOM_SSL machinery copies libssl/libcrypto into the
+  build's library_output_directory and patches the copy's libcrypto
+  dependency to @loader_path.  Verified on the host by driving the
+  pinned mysql-26.7.0's ssl.cmake in a scratch project against a mock
+  prefix layout (headers with 3.6.2 version macros, the symlink chain,
+  bin/openssl): configure passes, the copies land in
+  library_output_directory, the libssl.3.dylib copy keeps its absolute
+  prefix id (what libmysqlclient records -- delocate friendly) with
+  its libcrypto dependency patched to @loader_path (which still
+  resolves inside the prefix after mysql's install copies the dylibs
+  over the prefix's own).
 
 ## Hard-won details (do not lose these)
 
