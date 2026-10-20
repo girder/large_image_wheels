@@ -59,6 +59,7 @@ manylinux container plays for the linux builds:
 - `build_wheels.sh` -- the in-VM monolithic build.  Environment setup is at
   the top; helpers (`step`, `v`, `skip_if_done`/`done_stamp`, `git_retry`,
   `fetch`, `cmake_build`, `meson_build`/`ensure_meson`, `ensure_rust`,
+  `ensure_git_lfs`,
   `find_version_dir`,
   `ensure_pythons`, `collect_pybins`, `ensure_tools`, `set_patch_python`,
   `scrub_python_sysconfig`, `sanitize_prefix_dylibs`, `fix_dylib_ids`)
@@ -602,7 +603,20 @@ runs, not just what the scripts are expected to do):
   including test-xodr passes).  The builder's assertion also said
   dylib: the project builds a static libOpenDrive.a by default and the
   Dockerfile does not change that -- gdal absorbs it like on linux, so
-  the assertion now checks the static library.
+  the assertion now checks the static library.  The tenth run cleared
+  libavif and died inside gdal's PublicDecompWT external project (the
+  MSG HRIT driver): its GitLab repository's .gitattributes LFS-marks
+  test-data/** only, but git requires the lfs filter process for the
+  clone and the VM has no git-lfs (the linux base image supplies it; it
+  is in no Dockerfile RUN).  Fixed by provisioning git-lfs with the
+  brew build tools, an ensure_git_lfs bootstrap for existing base VMs
+  (the ensure_rust precedent: brew install if missing, symlinked into
+  the private prefix so the scrubbed PATH resolves the filter command,
+  and the global filter.lfs config ensured), and GIT_LFS_SKIP_SMUDGE=1
+  around the gdal build so the clone does not pull the test-data
+  objects (nothing in the build reads them; the clone itself was
+  verified on the host against the pinned tag -- the checkout carries
+  the DISE/COMP sources the generated PublicDecompWT_all.cpp needs).
 
 ## Hard-won details (do not lose these)
 

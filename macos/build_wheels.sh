@@ -468,6 +468,41 @@ ensure_rust() {
     esac
 }
 
+# git-lfs is a build tool: GDAL's PublicDecompWT external project clones
+# a GitLab repository whose .gitattributes LFS-marks test-data/**, so
+# git requires the lfs filter process for the clone (the linux base
+# image supplies git-lfs the same way).  Provisioned with the brew
+# tools; ensure_git_lfs bootstraps it on base VMs provisioned before
+# that change (the ensure_rust precedent).  The scrubbed PATH must be
+# able to resolve the filter command, so the binary is symlinked into
+# the private prefix like the other Homebrew build tools.
+ensure_git_lfs() {
+    local brew_prefix
+    if [ -x /opt/homebrew/bin/brew ]; then
+        brew_prefix=/opt/homebrew
+    elif [ -x /usr/local/bin/brew ]; then
+        brew_prefix=/usr/local
+    else
+        die "Homebrew not found; cannot install git-lfs"
+    fi
+    if [ ! -x "$brew_prefix/bin/git-lfs" ]; then
+        step "installing git-lfs (build tool for GDAL's PublicDecompWT clone)"
+        "$brew_prefix/bin/brew" install -q git-lfs ||
+            die "git-lfs installation failed"
+    fi
+    [ -x "$brew_prefix/bin/git-lfs" ] ||
+        die "git-lfs unavailable after tool setup"
+    ln -sf "$brew_prefix/bin/git-lfs" "$LIW_PREFIX/bin/git-lfs"
+    # The VM's git already carries filter.lfs.* config (the clone failure
+    # proves git tried to run the filter); make sure it stays configured
+    # for fresh bases, and confirm the binary actually runs.
+    if ! /usr/bin/git config --global filter.lfs.process >/dev/null 2>&1; then
+        "$LIW_PREFIX/bin/git-lfs" install --skip-repo >/dev/null 2>&1 || true
+    fi
+    "$LIW_PREFIX/bin/git-lfs" version >/dev/null 2>&1 ||
+        die "git-lfs does not run (PATH/config problem)"
+}
+
 # --------------------------------------------------------------------------
 # Dependencies (mirroring the Dockerfile's build order and flags).
 # --------------------------------------------------------------------------
@@ -2847,11 +2882,23 @@ build_gdal() {
             swig/python/setup.py.in || exit 1
     ) || die "gdal source preparation failed"
     "$LIW_PATCH_PIPBIN" install -q numpy
-    cmake_build "$LIW_SRC/gdal" \
+    # The PublicDecompWT external project (MSG HRIT driver) clones
+    # https://gitlab.eumetsat.int/open-source/PublicDecompWT.git, whose
+    # .gitattributes LFS-marks test-data/** only; git requires the lfs
+    # filter process for the clone even though the build consumes just
+    # the plain DISE/COMP sources.  GIT_LFS_SKIP_SMUDGE=1 keeps git-lfs
+    # from pulling the test-data objects (nothing in the build reads
+    # them) while the filter still runs, mirroring the linux build
+    # (whose base image supplies git-lfs).
+    ensure_git_lfs
+    GIT_LFS_SKIP_SMUDGE=1 cmake_build "$LIW_SRC/gdal" \
         -DGDAL_USE_LERC=ON \
         -DENABLE_DEFLATE64=OFF \
         -DGDAL_USE_PUBLICDECOMPWT=ON \
         -DPython_EXECUTABLE="$LIW_PATCH_PYBIN"
+    # An assignment prefixing a function call persists after it in bash;
+    # restore the environment for the remaining steps.
+    unset GIT_LFS_SKIP_SMUDGE
     [ -e "$LIW_PREFIX/lib/libgdal.dylib" ] ||
         die "gdal did not install libgdal"
     [ -x "$LIW_PREFIX/bin/gdalinfo" ] ||
