@@ -2891,10 +2891,27 @@ build_gdal() {
     # them) while the filter still runs, mirroring the linux build
     # (whose base image supplies git-lfs).
     ensure_git_lfs
+    # The exr driver needs three include dirs for OpenEXR 3.x's layout:
+    # prefix/include/OpenEXR (gdal's openexr_headers.h includes
+    # "ImfChannelList.h" etc. directly), prefix/include/Imath (it also
+    # includes "ImathMatrix.h" directly -- that header only exists in
+    # the Imath dir), and the PARENT prefix/include (OpenEXR's own
+    # headers say #include <Imath/half.h>).  GDAL's FindOpenEXR only
+    # puts the first two in OpenEXR_INCLUDE_DIRS, and on linux the
+    # parent is implicit anyway: the prefix there is /usr/local, which
+    # the compiler searches by default.  A private prefix is not an
+    # implicit system path, so restore linux parity with standard
+    # include directories (cmake emits them as -isystem, i.e. searched
+    # after the user paths, so nothing is shadowed).  Verified on the
+    # host: the two subdirs alone fail with "fatal error:
+    # 'Imath/half.h' file not found" (the VM failure), and the same
+    # compile passes with the parent added last.
     GIT_LFS_SKIP_SMUDGE=1 cmake_build "$LIW_SRC/gdal" \
         -DGDAL_USE_LERC=ON \
         -DENABLE_DEFLATE64=OFF \
         -DGDAL_USE_PUBLICDECOMPWT=ON \
+        -DCMAKE_C_STANDARD_INCLUDE_DIRECTORIES="$LIW_PREFIX/include" \
+        -DCMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES="$LIW_PREFIX/include" \
         -DPython_EXECUTABLE="$LIW_PATCH_PYBIN"
     # An assignment prefixing a function call persists after it in bash;
     # restore the environment for the remaining steps.

@@ -617,6 +617,21 @@ runs, not just what the scripts are expected to do):
   objects (nothing in the build reads them; the clone itself was
   verified on the host against the pinned tag -- the checkout carries
   the DISE/COMP sources the generated PublicDecompWT_all.cpp needs).
+  GDAL itself then died compiling the exr driver: OpenEXR 3.x's headers
+  span three include dirs -- prefix/include/OpenEXR (gdal's
+  openexr_headers.h includes "ImfChannelList.h" etc. directly),
+  prefix/include/Imath (it also includes "ImathMatrix.h" directly),
+  and the PARENT prefix/include (OpenEXR's headers say #include
+  <Imath/half.h>) -- but GDAL's FindOpenEXR only puts the first two in
+  OpenEXR_INCLUDE_DIRS.  On linux that parent is implicit: the prefix
+  there is /usr/local, which the compiler searches by default, while a
+  private prefix is not an implicit system path.  build_gdal now passes
+  CMAKE_C/CXX_STANDARD_INCLUDE_DIRECTORIES="$LIW_PREFIX/include" to
+  restore linux parity (cmake emits them as -isystem, searched after
+  the user paths, so nothing is shadowed; verified on the host: the two
+  subdirs alone reproduce the VM's "fatal error: 'Imath/half.h' file
+  not found", and the same include pattern passes with the parent added
+  last).
 
 ## Hard-won details (do not lose these)
 
