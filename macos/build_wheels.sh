@@ -2731,9 +2731,61 @@ build_libopendrive() {
     cd "$LIW_SRC"
     rm -rf libOpenDRIVE
     git_retry https://github.com/DLR-TS/libOpenDRIVE.git "0.6.0-gdal" libOpenDRIVE
+    # AppleClang 21's libc++ specializes __make_transparent<_Tp, less<_Tp>>
+    # to less<>, so std::set<T>'s insert/emplace compare the VALUES with
+    # less<void> -- requiring operator< on T itself -- and never call a
+    # std::less<T> specialization; libstdc++ (the linux build) does use
+    # the specialization, which is why this is macos-only.  libOpenDRIVE
+    # orders its key types through std::less specializations only
+    # (RoadMarksLine, RoadMarkGroup, JunctionLaneLink, JunctionPriority;
+    # LaneKey is hash/equal_to only, for unordered containers), so give
+    # each type an inline operator< that delegates to its existing
+    # std::less specialization -- one source of comparison truth, found
+    # via ADL wherever less<void> evaluates "a < b".  Verified on the
+    # host: without the patch the library dies with "no matching function
+    # for call to object of type 'const std::less<void>'"; with it, the
+    # full build (including test-xodr) passes.
+    cat >> "$LIW_SRC/libOpenDRIVE/include/RoadMark.h" <<'EOF'
+
+// Added by macos/build_wheels.sh build_libopendrive: AppleClang 21's
+// libc++ makes std::set<T>'s insert/emplace compare values with
+// less<void> (needing operator< on T itself) and never calls a
+// std::less<T> specialization; libstdc++ does.  Delegate to the
+// existing specializations.
+namespace odr
+{
+inline bool operator<(const RoadMarksLine& lhs, const RoadMarksLine& rhs)
+{
+    return std::less<RoadMarksLine>()(lhs, rhs);
+}
+inline bool operator<(const RoadMarkGroup& lhs, const RoadMarkGroup& rhs)
+{
+    return std::less<RoadMarkGroup>()(lhs, rhs);
+}
+} // namespace odr
+EOF
+    cat >> "$LIW_SRC/libOpenDRIVE/include/Junction.h" <<'EOF'
+
+// Added by macos/build_wheels.sh build_libopendrive: see RoadMark.h.
+namespace odr
+{
+inline bool operator<(const JunctionLaneLink& lhs, const JunctionLaneLink& rhs)
+{
+    return std::less<JunctionLaneLink>()(lhs, rhs);
+}
+inline bool operator<(const JunctionPriority& lhs, const JunctionPriority& rhs)
+{
+    return std::less<JunctionPriority>()(lhs, rhs);
+}
+} // namespace odr
+EOF
     cmake_build "$LIW_SRC/libOpenDRIVE" -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-    [ -n "$(ls "$LIW_PREFIX/lib"/libOpenDRIVE*.dylib 2>/dev/null)" ] ||
-        die "libopendrive did not install its library"
+    # The project builds a static libOpenDrive.a by default and the
+    # Dockerfile does not change that -- gdal absorbs it, like on linux
+    # (nothing ships a libOpenDRIVE dylib, so there is nothing to
+    # delocate).
+    [ -e "$LIW_PREFIX/lib/libOpenDrive.a" ] ||
+        die "libopendrive did not install its static library"
     done_stamp libopendrive
 }
 
