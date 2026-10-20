@@ -585,7 +585,24 @@ runs, not just what the scripts are expected to do):
   prefix id (what libmysqlclient records -- delocate friendly) with
   its libcrypto dependency patched to @loader_path (which still
   resolves inside the prefix after mysql's install copies the dylibs
-  over the prefix's own).
+  over the prefix's own).  The ninth run cleared postgresql, libgta,
+  xerces-c, armadillo, blosc, highfive, and kealib and died compiling
+  libopendrive: AppleClang 21's libc++ specializes
+  __make_transparent<_Tp, less<_Tp>> to less<>, so std::set<T>'s
+  insert/emplace compare the VALUES with less<void> -- requiring
+  operator< on T itself -- and never call a std::less<T>
+  specialization (libstdc++ on linux does use it, hence macos-only).
+  libOpenDRIVE orders its key types through std::less specializations
+  only (RoadMarksLine, RoadMarkGroup, JunctionLaneLink,
+  JunctionPriority; LaneKey is hash/equal_to only), so
+  build_libopendrive now appends an inline operator< per type
+  delegating to its existing specialization (verified on the host:
+  without the patch the build dies with "no matching function for call
+  to object of type 'const std::less<void>'", with it the full build
+  including test-xodr passes).  The builder's assertion also said
+  dylib: the project builds a static libOpenDrive.a by default and the
+  Dockerfile does not change that -- gdal absorbs it like on linux, so
+  the assertion now checks the static library.
 
 ## Hard-won details (do not lose these)
 
@@ -1434,6 +1451,18 @@ linux-only; running it in the VM is a possible later extension.
   a cmake-built dependency, check whether any target links a sibling
   dylib of the same tree and audit the installed dylibs for @rpath
   load commands (build_hdf4's audit is the template).
+- AppleClang 21's libc++ specializes __make_transparent<_Tp, less<_Tp>>
+  to less<>, so std::set<T>/std::map<T, ...>'s insert/emplace/find with
+  a value_type key compares the VALUES with less<void> -- requiring
+  operator< on T itself -- and never calls a std::less<T>
+  specialization.  libstdc++ uses the specialization, so code that
+  orders key types only through std::less specializations compiles on
+  linux and dies on macOS with "no matching function for call to object
+  of type 'const std::less<void>'" (libopendrive's RoadMarkGroup et al.).
+  The fix is an inline operator< per type (free function in the type's
+  namespace, found via ADL) delegating to the existing specialization.
+  Types used only in unordered containers (hash/equal_to) are
+  unaffected.
 - fossil's global `--user` option only names the login to select; it
   does not create it.  `fossil clone` seeds the fresh repository's user
   table from `--admin-user`, falling back to `$USER`, and then
