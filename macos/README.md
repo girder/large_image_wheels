@@ -543,7 +543,25 @@ runs, not just what the scripts are expected to do):
   @rpath reference that would have broken the gdal wheel's delocate
   later -- build_libgeos now passes the same variable (verified on the
   host against 3.15.0: without it the reference is @rpath, with it
-  both ids and the reference are absolute).
+  both ids and the reference are absolute).  The sixth run cleared
+  through fyba and died at hdf4's own audit: the previous fix was
+  wrong -- -DCMAKE_BUILD_WITH_INSTALL_NAME_DIR=ON alone made the
+  build tree USE the INSTALL_NAME_DIR property, but hdf4's macro had
+  initialized that property to @rpath (a macro's normal-variable set
+  shadows cmake_build's cache value), so every hdf4 dylib installed
+  with an @rpath id and the audit stopped the build exactly as
+  designed.  Verified on the host with the full cmake_build flag set:
+  the variable alone reproduces the @rpath ids, the sed of the macro
+  to ${CMAKE_INSTALL_PREFIX}/lib alone leaves the build tree at
+  @rpath (the property only rewrites ids at install), and both
+  together produce absolute ids and absolute libmfhdf references;
+  also observed: the link then records /usr/lib/libz.1.dylib (Apple's
+  linker maps libz to the OS copy -- fine, always present, delocate
+  treats /usr/lib as system).  build_openexr got the same variable:
+  OpenEXR builds Iex/IlmThread/Imath siblings in-tree and upstream
+  sets no INSTALL_NAME_DIR, and the host check against 3.5.2 shows
+  libOpenEXR's three sibling references are @rpath without the flag
+  and absolute with it -- the gdal wheel bundles all four.
 
 ## Hard-won details (do not lose these)
 
@@ -1375,7 +1393,15 @@ linux-only; running it in the VM is a possible later extension.
   `-DCMAKE_BUILD_WITH_INSTALL_NAME_DIR=ON` next to cmake_build's
   `-DCMAKE_INSTALL_NAME_DIR`: it makes every target's build-tree
   install name absolute, so sibling references and installed ids are
-  all absolute.  Project-specific options like
+  all absolute.  Two things can defeat it: project macros that set
+  CMAKE_INSTALL_NAME_DIR (a normal-variable set shadows cmake_build's
+  cache value, so the property is initialized to @rpath -- hdf4 and
+  hdf5 do this; hdf4 needed a sed of its HDFMacros.cmake to the
+  absolute prefix libdir in addition to the variable), and projects
+  whose property is never initialized at all (geos, openexr: their
+  INSTALL_NAME_DIR handling is commented out or absent, but
+  cmake_build's -DCMAKE_INSTALL_NAME_DIR initializes the property, so
+  the variable alone works there).  Project-specific options like
   HDF4_BUILD_WITH_INSTALL_NAME / HDF5_BUILD_WITH_INSTALL_NAME only set
   the INSTALL_NAME_DIR property -- they fix installed ids, not
   build-tree references, and hdf5 only escaped the problem because no
