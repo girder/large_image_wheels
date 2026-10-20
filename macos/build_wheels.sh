@@ -1659,10 +1659,22 @@ build_openexr() {
     # The Imath submodule is not cloned (the Dockerfile's plain clone does
     # not recurse either); openexr's cmake fetches Imath at configure time
     # using OPENEXR_IMATH_TAG.
+    # CMAKE_BUILD_WITH_INSTALL_NAME_DIR must be ON (the hdf4/geos lesson:
+    # with modern cmake the build-tree install names are @rpath regardless
+    # of CMAKE_INSTALL_NAME_DIR, and openexr builds several sibling dylibs
+    # in one tree -- libOpenEXR links Iex/IlmThread/Imath in-tree, and the
+    # gdal wheel bundles all of them; without this, libOpenEXR records
+    # @rpath references that stop resolving once the prefix RPATHs are
+    # stripped and delocate fails.  OpenEXR sets no INSTALL_NAME_DIR of
+    # its own, so the property comes from cmake_build's variable.
+    # Verified on the host against 3.5.2: without the flag libOpenEXR's
+    # Iex/IlmThread/Imath references are @rpath; with it the id and all
+    # three references are absolute.
     cmake_build "$LIW_SRC/openexr" \
         -DBUILD_TESTING=OFF \
         -DOPENEXR_BUILD_EXAMPLES=OFF \
-        -DOPENEXR_IMATH_TAG=v3.2.1
+        -DOPENEXR_IMATH_TAG=v3.2.1 \
+        -DCMAKE_BUILD_WITH_INSTALL_NAME_DIR=ON
     [ -n "$(ls "$LIW_PREFIX/lib"/libOpenEXR*.dylib 2>/dev/null)" ] ||
         die "openexr did not install its libraries"
     local linked lib
@@ -2355,23 +2367,33 @@ build_hdf4() {
     # succeeds against the prefix zlib's ZLIBConfig.cmake without
     # defining the module variables hdf4's filter code appends to
     # LINK_COMP_LIBS -- the shared libhdf then links with undefined
-    # inflate/deflate symbols, which the macOS linker rejects).
-    # JPEG is fine as-is: its config-mode find misses and a second find
-    # resolves the prefix libjpeg (verified in the failing run's log:
-    # no jpeg symbols in the undefined list).
-    # CMAKE_BUILD_WITH_INSTALL_NAME_DIR must be ON: hdf4's
-    # HDFMacros.cmake sets CMAKE_INSTALL_NAME_DIR to @rpath on Apple,
-    # and with modern cmake the build-tree install names are @rpath
-    # regardless of CMAKE_INSTALL_NAME_DIR (the property that variable
-    # initializes only rewrites ids at install).  libmfhdf -- which
+    # inflate/deflate symbols, which the macOS linker rejects).  Note
+    # the link then records /usr/lib/libz.1.dylib, not the prefix zlib:
+    # Apple's linker maps libz to the OS copy, which is fine (it is
+    # always present and delocate treats /usr/lib as system).  JPEG is
+    # fine as-is: its config-mode find misses and a second find resolves
+    # the prefix libjpeg (verified in the failing run's log: no jpeg
+    # symbols in the undefined list).
+    #
+    # hdf4's HDFMacros.cmake sets CMAKE_INSTALL_NAME_DIR to @rpath on
+    # Apple, and a macro's normal-variable set shadows cmake_build's
+    # cache value, so every hdf4 target's INSTALL_NAME_DIR property is
+    # initialized to @rpath.  With modern cmake the build-tree install
+    # names are @rpath regardless of CMAKE_INSTALL_NAME_DIR (the
+    # property only rewrites ids at install), and libmfhdf -- which
     # netcdf and gdal link, so it ships in the wheel -- links libdf and
     # libxdr inside this same build tree and would record @rpath
     # references that stop resolving once the prefix RPATHs are stripped
     # (the hdf5 @rpath lesson; hdf5 escaped it only because no
-    # wheel-shipped dylib links its dylibs within its own build).  The
-    # variable makes every target's build-tree install name absolute,
-    # so consumers record absolute references (verified on the host:
-    # full build, install, and otool audit of libhdf/libxdr/libmfhdf).
+    # wheel-shipped dylib links its dylibs within its own build, and
+    # HDF4_BUILD_WITH_INSTALL_NAME only rewrites installed ids).  Two
+    # changes together, both required (verified on the host): sed the
+    # macro to the absolute prefix libdir so the property is absolute,
+    # and pass -DCMAKE_BUILD_WITH_INSTALL_NAME_DIR=ON so the build tree
+    # actually uses the property.
+    sed -i '' \
+        's|set (CMAKE_INSTALL_NAME_DIR "@rpath")|set (CMAKE_INSTALL_NAME_DIR "${CMAKE_INSTALL_PREFIX}/lib")|' \
+        config/cmake/HDFMacros.cmake || exit 1
     cmake_build "$LIW_SRC/hdf4" \
         -DHDF4_BUILD_FORTRAN=OFF \
         -DHDF4_ENABLE_NETCDF=OFF \
@@ -2385,7 +2407,8 @@ build_hdf4() {
     [ -n "$(ls "$LIW_PREFIX/lib"/libdf* "$LIW_PREFIX/lib"/libmfhdf* 2>/dev/null)" ] ||
         die "hdf4 did not install libdf/libmfhdf"
     local f id links
-    for f in "$LIW_PREFIX/lib"/libdf*.dylib "$LIW_PREFIX/lib"/libmfhdf*.dylib; do
+    for f in "$LIW_PREFIX/lib"/libdf*.dylib "$LIW_PREFIX/lib"/libxdr*.dylib \
+        "$LIW_PREFIX/lib"/libmfhdf*.dylib; do
         [ -f "$f" ] || continue
         [ -L "$f" ] && continue
         id="$(otool -D "$f" 2>/dev/null | sed -n 2p)"
