@@ -381,8 +381,12 @@ if ! skip_if_done brew; then
         exit 1
     }
     step "brew packages (build tools and python-build prerequisites)"
+    # git-lfs: GDAL's PublicDecompWT external project clones a repository
+    # whose .gitattributes LFS-marks test-data/** (the linux base image
+    # supplies git-lfs the same way); ensure_git_lfs bootstraps it on
+    # base VMs provisioned before this was added.
     brew install cmake ninja pkgconf m4 autoconf automake libtool ccache \
-        readline sqlite3 xz zlib tcl-tk openssl@3 || {
+        readline sqlite3 xz zlib tcl-tk openssl@3 git-lfs || {
         echo "ERROR: brew install failed" >&2
         exit 1
     }
