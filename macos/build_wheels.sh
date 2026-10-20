@@ -2393,7 +2393,7 @@ build_hdf4() {
     # actually uses the property.
     sed -i '' \
         's|set (CMAKE_INSTALL_NAME_DIR "@rpath")|set (CMAKE_INSTALL_NAME_DIR "${CMAKE_INSTALL_PREFIX}/lib")|' \
-        config/cmake/HDFMacros.cmake || exit 1
+        "$LIW_SRC/hdf4/config/cmake/HDFMacros.cmake" || exit 1
     cmake_build "$LIW_SRC/hdf4" \
         -DHDF4_BUILD_FORTRAN=OFF \
         -DHDF4_ENABLE_NETCDF=OFF \
