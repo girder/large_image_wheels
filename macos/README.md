@@ -561,7 +561,12 @@ runs, not just what the scripts are expected to do):
   OpenEXR builds Iex/IlmThread/Imath siblings in-tree and upstream
   sets no INSTALL_NAME_DIR, and the host check against 3.5.2 shows
   libOpenEXR's three sibling references are @rpath without the flag
-  and absolute with it -- the gdal wheel bundles all four.
+  and absolute with it -- the gdal wheel bundles all four.  The
+  seventh run died before hdf4's configure: the sed used a path
+  relative to $LIW_SRC but runs before cmake_build cds into the
+  checkout -- fixed by passing the full "$LIW_SRC/hdf4/..." path
+  (the sed itself re-verified against the pinned tarball at that
+  exact path).
 
 ## Hard-won details (do not lose these)
 
