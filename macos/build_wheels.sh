@@ -2515,11 +2515,30 @@ build_mysql() {
         mkdir -p storage/ndb || exit 1
         touch storage/ndb/CMakeLists.txt || exit 1
     ) || die "mysql source preparation failed"
+    # The Dockerfile does not pass WITH_SSL: on linux, mysql's
+    # WITH_SSL=system finds the distribution's OpenSSL.  On the VM,
+    # mysql's cmake/ssl.cmake explicitly hints ${HOMEBREW_HOME}/openssl
+    # for APPLE and finds Homebrew's OpenSSL 4.0.3, whose opensslv.h
+    # yields an empty version string -- "Not a supported openssl
+    # version" -- and it would be a Homebrew leak anyway.  WITH_SSL=
+    # <path> is mysql's supported custom-installation mode: it finds
+    # the prefix's pinned 3.6.2 headers/libs (MIN is 1.0.0), requires
+    # $LIW_PREFIX/bin/openssl (installed by build_openssl), and its
+    # APPLE_WITH_CUSTOM_SSL machinery copies libssl/libcrypto into the
+    # build's library_output_directory, patching the copy's libcrypto
+    # dependency to @loader_path.  libmysqlclient records the copies'
+    # ids, which fix_dylib_ids made absolute prefix paths (delocate
+    # friendly), and mysql's install step then copies those dylibs
+    # into the prefix's lib dir -- libcrypto.3.dylib is overwritten
+    # byte-identically and the patched libssl.3.dylib still resolves
+    # its @loader_path/libcrypto.3.dylib from the prefix, so the
+    # prefix stays consistent for later consumers (gdal).
     cmake_build "$LIW_SRC/mysql" \
         -DBUILD_CONFIG=mysql_release \
         -DBUILD_SHARED_LIBS=ON \
         -DWITH_BOOST="$(find "$LIW_SRC/boost" -maxdepth 1 -name 'boost_*')" \
         -DWITH_ZLIB=bundled \
+        -DWITH_SSL="$LIW_PREFIX" \
         -DCMAKE_BUILD_TYPE=MinSizeRel \
         -DWITH_UNIT_TESTS=OFF \
         -DWITHOUT_SERVER=ON \
