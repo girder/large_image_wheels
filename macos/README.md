@@ -646,7 +646,23 @@ runs, not just what the scripts are expected to do):
   configure finds exactly that -- the run's log shows "-- Found LERC:
   .../prefix/lib/libLerc.dylib"), so the stray lowercase "liblerc"
   entry (never correct on either platform) was dropped and the Lerc
-  casing documented in the builder comment.
+  casing documented in the builder comment.  The thirteenth run built
+  all seven GDAL wheels and the test VM run verified them: every
+  macos-specific check passed on every python (otool audits, the
+  bundled-library check, bundled gdalinfo), the known-formats check
+  passed with the gdal driver list ("New formats: e57 icechunk lerc ntf
+  s101 tiger; Missing formats: none"), and python 3.11 -- the first
+  suite run in the VM -- passed the ENTIRE shared suite including the
+  newly lit gdal-dependent steps (projected geotiff read, both
+  converter steps, GDAL transform and Django gis, vsicurl).  The other
+  six pythons failed only on a cross-run file collision: the shared
+  suite's converter steps write to absolute /tmp paths, and all
+  pythons run in ONE VM on macos (linux runs each python's suite in a
+  fresh container, so /tmp starts clean -- python 3.11 created
+  /tmp/outfloat.tiff and every later python hit large_image_converter's
+  "Output file already exists").  Fixed in the shared test/test_script.sh
+  itself: the two converter steps now rm -f their /tmp destinations
+  first (a no-op on linux, and it makes the steps re-runnable).
 
 ## Hard-won details (do not lose these)
 
