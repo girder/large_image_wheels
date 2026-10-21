@@ -662,7 +662,14 @@ runs, not just what the scripts are expected to do):
   /tmp/outfloat.tiff and every later python hit large_image_converter's
   "Output file already exists").  Fixed in the shared test/test_script.sh
   itself: the two converter steps now rm -f their /tmp destinations
-  first (a no-op on linux, and it makes the steps re-runnable).
+  first (a no-op on linux, and it makes the steps re-runnable).  The
+  next test run passed everything except one check: python 3.14's
+  "test GDAL vsicurl" hit a transient network failure (six other
+  pythons opened the identical URL in the same VM run).  The shared
+  suite's vsicurl step now retries up to three times with a pause
+  before failing the run (the suite's only network-dependent assertion;
+  failure semantics unchanged, just hardened against one-off network
+  flakes that would otherwise cost a full two-hour test rerun).
 
 ## Hard-won details (do not lose these)
 
