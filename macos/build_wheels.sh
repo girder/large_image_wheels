@@ -2930,20 +2930,31 @@ build_gdal() {
     # wheel (or a missing format in the shared suite's known-formats
     # check).  hdf4 is NOT asserted: it is a static library, absorbed into
     # its consumers, so it has no load command of its own (the shared
-    # suite's HDF4 format entry covers it).
+    # suite's HDF4 format entry covers it).  librttopo is also not here:
+    # GDAL never links it directly -- the linux wheel's ldd shows it only
+    # transitively through libspatialite (see the check after the loop).
     local linked lib
     linked="$(otool -L "$LIW_PREFIX/lib"/libgdal*.dylib 2>/dev/null || true)"
     [ -n "$linked" ] || die "gdal produced no dylib to check"
     for lib in libgeos_c libproj libcurl libtiff libpng libjpeg libopenjp2 \
         libwebp libheif libavif libjxl libpoppler libcfitsio libhdf5 \
         libnetcdf libmysqlclient libpq libfreexl libspatialite \
-        librasterlite2 librttopo libgeotiff fyba libxerces-c libexpat \
+        librasterlite2 libgeotiff fyba libxerces-c libexpat \
         libxml2 libjson-c liblerc libgta libkea libblosc libarchive \
         libgif libdeflate libzstd liblzma "libz." libsqlite3 libcrypto \
         libssl OpenEXR Lerc; do
         printf '%s\n' "$linked" | grep -q "$lib" ||
             die "libgdal was not linked against $lib; an optional dependency was missed (check the build order)"
     done
+    # librttopo is deliberately NOT in the direct-linkage list: GDAL has
+    # no rttopo check at all, and on linux librttopo.so shows up in ldd
+    # only as a transitive dependency of libspatialite (ldd prints the
+    # whole closure; otool -L only direct load commands).  Assert the
+    # transitive path instead (build_libspatialite links the prefix's
+    # librttopo).
+    printf '%s\n' "$(otool -L "$LIW_PREFIX/lib"/libspatialite*.dylib 2>/dev/null || true)" |
+        grep -q librttopo ||
+        die "libspatialite was not linked against librttopo (libgdal reaches it only through spatialite)"
     done_stamp gdal
 }
 
