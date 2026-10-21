@@ -2110,6 +2110,65 @@ build_proj4() {
     done_stamp proj4
 }
 
+# Used by mapnik (find_package(ICU REQUIRED COMPONENTS uc i18n data)).  The
+# Dockerfile builds libiconv right before icu4c with the same "Used by
+# mapnik.  Unicode support" comment, but mapnik's cmake build has no iconv
+# check at all and no mapnik/libxml2/consumer source at the pin uses iconv
+# (the linux libiconv section predates the cmake build); the macOS side
+# therefore skips libiconv -- the one real iconv consumer in the tree
+# (libxml2, linked by mapnik) already resolves the macOS system iconv in
+# /usr/lib, which the wheel audits allow.
+build_icu4c() {
+    skip_if_done icu4c && return 0
+    step "icu4c"
+    cd "$LIW_SRC"
+    rm -rf icu4c
+    git_retry https://github.com/unicode-org/icu.git "release-$(v icu4c)" icu4c
+    (
+        cd icu4c/icu4c/source || exit 1
+        # The Dockerfile's flags minus two deviations, both verified on the
+        # host against release-77-1:
+        #   - the UNISTR_FROM_CHAR/STRING_EXPLICIT=explicit defines are
+        #     dropped: they make UnicodeString(const char*) explicit, which
+        #     breaks ICU's own tools/ctestfw build (tstdtmod.cpp
+        #     concatenates UnicodeString + u_errorName's const char*) that
+        #     `make` compiles even with --disable-tests.  Upstream never
+        #     passes them, so upstream CI never sees the failure; the
+        #     defines only affect inline-header conversion strictness, not
+        #     the library ABI, and mapnik compiles against ICU headers
+        #     without them on both platforms.
+        #   - -Wl,--gc-sections is the GNU linker flag; the macOS linker's
+        #     equivalent is -Wl,-dead_strip.
+        CFLAGS="$CFLAGS -Os -fdata-sections -ffunction-sections \
+            -DU_CHARSET_IS_UTF8=1 -DU_HIDE_OBSOLETE_UTF_OLD_H=1" \
+            CXXFLAGS="$CXXFLAGS -Os -fdata-sections -ffunction-sections \
+            -DU_CHARSET_IS_UTF8=1 -DU_HIDE_OBSOLETE_UTF_OLD_H=1" \
+            LDFLAGS="$LDFLAGS -Wl,-dead_strip" \
+            ./configure --prefix="$LIW_PREFIX" --disable-tests \
+            --disable-samples --with-data-packaging=library \
+            --disable-static || exit 1
+        make -j "$LIW_JOBS" || exit 1
+        make install || exit 1
+    ) || die "icu4c build failed"
+    # ICU's libtool records bare sonames as the install ids
+    # ("libicuuc.77.dylib"), exactly like OpenSSL's makefile and boost's
+    # b2 -- normalize to absolute prefix paths before any consumer links
+    # (the fix_dylib_ids helper also rewrites the sibling load commands).
+    fix_dylib_ids "$LIW_PREFIX/lib"/libicu*.dylib
+    # libmapnik.pc's Requires line lists icu-uc and icu-i18n, and the
+    # python-mapnik build resolves libmapnik.pc through pkg-config, so
+    # both .pc files must exist.
+    for pc in icu-uc icu-i18n; do
+        [ -e "$LIW_PREFIX/lib/pkgconfig/$pc.pc" ] ||
+            die "icu4c did not install $pc.pc (mapnik's libmapnik.pc Requires it)"
+    done
+    for lib in libicuuc libicui18n libicudata; do
+        [ -n "$(ls "$LIW_PREFIX/lib"/$lib.*.dylib 2>/dev/null)" ] ||
+            die "icu4c did not install $lib"
+    done
+    done_stamp icu4c
+}
+
 # Used by libOpenDRIVE (zipped XODR bundles) and mapnik.  MZ_OPENSSL=yes
 # mirrors the linux build (the prefix's openssl is built before this in
 # the gdal case).
@@ -3233,6 +3292,396 @@ EOF
     done_stamp gdal_python
 }
 
+# mapnik itself: the library, its input plugins (dlopened .input modules),
+# the command line tools (mapnik-render, mapnik-index, shapeindex -- the
+# three the linux python-mapnik wheel bundles), and the fonts.  The cmake
+# flags mirror the Dockerfile's mapnik section; the seds are verbatim (the
+# data_paths patch already switches PJ_LOG_ERROR to PJ_LOG_NONE in
+# proj_transform.cpp and projection.cpp, so that sed is a no-op here, and
+# upstream has fixed the phoenix includes and the xmlError type since the
+# seds were written -- kept for parity with the linux build, which runs
+# them unconditionally).
+#   - The Dockerfile's CXXFLAGS -std=c++17 is not passed: mapnik's cmake
+#     requires C++20 (cmake_minimum_required 3.30, CMAKE_CXX_STANDARD 20)
+#     and appends its own -std flag after CXXFLAGS, so the linux flag is
+#     inert there; the gcc-only -Wno-* warning flags are kept (they only
+#     produce clang warnings here, like in build_boost).
+#   - -DCMAKE_BUILD_WITH_INSTALL_NAME_DIR=ON is added (the hdf4/geos
+#     lesson): the input plugins and the utilities link libmapnik inside
+#     mapnik's own build tree, and with modern cmake a build-tree install
+#     name is @rpath/libmapnik.<soversion>.dylib unless this variable is
+#     on -- the plugins would record @rpath references that stop resolving
+#     once the prefix RPATHs are stripped.
+#   - The Dockerfile's "keeps the docker smaller" rm -rf demo/test is kept
+#     (add_subdirectory(demo) is unconditional in mapnik's CMakeLists).
+build_mapnik() {
+    skip_if_done mapnik && return 0
+    step "mapnik (long)"
+    cd "$LIW_SRC"
+    rm -rf mapnik
+    local n=0
+    until git clone --depth=1000 --single-branch -c advice.detachedHead=false \
+        --quiet --recurse-submodules -j "$LIW_JOBS" \
+        https://github.com/mapnik/mapnik.git mapnik; do
+        n=$((n + 1))
+        [ "$n" -ge 10 ] && die "git clone failed after $n attempts: mapnik"
+        echo "retrying git clone: https://github.com/mapnik/mapnik.git"
+        sleep 5
+    done
+    (
+        cd mapnik || exit 1
+        git checkout -q "$(v mapnik-sha)" || exit 1
+        git gc --prune=all || exit 1
+        # The same two patches the linux build applies; they live at the
+        # repository root and are copied into the VM with it.
+        git am "$LIW_REPO/mapnik_data_path.patch" || exit 1
+        git am "$LIW_REPO/mapnik_tls.patch" || exit 1
+        # The Dockerfile's seds, verbatim except the two that insert lines:
+        # the BSD sed's replacement does not interpret GNU's \n escape, so
+        # those use an embedded literal newline (the rasterlite2 precedent).
+        sed -i '' 's/PJ_LOG_ERROR/PJ_LOG_NONE/g' src/*.cpp || exit 1
+        find include -name '*.hpp' -exec sed -i '' \
+            's:boost/spirit/include/phoenix_operator.hpp:boost/phoenix/operator.hpp:g' {} + || exit 1
+        find include -name '*.hpp' -exec sed -i '' \
+            's:boost/spirit/include/phoenix_function.hpp:boost/phoenix/function.hpp:g' {} + || exit 1
+        find include -name '*.hpp' -exec sed -i '' \
+            's:boost/spirit/include/phoenix.hpp:boost/phoenix.hpp:g' {} + || exit 1
+        find plugins -name '*.cpp' -exec sed -i '' \
+            's/boost::trim_if/boost::algorithm::trim_if/g' {} + || exit 1
+        sed -i '' 's:#include <algorithm>:#include <algorithm>\
+#include <boost/algorithm/string.hpp>:g' plugins/input/csv/csv_utils.cpp || exit 1
+        sed -i '' 's/  xmlError\*/  const xmlError \*/g' src/libxml2_loader.cpp || exit 1
+        sed -i '' 's:#include <mapnik/image_util.hpp>:#define PSTL_USE_PARALLEL_POLICIES 0\
+#define _GLIBCXX_USE_TBB_PAR_BACKEND 0\
+#include <mapnik/image_util.hpp>:g' src/image_util.cpp || exit 1
+        sed -i '' 's/SQLite::SQLite3/SQLite3::SQLite3/g' plugins/input/sqlite/CMakeLists.txt || exit 1
+        sed -i '' 's/SQLite::SQLite3/SQLite3::SQLite3/g' plugins/input/tiles/CMakeLists.txt || exit 1
+        sed -i '' 's/SQLite::SQLite3/SQLite3::SQLite3/g' utils/pgsql2sqlite/CMakeLists.txt || exit 1
+        rm -rf demo test
+        mkdir test
+        mkdir demo
+        touch test/CMakeLists.txt
+        touch demo/CMakeLists.txt
+    ) || die "mapnik source preparation failed"
+    # The gcc-only -Wno-* warning flags from the Dockerfile's CXXFLAGS
+    # (minus the inert -std=c++17; see the builder comment above).  The
+    # flags are saved and restored around the call: an assignment
+    # prefixing a function call persists after it in bash.
+    local mapnik_saved_cxxflags="$CXXFLAGS"
+    CXXFLAGS="$CXXFLAGS -Wno-unused-variable -Wno-unused-but-set-variable \
+        -Wno-attributes -Wno-unknown-pragmas -Wno-maybe-uninitialized \
+        -Wno-parentheses"
+    cmake_build "$LIW_SRC/mapnik" \
+        -DBUILD_SHARED_LIBS=ON \
+        -DBUILD_BENCHMARK=OFF \
+        -DBUILD_DEMO_CPP=OFF \
+        -DBUILD_DEMO_VIEWER=OFF \
+        -DBUILD_TESTING=OFF \
+        -DFONTS_INSTALL_DIR="$LIW_PREFIX/lib/mapnik/fonts" \
+        -DCMAKE_POLICY_DEFAULT_CMP0167=OLD \
+        -DMAPNIK_USE_PKG_CONFIG=ON \
+        -DCMAKE_DISABLE_FIND_PACKAGE_PROJ=ON \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+        -DCMAKE_BUILD_WITH_INSTALL_NAME_DIR=ON
+    CXXFLAGS="$mapnik_saved_cxxflags"
+    [ -e "$LIW_PREFIX/lib/libmapnik.dylib" ] ||
+        die "mapnik did not install libmapnik"
+    for pc in libmapnik libmapnikwkt libmapnikjson; do
+        [ -e "$LIW_PREFIX/lib/pkgconfig/$pc.pc" ] ||
+            die "mapnik did not install $pc.pc (the python build resolves it through pkg-config)"
+    done
+    [ -x "$LIW_PREFIX/bin/mapnik-render" ] ||
+        die "mapnik did not install mapnik-render"
+    [ -x "$LIW_PREFIX/bin/mapnik-index" ] ||
+        die "mapnik did not install mapnik-index"
+    [ -x "$LIW_PREFIX/bin/shapeindex" ] ||
+        die "mapnik did not install shapeindex"
+    [ -n "$(ls "$LIW_PREFIX/lib/mapnik/fonts"/*.ttf 2>/dev/null)" ] ||
+        die "mapnik did not install its fonts"
+    # The input plugins are MODULE libraries (dlopened at runtime); the
+    # plugin set must match the linux one (the default-on plugins: csv,
+    # gdal+ogr, geobuf, geojson, postgis+pgraster, raster, shape, sqlite,
+    # tiles, topojson -- the linux wheel's input directory).
+    local plugin
+    for plugin in csv gdal+ogr geobuf geojson postgis+pgraster raster \
+        shape sqlite tiles topojson; do
+        [ -e "$LIW_PREFIX/lib/mapnik/input/$plugin.input" ] ||
+            die "mapnik did not build the $plugin input plugin"
+    done
+    # Feature assertions over libmapnik's own linkage: every optional
+    # library the linux wheel links must have resolved from the prefix (a
+    # missing one would otherwise silently reduce the renderer's
+    # capabilities).  ICU and boost regex are hard requirements (the
+    # configure would fail without them); png/jpeg/tiff/webp/cairo/proj/
+    # xml2 are default-on finds; harfbuzz is required (config or
+    # pkg-config); avif is a default-on pkg-config find.
+    local linked lib
+    linked="$(otool -L "$LIW_PREFIX/lib"/libmapnik.*.dylib 2>/dev/null || true)"
+    [ -n "$linked" ] || die "mapnik produced no dylib to check"
+    for lib in libicuuc libicui18n libicudata libboost_regex libfreetype \
+        libharfbuzz libpng libjpeg libtiff libwebp libavif libcairo \
+        libproj libxml2; do
+        printf '%s\n' "$linked" | grep -q "$lib" ||
+            die "libmapnik was not linked against $lib; an optional dependency was missed (check the build order)"
+    done
+    # Plugin linkage: the gdal+ogr plugin must have found libgdal (the
+    # whole reason this case runs after the gdal case), the tiles plugin
+    # must carry its SSL support (USE_PLUGIN_INPUT_TILES_SSL, pkg-config
+    # openssl) and its sqlite backend, and the postgis+pgraster plugin its
+    # libpq.  libmapnik itself is linked by every plugin, so it is checked
+    # on one representative rather than all ten.
+    linked="$(otool -L "$LIW_PREFIX/lib/mapnik/input/gdal+ogr.input" 2>/dev/null || true)"
+    printf '%s\n' "$linked" | grep -q libgdal ||
+        die "the gdal+ogr input plugin was not linked against libgdal"
+    printf '%s\n' "$linked" | grep -q libmapnik ||
+        die "the gdal+ogr input plugin was not linked against libmapnik"
+    linked="$(otool -L "$LIW_PREFIX/lib/mapnik/input/tiles.input" 2>/dev/null || true)"
+    printf '%s\n' "$linked" | grep -q libsqlite3 ||
+        die "the tiles input plugin was not linked against libsqlite3"
+    printf '%s\n' "$linked" | grep -q libssl ||
+        die "the tiles input plugin was not linked against libssl (USE_PLUGIN_INPUT_TILES_SSL)"
+    linked="$(otool -L "$LIW_PREFIX/lib/mapnik/input/postgis+pgraster.input" 2>/dev/null || true)"
+    printf '%s\n' "$linked" | grep -q libpq ||
+        die "the postgis+pgraster input plugin was not linked against libpq"
+    # The @rpath audit (the build_hdf4 pattern): every dylib that ships in
+    # the wheel -- libmapnik and the .input plugins -- must have an
+    # absolute install id and no @rpath load commands, which would stop
+    # resolving once the prefix RPATHs are stripped.
+    local f id links
+    for f in "$LIW_PREFIX/lib"/libmapnik*.dylib \
+        "$LIW_PREFIX/lib/mapnik/input"/*.input; do
+        [ -f "$f" ] || continue
+        [ -L "$f" ] && continue
+        id="$(otool -D "$f" 2>/dev/null | sed -n 2p)"
+        case "$id" in
+        "$LIW_PREFIX"/*) ;;
+        *) die "mapnik installed a binary without an absolute install id ('$f': '$id')" ;;
+        esac
+        links="$(otool -L "$f" 2>/dev/null || true)"
+        if printf '%s\n' "$links" | grep -q "@rpath"; then
+            die "mapnik installed $f with an @rpath load command:\n$links"
+        fi
+    done
+    done_stamp mapnik
+}
+
+# The mapnik python wheel: bundles libmapnik, the input plugins, the
+# fonts, the proj and gdal data trees, and the mapnik-render/mapnik-index/
+# shapeindex tools, exactly like the linux wheel.  The linux patches
+# (python-mapnik.patch, python-mapnik_data_path.patch) are applied with
+# git am; the macos-specific delta is the bundled-library location in
+# packaging/mapnik/__init__.py (delocate puts the dylibs in mapnik/.dylibs
+# inside the wheel; the linux auditwheel-style mapnik.libs location stays
+# as a fallback).
+build_mapnik_python() {
+    skip_if_done mapnik_python && return 0
+    step "mapnik python"
+
+    # Dependencies may have just been built (fresh VM); strip any build-tree
+    # RPATHs they installed before the wheels bundle them.
+    sanitize_prefix_dylibs
+
+    # Belt-and-braces check before delocate: every prefix dylib must have
+    # an absolute install name (the same audit build_pyvips runs; this
+    # catches cmake projects that override CMAKE_INSTALL_NAME_DIR).
+    local d name
+    while IFS= read -r -d '' d; do
+        name="$(otool -D "$d" 2>/dev/null | sed -n 2p)"
+        case "$name" in
+        "$LIW_PREFIX"/*) ;;
+        *) die "install name of $d is not absolute ('$name')" ;;
+        esac
+    done < <(find "$LIW_PREFIX/lib" -maxdepth 1 -name '*.dylib' -print0)
+
+    # Strip the prefix dylibs before the wheel build (the linux build
+    # strips everything before building wheels).  strip -x keeps the
+    # exported symbols; the arm64 signature is renewed after the strip.
+    step "stripping prefix dylibs for the mapnik wheels"
+    while IFS= read -r -d '' f; do
+        strip -x "$f" 2>/dev/null || true
+    done < <(find "$LIW_PREFIX/lib" -name '*.dylib' -type f -print0)
+    while IFS= read -r -d '' f; do
+        codesign -f -s - "$f" 2>/dev/null || true
+    done < <(find "$LIW_PREFIX/lib" -name '*.dylib' -type f -print0)
+
+    cd "$LIW_SRC"
+    rm -rf python-mapnik
+    # Full clone: the pinned version is a commit sha (versions.txt
+    # python-mapnik-sha), which a shallow clone cannot be relied on to
+    # contain (the openslide precedent).
+    git_retry https://github.com/mapnik/python-mapnik.git "" python-mapnik
+    (
+        cd python-mapnik || exit 1
+        git checkout -q "$(v python-mapnik-sha)" || exit 1
+        # The same two patches the linux build applies.
+        git am "$LIW_REPO/python-mapnik.patch" || exit 1
+        git am "$LIW_REPO/python-mapnik_data_path.patch" || exit 1
+    ) || die "python-mapnik patching failed"
+
+    # Copy the mapnik input plugins and fonts into the package (the linux
+    # build copies /usr/local/lib/mapnik/*), then the proj and gdal data
+    # trees, then the three command line tools (the linux wheel bundles
+    # exactly these three).
+    cp -R "$LIW_PREFIX"/lib/mapnik/* packaging/mapnik/.
+    cp -R "$LIW_PREFIX/share/proj" packaging/mapnik/proj
+    cp -R "$LIW_PREFIX/share/gdal" packaging/mapnik/gdal
+    mkdir packaging/mapnik/bin
+    cp -L "$LIW_PREFIX/bin/mapnik-render" "$LIW_PREFIX/bin/mapnik-index" \
+        "$LIW_PREFIX/bin/shapeindex" packaging/mapnik/bin/
+    [ -e packaging/mapnik/bin/mapnik-render ] ||
+        die "no mapnik tools found to bundle"
+    [ -e packaging/mapnik/input/gdal+ogr.input ] ||
+        die "the input plugins were not copied into the package"
+    # Strip the copied binaries (the linux build strips the tools it
+    # copies) and the copied plugins, then re-sign (arm64 requires a valid
+    # signature after strip).  delocate rewrites the load commands of the
+    # plugins and tools when it bundles their dependencies.
+    local f
+    while IFS= read -r -d '' f; do
+        strip -x "$f" 2>/dev/null || true
+        codesign -f -s - "$f" 2>/dev/null || true
+    done < <(find packaging/mapnik/bin packaging/mapnik/input -type f -perm -111 -print0)
+
+    # The console-script wrapper for the bundled tools (the same program()
+    # the linux wheel ships, with the macOS CA bundle added like the gdal
+    # wheel's osgeo.bin wrapper).  The entry_points in the patched
+    # setup.py enumerate this directory.
+    cat >packaging/mapnik/bin/__init__.py <<'EOF'
+import os
+import sys
+
+def program():
+    environ = os.environ.copy()
+    localpath = os.path.dirname(os.path.abspath( __file__ ))
+    environ.setdefault("PROJ_DATA", os.path.join(localpath, "proj"))
+    environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal"))
+    caPath = "/etc/ssl/certs/ca-certificates.crt"
+    if not os.path.exists(caPath):
+        caPath = "/etc/ssl/cert.pem"
+    if os.path.exists(caPath):
+        environ.setdefault("CURL_CA_BUNDLE", caPath)
+
+    path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0]))
+    os.execve(path, sys.argv, environ)
+EOF
+
+    # The linux pyproject.toml patch, ported (the Dockerfile's inline
+    # python patch): drop a stale .beta from the version, pin pybind11,
+    # set the wheel version to the libmapnik version plus the .2 suffix
+    # (pkgconf reads the libmapnik.pc the mapnik build installed), expose
+    # the console scripts via dynamic metadata, and fix the license field.
+    local mapnik_version
+    mapnik_version="$("$LIW_PREFIX/bin/pkgconf" --modversion libmapnik)"
+    cat >"$LIW_PATCHES/mapnik_pyproject.py" <<'EOF'
+import re
+path = "pyproject.toml"
+s = open(path).read()
+s = s.replace(".beta", "")
+s = s.replace("pybind11 >= 3.0.2", "pybind11 == 3.0.2")
+_nl = chr(10)
+_version = "__MAPNIK_VERSION__"
+s = re.sub(_nl + 'version = ".*"', _nl + 'version = "' + _version + '.2"', s)
+s = s.replace("authors", "dynamic = [\"scripts\"]" + _nl + "authors")
+s = s.replace('license = "LGPL-2.1-or-later"', 'license = { text = "LGPL-2.1-or-later"}')
+open(path, "w").write(s)
+EOF
+    # The only substitution the unquoted-heredoc escape dance would have
+    # needed is done with sed on the placeholder instead (the linux
+    # equivalent interpolates the pkgconf version into the python patch).
+    sed -i '' "s/__MAPNIK_VERSION__/$mapnik_version/" \
+        "$LIW_PATCHES/mapnik_pyproject.py"
+    # The macos-specific delta on top of the linux patches: the __init__
+    # preload must look for the bundled libgdal in mapnik/.dylibs (where
+    # delocate puts it), with the linux mapnik.libs location as fallback.
+    cat >"$LIW_PATCHES/mapnik_init.py" <<'EOF'
+path = "packaging/mapnik/__init__.py"
+s = open(path).read()
+s = s.replace(
+"""libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(
+    __file__))), 'mapnik.libs'))""",
+"""libpath = os.path.join(os.path.dirname(os.path.abspath( __file__ )), '.dylibs')
+if not os.path.exists(libpath):
+    libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(
+        __file__))), 'mapnik.libs'))""")
+open(path, "w").write(s)
+EOF
+    "$LIW_PATCH_PYBIN" "$LIW_PATCHES/mapnik_pyproject.py"
+    "$LIW_PATCH_PYBIN" "$LIW_PATCHES/mapnik_init.py"
+    # The patches must actually have replaced something (the
+    # verify-the-edit lesson).
+    grep -q "version = \"$mapnik_version.2\"" pyproject.toml ||
+        die "the pyproject.toml version patch did not apply"
+    grep -q "dynamic = \[" pyproject.toml ||
+        die "the pyproject.toml dynamic patch did not apply"
+    grep -q "'.dylibs'" packaging/mapnik/__init__.py ||
+        die "the __init__.py dylibs patch did not apply"
+    "$LIW_PATCH_PYBIN" -c "import ast; ast.parse(open('packaging/mapnik/__init__.py').read())" ||
+        die "the patched packaging/mapnik/__init__.py does not parse"
+    "$LIW_PATCH_PYBIN" -c "import tomllib; tomllib.load(open('pyproject.toml','rb'))" ||
+        die "the patched pyproject.toml does not parse"
+
+    # Commit the patches and tag with the combined version (the libmapnik
+    # version plus the .2 suffix), matching the linux wheel versioning.
+    git config user.email "wheels@example.com"
+    git config user.name "Wheel Builder"
+    git add -A
+    git commit -q -m "patch for wheel building"
+    git tag "$(v mapnik-release).2"
+
+    # Build one wheel per python (the extension links libmapnik through
+    # pkg-config's libmapnik --libs), then bundle the dylibs with delocate
+    # (the auditwheel equivalent on macOS).  pip's isolated build
+    # environment installs pybind11 from the pyproject build requires.
+    collect_pybins
+    local pybin
+    for pybin in "${PYBINS[@]}"; do
+        step "mapnik wheel: $(basename "$(dirname "$pybin")")"
+        (
+            cd "$LIW_SRC/python-mapnik"
+            rm -rf build
+            "${pybin}/python" -m pip wheel --no-deps -w "$LIW_WHEELHOUSE" .
+        ) || die "mapnik wheel build failed for $pybin"
+    done
+
+    step "delocate mapnik wheels"
+    "$LIW_PATCH_PIPBIN" install -q -U delocate
+    local whl
+    for whl in "$LIW_WHEELHOUSE"/mapnik-*.whl; do
+        [ -f "$whl" ] || continue
+        case "$(basename "$whl")" in
+        *macosx*) "$LIW_PATCH_DIR/bin/delocate-wheel" "$whl" ||
+            die "delocate failed for $whl" ;;
+        esac
+    done
+    ls -l "$LIW_WHEELHOUSE"
+    [ -n "$(ls "$LIW_WHEELHOUSE"/mapnik-*macosx*.whl 2>/dev/null)" ] ||
+        die "no mapnik macosx wheels were built"
+    # Feature assertions on the wheel: the bundled libmapnik and libgdal
+    # dylibs, the extension, the input plugins, the data trees, and the
+    # tools must all be present.
+    local contents
+    contents="$(unzip -l "$(ls "$LIW_WHEELHOUSE"/mapnik-*macosx*.whl | head -1)")"
+    printf '%s\n' "$contents" | grep -q 'mapnik/.dylibs/libmapnik' ||
+        die "the mapnik wheel does not bundle libmapnik"
+    printf '%s\n' "$contents" | grep -q 'mapnik/.dylibs/libgdal' ||
+        die "the mapnik wheel does not bundle libgdal"
+    printf '%s\n' "$contents" | grep -q 'mapnik/.dylibs/libicudata' ||
+        die "the mapnik wheel does not bundle the icu data library"
+    printf '%s\n' "$contents" | grep -q 'mapnik/_mapnik' ||
+        die "the mapnik wheel does not contain the _mapnik extension"
+    printf '%s\n' "$contents" | grep -q 'mapnik/input/gdal+ogr.input' ||
+        die "the mapnik wheel does not contain the gdal+ogr input plugin"
+    printf '%s\n' "$contents" | grep -q 'mapnik/bin/mapnik-render' ||
+        die "the mapnik wheel does not bundle the mapnik-render tool"
+    printf '%s\n' "$contents" | grep -q 'mapnik/fonts/.*ttf' ||
+        die "the mapnik wheel does not bundle the fonts"
+    printf '%s\n' "$contents" | grep -q 'mapnik/proj/proj.db' ||
+        die "the mapnik wheel does not bundle the proj data"
+    printf '%s\n' "$contents" | grep -q 'mapnik/gdal/' ||
+        die "the mapnik wheel does not bundle the gdal data"
+    done_stamp mapnik_python
+}
+
 # --------------------------------------------------------------------------
 # Packages.
 # --------------------------------------------------------------------------
@@ -4217,7 +4666,7 @@ fi
 PACKAGES=("$@")
 # Keep in sync with tart_build.sh's LIW_PACKAGES default: the expected-wheel
 # validation there assumes this same set when no packages are named.
-[ "${#PACKAGES[@]}" -eq 0 ] && PACKAGES=(pylibtiff glymur openslide_python pylibmc pyvips gdal)
+[ "${#PACKAGES[@]}" -eq 0 ] && PACKAGES=(pylibtiff glymur openslide_python pylibmc pyvips gdal mapnik)
 
 # The "${var[@]+...}" guard keeps bash 3.2 (the VM's default bash) happy
 # about empty arrays under `set -u`.
@@ -4404,6 +4853,80 @@ for pkg in ${PACKAGES[@]+"${PACKAGES[@]}"}; do
         build_libavif
         build_gdal
         build_gdal_python
+        ;;
+    mapnik)
+        # The full gdal case verbatim (mapnik must come after gdal: its
+        # cmake builds the optional GDAL input plugin when pkg-config finds
+        # libgdal, and the linux Dockerfile installs GDAL immediately
+        # before mapnik -- see the gdal case for the ordering rationale),
+        # then the additions mapnik's cmake needs that the gdal tree does
+        # not supply: icu4c is built right after the libtiff chain (the
+        # Dockerfile's position), and the cairo/harfbuzz chain (the cairo
+        # renderer and harfbuzz are required finds) after gdal, since
+        # nothing in the gdal tree checks them.  libiconv is deliberately
+        # NOT built: mapnik's cmake has no iconv check and no consumer at
+        # the pin uses it (see build_icu4c's comment).  build_mapnik
+        # asserts the linked feature set and the plugin set.
+        build_libtiff_deps
+        build_icu4c
+        build_giflib
+        build_openssl
+        build_curl
+        build_json_c
+        build_lerc
+        build_lcms2
+        build_libpng
+        build_openjpeg
+        build_libbrotli
+        build_jpegxl
+        build_libexpat
+        build_sqlite
+        build_libxml2
+        build_lz4
+        build_libarchive
+        build_proj4
+        build_freetype
+        build_fontconfig
+        build_swig
+        build_openmpi
+        build_boost
+        build_minizip
+        build_fossil
+        build_freexl
+        build_libgeos
+        build_librttopo
+        build_libspatialite
+        build_libgeotiff
+        build_librasterlite2
+        build_fyba
+        build_hdf4
+        build_hdf5
+        build_parallel_netcdf
+        build_netcdf
+        build_mysql
+        build_postgresql
+        build_libgta
+        build_xerces_c
+        build_armadillo
+        build_blosc
+        build_highfive
+        build_kealib
+        build_libde265
+        build_libheif
+        build_poppler
+        build_fitsio
+        build_openexr
+        build_libopendrive
+        build_libavif
+        build_gdal
+        build_gdal_python
+        build_libffi
+        build_glib
+        build_pixman
+        build_cairo
+        build_harfbuzz
+        build_mapnik
+        build_mapnik_python
         ;;
     # "dep:<name>" builds a single dependency; useful for debugging.
     # Hyphenated names map to their underscored builders (the stamps keep

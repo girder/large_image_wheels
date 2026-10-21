@@ -85,9 +85,10 @@ manylinux container plays for the linux builds:
   `build_parallel_netcdf`, `build_netcdf`, `build_mysql`,
   `build_postgresql`, `build_libgta`, `build_xerces_c`, `build_armadillo`,
   `build_blosc`, `build_highfive`, `build_kealib`, `build_libopendrive`,
-  `build_libavif`, and `build_gdal`), then package builders (`build_pylibtiff`,
+  `build_libavif`, `build_icu4c`, and `build_gdal`), then package builders (`build_pylibtiff`,
   `build_glymur`, `build_openslide`, `build_openslide_python`,
-  `build_pylibmc`, `build_pyvips`, `build_gdal_python`, with `build_libvips` in the
+  `build_pylibmc`, `build_pyvips`, `build_gdal_python`, `build_mapnik`,
+  `build_mapnik_python`, with `build_libvips` in the
   dependency section; each package
   builder calls `sanitize_prefix_dylibs` after its dependencies are built),
   then the main `case` that maps package names to builders
@@ -224,13 +225,9 @@ runs, not just what the scripts are expected to do):
   keeps only one EXIT trap, so the Homebrew restore moved into the same
   trap).  The third run passed everything.
 - Next up, in rough effort order (see the remaining-packages notes
-  below for details): GDAL is implemented (2026-10-16, see its status
+  below for details): mapnik is implemented (2026-10-21, see its status
   entry -- builders written, not yet VM-verified; the next action is the
-  verification run), then mapnik
-  (which must come after GDAL -- its cmake auto-detects the optional
-  GDAL input plugin through pkg-config, and the linux build has gdal
-  installed by the time mapnik's configure runs, so the same order is
-  required here); last, python-javabridge / python-bioformats, whose
+  verification run); last, python-javabridge / python-bioformats, whose
   bundling approach is now decided (see the note) -- its first task is
   the JDK 8 arm64 macOS vendor check.  pyproj stays pypi-sourced.
 - pyvips work is staged (2026-10-15), each stage checkpointed with a VM
@@ -669,7 +666,24 @@ runs, not just what the scripts are expected to do):
   suite's vsicurl step now retries up to three times with a pause
   before failing the run (the suite's only network-dependent assertion;
   failure semantics unchanged, just hardened against one-off network
-  flakes that would otherwise cost a full two-hour test rerun).
+  flakes that would otherwise cost a full two-hour test rerun).  The
+  following test run passed everything: GDAL is verified end to end on
+  all seven pythons (build VM run plus test VM run, 2026-10-21) -- the
+  otool audits, the bundled-library check, the bundled gdalinfo, the
+  known-formats list, and the full shared suite including the
+  gdal-dependent steps all passed.
+- mapnik work is implemented (2026-10-21) but has NOT yet been run in a
+  VM; see its note below for every decision taken while writing it.  The
+  next step is the verification run (fresh VM, like every verification):
+  `macos/tart_build.sh mapnik`, which on a fresh base-VM clone builds the
+  whole gdal chain first, then icu4c, the cairo/harfbuzz additions,
+  mapnik, and the python-mapnik wheels; then the full default run (which
+  appends mapnik after gdal and produces all seven packages' wheels in
+  one VM) and `macos/test_via_tart.sh`, which adds the mapnik identity,
+  otool-audit, bundled-library, and bundled mapnik-render checks.  A
+  full default run with mapnik may push past the previous 12-hour
+  default; LIW_TIMEOUT now defaults to 16 hours.  Stamps make an
+  in-VM rerun cheap after a failure.
 
 ## Hard-won details (do not lose these)
 
@@ -1392,14 +1406,97 @@ Notes on the remaining packages:
   failure is solvable nor an arm64 Java 8 exists, that fact needs a
   decision before any code is written (the "newer JVM may fail" risk
   would have to be re-tested against current bioformats).
-- **mapnik**: needs boost, libicu, and the rest of mapnik's dependency
-  set, plus the repo's mapnik patches (mapnik.patch, mapnik_data_path.patch,
-  mapnik_tls.patch); check the mapnik sections of the Dockerfile.  It
-  must be built AFTER GDAL: mapnik's cmake builds the optional GDAL
-  input plugin when it finds libgdal, and the linux Dockerfile installs
-  GDAL immediately before mapnik, so doing GDAL first is required for
-  feature parity (and, per the case-order rules, the case must build
-  the full GDAL dependency tree before mapnik's configure runs).
+- **mapnik**: implemented (2026-10-21; builders written and
+  host-verified where feasible, but NOT yet run in a VM -- the next
+  action is the verification run).  The `mapnik` case is the full gdal
+  case verbatim plus the additions mapnik's cmake needs: `build_icu4c`
+  (right after the libtiff chain, the Dockerfile's position) and the
+  cairo/harfbuzz chain (`build_libffi`, `build_glib`, `build_pixman`,
+  `build_cairo`, `build_harfbuzz`) after gdal, since nothing in the gdal
+  tree checks them.  Decisions taken while writing the builders (all with
+  the reason recorded in the builder's comment in build_wheels.sh):
+  - libiconv is deliberately NOT built.  The Dockerfile's libiconv
+    section carries the "Used by mapnik.  Unicode support" comment, but
+    mapnik's cmake build has no iconv check at all and no mapnik source
+    at the pin uses iconv (verified against the pinned sha); the section
+    predates the cmake build.  The one real iconv consumer in mapnik's
+    tree, libxml2, already resolves the macOS system iconv in /usr/lib
+    (allowed by the audits), so the macos prefix needs no libiconv.
+  - icu4c (release-77-1 tag, versions.txt icu4c) is built with the
+    Dockerfile's configure flags except: the UNISTR_FROM_CHAR/STRING_
+    EXPLICIT=explicit defines are dropped and -Wl,--gc-sections becomes
+    -Wl,-dead_strip.  Verified on the host: with the UNISTR defines the
+    build dies in tools/ctestfw's tstdtmod.cpp (UnicodeString(const
+    char*) is explicit, so `UnicodeString(u"expected: ") +
+    u_errorName(...)` has no viable overload) -- a tool `make` builds
+    even with --disable-tests, which upstream never passes so upstream
+    never sees it.  The defines only affect inline-header conversion
+    strictness, not the library ABI, and ICU consumers (mapnik) compile
+    without them on both platforms.  Without them the full build and
+    install pass on the host, producing libicuuc/libicui18n/libicudata
+    (data embedded in the dylib, 32 MB) and the icu-uc/icu-i18n .pc
+    files mapnik.pc's Requires line needs.  NOTE: this also flags a
+    latent linux issue -- the same UNISTR flags plus icu 77-1 should
+    fail tools/ctestfw on the linux build too (gcc rejects the same
+    overload resolution); the linux wheelhouse may predate the icu
+    77-1 bump.  Worth checking on the linux side before its next icu
+    rebuild.
+  - ICU's libtool installs bare sonames as install ids
+    ("libicuuc.77.dylib"), so build_icu4c calls fix_dylib_ids on the
+    libicu* dylibs before any consumer links (the OpenSSL/boost
+    precedent), and asserts icu-uc.pc/icu-i18n.pc and the three
+    dylibs.
+  - build_mapnik mirrors the Dockerfile's mapnik section: depth-1000
+    recurse-submodules clone at mapnik-sha, git am of
+    mapnik_data_path.patch and mapnik_tls.patch, the Dockerfile's seds
+    verbatim (with BSD-sed adaptations: `sed -i ''` throughout, and the
+    two line-inserting seds -- csv_utils.cpp's boost include and
+    image_util.cpp's PSTL defines -- use embedded literal newlines
+    because BSD sed does not interpret GNU \n; both verified on the host
+    against the pinned patched source), the demo/test removal dance, and
+    the Dockerfile's cmake flags.  Deviations, reasoned in the builder:
+    the CXXFLAGS -std=c++17 is dropped (mapnik's cmake requires C++20
+    and appends its own -std flag after CXXFLAGS, so the linux flag is
+    inert there); the gcc-only -Wno-* warning flags are kept (clang
+    warnings only, like build_boost); -DCMAKE_BUILD_WITH_INSTALL_NAME_
+    DIR=ON is added because the .input plugins and the utilities link
+    libmapnik inside mapnik's own build tree (the hdf4/geos @rpath
+    lesson).  The Dockerfile's -DMAPNIK_USE_PKG_CONFIG=ON is inert at
+    this revision (no such option in mapnik's cmake) and kept for
+    parity.  Assertions: libmapnik.dylib, the three .pc files
+    (libmapnik.pc is what the python build resolves), the three tools,
+    the fonts, all ten default-on input plugins (csv, gdal+ogr, geobuf,
+    geojson, postgis+pgraster, raster, shape, sqlite, tiles, topojson),
+    libmapnik's otool linkage (icuuc, icui18n, icudata, boost_regex,
+    freetype, harfbuzz, png, jpeg, tiff, webp, avif, cairo, proj, xml2),
+    plugin linkage (gdal+ogr -> libgdal and libmapnik; tiles ->
+    libsqlite3 and libssl; postgis+pgraster -> libpq), and the @rpath
+    audit over libmapnik and every plugin.
+  - build_mapnik_python mirrors the Dockerfile's python-mapnik section:
+    clone at python-mapnik-sha (full clone; a sha pin), git am of
+    python-mapnik.patch and python-mapnik_data_path.patch, the
+    pyproject.toml patch (version = libmapnik version + ".2", via
+    `pkgconf --modversion libmapnik` = 4.3.2, so wheel version 4.3.2.2;
+    the pybind11 pin replace is a no-op at this revision, which requires
+    pybind11 >= 3.0.4), the packaged copies of the input plugins, fonts,
+    proj and gdal data trees and the three tools (stripped and re-signed
+    like the gdal tools), the bin/__init__.py program() wrapper with the
+    macOS CA bundle, then one wheel per requested python and delocate.
+    The macos-specific patch is in packaging/mapnik/__init__.py only:
+    the linux patch preloads libgdal from mapnik.libs; the macos patch
+    looks in mapnik/.dylibs first with mapnik.libs as fallback (the
+    gdal/openslide precedent), verified on the host by applying it to
+    the pinned patched source and ast-parsing the result (the pyproject
+    result is tomllib-parsed too).  Note the linux paths.py's
+    mapniklibpath value is dead weight: only inputpluginspath and
+    fontscollectionpath are consumed at runtime, and both point inside
+    the package on both platforms.
+  The python-mapnik wheel build is the remaining unknown: pybind11's
+  chosen C++ standard against mapnik's c++20-only headers, the libc++
+  std::less issue (the libopendrive lesson) against mapnik's heavy
+  std::map/set usage, and delocate's handling of the ten dlopened .input
+  MODULE plugins and the huge bundle (libgdal + libicudata ride along) —
+  all to be observed in the verification run before any fix is written.
 
 ## Test parity with the linux build
 
@@ -1438,9 +1535,9 @@ authoritative suite.
 The macOS harness (`test_via_tart.sh`) keeps only the platform layers
 around the shared script: phase 0 python rebuilding, phase 1 venv
 installation with wheel-identity checks (pylibtiff, Glymur,
-openslide-python, pylibmc, pyvips, gdal), Homebrew-hiding, the `otool` audits -- scoped to
+openslide-python, pylibmc, pyvips, gdal, mapnik), Homebrew-hiding, the `otool` audits -- scoped to
 the packages our wheels provide (libtiff, glymur, openslide, pylibmc,
-pyvips, gdal/osgeo),
+pyvips, gdal/osgeo, mapnik),
 since the venvs
 also contain pypi wheels pulled in as dependencies whose build artifacts
 (e.g. Pillow's RPATH to its own build machine, lxml's self-referencing
@@ -1453,7 +1550,13 @@ output shows libmemcached loading from `.dylibs`, and the gdal
 bundled-library check: GDAL_LIBRARY_PATH and GEOS_LIBRARY_PATH point
 into `osgeo/.dylibs`, a fresh interpreter loads the bundled libgdal
 (DYLD_PRINT_LIBRARIES), and an EPSG lookup resolves through the bundled
-proj data -- plus the bundled `gdalinfo`).  The embedded
+proj data -- plus the bundled `gdalinfo`; and the mapnik
+bundled-library check: paths.py's input-plugin and font paths point
+inside the installed package with the plugin set present, the
+extension's otool output shows libmapnik loading from `.dylibs`,
+set_data_paths points at the bundled proj/gdal trees, and an EPSG:3857
+Projection resolves through the bundled proj.db -- plus the bundled
+`mapnik-render`).  The embedded
 duplicate functional checks were
 removed.  `li_script.sh` (large_image's own tox suite) remains
 linux-only; running it in the VM is a possible later extension.

@@ -53,16 +53,19 @@ LIW_TART_BASE_IMAGE="${LIW_TART_BASE_IMAGE:-ghcr.io/cirruslabs/macos-golden-gate
 LIW_VM_NAME="liw_wheels_build"
 LIW_PACKAGES=""
 # The default package set; keep in sync with build_wheels.sh's default.
-LIW_DEFAULT_PACKAGES="pylibtiff glymur openslide_python pylibmc pyvips gdal"
+LIW_DEFAULT_PACKAGES="pylibtiff glymur openslide_python pylibmc pyvips gdal mapnik"
 LIW_PYTHONS="${LIW_PYTHONS:-3.11 3.12 3.13 3.14 3.15 3.14t 3.15t}"
 LIW_KEEP=0
 LIW_CPUS="${LIW_CPUS:-4}"
 LIW_MEM_MB="${LIW_MEM_MB:-8192}"
 LIW_DISK_GB="${LIW_DISK_GB:-150}"
-# Overall build/provision timeout in seconds (default 12 / 3 hours).
+# Overall build/provision timeout in seconds (default 16 hours).
 # The gdal wheel's dependency tree (mysql, openmpi, boost, gdal itself)
-# pushed a full default run past the previous 6-hour default.
-LIW_TIMEOUT="${LIW_TIMEOUT:-43200}"
+# pushed a full default run past the previous 6-hour default, and the
+# mapnik wheel added icu4c, the cairo/harfbuzz chain, mapnik itself, and
+# seven python-mapnik wheel builds (each a large pybind11 compile) on top
+# of the gdal tree.
+LIW_TIMEOUT="${LIW_TIMEOUT:-57600}"
 LIW_PROVISION_TIMEOUT="${LIW_PROVISION_TIMEOUT:-10800}"
 
 usage() {
