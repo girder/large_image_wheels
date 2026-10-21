@@ -2933,6 +2933,9 @@ build_gdal() {
     # suite's HDF4 format entry covers it).  librttopo is also not here:
     # GDAL never links it directly -- the linux wheel's ldd shows it only
     # transitively through libspatialite (see the check after the loop).
+    # LERC is matched as "Lerc" (capital L): Esri/lerc's cmake installs
+    # libLerc.dylib/libLerc.so, and GDAL's configure finds exactly that
+    # (there is no lowercase liblerc on either platform).
     local linked lib
     linked="$(otool -L "$LIW_PREFIX/lib"/libgdal*.dylib 2>/dev/null || true)"
     [ -n "$linked" ] || die "gdal produced no dylib to check"
@@ -2940,7 +2943,7 @@ build_gdal() {
         libwebp libheif libavif libjxl libpoppler libcfitsio libhdf5 \
         libnetcdf libmysqlclient libpq libfreexl libspatialite \
         librasterlite2 libgeotiff fyba libxerces-c libexpat \
-        libxml2 libjson-c liblerc libgta libkea libblosc libarchive \
+        libxml2 libjson-c libgta libkea libblosc libarchive \
         libgif libdeflate libzstd liblzma "libz." libsqlite3 libcrypto \
         libssl OpenEXR Lerc; do
         printf '%s\n' "$linked" | grep -q "$lib" ||
