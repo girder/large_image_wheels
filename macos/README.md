@@ -225,9 +225,9 @@ runs, not just what the scripts are expected to do):
   keeps only one EXIT trap, so the Homebrew restore moved into the same
   trap).  The third run passed everything.
 - Next up, in rough effort order (see the remaining-packages notes
-  below for details): mapnik is implemented (2026-10-21, see its status
-  entry -- builders written, not yet VM-verified; the next action is the
-  verification run); last, python-javabridge / python-bioformats, whose
+  below for details): mapnik is implemented (2026-10-21; its first
+  verification run died at the since-fixed libboost_regex assertion --
+  see its status entry); last, python-javabridge / python-bioformats, whose
   bundling approach is now decided (see the note) -- its first task is
   the JDK 8 arm64 macOS vendor check.  pyproj stays pypi-sourced.
 - pyvips work is staged (2026-10-15), each stage checkpointed with a VM
@@ -672,18 +672,42 @@ runs, not just what the scripts are expected to do):
   otool audits, the bundled-library check, the bundled gdalinfo, the
   known-formats list, and the full shared suite including the
   gdal-dependent steps all passed.
-- mapnik work is implemented (2026-10-21) but has NOT yet been run in a
-  VM; see its note below for every decision taken while writing it.  The
-  next step is the verification run (fresh VM, like every verification):
-  `macos/tart_build.sh mapnik`, which on a fresh base-VM clone builds the
-  whole gdal chain first, then icu4c, the cairo/harfbuzz additions,
-  mapnik, and the python-mapnik wheels; then the full default run (which
-  appends mapnik after gdal and produces all seven packages' wheels in
-  one VM) and `macos/test_via_tart.sh`, which adds the mapnik identity,
-  otool-audit, bundled-library, and bundled mapnik-render checks.  A
-  full default run with mapnik may push past the previous 12-hour
-  default; LIW_TIMEOUT now defaults to 16 hours.  Stamps make an
-  in-VM rerun cheap after a failure.
+- mapnik work is implemented (2026-10-21); the first verification run
+  (2026-10-21) passed every earlier package, icu4c, the cairo/harfbuzz
+  additions, and the entire mapnik build (libmapnik, all ten default-on
+  input plugins including gdal+ogr against the prefix libgdal, the three
+  tools, the fonts, the .pc files; FindPostgreSQL 18.6, SQLite3,
+  OpenSSL 3.6.2, harfbuzz, cairo, proj all resolved from the prefix) and
+  died at build_mapnik's own linkage assertion on libboost_regex -- a
+  real linkage difference, now understood and accepted: boost 1.92's b2
+  install ships TWO cmake packages for regex, a new-style
+  boost_regex-1.92.0 config that mirrors upstream libs/regex/
+  CMakeLists.txt (which defines boost_regex as a pure INTERFACE library
+  with no artifact) and the b2-built artifacts under the separately
+  named boost_regex_old-1.92.0 package.  Modern cmake's config-first
+  FindBoost therefore resolves Boost::regex to an INTERFACE target with
+  include dirs only and nothing links libboost_regex; that is upstream's
+  supported consume path and it is complete (all of mapnik's
+  boost::regex/u32regex usage instantiates from the headers, which is
+  why libmapnik, every utility, and every plugin linked with no
+  undefined symbols).  The linux wheel differs only in dead weight: its
+  cmake 3.25 FindBoost module resolves the real dylib and records a
+  DT_NEEDED for a library whose symbols are never used.  Fixed by
+  removing libboost_regex from build_mapnik's assertion list (reason
+  recorded there) and asserting the tiles plugin's libboost_url/
+  libboost_context linkage instead (those components have real b2
+  artifacts).  Also host-verified while diagnosing: delocate-wheel
+  handles .input-suffixed MODULE plugins -- on a synthetic wheel whose
+  package carries __init__.py it bundles the dependency into
+  mapnik/.dylibs and rewrites the plugins' load commands to
+  @loader_path/../.dylibs (without __init__.py it falls back to a
+  top-level <dist>.dylibs, so the real wheel's package layout is what
+  makes the .dylibs location work).  The remaining unobserved steps are
+  the python-mapnik wheel builds (pybind11's chosen C++ standard against
+  mapnik's c++20-only headers, the libc++ std::less issue, delocate on
+  the full bundle) and the test run; the next action is another
+  verification run (`macos/tart_build.sh mapnik`, then the full default
+  run and `macos/test_via_tart.sh`).
 
 ## Hard-won details (do not lose these)
 
@@ -1491,12 +1515,14 @@ Notes on the remaining packages:
     mapniklibpath value is dead weight: only inputpluginspath and
     fontscollectionpath are consumed at runtime, and both point inside
     the package on both platforms.
-  The python-mapnik wheel build is the remaining unknown: pybind11's
-  chosen C++ standard against mapnik's c++20-only headers, the libc++
-  std::less issue (the libopendrive lesson) against mapnik's heavy
-  std::map/set usage, and delocate's handling of the ten dlopened .input
-  MODULE plugins and the huge bundle (libgdal + libicudata ride along) —
-  all to be observed in the verification run before any fix is written.
+  The remaining unknowns for the python-mapnik wheel build (to be
+  observed in the next verification run): pybind11's chosen C++ standard
+  against mapnik's c++20-only headers, and the libc++ std::less issue
+  (the libopendrive lesson) against mapnik's heavy std::map/set usage.
+  The delocate question is already answered on the host (see the status
+  entry): .input MODULE plugins are bundled and rewritten like any other
+  Mach-O in the wheel, and the bundled libraries land in mapnik/.dylibs
+  because the mapnik package carries __init__.py.
 
 ## Test parity with the linux build
 

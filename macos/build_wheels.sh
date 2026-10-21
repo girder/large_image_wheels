@@ -3415,10 +3415,29 @@ build_mapnik() {
     # configure would fail without them); png/jpeg/tiff/webp/cairo/proj/
     # xml2 are default-on finds; harfbuzz is required (config or
     # pkg-config); avif is a default-on pkg-config find.
+    #
+    # libboost_regex is deliberately NOT in this list, and its absence
+    # from libmapnik's load commands is correct: boost 1.92's b2 install
+    # ships TWO cmake packages for regex -- the new-style
+    # boost_regex-1.92.0/boost_regex-config.cmake (mirroring upstream
+    # libs/regex/CMakeLists.txt, which defines boost_regex as a pure
+    # INTERFACE library with no artifact) and the b2-built artifacts
+    # under the separately named boost_regex_old-1.92.0 package.  Modern
+    # cmake's FindBoost (the config-first rewrite) therefore resolves
+    # Boost::regex to an INTERFACE target with include dirs only, and
+    # nothing links libboost_regex.  That is upstream's supported consume
+    # path and it is complete: all of mapnik's boost::regex/u32regex
+    # usage instantiates from the headers (basic_regex and perl_matcher
+    # are templates; the compiled lib only carries pre-built char/wchar_t
+    # instantiations mapnik never needs), which is why libmapnik, every
+    # utility, and every plugin linked with no undefined symbols.  The
+    # linux wheel differs only in dead weight: its cmake 3.25 FindBoost
+    # module resolves the real dylib and records a DT_NEEDED for a library
+    # whose symbols are never used.
     local linked lib
     linked="$(otool -L "$LIW_PREFIX/lib"/libmapnik.*.dylib 2>/dev/null || true)"
     [ -n "$linked" ] || die "mapnik produced no dylib to check"
-    for lib in libicuuc libicui18n libicudata libboost_regex libfreetype \
+    for lib in libicuuc libicui18n libicudata libfreetype \
         libharfbuzz libpng libjpeg libtiff libwebp libavif libcairo \
         libproj libxml2; do
         printf '%s\n' "$linked" | grep -q "$lib" ||
@@ -3440,6 +3459,14 @@ build_mapnik() {
         die "the tiles input plugin was not linked against libsqlite3"
     printf '%s\n' "$linked" | grep -q libssl ||
         die "the tiles input plugin was not linked against libssl (USE_PLUGIN_INPUT_TILES_SSL)"
+    # Unlike Boost::regex (an INTERFACE-only package at boost 1.92, see
+    # the comment above), Boost::url and Boost::context have b2-built
+    # artifacts with real imported-target locations, so the tiles plugin
+    # links them.
+    printf '%s\n' "$linked" | grep -q libboost_url ||
+        die "the tiles input plugin was not linked against libboost_url"
+    printf '%s\n' "$linked" | grep -q libboost_context ||
+        die "the tiles input plugin was not linked against libboost_context"
     linked="$(otool -L "$LIW_PREFIX/lib/mapnik/input/postgis+pgraster.input" 2>/dev/null || true)"
     printf '%s\n' "$linked" | grep -q libpq ||
         die "the postgis+pgraster input plugin was not linked against libpq"
