@@ -640,7 +640,13 @@ runs, not just what the scripts are expected to do):
   prefix's librttopo, visible in the fourth run's log).  The assertion
   now checks the transitive path (otool -L of libspatialite for
   librttopo) instead of listing librttopo among libgdal's direct load
-  commands.
+  commands.  The twelfth run got past that and the assertion's next
+  catch was a plain case bug in the list itself: the LERC entry is
+  "Lerc" (Esri/lerc's cmake installs libLerc.dylib, and GDAL's
+  configure finds exactly that -- the run's log shows "-- Found LERC:
+  .../prefix/lib/libLerc.dylib"), so the stray lowercase "liblerc"
+  entry (never correct on either platform) was dropped and the Lerc
+  casing documented in the builder comment.
 
 ## Hard-won details (do not lose these)
 
