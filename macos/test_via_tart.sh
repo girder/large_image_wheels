@@ -280,7 +280,7 @@ wheel_for_python() { # wheel_for_python <version req> -> wheel file or empty
 }
 
 wheel_version() { # version embedded in the wheel file name
-    basename "$1" | sed -E 's/^(pylibtiff|Glymur|openslide_python|pylibmc|pyvips|GDAL)-([0-9.]+)-.*/\2/'
+    basename "$1" | sed -E 's/^(pylibtiff|Glymur|openslide_python|pylibmc|pyvips|GDAL|mapnik)-([0-9.]+)-.*/\2/'
 }
 
 find_version_dir() {
@@ -598,6 +598,26 @@ for req in $PYTHONS; do
         fi
         log "OK python $req: installed gdal $gdinstalled"
     fi
+    # If a mapnik wheel is present, verify its identity the same way.
+    mawhl="$(ls "$WHEELDIR"/mapnik-*.whl 2>/dev/null | head -1)"
+    if [ -n "$mawhl" ]; then
+        maver="$(wheel_version "$mawhl")"
+        if ! "$venv/bin/pip" install --quiet --find-links "$WHEELDIR" \
+            "mapnik==$maver" >>"$REPORT" 2>&1; then
+            log "FAIL python $req: pip install of mapnik failed"
+            FAILURES=$((FAILURES + 1))
+            rm -rf "$venv"
+            continue
+        fi
+        mainstalled="$($venv/bin/pip show mapnik 2>/dev/null | sed -n 's/^Version: //p')"
+        if [ "$mainstalled" != "$maver" ]; then
+            log "FAIL python $req: installed mapnik $mainstalled but expected $maver (pip may have used pypi)"
+            FAILURES=$((FAILURES + 1))
+            rm -rf "$venv"
+            continue
+        fi
+        log "OK python $req: installed mapnik $mainstalled"
+    fi
     VENVDIRS="$VENVDIRS $venv"
 done
 
@@ -803,6 +823,69 @@ print(bundled[0].strip())
 print("gdal bundled-library check OK")
 PYEOF
 
+cat >"$TESTROOT/test_mapnik.py" <<'PYEOF'
+import os
+import subprocess
+import sys
+
+import mapnik
+
+# The patched paths.py points the input plugins and fonts at the copies
+# bundled inside the installed mapnik package.
+from mapnik import paths
+
+package_dir = os.path.dirname(mapnik.__file__)
+print("mapnik package:", package_dir)
+plugins_dir = getattr(paths, "inputpluginspath", "")
+fonts_dir = getattr(paths, "fontscollectionpath", "")
+print("inputpluginspath:", plugins_dir)
+print("fontscollectionpath:", fonts_dir)
+for label, p in (("input plugins", plugins_dir), ("fonts", fonts_dir)):
+    if not p or package_dir not in os.path.abspath(p):
+        sys.exit(label + " path does not point inside the installed mapnik package: " + str(p))
+    if not os.path.isdir(p) or not os.listdir(p):
+        sys.exit("the bundled " + label + " directory is missing or empty")
+inputs = [f for f in os.listdir(plugins_dir) if f.endswith(".input")]
+print("bundled input plugins:", ", ".join(sorted(inputs)))
+if not any(f.startswith("gdal") for f in inputs):
+    sys.exit("the gdal+ogr input plugin is missing from the bundled set")
+
+# The extension links libmapnik through an absolute install name that
+# delocate rewrote to an @loader_path-relative one; a system or Homebrew
+# libmapnik winning the load would mean the bundled library was bypassed.
+exts = [f for f in os.listdir(package_dir)
+        if f.startswith("_mapnik") and f.endswith(".so")]
+if not exts:
+    sys.exit("the installed mapnik package has no _mapnik extension")
+out = subprocess.run(
+    ["otool", "-L", os.path.join(package_dir, exts[0])],
+    capture_output=True, text=True)
+line = next(
+    (line for line in (out.stdout or "").splitlines() if "libmapnik" in line), "")
+print(line.strip() or "no libmapnik load command found")
+if "@loader_path" not in line or ".dylibs/" not in line:
+    sys.exit("the _mapnik extension does not load the bundled libmapnik from .dylibs")
+
+# The data_path patch exports set_data_paths; it must point at the bundled
+# proj and gdal trees inside the package (the bundled proj.db is what the
+# projection below must resolve through).
+proj_dir = mapnik.proj_data_dir()
+gdal_dir = mapnik.gdal_data_dir()
+print("proj_data_dir:", proj_dir)
+print("gdal_data_dir:", gdal_dir)
+for label, p in (("proj", proj_dir), ("gdal", gdal_dir)):
+    if not p or package_dir not in os.path.abspath(p) or not os.path.isdir(p):
+        sys.exit(label + " data path does not point inside the installed mapnik package: " + str(p))
+if not os.path.exists(os.path.join(proj_dir, "proj.db")):
+    sys.exit("the bundled proj data tree has no proj.db")
+
+# A projection built from the bundled proj data exercises libmapnik, ICU,
+# and the bundled proj.db in one call.
+p = mapnik.Projection("EPSG:3857")
+print("EPSG:3857 resolves:", p.proj4)
+print("mapnik bundled-library check OK")
+PYEOF
+
 for venv in $VENVDIRS; do
     req="$(basename "$venv" | sed 's/^venv-//')"
     # The per-python run directory is named here (it is wiped and
@@ -825,13 +908,13 @@ for venv in $VENVDIRS; do
     # pylibmc's C extension is a top-level module (installed outside the
     # pylibmc package directory), so it is audited alongside the packages.
     audit_macho "$site/libtiff" "$site/glymur" "$site/openslide" \
-        "$site/pylibmc" "$site/pyvips" "$site/osgeo" \
+        "$site/pylibmc" "$site/pyvips" "$site/osgeo" "$site/mapnik" \
         "$site"/_pylibmc*.so >>"$REPORT" 2>&1 || audit_fail=1
     if [ "$audit_fail" != 0 ]; then
         log "FAIL python $req: otool audit found forbidden library references"
         FAILURES=$((FAILURES + 1))
     else
-        log "OK python $req: otool audit clean (libtiff, glymur, openslide, pylibmc, pyvips, gdal)"
+        log "OK python $req: otool audit clean (libtiff, glymur, openslide, pylibmc, pyvips, gdal, mapnik)"
     fi
     if "$venv/bin/python" "$TESTROOT/test_libtiff.py" >>"$REPORT" 2>&1; then
         log "OK python $req: python functional test passed"
@@ -886,6 +969,23 @@ for venv in $VENVDIRS; do
             FAILURES=$((FAILURES + 1))
         fi
     fi
+    if [ -n "$(ls "$WHEELDIR"/mapnik-*.whl 2>/dev/null)" ]; then
+        if "$venv/bin/python" "$TESTROOT/test_mapnik.py" >>"$REPORT" 2>&1; then
+            log "OK python $req: mapnik bundled-library check passed"
+        else
+            log "FAIL python $req: mapnik bundled-library check failed"
+            FAILURES=$((FAILURES + 1))
+        fi
+        # The bundled mapnik tool (exposed as a console script) exercises
+        # the bundled dylibs, fonts, and data the way the shared suite's
+        # mapnik-render check does.
+        if "$venv/bin/mapnik-render" --version >>"$REPORT" 2>&1; then
+            log "OK python $req: bundled mapnik-render tool ran"
+        else
+            log "FAIL python $req: bundled mapnik-render tool failed"
+            FAILURES=$((FAILURES + 1))
+        fi
+    fi
     if "$venv/bin/tiffinfo" /tmp/liw_test_image.tif >>"$REPORT" 2>&1; then
         log "OK python $req: bundled tiffinfo ran"
     else
@@ -915,13 +1015,13 @@ for venv in $VENVDIRS; do
         venvsite="$(ls -d "$rundir/venv/lib/python3."*/site-packages 2>/dev/null | head -1)"
         audit_fail=0
         audit_macho "$venvsite/libtiff" "$venvsite/glymur" "$venvsite/openslide" \
-            "$venvsite/pylibmc" "$venvsite/pyvips" "$venvsite/osgeo" \
+            "$venvsite/pylibmc" "$venvsite/pyvips" "$venvsite/osgeo" "$venvsite/mapnik" \
             "$venvsite"/_pylibmc*.so >>"$REPORT" 2>&1 || audit_fail=1
         if [ "$audit_fail" != 0 ]; then
             log "FAIL python $req: otool audit of the test_script.sh venv found forbidden library references"
             FAILURES=$((FAILURES + 1))
         else
-            log "OK python $req: otool audit of the test_script.sh venv clean (libtiff, glymur, openslide, pylibmc, pyvips, gdal)"
+            log "OK python $req: otool audit of the test_script.sh venv clean (libtiff, glymur, openslide, pylibmc, pyvips, gdal, mapnik)"
         fi
         # The bundled openslide command line tool (slidetool, the only one
         # the linux wheels bundle too) is exposed as a console script; run
