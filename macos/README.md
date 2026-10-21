@@ -631,7 +631,16 @@ runs, not just what the scripts are expected to do):
   the user paths, so nothing is shadowed; verified on the host: the two
   subdirs alone reproduce the VM's "fatal error: 'Imath/half.h' file
   not found", and the same include pattern passes with the parent added
-  last).
+  last).  The eleventh run's gdal build and install completed -- and
+  died at the builder's own linkage assertion on librttopo, a false
+  positive: GDAL has no rttopo check at all, and on linux
+  librttopo.so appears in ldd only as a transitive dependency of
+  libspatialite (ldd prints the whole dependency closure; otool -L
+  only direct load commands -- the macos libspatialite does link the
+  prefix's librttopo, visible in the fourth run's log).  The assertion
+  now checks the transitive path (otool -L of libspatialite for
+  librttopo) instead of listing librttopo among libgdal's direct load
+  commands.
 
 ## Hard-won details (do not lose these)
 
