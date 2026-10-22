@@ -351,6 +351,26 @@ sanitize_prefix_dylibs() {
     done < <(find "$LIW_PREFIX/lib" -name '*.dylib' -type f -print0)
 }
 
+# Print the install id ("id ...") and dependency ("dep ...") names of a
+# Mach-O file, parsed from `otool -l` output.  otool -l is what the rest
+# of the pipeline uses inside the VM (sanitize_prefix_dylibs strips
+# RPATHs from it, and the audits parse it), so it is the proven option
+# form there.  The previous fix_dylib_ids read the id with `otool -D`,
+# and the fifth mapnik run showed the whole helper silently doing nothing
+# in the VM (its audit then caught a surviving @rpath reference) while
+# the identical code worked on the host -- so on the VM one of the
+# -D/-L option forms misbehaves, and the helper must not depend on -D
+# for its input arrays.
+macho_fields() { # macho_fields <file>
+    otool -l "$1" 2>/dev/null | awk '
+        /^ *cmd LC_ID_DYLIB$/ {kind = "id"; next}
+        /^ *cmd LC_LOAD_DYLIB$/ {kind = "dep"; next}
+        /^ *cmd LC_LOAD_WEAK_DYLIB$/ {kind = "dep"; next}
+        /^ *cmd LC_REEXPORT_DYLIB$/ {kind = "dep"; next}
+        kind != "" && $1 == "name" {print kind, $2; kind = ""}
+    '
+}
+
 # Normalize the install names (ids) of a set of prefix dylibs to absolute
 # $LIW_PREFIX/lib paths and rewrite load commands inside the group that
 # referenced an old id.  Some build systems install dylibs whose install
@@ -365,38 +385,48 @@ sanitize_prefix_dylibs() {
 #
 # A second class of stale reference is also rewritten: a consumer can
 # record a NON-ABSOLUTE load command for a group member whose INSTALLED
-# id is already absolute -- b2 linked boost's program_options against the
-# build-tree libboost_container.dylib (whose build-tree id is
+# id is already absolute -- b2 linked boost's date_time/program_options
+# against the build-tree libboost_container.dylib (whose build-tree id is
 # @rpath/libboost_container.dylib) and then installed container with a
 # fresh absolute id, so the @rpath reference survives any id fix (the
 # fourth mapnik run: delocate could not resolve it).  Load commands that
 # name a group member by any non-absolute, non-@loader_path form are
 # therefore rewritten to the member's absolute prefix path too.
+#
+# Failures here are loud: install_name_tool errors are surfaced, the
+# action summary is logged, and a group member left with an unresolved
+# reference after the rewrite pass kills the build (a silent no-op would
+# otherwise surface only at delocate time, or in a later audit).
 fix_dylib_ids() { # fix_dylib_ids <dylib>...
-    local f id base i dep name
+    local f id base i dep kind
     local -a names=() paths=() oldids=() newpaths=()
     for f in "$@"; do
         [ -f "$f" ] || continue
         [ -L "$f" ] && continue
         name="${f##*/}"
-        id="$(otool -D "$f" 2>/dev/null | sed -n 2p)"
-        [ -n "$id" ] || continue
         names+=("$name")
         paths+=("$f")
+        id="$(macho_fields "$f" | awk '$1 == "id" {print $2; exit}')"
+        [ -n "$id" ] || {
+            step "fix_dylib_ids: no install id found for $name (otool -l has no LC_ID_DYLIB)"
+            continue
+        }
         case "$id" in
         "$LIW_PREFIX"/*) continue ;;
         esac
-        base="${id##*/}"
-        install_name_tool -id "$LIW_PREFIX/lib/$base" "$f" ||
-            die "install_name_tool -id failed for $f"
+        install_name_tool -id "$LIW_PREFIX/lib/${id##*/}" "$f" ||
+            die "install_name_tool -id failed for $f (id $id)"
         oldids+=("$id")
-        newpaths+=("$LIW_PREFIX/lib/$base")
+        newpaths+=("$LIW_PREFIX/lib/${id##*/}")
     done
     # Collect load commands that reference a member of this group by a
     # non-absolute name and rewrite them to the member's absolute prefix
     # path (the b2 build-tree @rpath case described above).
     for f in ${paths[@]+"${paths[@]}"}; do
-        while IFS= read -r dep; do
+        # Default IFS: the two fields must be word-split (IFS= would hand
+        # the whole line to `kind` and leave `dep` empty).
+        while read -r kind dep; do
+            [ "$kind" = "dep" ] || continue
             case "$dep" in
             "$LIW_PREFIX"/* | /usr/lib/* | /System/* | @loader_path/* | @executable_path/*) continue ;;
             esac
@@ -408,8 +438,9 @@ fix_dylib_ids() { # fix_dylib_ids <dylib>...
                     break
                 fi
             done
-        done < <(otool -L "$f" 2>/dev/null | tail -n +2 | awk '{print $1}')
+        done < <(macho_fields "$f")
     done
+    step "fix_dylib_ids: ${#paths[@]} files, ${#oldids[@]} rewrites queued"
     [ "${#oldids[@]}" -gt 0 ] || return 0
     for f in ${paths[@]+"${paths[@]}"}; do
         for i in ${!oldids[@]}; do
@@ -417,10 +448,34 @@ fix_dylib_ids() { # fix_dylib_ids <dylib>...
             # (a dylib does not resolve itself through its own old id, and
             # files whose id was already absolute may still reference a
             # sibling by that sibling's old id).
-            install_name_tool -change "${oldids[$i]}" "${newpaths[$i]}" "$f" 2>/dev/null || true
+            install_name_tool -change "${oldids[$i]}" "${newpaths[$i]}" "$f" 2>&1 |
+                grep -v -e "no matching load command" \
+                    -e "invalidate the code signature" || true
         done
         codesign -f -s - "$f" 2>/dev/null || true
     done
+    # The rewrite must actually have taken: any group member still
+    # referencing another member by a non-absolute, non-@loader_path name
+    # kills the build here, with the surviving reference named (a silent
+    # no-op would otherwise surface only at delocate time, or in a later
+    # audit -- the fifth mapnik run).
+    for f in ${paths[@]+"${paths[@]}"}; do
+        # Default IFS: the two fields must be word-split (IFS= would hand
+        # the whole line to `kind` and leave `dep` empty).
+        while read -r kind dep; do
+            [ "$kind" = "dep" ] || continue
+            case "$dep" in
+            "$LIW_PREFIX"/* | /usr/lib/* | /System/* | @loader_path/* | @executable_path/*) continue ;;
+            esac
+            base="${dep##*/}"
+            for i in ${!names[@]}; do
+                if [ "${names[$i]}" = "$base" ]; then
+                    die "fix_dylib_ids failed to rewrite $f -> $dep (install_name_tool error above, if any)"
+                fi
+            done
+        done < <(macho_fields "$f")
+    done
+    return 0
 }
 
 # The base VM's Homebrew set does not include meson (glib, pixman,

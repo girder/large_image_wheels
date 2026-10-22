@@ -746,7 +746,39 @@ runs, not just what the scripts are expected to do):
   if any libboost dylib keeps a load command outside the
   absolute-prefix / @loader_path / system set (previously this class of
   failure surfaced only at delocate time, in whichever package first
-  linked the library).
+  linked the library).  The fifth verification run (2026-10-22) proved
+  that audit worthwhile immediately: it died at boost build time on
+  libboost_date_time.dylib -> @rpath/libboost_container.dylib -- the
+  same stale-reference class, still present after the generalized
+  fix_dylib_ids that had passed every host reproduction (the b2 install
+  pattern in the VM links date_time/program_options directly to the
+  prefix path against the build-tree container copy; the same shapes
+  pass on the host under both bash 5 and the VM's bash 3.2, with and
+  without chained fixups).  Since the identical code works everywhere
+  it can be tested, the failure must be in how the helper reads its
+  inputs inside the VM, so the helper was made independent of the
+  suspicious read and loud about its own failures:
+  fix_dylib_ids now parses both the install id (LC_ID_DYLIB) and the
+  dependency load commands from `otool -l` output (the option form the
+  rest of the pipeline proves works inside the VM --
+  sanitize_prefix_dylibs strips RPATHs from it) via a new macho_fields
+  helper, instead of `otool -D`/`otool -L`; group membership no longer
+  depends on reading a file's id (the old code excluded any file whose
+  id came back empty, which silently emptied the group and turned the
+  whole helper into a no-op if the id read failed); a dylib with no
+  readable id is logged; the helper logs its action count; and a
+  group-internal reference that survives the rewrite pass now kills the
+  build inside the helper with the surviving reference named, instead of
+  surfacing later.  While rewriting, the first draft of the new
+  two-field `while IFS= read -r kind dep` parse was caught on the host
+  (IFS= hands the whole line to `kind` and leaves `dep` empty, so the
+  collection and self-audit loops never fired) -- the host-test edition
+  of the verify-the-edit lesson; the committed version uses the default
+  IFS.  All fix_dylib_ids shapes were re-verified on the host under
+  bash 3.2 with a sabotaged otool -D (prints nothing, the hypothesized
+  VM behavior): ids normalized, stale @rpath references rewritten, the
+  self-audit silent on success and loud when install_name_tool is made
+  to fail.
   The remaining unobserved steps are the delocate run on the full
   mapnik bundle and the test run; the next action is another
   verification run (`macos/tart_build.sh mapnik`, then the full default
