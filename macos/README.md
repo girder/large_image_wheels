@@ -717,6 +717,16 @@ runs, not just what the scripts are expected to do):
   plugins like build_gdal_python does for the gdal tools.  delocate's
   bundle handling was re-verified on the host with MH_BUNDLE plugins
   (bare-name and absolute-path dependency references both rewritten).
+  The third verification run (2026-10-22) cleared the entire mapnik
+  build and its assertions (279 compile units, under three minutes on
+  the VM's cpus) and died at the python step's first packaging copy:
+  `cp: packaging/mapnik/.: Not a directory` -- build_mapnik_python
+  never cd'd into the python-mapnik clone after patching it, so the
+  copies and the relative-path patch scripts ran against $LIW_SRC
+  instead of the clone (the wheel-build loop's own cd was correct, which
+  is why only this step failed).  Fixed with an explicit cd into the
+  clone before the packaging section, mirroring the linux build's
+  `cd python-mapnik`.
   The remaining unobserved steps are
   the python-mapnik wheel builds (pybind11's chosen C++ standard against
   mapnik's c++20-only headers, the libc++ std::less issue, delocate on

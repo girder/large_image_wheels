@@ -3561,6 +3561,10 @@ build_mapnik_python() {
         git am "$LIW_REPO/python-mapnik.patch" || exit 1
         git am "$LIW_REPO/python-mapnik_data_path.patch" || exit 1
     ) || die "python-mapnik patching failed"
+    # Everything below (the packaging copies, the relative-path patches,
+    # and the git commit/tag) runs against the clone, like the linux
+    # build's `cd python-mapnik`.
+    cd "$LIW_SRC/python-mapnik" || die "python-mapnik clone missing"
 
     # Copy the mapnik input plugins and fonts into the package (the linux
     # build copies /usr/local/lib/mapnik/*), then the proj and gdal data
