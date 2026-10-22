@@ -3471,23 +3471,40 @@ build_mapnik() {
     printf '%s\n' "$linked" | grep -q libpq ||
         die "the postgis+pgraster input plugin was not linked against libpq"
     # The @rpath audit (the build_hdf4 pattern): every dylib that ships in
-    # the wheel -- libmapnik and the .input plugins -- must have an
-    # absolute install id and no @rpath load commands, which would stop
-    # resolving once the prefix RPATHs are stripped.
-    local f id links
+    # the wheel -- libmapnik and the .input plugins -- must have no @rpath
+    # load commands, which would stop resolving once the prefix RPATHs are
+    # stripped.  The id check applies only to real dylibs: the .input
+    # plugins are MODULE libraries, which cmake links as MH_BUNDLE files
+    # on macOS -- bundles carry no LC_ID_DYLIB at all (otool -D is empty)
+    # because they are dlopened by path and nothing links them by name,
+    # so an empty id is expected and correct for them.
+    local f id links rpaths
     for f in "$LIW_PREFIX/lib"/libmapnik*.dylib \
         "$LIW_PREFIX/lib/mapnik/input"/*.input; do
         [ -f "$f" ] || continue
         [ -L "$f" ] && continue
         id="$(otool -D "$f" 2>/dev/null | sed -n 2p)"
-        case "$id" in
-        "$LIW_PREFIX"/*) ;;
-        *) die "mapnik installed a binary without an absolute install id ('$f': '$id')" ;;
-        esac
+        if [ -n "$id" ]; then
+            case "$id" in
+            "$LIW_PREFIX"/*) ;;
+            *) die "mapnik installed a binary without an absolute install id ('$f': '$id')" ;;
+            esac
+        fi
         links="$(otool -L "$f" 2>/dev/null || true)"
         if printf '%s\n' "$links" | grep -q "@rpath"; then
             die "mapnik installed $f with an @rpath load command:\n$links"
         fi
+        # LC_RPATH search paths are checked separately (they do not show
+        # up in otool -L).  sanitize_prefix_dylibs only strips RPATHs from
+        # *.dylib files, so the bundle plugins would keep any prefix
+        # rpath into the wheel if cmake installed one; delocate's rpath
+        # sanitizer would drop it later, but the audit catches it here.
+        rpaths="$(otool -l "$f" 2>/dev/null |
+            awk '/LC_RPATH/{inr=1; next} inr && $1=="path" {print $2; inr=0}')"
+        case "$rpaths" in
+        "") ;;
+        *) die "mapnik installed $f with LC_RPATH entries:\n$rpaths" ;;
+        esac
     done
     done_stamp mapnik
 }
@@ -3560,11 +3577,20 @@ build_mapnik_python() {
     [ -e packaging/mapnik/input/gdal+ogr.input ] ||
         die "the input plugins were not copied into the package"
     # Strip the copied binaries (the linux build strips the tools it
-    # copies) and the copied plugins, then re-sign (arm64 requires a valid
-    # signature after strip).  delocate rewrites the load commands of the
-    # plugins and tools when it bundles their dependencies.
-    local f
+    # copies) and the copied plugins, and strip every non-@ RPATH first
+    # (cmake-installed executables keep build-tree RPATHs, and delocate's
+    # rpath sanitizer only processes files that require other libraries;
+    # the gdal tools get the same treatment in build_gdal_python).  The
+    # arm64 signature is renewed after install_name_tool/strip.
+    local f rp
     while IFS= read -r -d '' f; do
+        while IFS= read -r rp; do
+            case "$rp" in
+            @loader_path/* | @executable_path/* | @rpath/*) ;;
+            *) install_name_tool -delete_rpath "$rp" "$f" 2>/dev/null || true ;;
+            esac
+        done < <(otool -l "$f" |
+            awk '/LC_RPATH/{inr=1; next} inr && $1=="path" {print $2; inr=0}')
         strip -x "$f" 2>/dev/null || true
         codesign -f -s - "$f" 2>/dev/null || true
     done < <(find packaging/mapnik/bin packaging/mapnik/input -type f -perm -111 -print0)
