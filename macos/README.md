@@ -697,12 +697,27 @@ runs, not just what the scripts are expected to do):
   recorded there) and asserting the tiles plugin's libboost_url/
   libboost_context linkage instead (those components have real b2
   artifacts).  Also host-verified while diagnosing: delocate-wheel
-  handles .input-suffixed MODULE plugins -- on a synthetic wheel whose
-  package carries __init__.py it bundles the dependency into
-  mapnik/.dylibs and rewrites the plugins' load commands to
-  @loader_path/../.dylibs (without __init__.py it falls back to a
+  handles .input-suffixed MODULE plugins --
+  on a synthetic wheel whose package carries __init__.py it bundles the
+  dependency into mapnik/.dylibs and rewrites the plugins' load commands
+  to @loader_path/../.dylibs (without __init__.py it falls back to a
   top-level <dist>.dylibs, so the real wheel's package layout is what
-  makes the .dylibs location work).  The remaining unobserved steps are
+  makes the .dylibs location work).  The second verification run
+  (2026-10-22) rebuilt everything to the same point and died at the
+  audit's next catch: the .input plugins carry no install id at all --
+  they are MODULE libraries, which cmake links as MH_BUNDLE files on
+  macOS (bundles have no LC_ID_DYLIB because they are dlopened by path
+  and nothing links them by name; otool -D is empty, verified on the
+  host).  The audit now applies the absolute-id check only to files that
+  have an id (the libmapnik dylibs) and checks the plugins' @rpath load
+  commands and LC_RPATH entries instead (sanitize_prefix_dylibs only
+  strips RPATHs from *.dylib files, so a prefix rpath on a bundle plugin
+  would otherwise only be caught by delocate's sanitizer); and
+  build_mapnik_python now strips non-@ RPATHs from the copied tools and
+  plugins like build_gdal_python does for the gdal tools.  delocate's
+  bundle handling was re-verified on the host with MH_BUNDLE plugins
+  (bare-name and absolute-path dependency references both rewritten).
+  The remaining unobserved steps are
   the python-mapnik wheel builds (pybind11's chosen C++ standard against
   mapnik's c++20-only headers, the libc++ std::less issue, delocate on
   the full bundle) and the test run; the next action is another
