@@ -362,15 +362,27 @@ sanitize_prefix_dylibs() {
 # @rpath lesson).  Call this right after a build whose install names are
 # suspect and BEFORE any consumer links the dylibs.  Re-signs afterwards
 # (arm64 requires a valid signature after install_name_tool).
+#
+# A second class of stale reference is also rewritten: a consumer can
+# record a NON-ABSOLUTE load command for a group member whose INSTALLED
+# id is already absolute -- b2 linked boost's program_options against the
+# build-tree libboost_container.dylib (whose build-tree id is
+# @rpath/libboost_container.dylib) and then installed container with a
+# fresh absolute id, so the @rpath reference survives any id fix (the
+# fourth mapnik run: delocate could not resolve it).  Load commands that
+# name a group member by any non-absolute, non-@loader_path form are
+# therefore rewritten to the member's absolute prefix path too.
 fix_dylib_ids() { # fix_dylib_ids <dylib>...
-    local f id base i
-    local -a files=() oldids=() newpaths=()
+    local f id base i dep name
+    local -a names=() paths=() oldids=() newpaths=()
     for f in "$@"; do
         [ -f "$f" ] || continue
         [ -L "$f" ] && continue
+        name="${f##*/}"
         id="$(otool -D "$f" 2>/dev/null | sed -n 2p)"
         [ -n "$id" ] || continue
-        files+=("$f")
+        names+=("$name")
+        paths+=("$f")
         case "$id" in
         "$LIW_PREFIX"/*) continue ;;
         esac
@@ -380,8 +392,26 @@ fix_dylib_ids() { # fix_dylib_ids <dylib>...
         oldids+=("$id")
         newpaths+=("$LIW_PREFIX/lib/$base")
     done
+    # Collect load commands that reference a member of this group by a
+    # non-absolute name and rewrite them to the member's absolute prefix
+    # path (the b2 build-tree @rpath case described above).
+    for f in ${paths[@]+"${paths[@]}"}; do
+        while IFS= read -r dep; do
+            case "$dep" in
+            "$LIW_PREFIX"/* | /usr/lib/* | /System/* | @loader_path/* | @executable_path/*) continue ;;
+            esac
+            base="${dep##*/}"
+            for i in ${!names[@]}; do
+                if [ "${names[$i]}" = "$base" ]; then
+                    oldids+=("$dep")
+                    newpaths+=("$LIW_PREFIX/lib/$base")
+                    break
+                fi
+            done
+        done < <(otool -L "$f" 2>/dev/null | tail -n +2 | awk '{print $1}')
+    done
     [ "${#oldids[@]}" -gt 0 ] || return 0
-    for f in ${files[@]+"${files[@]}"}; do
+    for f in ${paths[@]+"${paths[@]}"}; do
         for i in ${!oldids[@]}; do
             # A failed -change only means the load command is not present
             # (a dylib does not resolve itself through its own old id, and
@@ -2081,6 +2111,24 @@ build_boost() {
     # b2 records bare install names for its darwin dylibs; fix them before
     # mysql (or mapnik) links anything.
     fix_dylib_ids "$LIW_PREFIX/lib"/libboost_*.dylib
+    # Audit: after normalization every load command of every boost dylib
+    # must be an absolute prefix path, @loader_path-relative, or a system
+    # path -- a stale build-tree @rpath reference would otherwise only
+    # surface at delocate time, in whichever package first links the
+    # library (the fourth mapnik run: libboost_program_options, an
+    # auto-built dependency of --with-program_options, kept a build-tree
+    # @rpath/libboost_container.dylib reference).
+    local bf dep
+    for bf in "$LIW_PREFIX/lib"/libboost_*.dylib; do
+        [ -f "$bf" ] || continue
+        [ -L "$bf" ] && continue
+        while IFS= read -r dep; do
+            case "$dep" in
+            "$LIW_PREFIX"/* | /usr/lib/* | /System/* | @loader_path/* | @executable_path/*) continue ;;
+            *) die "libboost dylib with an unresolvable load command ($bf -> $dep)" ;;
+            esac
+        done < <(otool -L "$bf" 2>/dev/null | tail -n +2 | awk '{print $1}')
+    done
     done_stamp boost
 }
 

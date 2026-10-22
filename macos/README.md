@@ -726,11 +726,29 @@ runs, not just what the scripts are expected to do):
   instead of the clone (the wheel-build loop's own cd was correct, which
   is why only this step failed).  Fixed with an explicit cd into the
   clone before the packaging section, mirroring the linux build's
-  `cd python-mapnik`.
-  The remaining unobserved steps are
-  the python-mapnik wheel builds (pybind11's chosen C++ standard against
-  mapnik's c++20-only headers, the libc++ std::less issue, delocate on
-  the full bundle) and the test run; the next action is another
+  `cd python-mapnik`.  The fourth verification run (2026-10-22, after
+  the cd fix) built ALL SEVEN python-mapnik wheels (about 2.5 minutes
+  each) -- resolving the two remaining build questions favorably:
+  pybind11's setup_helpers picks a C++ standard that compiles mapnik's
+  c++20-only headers on AppleClang, and the libc++ std::less issue did
+  not bite mapnik's containers -- and died in delocate:
+  libboost_program_options.dylib (an AUTO-BUILT b2 dependency of
+  --with-program_options; container is not in the --with list) carried a
+  stale build-tree load command, @rpath/libboost_container.dylib.
+  fix_dylib_ids missed it because the member's INSTALLED id was already
+  absolute (b2 linked it directly to the final path), so its old id
+  never entered the rewrite list, while the consumer had been linked
+  against the build-tree copy whose id was @rpath.  fix_dylib_ids is now
+  general: besides normalizing ids, it rewrites every load command in
+  the group that references a member by any non-absolute,
+  non-@loader_path name (both cases verified on the host with synthetic
+  dylibs), and build_boost gained an audit that dies at boost build time
+  if any libboost dylib keeps a load command outside the
+  absolute-prefix / @loader_path / system set (previously this class of
+  failure surfaced only at delocate time, in whichever package first
+  linked the library).
+  The remaining unobserved steps are the delocate run on the full
+  mapnik bundle and the test run; the next action is another
   verification run (`macos/tart_build.sh mapnik`, then the full default
   run and `macos/test_via_tart.sh`).
 
