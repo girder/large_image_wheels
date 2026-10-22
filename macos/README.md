@@ -778,7 +778,32 @@ runs, not just what the scripts are expected to do):
   bash 3.2 with a sabotaged otool -D (prints nothing, the hypothesized
   VM behavior): ids normalized, stale @rpath references rewritten, the
   self-audit silent on success and loud when install_name_tool is made
-  to fail.
+  to fail.  The sixth verification run (2026-10-22) then produced the
+  real answer, and the logging did exactly its job: the helper reported
+  "10 files, 17 rewrites queued" (reading ids and deps fine -- the
+  otool -D hypothesis was wrong; the lz4/hdf5/hdf4/gdal/pyvips/mapnik
+  audits that read otool -D had all passed all along) and install_name_tool
+  failed loudly on date_time/program_options/thread with the error the
+  old code had been silently swallowing all along: "changing install
+  names or rpaths can't be redone ... because larger updated load
+  commands do not fit (the program must be relinked, and you may need to
+  use -headerpad or -headerpad_max_install_names)".  b2's darwin toolset
+  DOES pass -headerpad_max_install_names by default (darwin.jam), but
+  the new linker ignores it -- verified on the host: b2-built binaries
+  are byte-identical with and without the flag -- so the boost dylibs
+  have no slack, and rewriting the short @rpath/<name> build-tree
+  reference to the long absolute prefix path cannot fit.  fix_dylib_ids
+  now falls back to a same-length path: "/tmp/b/" is exactly as long as
+  "@rpath/", so "/tmp/b/<name>" (a symlink to $LIW_PREFIX/lib, created
+  on demand) replaces the @rpath prefix without changing the load
+  command size; delocate resolves it through the symlink and rewrites
+  the reference to @loader_path inside the wheel (verified on the host
+  with a synthetic wheel: the bundled copies' references come out as
+  @loader_path/.dylibs/..., and /tmp/b never appears in wheel contents).
+  The same fallback applies to -id; the self-audit and the boost audit
+  accept $LIW_SHORT_LIBDIR/* references, and the every-prefix-dylib
+  absolute-id audits (gdal_python, mapnik_python, pyvips) accept a
+  short-path id.
   The remaining unobserved steps are the delocate run on the full
   mapnik bundle and the test run; the next action is another
   verification run (`macos/tart_build.sh mapnik`, then the full default

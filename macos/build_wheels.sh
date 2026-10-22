@@ -70,6 +70,19 @@ export CXXFLAGS="-g0 -O2 -DNDEBUG"
 # load commands.
 export CPPFLAGS="-I$LIW_PREFIX/include"
 export LDFLAGS="-L$LIW_PREFIX/lib -Wl,-headerpad_max_install_names"
+# A same-length stand-in for the prefix lib dir, used by fix_dylib_ids as
+# a rewrite fallback.  The VM's new linker ignores
+# -Wl,-headerpad_max_install_names (verified on the host: b2's darwin
+# toolset passes it by default and the produced binaries are
+# byte-identical with and without it), so install_name_tool can refuse a
+# rewrite whose replacement is longer than the recorded name ("larger
+# updated load commands do not fit").  "/tmp/b/" is exactly as long as
+# "@rpath/", so replacing the @rpath/ prefix of a stale build-tree
+# reference with this symlink keeps the load command size unchanged, and
+# the symlink (created on demand, pointing at $LIW_PREFIX/lib) makes the
+# short path resolve for delocate, which rewrites it to @loader_path
+# inside the wheel.
+LIW_SHORT_LIBDIR="/tmp/b"
 # Only system tools (Apple clang, git, curl, make, python3 -- all in
 # /usr/bin via the Command Line Tools) and the private prefix are on PATH.
 export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$LIW_PREFIX/bin"
@@ -361,6 +374,17 @@ sanitize_prefix_dylibs() {
 # the identical code worked on the host -- so on the VM one of the
 # -D/-L option forms misbehaves, and the helper must not depend on -D
 # for its input arrays.
+# Ensure the short-path stand-in exists: $LIW_SHORT_LIBDIR is a symlink
+# to the prefix lib dir, so "/tmp/b/<name>" resolves to the same dylib as
+# the absolute prefix path while keeping the load command size unchanged
+# (see the LIW_SHORT_LIBDIR comment above).
+ensure_short_libdir() {
+    if [ ! -L "$LIW_SHORT_LIBDIR" ]; then
+        rm -rf "$LIW_SHORT_LIBDIR"
+        ln -s "$LIW_PREFIX/lib" "$LIW_SHORT_LIBDIR"
+    fi
+}
+
 macho_fields() { # macho_fields <file>
     otool -l "$1" 2>/dev/null | awk '
         /^ *cmd LC_ID_DYLIB$/ {kind = "id"; next}
@@ -372,33 +396,43 @@ macho_fields() { # macho_fields <file>
 }
 
 # Normalize the install names (ids) of a set of prefix dylibs to absolute
-# $LIW_PREFIX/lib paths and rewrite load commands inside the group that
-# referenced an old id.  Some build systems install dylibs whose install
-# name is not an absolute prefix path (OpenSSL's makefile records a
-# relative "lib/libcrypto.*", boost's b2 records the bare file name); a
-# consumer linking such a dylib records an unresolvable reference, and
-# after sanitize_prefix_dylibs strips the prefix rpaths nothing can resolve
-# it -- delocate then fails long after the offending build (the hdf5
-# @rpath lesson).  Call this right after a build whose install names are
-# suspect and BEFORE any consumer links the dylibs.  Re-signs afterwards
-# (arm64 requires a valid signature after install_name_tool).
+# prefix paths and rewrite load commands inside the group that referenced
+# an old id.  Some build systems install dylibs whose install name is not
+# an absolute prefix path (OpenSSL's makefile records a relative
+# "lib/libcrypto.*", b2 records @rpath/bare names); a consumer linking
+# such a dylib records an unresolvable reference, and after
+# sanitize_prefix_dylibs strips the prefix rpaths nothing can resolve it
+# -- delocate then fails long after the offending build (the hdf5 @rpath
+# lesson).  Call this right after a build whose install names are suspect
+# and BEFORE any consumer links the dylibs.  Re-signs afterwards (arm64
+# requires a valid signature after install_name_tool).
 #
-# A second class of stale reference is also rewritten: a consumer can
-# record a NON-ABSOLUTE load command for a group member whose INSTALLED
-# id is already absolute -- b2 linked boost's date_time/program_options
-# against the build-tree libboost_container.dylib (whose build-tree id is
-# @rpath/libboost_container.dylib) and then installed container with a
-# fresh absolute id, so the @rpath reference survives any id fix (the
-# fourth mapnik run: delocate could not resolve it).  Load commands that
-# name a group member by any non-absolute, non-@loader_path form are
-# therefore rewritten to the member's absolute prefix path too.
+# Two further wrinkle classes are handled:
+#   - a consumer can record a NON-ABSOLUTE load command for a group
+#     member whose INSTALLED id is already absolute -- b2 linked boost's
+#     date_time/program_options against the build-tree
+#     libboost_container.dylib (build-tree id @rpath/...) and then
+#     installed container with a fresh absolute id, so the @rpath
+#     reference survives any id fix (the fourth mapnik run: delocate
+#     could not resolve it).  Load commands that name a group member by
+#     any non-absolute, non-@loader_path form are therefore rewritten
+#     too.
+#   - the rewrites themselves can fail for lack of space: the new linker
+#     ignores -headerpad_max_install_names, so a replacement longer than
+#     the recorded name can hit "larger updated load commands do not
+#     fit" (the sixth mapnik run; the old code silently swallowed these
+#     errors).  The fallback rewrite uses $LIW_SHORT_LIBDIR/<name>, which
+#     is the same length as the @rpath/<name> form it replaces (see the
+#     LIW_SHORT_LIBDIR comment above), and the self-audit below turns any
+#     remaining unresolved group-internal reference into a hard failure
+#     instead of a silent pass.
 #
 # Failures here are loud: install_name_tool errors are surfaced, the
 # action summary is logged, and a group member left with an unresolved
 # reference after the rewrite pass kills the build (a silent no-op would
 # otherwise surface only at delocate time, or in a later audit).
 fix_dylib_ids() { # fix_dylib_ids <dylib>...
-    local f id base i dep kind
+    local f id base i dep kind short
     local -a names=() paths=() oldids=() newpaths=()
     for f in "$@"; do
         [ -f "$f" ] || continue
@@ -414,8 +448,22 @@ fix_dylib_ids() { # fix_dylib_ids <dylib>...
         case "$id" in
         "$LIW_PREFIX"/*) continue ;;
         esac
-        install_name_tool -id "$LIW_PREFIX/lib/${id##*/}" "$f" ||
-            die "install_name_tool -id failed for $f (id $id)"
+        # The prefix path may not fit (the new linker ignores
+        # -headerpad_max_install_names); the same-length short path always
+        # fits where the recorded id was an @rpath/ form, and delocate
+        # resolves it through the symlink.  A same-length replacement
+        # never needs relinking, so try the real path first and fall back.
+        if ! install_name_tool -id "$LIW_PREFIX/lib/${id##*/}" "$f" 2>/dev/null; then
+            short="$LIW_SHORT_LIBDIR/${id##*/}"
+            if [ ${#short} -gt ${#id} ]; then
+                install_name_tool -id "$LIW_PREFIX/lib/${id##*/}" "$f" ||
+                    die "install_name_tool -id failed for $f (id $id) and the short path is longer"
+            else
+                ensure_short_libdir
+                install_name_tool -id "$short" "$f" ||
+                    die "install_name_tool -id failed for $f (id $id; both the prefix and the short path rejected)"
+            fi
+        fi
         oldids+=("$id")
         newpaths+=("$LIW_PREFIX/lib/${id##*/}")
     done
@@ -447,25 +495,39 @@ fix_dylib_ids() { # fix_dylib_ids <dylib>...
             # A failed -change only means the load command is not present
             # (a dylib does not resolve itself through its own old id, and
             # files whose id was already absolute may still reference a
-            # sibling by that sibling's old id).
+            # sibling by that sibling's old id) -- or that the replacement
+            # did not fit (the new linker ignores
+            # -headerpad_max_install_names); in the fit case the
+            # same-length short path is retried below, and the self-audit
+            # after the loop catches anything left.
             install_name_tool -change "${oldids[$i]}" "${newpaths[$i]}" "$f" 2>&1 |
                 grep -v -e "no matching load command" \
-                    -e "invalidate the code signature" || true
+                    -e "invalidate the code signature" \
+                    -e "larger updated load commands do not fit" || true
+            short="$LIW_SHORT_LIBDIR/${newpaths[$i]##*/}"
+            if [ ${#short} -le ${#oldids[$i]} ]; then
+                ensure_short_libdir
+                install_name_tool -change "${oldids[$i]}" "$short" "$f" 2>&1 |
+                    grep -v -e "no matching load command" \
+                        -e "invalidate the code signature" \
+                        -e "larger updated load commands do not fit" || true
+            fi
         done
         codesign -f -s - "$f" 2>/dev/null || true
     done
     # The rewrite must actually have taken: any group member still
     # referencing another member by a non-absolute, non-@loader_path name
-    # kills the build here, with the surviving reference named (a silent
-    # no-op would otherwise surface only at delocate time, or in a later
-    # audit -- the fifth mapnik run).
+    # (other than the short-path stand-in, which is absolute-by-symlink
+    # and resolved by delocate) kills the build here, with the surviving
+    # reference named (a silent no-op would otherwise surface only at
+    # delocate time, or in a later audit -- the fifth mapnik run).
     for f in ${paths[@]+"${paths[@]}"}; do
         # Default IFS: the two fields must be word-split (IFS= would hand
         # the whole line to `kind` and leave `dep` empty).
         while read -r kind dep; do
             [ "$kind" = "dep" ] || continue
             case "$dep" in
-            "$LIW_PREFIX"/* | /usr/lib/* | /System/* | @loader_path/* | @executable_path/*) continue ;;
+            "$LIW_PREFIX"/* | "$LIW_SHORT_LIBDIR"/* | /usr/lib/* | /System/* | @loader_path/* | @executable_path/*) continue ;;
             esac
             base="${dep##*/}"
             for i in ${!names[@]}; do
@@ -2179,7 +2241,10 @@ build_boost() {
         [ -L "$bf" ] && continue
         while IFS= read -r dep; do
             case "$dep" in
-            "$LIW_PREFIX"/* | /usr/lib/* | /System/* | @loader_path/* | @executable_path/*) continue ;;
+            # $LIW_SHORT_LIBDIR/* is the fix_dylib_ids stand-in: a symlink
+            # to the prefix lib dir, resolved by delocate and rewritten to
+            # @loader_path inside the wheel.
+            "$LIW_PREFIX"/* | "$LIW_SHORT_LIBDIR"/* | /usr/lib/* | /System/* | @loader_path/* | @executable_path/*) continue ;;
             *) die "libboost dylib with an unresolvable load command ($bf -> $dep)" ;;
             esac
         done < <(otool -L "$bf" 2>/dev/null | tail -n +2 | awk '{print $1}')
@@ -3146,6 +3211,11 @@ build_gdal_python() {
         name="$(otool -D "$d" 2>/dev/null | sed -n 2p)"
         case "$name" in
         "$LIW_PREFIX"/*) ;;
+        # The fix_dylib_ids short-path stand-in ("/tmp/b/<name>", a
+        # symlink to the prefix lib dir used when the real path did not
+        # fit the load command space) resolves the same dylib and delocate
+        # rewrites it, so it is as good as absolute here.
+        "$LIW_SHORT_LIBDIR"/*) ;;
         *) die "install name of $d is not absolute ('$name')" ;;
         esac
     done < <(find "$LIW_PREFIX/lib" -maxdepth 1 -name '*.dylib' -print0)
@@ -3636,6 +3706,11 @@ build_mapnik_python() {
         name="$(otool -D "$d" 2>/dev/null | sed -n 2p)"
         case "$name" in
         "$LIW_PREFIX"/*) ;;
+        # The fix_dylib_ids short-path stand-in ("/tmp/b/<name>", a
+        # symlink to the prefix lib dir used when the real path did not
+        # fit the load command space) resolves the same dylib and delocate
+        # rewrites it, so it is as good as absolute here.
+        "$LIW_SHORT_LIBDIR"/*) ;;
         *) die "install name of $d is not absolute ('$name')" ;;
         esac
     done < <(find "$LIW_PREFIX/lib" -maxdepth 1 -name '*.dylib' -print0)
@@ -4623,6 +4698,11 @@ build_pyvips() {
         name="$(otool -D "$d" 2>/dev/null | sed -n 2p)"
         case "$name" in
         "$LIW_PREFIX"/*) ;;
+        # The fix_dylib_ids short-path stand-in ("/tmp/b/<name>", a
+        # symlink to the prefix lib dir used when the real path did not
+        # fit the load command space) resolves the same dylib and delocate
+        # rewrites it, so it is as good as absolute here.
+        "$LIW_SHORT_LIBDIR"/*) ;;
         *) die "install name of $d is not absolute ('$name')" ;;
         esac
     done < <(find "$LIW_PREFIX/lib" -maxdepth 1 -name '*.dylib' -print0)
