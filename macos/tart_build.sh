@@ -28,8 +28,10 @@
 #                   $LIW_TART_BASE_IMAGE, else
 #                   ghcr.io/cirruslabs/macos-golden-gate-base:latest)
 #   --name NAME     name for the build VM (default: liw_wheels_build)
-#   --cpus N        vCPUs for the build VM (default: 4)
-#   --mem MB        memory for the build VM in MB (default: 8192)
+#   --cpus N        vCPUs for the build VM (default: one fewer than the
+#                   host's processor count)
+#   --mem MB        memory for the build VM in MB (default: the larger of
+#                   4096 and one third of the host's memory)
 #   --disk GB       disk size when provisioning the base (default: 150)
 #   --packages LIST packages to build, space separated
 #                   (default: all supported packages; keep in sync with
@@ -56,8 +58,18 @@ LIW_PACKAGES=""
 LIW_DEFAULT_PACKAGES="pylibtiff glymur openslide_python pylibmc pyvips gdal mapnik"
 LIW_PYTHONS="${LIW_PYTHONS:-3.11 3.12 3.13 3.14 3.15 3.14t 3.15t}"
 LIW_KEEP=0
-LIW_CPUS="${LIW_CPUS:-4}"
-LIW_MEM_MB="${LIW_MEM_MB:-8192}"
+# Defaults sized from the host, overridable with --cpus/--mem (or the
+# LIW_CPUS/LIW_MEM_MB variables): one fewer vCPU than the host has
+# processors, and max(4096 MB, one third of the host's memory) for the
+# guest.  The smaller guest keeps the host (which shares its memory with
+# the agent sandbox) out of swap when the guest fills its own memory.
+liw_host_cpus="$(sysctl -n hw.ncpu 2>/dev/null || echo 2)"
+liw_host_mem_mb=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 4294967296) / 1048576 ))
+LIW_DEFAULT_CPUS=$(( liw_host_cpus > 1 ? liw_host_cpus - 1 : 1 ))
+LIW_DEFAULT_MEM_MB=$(( liw_host_mem_mb / 3 ))
+[ "$LIW_DEFAULT_MEM_MB" -ge 4096 ] || LIW_DEFAULT_MEM_MB=4096
+LIW_CPUS="${LIW_CPUS:-$LIW_DEFAULT_CPUS}"
+LIW_MEM_MB="${LIW_MEM_MB:-$LIW_DEFAULT_MEM_MB}"
 LIW_DISK_GB="${LIW_DISK_GB:-150}"
 # Overall build/provision timeout in seconds (default 16 hours).
 # The gdal wheel's dependency tree (mysql, openmpi, boost, gdal itself)
@@ -69,7 +81,12 @@ LIW_TIMEOUT="${LIW_TIMEOUT:-57600}"
 LIW_PROVISION_TIMEOUT="${LIW_PROVISION_TIMEOUT:-10800}"
 
 usage() {
-    sed -n '2,35p' "$0" | sed 's/^# \{0,1\}//'
+    # Print the comment header (everything up to the first `set -u` line,
+    # which ends the header) with the leading comment marks stripped.  A
+    # fixed line range silently truncated the options list whenever the
+    # header grew.
+    awk 'NR >= 2 && /^set -u$/ { exit }
+         NR >= 2 { sub(/^# ?/, ""); print }' "$0"
     exit 1
 }
 
