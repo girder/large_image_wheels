@@ -3440,8 +3440,10 @@ EOF
     for whl in "$LIW_WHEELHOUSE"/GDAL-*.whl; do
         [ -f "$whl" ] || continue
         case "$(basename "$whl")" in
-        *macosx*) "$LIW_PATCH_DIR/bin/delocate-wheel" "$whl" ||
-            die "delocate failed for $whl" ;;
+        *macosx*)
+            step "delocate: $(basename "$whl")"
+            "$LIW_PATCH_DIR/bin/delocate-wheel" "$whl" ||
+                die "delocate failed for $whl" ;;
         esac
     done
     ls -l "$LIW_WHEELHOUSE"
@@ -3880,12 +3882,26 @@ EOF
 
     step "delocate mapnik wheels"
     "$LIW_PATCH_PIPBIN" install -q -U delocate
+    # Each giant wheel's delocate is silent for minutes (libgdal alone is
+    # ~1.5 GB) and churns several times the wheel's final size through
+    # the disk; report disk state up front and progress per wheel so a
+    # resource exhaustion is a loud, located failure instead of a dead VM
+    # (the 2026-10-23 run: the guest died 17 minutes into the first
+    # mapnik delocate and the log copy came back empty because the VM was
+    # already gone).
+    local free_kb
+    free_kb="$(df -k "$LIW_WHEELHOUSE" | awk 'NR==2 {print $4}')"
+    step "wheelhouse disk free: $((free_kb / 1024 / 1024)) GB"
+    [ "$free_kb" -ge $((10 * 1024 * 1024)) ] ||
+        die "only $((free_kb / 1024 / 1024)) GB free on the wheelhouse volume; the mapnik delocate needs roughly 10 GB of transient space (re-provision the base with a larger --disk)"
     local whl
     for whl in "$LIW_WHEELHOUSE"/mapnik-*.whl; do
         [ -f "$whl" ] || continue
         case "$(basename "$whl")" in
-        *macosx*) "$LIW_PATCH_DIR/bin/delocate-wheel" "$whl" ||
-            die "delocate failed for $whl" ;;
+        *macosx*)
+            step "delocate: $(basename "$whl")"
+            "$LIW_PATCH_DIR/bin/delocate-wheel" "$whl" ||
+                die "delocate failed for $whl" ;;
         esac
     done
     ls -l "$LIW_WHEELHOUSE"
@@ -4845,8 +4861,10 @@ EOF
     for whl in "$LIW_WHEELHOUSE"/pyvips-*.whl; do
         [ -f "$whl" ] || continue
         case "$(basename "$whl")" in
-        *macosx*) "$LIW_PATCH_DIR/bin/delocate-wheel" "$whl" ||
-            die "delocate failed for $whl" ;;
+        *macosx*)
+            step "delocate: $(basename "$whl")"
+            "$LIW_PATCH_DIR/bin/delocate-wheel" "$whl" ||
+                die "delocate failed for $whl" ;;
         esac
     done
     ls -l "$LIW_WHEELHOUSE"

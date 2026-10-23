@@ -297,6 +297,20 @@ fail() {
     # The build log lives inside the VM at $LIW_GUEST_HOME/macos_build.log;
     # save a copy on the host and show its tail.
     echo "BUILD FAILED; the in-VM build log is $LIW_GUEST_HOME/macos_build.log (inside the VM)" >&2
+    # A VM that died mid-build (the 2026-10-23 run: the guest died 17
+    # minutes into the first mapnik delocate, the log stream went silent,
+    # and the log copy below came back empty because the VM was already
+    # gone) can still yield its log: start it again just long enough to
+    # read the file, then let the stop_vm at the end of this function
+    # release it.
+    if ! vm_running "$VM_NAME" || [ -z "$(vm_ip "$VM_NAME" 5)" ]; then
+        info "VM is not running; starting it again to retrieve the build log"
+        if start_vm; then
+            info "VM restarted for the log retrieval"
+        else
+            info "could not restart the VM; the log copy below may be empty"
+        fi
+    fi
     run_ssh "cat $LIW_GUEST_HOME/macos_build.log" >/tmp/macos_build.log 2>/dev/null || true
     if [ -s /tmp/macos_build.log ]; then
         echo "a copy was saved to /tmp/macos_build.log; last 50 lines:" >&2
