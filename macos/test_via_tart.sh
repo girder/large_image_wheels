@@ -1022,9 +1022,15 @@ for venv in $VENVDIRS; do
         fi
         # The bundled mapnik tool (exposed as a console script) exercises
         # the bundled dylibs, fonts, and data the way the shared suite's
-        # mapnik-render check does.
-        if "$venv/bin/mapnik-render" --version >>"$REPORT" 2>&1; then
-            log "OK python $req: bundled mapnik-render tool ran"
+        # mapnik-render check does.  Upstream's --version branch prints
+        # "version <x>" to std::clog and returns 1 (like --help), which is
+        # why the shared suite judges the output through a grep instead of
+        # the exit status; match that semantics here.  Capture the output
+        # rather than piping: the in-VM script's pipefail would turn the
+        # mapnik-render status back into a failure.
+        mr_version="$($venv/bin/mapnik-render --version 2>&1 || true)"
+        if echo "$mr_version" | grep -q version; then
+            log "OK python $req: bundled mapnik-render tool ran ($mr_version)"
         else
             log "FAIL python $req: bundled mapnik-render tool failed"
             FAILURES=$((FAILURES + 1))
