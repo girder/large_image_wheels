@@ -804,6 +804,30 @@ runs, not just what the scripts are expected to do):
   accept $LIW_SHORT_LIBDIR/* references, and the every-prefix-dylib
   absolute-id audits (gdal_python, mapnik_python, pyvips) accept a
   short-path id.
+  The seventh verification run (2026-10-23) cleared boost and the entire
+  mapnik build plus all seven python-mapnik wheel builds and died in the
+  mapnik delocate in a new way: the in-VM build went silent right after
+  the "delocate mapnik wheels" step (the first delocate-wheel is silent
+  for minutes -- libgdal alone is ~1.5 GB), the poll kept reporting
+  "still building" for another ~17 minutes, and then the VM ITSELF was
+  gone (fail() fired from its not-running branch, so the log copy came
+  back empty -- /tmp/macos_build.log was a 0-byte file).  A guest that
+  dies mid-build takes its log with it, so the host cannot show why.
+  Two changes target exactly that: fail() now restarts a dead VM just
+  long enough to retrieve the log before stopping it again (the next
+  such failure will say why the guest died instead of returning an empty
+  file), and the giant delocate loops (mapnik, gdal, pyvips) log a step
+  line per wheel plus the wheelhouse's free disk space, with a hard,
+  early die in the mapnik delocate when less than 10 GB is free (each
+  giant wheel's delocate churns several times its final ~2 GB size
+  through the disk).  The kept VM from a mid-build death is still the
+  fastest diagnosis path for the current failure: `tart run
+  --no-graphics liw_wheels_build`, ssh in, read ~/macos_build.log (its
+  last lines may name the killer -- an ENOSPC or a memory error -- even
+  though the host-side copy was empty), and check `df -h`.  If the disk
+  is the culprit, the base VM needs a re-provision with a larger --disk;
+  if the host is under memory pressure (the agent sandbox shares it), a
+  smaller --mem or an idle host during the delocate phase is the lever.
   The remaining unobserved steps are the delocate run on the full
   mapnik bundle and the test run; the next action is another
   verification run (`macos/tart_build.sh mapnik`, then the full default
