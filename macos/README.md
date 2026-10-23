@@ -872,6 +872,25 @@ runs, not just what the scripts are expected to do):
     projection is not geographic; the construction itself is the proj.db
     resolution test (the constructor raises a proj_init_error when the
     EPSG code cannot be resolved through the bundled proj data).
+- The eighth mapnik verification run (2026-10-23) passed the mapnik
+  delocate and the full default build, and the test run verified mapnik
+  on every python except one harness check: everything passed -- the
+  otool audits, the mapnik bundled-library check (with the new
+  definition() read; definition() returns the raw param string, so the
+  non-empty-only assertion was the right call -- a `+proj=` content
+  assertion would have failed), the shared suite including the
+  mapnik-render grep checks and the mapnik tile reads, and the purge
+  lines show the guest's free memory holding at 51-59% across the seven
+  pythons instead of collapsing -- except `bundled mapnik-render tool
+  failed` on all seven pythons, a harness assumption bug, not a wheel
+  defect: upstream's --version branch prints `version <x>` to std::clog
+  and RETURNS 1 (like --help; verified against the pinned source), which
+  is why the shared suite judges the output through `| grep version`
+  (grep's status wins) -- the harness checked the exit status directly.
+  The harness check now captures the output and greps it like the shared
+  suite does (capture, not a pipe: the in-VM script's pipefail would
+  turn mapnik-render's status back into a failure).  The next action is
+  a test-only rerun (`macos/test_via_tart.sh`) expecting a clean RESULT.
 
 ## Hard-won details (do not lose these)
 
