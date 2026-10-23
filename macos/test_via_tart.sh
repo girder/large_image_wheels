@@ -31,6 +31,11 @@
 #   --wheels DIR    directory with the macosx wheels (default: ./wheels)
 #   --pythons LIST  python versions to test (default: 3.11-3.15, 3.14t,
 #                   3.15t)
+#   --cpus N        vCPUs for the test VM (default: one fewer than the
+#                   host's processor count; also the phase-0 python-build
+#                   concurrency)
+#   --mem MB        memory for the test VM in MB (default: the larger of
+#                   4096 and one third of the host's memory)
 #   --keep-homebrew do not hide Homebrew during the functional tests
 #   --keep          do not delete the VM afterwards
 #   -h | --help     show this help
@@ -53,12 +58,26 @@ LIW_WHEELS_DIR=""
 LIW_PYTHONS="${LIW_PYTHONS:-3.11 3.12 3.13 3.14 3.15 3.14t 3.15t}"
 LIW_HIDE_HOMEBREW=1
 LIW_KEEP=0
-LIW_CPUS="${LIW_CPUS:-4}"
-LIW_MEM_MB="${LIW_MEM_MB:-8192}"
+# Defaults sized from the host, overridable with --cpus/--mem (or the
+# LIW_CPUS/LIW_MEM_MB variables): one fewer vCPU than the host has
+# processors, and max(4096 MB, one third of the host's memory) for the
+# guest.  The smaller guest keeps the host (which shares its memory with
+# the agent sandbox) out of swap when the guest fills its own memory.
+liw_host_cpus="$(sysctl -n hw.ncpu 2>/dev/null || echo 2)"
+liw_host_mem_mb=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 4294967296) / 1048576 ))
+LIW_DEFAULT_CPUS=$(( liw_host_cpus > 1 ? liw_host_cpus - 1 : 1 ))
+LIW_DEFAULT_MEM_MB=$(( liw_host_mem_mb / 3 ))
+[ "$LIW_DEFAULT_MEM_MB" -ge 4096 ] || LIW_DEFAULT_MEM_MB=4096
+LIW_CPUS="${LIW_CPUS:-$LIW_DEFAULT_CPUS}"
+LIW_MEM_MB="${LIW_MEM_MB:-$LIW_DEFAULT_MEM_MB}"
 LIW_TEST_TIMEOUT="${LIW_TEST_TIMEOUT:-14400}"
 
 usage() {
-    sed -n '2,41p' "$0" | sed 's/^# \{0,1\}//'
+    # Print the comment header (everything up to the first `set -u` line,
+    # which ends the header) with the leading comment marks stripped.  A
+    # fixed line range overran the header into the script's own code.
+    awk 'NR >= 2 && /^set -u$/ { exit }
+         NR >= 2 { sub(/^# ?/, ""); print }' "$0"
     exit 1
 }
 
@@ -77,6 +96,8 @@ while [ $# -gt 0 ]; do
     --name) LIW_VM_NAME="$2"; shift 2 ;;
     --wheels) LIW_WHEELS_DIR="$2"; shift 2 ;;
     --pythons) LIW_PYTHONS="$2"; shift 2 ;;
+    --cpus) LIW_CPUS="$2"; shift 2 ;;
+    --mem) LIW_MEM_MB="$2"; shift 2 ;;
     --keep-homebrew) LIW_HIDE_HOMEBREW=0; shift ;;
     --keep) LIW_KEEP=1; shift ;;
     -h | --help) usage ;;
@@ -359,6 +380,19 @@ restore_homebrew() {
         mv "$HOMEBREW_DIR.hidden" "$HOMEBREW_DIR" 2>/dev/null || true
 }
 
+# The per-python suite runs fill the guest's file cache, and tart has no
+# balloon driver: guest memory the host has backed once stays backed for
+# the rest of the run, so the cache each python leaves behind is memory
+# the next python cannot reuse -- seven pythons of installs and sample
+# files touch tens of GB of cache, which is how the test exhausted the
+# host's memory.  Purge the cache before each python's checks (falling
+# back through sudo where purge needs root) and log the guest's free
+# memory percentage so the trend is visible in the report.
+purge_guest_cache() {
+    purge >/dev/null 2>&1 || sudo -n purge >/dev/null 2>&1 || true
+    log "guest memory after purge: $(memory_pressure 2>/dev/null | tail -1)"
+}
+
 # Report every Mach-O file under each given path whose dependencies or
 # RPATHs point outside the allowed system locations.  Missing paths are
 # skipped (the wheelhouse's package set varies between runs).
@@ -414,8 +448,8 @@ log "=== phase 0: check pythons ==="
 # and each is a single-threaded make taking several minutes, so run up to
 # CONCURRENCY of them at a time (bash 3.2 has no `wait -n`, so throttle by
 # counting background jobs).
-CONCURRENCY="${4:-$(sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
-case "$CONCURRENCY" in '' | *[!0-9]*) CONCURRENCY=4 ;; esac
+CONCURRENCY="${4:-$(($(sysctl -n hw.ncpu 2>/dev/null || echo 2) - 1))}"
+case "$CONCURRENCY" in '' | *[!0-9]*) CONCURRENCY=1 ;; esac
 [ "$CONCURRENCY" -ge 1 ] || CONCURRENCY=1
 build_status="$TESTROOT/pybuild_status"
 : >"$build_status"
@@ -879,10 +913,18 @@ for label, p in (("proj", proj_dir), ("gdal", gdal_dir)):
 if not os.path.exists(os.path.join(proj_dir, "proj.db")):
     sys.exit("the bundled proj data tree has no proj.db")
 
-# A projection built from the bundled proj data exercises libmapnik, ICU,
-# and the bundled proj.db in one call.
+# A projection built from the bundled proj data exercises libmapnik and
+# the bundled proj.db in one call: the constructor resolves the EPSG code
+# through proj.db and raises a proj_init_error if it cannot.  python-mapnik
+# 4.3.2 exposes the resolved definition through definition()/params(); the
+# old proj4 property no longer exists at this pin.
 p = mapnik.Projection("EPSG:3857")
-print("EPSG:3857 resolves:", p.proj4)
+definition = p.definition()
+print("EPSG:3857 resolves:", definition)
+if not definition:
+    sys.exit("EPSG:3857 did not resolve through the bundled proj data")
+if p.geographic:
+    sys.exit("EPSG:3857 was not recognized as a projected CRS")
 print("mapnik bundled-library check OK")
 PYEOF
 
@@ -892,6 +934,8 @@ for venv in $VENVDIRS; do
     # recreated before the shared suite below); the openslide check
     # references its future sample.svs path.
     rundir="$TESTROOT/run-$req"
+    # Release the previous pythons' file cache before this one's runs.
+    purge_guest_cache
     log ""
     log "python $req:"
     site="$($venv/bin/python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])' 2>/dev/null)"

@@ -142,8 +142,11 @@ macos/test_via_tart.sh
 ```
 
 Both host scripts accept `--base NAME` (base VM to clone; default
-`liw_wheels_base`) and `--keep`.
-`tart_build.sh` also takes `--packages`, `--pythons`, `--cpus`, `--mem`,
+`liw_wheels_base`), `--cpus N` and `--mem MB` (overriding the host-sized
+defaults: one fewer vCPU than the host's processor count, and
+max(4096 MB, one third of the host's memory) for the guest), and
+`--keep`.
+`tart_build.sh` also takes `--packages`, `--pythons`,
 `--disk` (base disk size when provisioning), and `--image` (the OS image
 the base is provisioned from); `test_via_tart.sh` takes `--wheels DIR`
 and `--keep-homebrew` (to skip the Homebrew-hiding step).
@@ -832,6 +835,43 @@ runs, not just what the scripts are expected to do):
   mapnik bundle and the test run; the next action is another
   verification run (`macos/tart_build.sh mapnik`, then the full default
   run and `macos/test_via_tart.sh`).
+- Host-sized VM defaults and test-run memory hygiene (2026-10-23):
+  the post-reset build completed (the delocate progress logging changed
+  its observable behavior as intended), and the test run that followed
+  exposed two host-side issues, both fixed:
+  - The test exhausted the machine's memory: the shared suite's installs
+    and runs fill the guest's file cache, and tart has no balloon driver,
+    so guest pages the host has backed once stay backed for the whole
+    run -- seven pythons of ~10 GB installs, sample files, and renders
+    touch tens of GB of cache that the guest never reclaims (it has room
+    to spare at 8 GB), and the host backing grows monotonically.  The
+    in-VM test script now runs `purge` before each python's checks
+    (falling back through sudo) so every python recycles the same guest
+    pages instead of touching new ones, and logs the guest's free-memory
+    percentage into the report so the trend is visible.
+  - The VM size defaults are now host-sized instead of fixed (4 CPUs,
+    8192 MB): both host scripts default to one fewer vCPU than the host's
+    processor count and max(4096 MB, one third of the host's memory)
+    (the 16 GB build box: 5461 MB), overridable with `--cpus`/`--mem` as
+    before.  `test_via_tart.sh` previously had NO size flags at all (it
+    hard-set 4/8192); it now takes them, and passes `--cpus` on to the
+    in-VM phase-0 python-build concurrency (whose own fallback also
+    became ncpu-1).  Two adjacent usage() bugs fixed while there: the
+    fixed line ranges truncated tart_build.sh's options list and printed
+    test_via_tart.sh's `set -u` line; both now print the header up to
+    the first `set -u` line.  Caveat recorded in the hard-won notes:
+    `build_wheels.sh`'s LIW_JOBS follows the VM's vCPU count, so a high
+    `--cpus` with a low `--mem` can starve parallel compiles.
+  - The test mapnik check printed the AttributeError
+    `'mapnik._mapnik.Projection' object has no attribute 'proj4'`: that
+    was the check's own `p.proj4` read -- python-mapnik at the pinned
+    sha (4.3.2) exposes the PROJ string through `params()`/`definition()`
+    instead of the old `proj4` property (verified against the pinned
+    binding source).  The
+    check now prints `p.definition()` and additionally asserts the
+    projection is not geographic; the construction itself is the proj.db
+    resolution test (the constructor raises a proj_init_error when the
+    EPSG code cannot be resolved through the bundled proj data).
 
 ## Hard-won details (do not lose these)
 
@@ -870,7 +910,13 @@ runs, not just what the scripts are expected to do):
   before starting one, verify that `stop_vm` really stopped the VM, and
   clone with `tart clone --overwrite` so stale VMs never block a run.
   Only one 8 GB VM fits alongside a running sandbox; pass `--mem 4096`
-  for more headroom.
+  for more headroom.  (Since 2026-10-23 the defaults are host-sized --
+  one fewer vCPU than the host's processor count and max(4096 MB, one
+  third of the host's memory) -- so on the 16 GB build box the test VM
+  defaults to 5461 MB without a flag; note that `build_wheels.sh`'s
+  `LIW_JOBS` follows the VM's vCPU count, so a high `--cpus` with a low
+  `--mem` can starve parallel compiles -- override `--cpus` down before
+  shrinking `--mem`.)
 - `getver.py` resolves `versions.txt` relative to the **current
   directory** (the Dockerfile always runs from `/build`).  The `v()`
   helper cds to the repository root in a subshell.
