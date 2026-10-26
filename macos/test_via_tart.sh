@@ -549,7 +549,9 @@ for req in $PYTHONS; do
     fi
     # If an openslide_python wheel is present, verify its identity the same
     # way.  The abi3 wheel built from python 3.11 covers every stable
-    # python; the free-threaded pythons get their own wheels.
+    # python; 3.14t gets its own cp314t wheel, and 3.15t gets the
+    # cp315-abi3.abi3t Stable-ABI wheel that upstream 1.4.7 (129f2f6)
+    # builds for both GIL states.
     owhl="$(ls "$WHEELDIR"/openslide_python-*.whl 2>/dev/null | head -1)"
     if [ -n "$owhl" ]; then
         over="$(wheel_version "$owhl")"
@@ -1194,6 +1196,11 @@ while true; do
     if ! vm_running "$VM_NAME"; then
         echo "error: test VM died; check $LIW_LOG_DIR/$VM_NAME.log" >&2
         stop_stream
+        # Save whatever the in-VM script produced before it died; without
+        # this the only copy of the partial report lives inside the stopped
+        # VM.
+        run_ssh "cat $LIW_GUEST_HOME/liw_test/report.txt" >/tmp/macos_test_report.txt 2>/dev/null || true
+        run_ssh "cat $LIW_GUEST_HOME/liw_test.log" >/tmp/macos_test_log.txt 2>/dev/null || true
         stop_vm
         exit 1
     fi

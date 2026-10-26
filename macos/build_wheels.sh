@@ -4505,9 +4505,16 @@ EOF
     git tag "$(v openslide-python).1"
 
     # Build one wheel for 3.11 (abi3, covering 3.11-3.15) and for each
-    # requested free-threaded python (their own tags); this mirrors the
-    # linux build, which excludes non-abi3 duplicate pythons above 3.11.
-    # The gil check for _abi3 is already in upstream setup.py.
+    # requested free-threaded python; this mirrors the linux build, which
+    # excludes non-abi3 duplicate pythons above 3.11.  Upstream's _abi3
+    # keeps the gil check (free-threaded interpreters do not build plain
+    # abi3), and upstream 1.4.7 (commit 129f2f6) additionally targets the
+    # free-threaded Stable ABI on python 3.15+: the 3.15t wheel is tagged
+    # cp315-abi3.abi3t -- one wheel for both GIL states -- instead of
+    # cp315-cp315t (3.14t still gets cp314-cp314t; the abi3t target
+    # requires python 3.15+ and setuptools 84.2+ in the wheel build's
+    # isolation).  tart_build.sh's expected-wheel validation accepts the
+    # new tag.
     collect_pybins
     local pybin kept=() ver
     for pybin in ${PYBINS[@]+"${PYBINS[@]}"}; do
