@@ -88,9 +88,13 @@ manylinux container plays for the linux builds:
   `build_libavif`, `build_icu4c`, and `build_gdal`), then package builders (`build_pylibtiff`,
   `build_glymur`, `build_openslide`, `build_openslide_python`,
   `build_pylibmc`, `build_pyvips`, `build_gdal_python`, `build_mapnik`,
-  `build_mapnik_python`, with `build_libvips` in the
+  `build_mapnik_python`, `build_javabridge`, `build_bioformats`, with
+  `build_libvips` in the
   dependency section; each package
   builder calls `sanitize_prefix_dylibs` after its dependencies are built),
+  plus the `ensure_zip_normalizer` helper (the shared
+  `strip-nondeterminism`-replacement zip timestamp normalizer the
+  javabridge and bioformats builders write to `$LIW_PATCHES`),
   then the main `case` that maps package names to builders
   (`dep:<name>` builds a single dependency for debugging; hyphenated
   names such as `dep:jpeg-xl` map to their underscored builders).
@@ -139,6 +143,8 @@ macos/tart_build.sh
 # build a single package
 macos/tart_build.sh pylibtiff
 macos/tart_build.sh openslide_python
+macos/tart_build.sh python_javabridge
+macos/tart_build.sh python_bioformats
 
 # verify the wheels on a different fresh VM (writes /tmp/macos_test_report.txt
 # and /tmp/macos_test_log.txt)
@@ -231,12 +237,10 @@ runs, not just what the scripts are expected to do):
   that records a failure the moment the script dies unexpectedly (bash
   keeps only one EXIT trap, so the Homebrew restore moved into the same
   trap).  The third run passed everything.
-- Next up, in rough effort order (see the remaining-packages notes
-  below for details): mapnik is implemented (2026-10-21; its first
-  verification run died at the since-fixed libboost_regex assertion --
-  see its status entry); last, python-javabridge / python-bioformats, whose
-  bundling approach is now decided (see the note) -- its first task is
-  the JDK 8 arm64 macOS vendor check.  pyproj stays pypi-sourced.
+- Next up, in rough effort order: the python-javabridge /
+  python-bioformats verification VM run (implemented 2026-10-26 and
+  verified on the host; see the remaining-packages note), then whatever
+  its run exposes.  pyproj stays pypi-sourced.
 - pyvips work is staged (2026-10-15), each stage checkpointed with a VM
   run before the next one lands (all reachable as `dep:<name>`;
   `tart_build.sh` skips the expected-wheel validation for those
@@ -1634,36 +1638,89 @@ Notes on the remaining packages:
   package directory.  The expected-wheel validation in tart_build.sh
   needs no per-package change (one cp3XX-cp3XX wheel per python, like
   pylibtiff).
-- **python_javabridge / python-bioformats**: decided (2026-10-15): bundle
-  the JVM inside the wheel like the linux build does -- the linux wheel
-  is fully self-contained (no Java installed on the machine) and the
-  macos wheel must behave the same.  The JVM is pinned to Java 1.8 on
-  linux (java-1.8.0-openjdk-devel) because bioformats is built for Java
-  1.8 and newer JVMs may fail -- the same version constraint applies on
-  macOS.  A newer JVM was tried on the linux side at some point (java
-  17) and failed in some manner that was not recorded here -- it may be
-  diagnosable and solvable, and if it is, a modern JDK (17+) would be
-  preferable on macOS: those have official macOS arm64 builds (Temurin,
-  Zulu), which removes the vendor-availability problem below.  The
-  first feasibility task is therefore twofold: reproduce and diagnose
-  the java 17 failure (linux is the easiest place for that), and, if it
-  cannot be solved, vendor research on JDK 8: JDK
-  8 has no official macOS arm64 builds from most vendors (Temurin has
-  none; check Azul Zulu and BellSoft Liberica for an aarch64 macOS 8
-  build), and an x86_64 JVM under Rosetta is not an option -- javabridge
-  loads libjvm in-process via ctypes, so the JVM's architecture must
-  match the wheel's arm64.  If a JDK 8 arm64 macOS build exists, the
-  linux bundling flow is the template (pack200 still exists in JDK 8,
-  so the jar-repacking/determinism tricks carry over); the macos deltas
-  to design: the JDK layout difference (libjvm.dylib under
-  Contents/Home/jre/lib/server/ vs. the linux jre/lib/aarch64/libjvm.so
-  that the jutil.py/locate.py patches reference), ad-hoc re-signing of
-  the bundled JVM binaries and dylibs (arm64 requires valid signatures,
-  and JDK dylibs use @rpath heavily), how delocate treats the jvm tree,
-  and the otool audit scope for javabridge/jvm.  If neither the java 17
-  failure is solvable nor an arm64 Java 8 exists, that fact needs a
-  decision before any code is written (the "newer JVM may fail" risk
-  would have to be re-tested against current bioformats).
+- **python_javabridge / python-bioformats**: implemented (2026-10-26) and
+  verified on the host; the VM verification run is the next step (the two
+  packages lead the default PACKAGES list so a fresh run fails fast at
+  them).  Decisions taken while writing the builders, with the reasoning:
+  - The JVM vendor question resolved itself: **Azul Zulu publishes JDK 8
+    for macOS aarch64** (Community edition, GPLv2 with the Classpath
+    exception; queried through api.azul.com -- Temurin has none, which is
+    why the earlier note expected a newer-JVM fallback to be needed).  The
+    wheel therefore keeps the linux pin's Java 8 generation: Zulu
+    8.98.0.107-ca (8u512, current Community release at implementation
+    time), pinned as `LIW_ZULU8_VERSION` in build_wheels.sh (NOT in
+    versions.txt -- check_versions.py regenerates that file from its own
+    package list and would drop the entry).  The tarball unpacks to the
+    classic JDK 8 layout (jre/lib/server/libjvm.dylib, pack200 in bin),
+    which is exactly what the linux bundling flow expects.
+  - The darwin code paths of javabridge make the macos wheel **simpler**
+    than the linux one, not harder: setup.py's is_mac branch does NOT link
+    libjvm into the extension (mac_javabridge_utils.c dlopens libjvm.dylib
+    and libjli.dylib by absolute path at start_vm time), so the linux
+    jutil.py preload patch and the LD_LIBRARY_PATH export are unnecessary;
+    the linux __init__.py patch guards a linux-only block that darwin
+    skips anyway; and delocate has nothing JVM-related to bundle.  The
+    linux patches that DO carry over verbatim: the _javabridge.pyx patch
+    (the shared repo file), the jutil.py exception_describe sed, the
+    setup.py package_data/entry_points/version-suffix/cython-numpy
+    patches, and the pyproject.toml modernization.  locate.py gets a
+    macos-shaped variant of the linux patch: find_javahome returns the
+    bundled `javabridge/jvm` tree when it exists (the linux patch inserts
+    the check inside find_javahome's linux branch, which never runs on
+    darwin).  This also serves the build itself: with the tree copied in
+    before the wheels build, find_javahome resolves the bundled JDK and
+    setup.py compiles against its jni.h with no JAVA_HOME needed; the
+    bundled bin is prepended to PATH so build_java's javac/jar calls
+    resolve there (pip's build isolation preserves the environment).
+  - The linux jar tricks carry over: pack200 -G --repack exists in JDK 8
+    (sequential -- thread-dangerous, like the Dockerfile says) and
+    strip-nondeterminism is replaced by a small `normalize_zips.py`
+    helper (written to $LIW_PATCHES by `ensure_zip_normalizer`) that
+    rewrites every zip member with a fixed timestamp; it runs on the JDK
+    jars before the copy, and on each finished wheel after delocate
+    (delocate preserves zip timestamps, so the normalization must come
+    last).  The linux placeholder-jar trick is skipped: it exists to
+    shrink docker image layers, and the VM has no such layer problem.
+  - delocate runs with `-e /javabridge/jvm/`: the JDK's dylibs depend on
+    each other through `@rpath/libjvm.dylib`-style load commands that have
+    no rpath context inside a wheel, so a plain delocate-wheel dies with
+    "Could not find all dependencies"; at runtime every JDK dylib carries
+    its own `@loader_path/.` and `@loader_path/..` RPATHs and resolves its
+    siblings itself (the linux analogue is the post-auditwheel restore of
+    the original jvm tree -- auditwheel's rewrites break hard-coded
+    relative paths the same way).  delocate's rpath sanitizer would strip
+    exactly those RPATHs, so excluding the tree is what keeps the JVM
+    working; the exclusion still leaves delocate verifying the platform
+    tag and the arm64 architecture of the one Mach-O outside the tree, the
+    _javabridge extension (which links only CoreFoundation/libSystem --
+    host-verified with otool).  Host-verified end to end: the wheel
+    builds (105 MB), delocate passes, the installed wheel starts the
+    bundled Zulu 8u512 JVM in-process headless (start_vm, a static call,
+    kill_vm), the bundled `java`/`javac`/`jar` console scripts run from a
+    venv, and the jvm tree's otool picture is audit-clean (only /usr and
+    /System dependencies, only @loader_path-relative RPATHs, valid
+    signatures).
+  - python_bioformats is unchanged from linux: pure python + the pinned
+    bioformats_package.jar (8.5.0), one py3-none-any wheel built with the
+    patch python (the linux advzip recompression is skipped -- advancecomp
+    is not built for the macos prefix and it saves ~2.5%).  The version
+    suffix (4.1.0.8.5.0.1) is what makes pip prefer it over pypi's 4.1.0,
+    exactly like on linux.  tart_build.sh's expected-wheel validation
+    accepts py3-none-any wheels for it, and the shared test_script.sh's
+    javabridge/bioformats steps light up automatically once both wheels
+    are present (their `java -version` step exercises the bundled java
+    console script through the suite venv's bin).  Host-verified: the
+    bioformats wheel reads pixels and OME-XML metadata through the
+    bundled JVM from the two macos wheels together.
+  - The test harness gained the identity checks (installed-version
+    equality against the wheelhouse wheel), the javabridge/bioformats
+    entries in both otool audit lists (the whole bundled JDK tree is
+    audited; host-verified clean), and a `test_javabridge.py` macos check:
+    locate.py must resolve site-packages/javabridge/jvm, the tree must
+    contain libjvm.dylib, and after start_vm the running JVM's java.home
+    must be the bundled tree's jre (the strongest possible proof that the
+    bundled JVM, not a system Java, is what runs), plus a bundled-java
+    launcher run.
 - **mapnik**: implemented (2026-10-21; builders written and
   host-verified where feasible, but NOT yet run in a VM -- the next
   action is the verification run).  The `mapnik` case is the full gdal

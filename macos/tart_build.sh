@@ -55,7 +55,7 @@ LIW_TART_BASE_IMAGE="${LIW_TART_BASE_IMAGE:-ghcr.io/cirruslabs/macos-golden-gate
 LIW_VM_NAME="liw_wheels_build"
 LIW_PACKAGES=""
 # The default package set; keep in sync with build_wheels.sh's default.
-LIW_DEFAULT_PACKAGES="pylibtiff glymur openslide_python pylibmc pyvips gdal mapnik"
+LIW_DEFAULT_PACKAGES="python_javabridge python_bioformats pylibtiff glymur openslide_python pylibmc pyvips gdal mapnik"
 LIW_PYTHONS="${LIW_PYTHONS:-3.11 3.12 3.13 3.14 3.15 3.14t 3.15t}"
 LIW_KEEP=0
 # Defaults sized from the host, overridable with --cpus/--mem (or the
@@ -657,6 +657,11 @@ wheel_for_python() { # wheel_for_python <wheels dir> <prefix> <req>
     base="${req%t}"
     num="$(printf '%s' "$base" | tr -d .)"
     if ls "$dir/${prefix}"-*py3-none-macosx*.whl >/dev/null 2>&1; then
+        return 0
+    fi
+    # python_bioformats is a pure wheel (python + the bundled bioformats
+    # jar), exactly like on linux: py3-none-any.
+    if ls "$dir/${prefix}"-*py3-none-any.whl >/dev/null 2>&1; then
         return 0
     fi
     case "$req" in
