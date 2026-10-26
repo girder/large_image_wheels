@@ -595,8 +595,9 @@ run_ssh "rm -rf ~/$REPO_NAME/liw_macos_build" || true
 run_ssh "cd ~/$REPO_NAME && LIW_PYTHONS='$LIW_PYTHONS' nohup bash macos/build_wheels.sh $LIW_PACKAGES > $LIW_GUEST_HOME/macos_build.log 2>&1 < /dev/null &"
 
 # Stream the in-VM build log continuously instead of sampling one line
-# every 30 s.  The log lives inside the VM; fail() copies it to
-# /tmp/macos_build.log when the build fails.
+# every 30 s.  The log lives inside the VM; it is copied to
+# /tmp/macos_build.log when the build finishes, success or failure (fail()
+# copies it again on the failure paths, including the dead-VM rescue).
 info "streaming the in-VM build log"
 run_ssh "tail -f -n +1 $LIW_GUEST_HOME/macos_build.log" &
 LIW_STREAM_PID=$!
@@ -620,6 +621,10 @@ while true; do
     info "still building (${elapsed}s elapsed)"
 done
 stop_stream
+# Always retrieve the build log, on success too: the log is the record of
+# what ran (versions, configure results, wheel builds), and a later
+# expected-wheel validation failure below must not take it away.
+run_ssh "cat $LIW_GUEST_HOME/macos_build.log" >/tmp/macos_build.log 2>/dev/null || true
 if [ "$code" != "0" ]; then
     echo "error: in-VM build exited with status $code" >&2
     fail
@@ -656,7 +661,24 @@ wheel_for_python() { # wheel_for_python <wheels dir> <prefix> <req>
     fi
     case "$req" in
     *t)
-        ls "$dir/${prefix}"-*"cp${num}-cp${num}t"-macosx*.whl >/dev/null 2>&1
+        if ls "$dir/${prefix}"-*"cp${num}-cp${num}t"-macosx*.whl >/dev/null 2>&1; then
+            return 0
+        fi
+        # openslide-python 1.4.7 (upstream 129f2f6) targets the Stable ABI
+        # on free-threaded python 3.15+: one wheel for both GIL states,
+        # tagged cp315-abi3.abi3t, where older releases built cp315-cp315t.
+        # Accept that tag for 3.15t and newer requests; no abi3t wheel
+        # exists for 3.14t (the abi3t target requires python 3.15+).
+        case "$base" in
+        3.15 | 3.16 | 3.17 | 3.18 | 3.19)
+            ls "$dir/${prefix}"-*"cp${num}-abi3.abi3t"-macosx*.whl >/dev/null 2>&1 &&
+                return 0
+            ls "$dir/${prefix}"-*"cp${num}-abi3t"-macosx*.whl >/dev/null 2>&1
+            ;;
+        *)
+            return 1
+            ;;
+        esac
         ;;
     *)
         if ls "$dir/${prefix}"-*"cp${num}-cp${num}"-macosx*.whl >/dev/null 2>&1; then

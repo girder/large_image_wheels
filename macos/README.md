@@ -103,7 +103,10 @@ manylinux container plays for the linux builds:
   validates that every requested package produced a wheel for every
   requested python (dying on a missing one -- the counterpart of
   `build.sh`'s copy-out of the expected wheels), and deletes the VM.
-  On failure a copy of the build log is saved to `/tmp/macos_build.log`.
+  A copy of the build log is always saved to `/tmp/macos_build.log` when
+  the build finishes (success or failure; the expected-wheel validation
+  and every other failure path retrieve it too, and the dead-VM rescue in
+  `fail()` re-retrieves it after restarting a guest that died mid-build).
   Its default package set includes `gdal`, and the overall build timeout
   default was raised to 12 hours because the gdal tree (mysql, openmpi,
   boost, gdal itself) pushes a full default run past the previous 6-hour
@@ -116,8 +119,9 @@ manylinux container plays for the linux builds:
   run the shared `test/test_script.sh` per python).  The in-VM output
   (report.txt, which holds the full detail) is streamed to the terminal
   while the test runs.  Writes `macos_test_report.txt` and
-  `macos_test_log.txt` to `/tmp` (also on timeout); stops (but keeps)
-  the VM on failure.  The in-VM timeout is configurable with
+  `macos_test_log.txt` to `/tmp` when the in-VM test completes (success,
+  failure, timeout, or the test VM dying mid-run); stops (but keeps) the
+  VM on failure.  The in-VM timeout is configurable with
   `LIW_TEST_TIMEOUT` (seconds; default 14400).
 
 ## Usage
@@ -891,6 +895,47 @@ runs, not just what the scripts are expected to do):
   suite does (capture, not a pipe: the in-VM script's pipefail would
   turn mapnik-render's status back into a failure).  The next action is
   a test-only rerun (`macos/test_via_tart.sh`) expecting a clean RESULT.
+- Build log is always retrieved (2026-10-26): `tart_build.sh` now copies
+  the in-VM `macos_build.log` to `/tmp/macos_build.log` as soon as the
+  build finishes, success or failure -- previously only the failure paths
+  saved it, so a successful build followed by an expected-wheel validation
+  failure left no `/tmp/macos_build.log` at all (the log records what
+  built, which is exactly what is needed to debug a validation mismatch).
+  The failure paths (including the dead-VM rescue in `fail()`) still
+  retrieve it too; the early copy is idempotent.  `test_via_tart.sh`'s
+  test-VM-died path now also saves the partial `report.txt`/`liw_test.log`
+  to `/tmp` before stopping the VM (the completion, failure, and timeout
+  paths already did).
+- openslide-python's 3.15t wheel changed tag (2026-10-26): upstream 1.4.7
+  (commit 129f2f6, "Target Stable ABI on free-threaded Python 3.15+")
+  builds, on a free-threaded 3.15 interpreter, ONE wheel for both GIL
+  states, tagged `cp315-abi3.abi3t` (the ABI field carries both tags;
+  wheel spec multi-tag form), instead of the old `cp315-cp315t`.  The
+  first post-base-update run proved the shape: the wheelhouse holds
+  `openslide_python-1.4.7.1-cp315-abi3.abi3t-macosx_11_0_arm64.whl` on the
+  macos side and the twin `manylinux_2_28_aarch64` wheel on the linux
+  side, with no `cp315-cp315t` openslide wheel from either.  It requires
+  setuptools 84.2+ inside the wheel build's isolation (the builder's
+  `pip wheel` resolves the latest setuptools, so the updated base VM
+  crossed the threshold; the mapnik-verification-era runs predated it and
+  still produced `cp315-cp315t`).  3.14t still gets `cp314-cp314t` (the
+  abi3t target requires python 3.15+), and 3.11 still gets the plain
+  `cp311-abi3` wheel.  Fix: `tart_build.sh`'s expected-wheel validation
+  (`wheel_for_python`) accepts `cp315-abi3.abi3t` (and a bare `abi3t`
+  variant) for 3.15t-and-newer requests, keeping `cp315-cp315t` accepted
+  for the other packages; a plain `abi3` wheel still does NOT satisfy a
+  free-threaded request.  Verified against packaging 26.x: a free-threaded
+  3.15's compatibility-tag set contains `cp315-abi3t-macosx_11_0_arm64`,
+  the `abi3.abi3t` filename parses to both `cp315-abi3` and
+  `cp315-abi3t`, so the wheel installs on 3.15t and on GIL-enabled 3.15
+  alike, and neither the cp311-abi3 nor the cp314-cp314t wheel can be
+  picked for 3.15t.  The shared suite's `have_wheel openslide_python` gate
+  and the harness's phase-1 identity installs need no change (pip finds
+  the new wheel through `--find-links`).  Note for the linux side (not
+  changed there, benign): the Dockerfile's `_abi3` sed is now a no-op --
+  upstream rewrote the line to `_abi3 = ... and not _freethread` -- and
+  the linux 3.15t wheel came out `abi3.abi3t`-tagged anyway, which is
+  upstream's supported consume path.
 
 ## Hard-won details (do not lose these)
 
