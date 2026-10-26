@@ -1709,7 +1709,11 @@ Notes on the remaining packages:
     accepts py3-none-any wheels for it, and the shared test_script.sh's
     javabridge/bioformats steps light up automatically once both wheels
     are present (their `java -version` step exercises the bundled java
-    console script through the suite venv's bin).  Host-verified: the
+    console script through the suite venv's bin).  Because the wheel is
+    tagged py3-none-any, test_via_tart.sh's wheel collection -- a plain
+    `*macosx*.whl` glob -- would silently drop it, and the suite would
+    then skip every javabridge/bioformats step; the collection now also
+    takes `python_bioformats-*py3-none-any.whl`.  Host-verified: the
     bioformats wheel reads pixels and OME-XML metadata through the
     bundled JVM from the two macos wheels together.
   - The test harness gained the identity checks (installed-version

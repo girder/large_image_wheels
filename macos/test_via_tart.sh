@@ -110,8 +110,14 @@ REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 # All of the helpers and main flow below use VM_NAME.
 VM_NAME="$LIW_VM_NAME"
 
-# Collect the macosx wheels to test.
-WHEEL_LIST="$(cd "$LIW_WHEELS_DIR" && ls *macosx*.whl 2>/dev/null || true)"
+# Collect the macosx wheels to test, plus python_bioformats: it is a pure
+# wheel (python + the bioformats jar), tagged py3-none-any exactly like the
+# linux wheel, so the macosx glob does not match it.  The shared suite
+# gates every javabridge/bioformats step on python_bioformats' presence,
+# so without it the javabridge wheel would be tested only by the harness's
+# own identity and bundled-JVM checks and never exercised by the suite.
+WHEEL_LIST="$(cd "$LIW_WHEELS_DIR" && ls *macosx*.whl \
+    python_bioformats-*py3-none-any.whl 2>/dev/null || true)"
 [ -n "$WHEEL_LIST" ] || die "no macosx wheels found in $LIW_WHEELS_DIR; run macos/tart_build.sh first"
 
 command -v tart >/dev/null 2>&1 || die "tart not found on the host"
