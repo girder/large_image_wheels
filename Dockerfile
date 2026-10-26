@@ -1358,10 +1358,15 @@ RUN \
     echo "`date` libxml" >> /build/log.txt
 
 # Used by libspatialite
+# PINNED - master at a recorded sha: libspatialite's trunk calls rtt_tpsnap,
+# which no librttopo release has.
 RUN \
     echo "`date` librttopo" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b librttopo-`getver.py librttopo` -c advice.detachedHead=false https://gitlab.com/rttopo/rttopo.git && \
+    # git clone --depth=1 --single-branch -b librttopo-`getver.py librttopo` -c advice.detachedHead=false https://gitlab.com/rttopo/rttopo.git && \
+    git clone --depth=1000 --single-branch -c advice.detachedHead=false https://gitlab.com/rttopo/rttopo.git && \
+    git -C rttopo checkout `getver.py librttopo-sha` && \
+    git -C rttopo gc --prune=all && \
     cd rttopo && \
     ./autogen.sh && \
     ./configure --prefix=/usr/local --disable-static && \
@@ -1688,7 +1693,7 @@ RUN \
     if [ -e "/opt/rh/devtoolset-11/enable" ]; then \
     . /opt/rh/devtoolset-11/enable; \
     fi && \
-    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DENABLE_UNSTABLE_API_ABI_HEADERS=on -DBUILD_CPP_TESTS=OFF -DBUILD_GTK_TESTS=OFF -DBUILD_MANUAL_TESTS=OFF -DBUILD_QT5_TESTS=OFF -DBUILD_QT6_TESTS=OFF -DENABLE_NSS3=OFF -DENABLE_GPGME=OFF -DENABLE_QT5=OFF -DENABLE_QT6=OFF && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DENABLE_UNSTABLE_API_ABI_HEADERS=on -DBUILD_CPP_TESTS=OFF -DBUILD_GTK_TESTS=OFF -DBUILD_MANUAL_TESTS=OFF -DBUILD_QT5_TESTS=OFF -DBUILD_QT6_TESTS=OFF -DENABLE_NSS3=OFF -DENABLE_GPGME=OFF -DENABLE_QT5=OFF -DENABLE_QT6=OFF -DENABLE_BOOST=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -2068,8 +2073,9 @@ import sys \n\
 def program(): \n\
     environ = os.environ.copy() \n\
     localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
-    environ.setdefault("PROJ_DATA", os.path.join(localpath, "proj")) \n\
-    environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal")) \n\
+    # The data directories are copied beside bin, not into it \n\
+    environ.setdefault("PROJ_DATA", os.path.join(os.path.dirname(localpath), "proj")) \n\
+    environ.setdefault("GDAL_DATA", os.path.join(os.path.dirname(localpath), "gdal")) \n\
     caPath = "/etc/ssl/certs/ca-certificates.crt" \n\
     if os.path.exists(caPath): \n\
         environ.setdefault("CURL_CA_BUNDLE", caPath) \n\
@@ -2157,9 +2163,10 @@ RUN \
     echo "`date` mapnik" >> /build/log.txt && \
     export JOBS=`nproc` && \
     export HEAVY_JOBS=`nproc` && \
-    git clone --depth=1000 --single-branch -c advice.detachedHead=false --quiet --recurse-submodules -j ${JOBS} https://github.com/mapnik/mapnik.git && \
+    git clone --depth=1000 --single-branch -c advice.detachedHead=false --quiet -j ${JOBS} https://github.com/mapnik/mapnik.git && \
     cd mapnik && \
     git checkout `getver.py mapnik-sha` && \
+    git submodule update --init --quiet -j ${JOBS} deps && \
     git am ../mapnik_data_path.patch && \
     git am ../mapnik_tls.patch && \
     sed -i 's/PJ_LOG_ERROR/PJ_LOG_NONE/g' src/*.cpp && \
@@ -2223,8 +2230,9 @@ import sys \n\
 def program(): \n\
     environ = os.environ.copy() \n\
     localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
-    environ.setdefault("PROJ_DATA", os.path.join(localpath, "proj")) \n\
-    environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal")) \n\
+    # The data directories are copied beside bin, not into it \n\
+    environ.setdefault("PROJ_DATA", os.path.join(os.path.dirname(localpath), "proj")) \n\
+    environ.setdefault("GDAL_DATA", os.path.join(os.path.dirname(localpath), "gdal")) \n\
 \n\
     path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0])) \n\
     os.execve(path, sys.argv, environ) \n\
@@ -2326,7 +2334,6 @@ open(path, "w").write(s)' && \
 path = "setup.py" \n\
 s = open(path).read().replace( \n\
     "_convert.c\'", "_convert.c\'], libraries=[\'openslide\'") \n\
-s = s.replace("_abi3 = sys.version_info >= (3, 11)", "_abi3 = sys.version_info >= (3, 11) and getattr(sys.flags, \'gil\', 1)") \n\
 open(path, "w").write(s)' && \
     # Adding .1 to version \
     python -c $'# \n\
@@ -2831,6 +2838,17 @@ RUN \
     git clone --depth=1 --single-branch -b v`getver.py python-bioformats` -c advice.detachedHead=false https://github.com/CellProfiler/python-bioformats.git && \
     cd python-bioformats && \
     curl -LJ https://github.com/ome/bioformats/releases/download/v`getver.py bioformats`/bioformats_package.jar -o bioformats/jars/bioformats_package.jar && \
+    # Remove jackson.  ome-common pins it to replace the version minio \
+    # declares, but nothing in the jar uses it (checked with jdeps), and it \
+    # carries a number of CVEs.  The root module-info.class is \
+    # jackson-annotations' module descriptor.  Fail if anything else mentions \
+    # jackson (either as a class reference or a reflection string). \
+    mkdir /tmp/bfjar && \
+    unzip -q bioformats/jars/bioformats_package.jar '*.class' 'META-INF/services/*' -d /tmp/bfjar && \
+    rm -rf /tmp/bfjar/com/fasterxml /tmp/bfjar/module-info.class /tmp/bfjar/META-INF/services/com.fasterxml.jackson.core.* && \
+    ! grep -rlaE 'com[./]fasterxml[./]jackson' /tmp/bfjar && \
+    rm -rf /tmp/bfjar && \
+    zip -d bioformats/jars/bioformats_package.jar 'com/fasterxml/*' 'META-INF/maven/com.fasterxml.jackson.core/*' 'META-INF/services/com.fasterxml.jackson.core.*' module-info.class && \
     # Recompress; saves 2.5% or so \
     advzip -k -z bioformats/jars/bioformats_package.jar && \
     python -c $'# \n\
@@ -2838,7 +2856,7 @@ import re \n\
 path = "setup.py" \n\
 s = open(path).read() \n\
 # append bioformats jar version to version to make sure pip prefers this \n\
-s = re.sub(r"(version=\\"[^\\"]*)\\"", "\\\\1.'`getver.py bioformats`.1$'\\",\\n    python_requires=\\">=3.9\\",", s) \n\
+s = re.sub(r"(version=\\"[^\\"]*)\\"", "\\\\1.'`getver.py bioformats`.2$'\\",\\n    python_requires=\\">=3.9\\",", s) \n\
 # remove future from requires; it is not required for any python version we \
 # handle and avoids a CVE \
 s = s.replace("\\"future>=0.18.2\\",", "") \n\

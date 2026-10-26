@@ -284,7 +284,7 @@ Packages = {
     },
     'libopendrive': {
         'git': 'https://github.com/DLR-TS/libOpenDRIVE.git',
-        're': r'([0-9]+\.[0-9]+(|\.[0-9]+))-gdal$',
+        're': r'([0-9]+\.[0-9]+(|\.[0-9]+)-gdal)$',
     },
     'libpng': {
         'git': 'https://github.com/glennrp/libpng.git',
@@ -311,6 +311,9 @@ Packages = {
         # 'git': 'https://git.osgeo.org/gitea/rttopo/librttopo.git',
         'git': 'https://gitlab.com/rttopo/rttopo.git',
         're': r'librttopo-([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
+    'librttopo-sha': {
+        'gitsha': 'https://gitlab.com/rttopo/rttopo.git',
     },
     'libspatialite': {
         'fossil': 'https://www.gaia-gis.it/fossil/libspatialite/timeline?n=10&r=trunk&ss=x',
