@@ -301,7 +301,7 @@ wheel_for_python() { # wheel_for_python <version req> -> wheel file or empty
 }
 
 wheel_version() { # version embedded in the wheel file name
-    basename "$1" | sed -E 's/^(pylibtiff|Glymur|openslide_python|pylibmc|pyvips|GDAL|mapnik)-([0-9.]+)-.*/\2/'
+    basename "$1" | sed -E 's/^(pylibtiff|Glymur|openslide_python|pylibmc|pyvips|GDAL|mapnik|python_javabridge|python_bioformats)-([0-9.]+)-.*/\2/'
 }
 
 find_version_dir() {
@@ -654,6 +654,50 @@ for req in $PYTHONS; do
         fi
         log "OK python $req: installed mapnik $mainstalled"
     fi
+    # If a python_javabridge wheel is present, verify its identity the same
+    # way.  pypi publishes python-javabridge with the same version number,
+    # so the installed-version check is what detects a pypi fallback.
+    jbwhl="$(ls "$WHEELDIR"/python_javabridge-*.whl 2>/dev/null | head -1)"
+    if [ -n "$jbwhl" ]; then
+        jbver="$(wheel_version "$jbwhl")"
+        if ! "$venv/bin/pip" install --quiet --find-links "$WHEELDIR" \
+            "python-javabridge==$jbver" >>"$REPORT" 2>&1; then
+            log "FAIL python $req: pip install of python-javabridge failed"
+            FAILURES=$((FAILURES + 1))
+            rm -rf "$venv"
+            continue
+        fi
+        jbinstalled="$($venv/bin/pip show python-javabridge 2>/dev/null | sed -n 's/^Version: //p')"
+        if [ "$jbinstalled" != "$jbver" ]; then
+            log "FAIL python $req: installed python-javabridge $jbinstalled but expected $jbver (pip may have used pypi)"
+            FAILURES=$((FAILURES + 1))
+            rm -rf "$venv"
+            continue
+        fi
+        log "OK python $req: installed python-javabridge $jbinstalled"
+    fi
+    # If a python_bioformats wheel is present, verify its identity the same
+    # way (our version carries the bioformats jar-version suffix, so pypi's
+    # plain 4.1.0 can never match it).
+    bfwhl="$(ls "$WHEELDIR"/python_bioformats-*.whl 2>/dev/null | head -1)"
+    if [ -n "$bfwhl" ]; then
+        bfver="$(wheel_version "$bfwhl")"
+        if ! "$venv/bin/pip" install --quiet --find-links "$WHEELDIR" \
+            "python-bioformats==$bfver" >>"$REPORT" 2>&1; then
+            log "FAIL python $req: pip install of python-bioformats failed"
+            FAILURES=$((FAILURES + 1))
+            rm -rf "$venv"
+            continue
+        fi
+        bfinstalled="$($venv/bin/pip show python-bioformats 2>/dev/null | sed -n 's/^Version: //p')"
+        if [ "$bfinstalled" != "$bfver" ]; then
+            log "FAIL python $req: installed python-bioformats $bfinstalled but expected $bfver (pip may have used pypi)"
+            FAILURES=$((FAILURES + 1))
+            rm -rf "$venv"
+            continue
+        fi
+        log "OK python $req: installed python-bioformats $bfinstalled"
+    fi
     VENVDIRS="$VENVDIRS $venv"
 done
 
@@ -930,6 +974,44 @@ if p.geographic:
 print("mapnik bundled-library check OK")
 PYEOF
 
+cat >"$TESTROOT/test_javabridge.py" <<'PYEOF'
+import os
+import sys
+
+import javabridge
+import javabridge.locate
+
+# The patched locate.py must resolve the JVM to the copy bundled inside the
+# installed javabridge package (site-packages/javabridge/jvm), not to a
+# system or Homebrew Java.
+jvm_dir = javabridge.locate.find_javahome()
+print("jvm dir:", jvm_dir)
+if not jvm_dir or not jvm_dir.endswith(os.path.join("javabridge", "jvm")):
+    sys.exit("javabridge did not resolve the bundled jvm tree: " + str(jvm_dir))
+libjvm = os.path.join(jvm_dir, "jre", "lib", "server", "libjvm.dylib")
+if not os.path.exists(libjvm):
+    sys.exit("the bundled jvm tree has no jre/lib/server/libjvm.dylib")
+
+# start_vm loads libjvm.dylib from the resolved tree on darwin (the mac
+# extension dlopens it instead of linking it); java.home then proves that
+# the JVM that is actually running IS the bundled one.
+javabridge.start_vm(run_headless=True)
+java_home = javabridge.static_call(
+    "java/lang/System", "getProperty",
+    "(Ljava/lang/String;)Ljava/lang/String;", "java.home")
+print("java.home:", java_home)
+if os.path.realpath(java_home) != os.path.realpath(os.path.join(jvm_dir, "jre")):
+    sys.exit("the running JVM is not the bundled one (java.home mismatch)")
+print("java.version:", javabridge.static_call(
+    "java/lang/System", "getProperty",
+    "(Ljava/lang/String;)Ljava/lang/String;", "java.version"))
+print("java.vm.vendor:", javabridge.static_call(
+    "java/lang/System", "getProperty",
+    "(Ljava/lang/String;)Ljava/lang/String;", "java.vm.vendor"))
+javabridge.kill_vm()
+print("javabridge bundled-JVM check OK")
+PYEOF
+
 for venv in $VENVDIRS; do
     req="$(basename "$venv" | sed 's/^venv-//')"
     # The per-python run directory is named here (it is wiped and
@@ -955,12 +1037,13 @@ for venv in $VENVDIRS; do
     # pylibmc package directory), so it is audited alongside the packages.
     audit_macho "$site/libtiff" "$site/glymur" "$site/openslide" \
         "$site/pylibmc" "$site/pyvips" "$site/osgeo" "$site/mapnik" \
+        "$site/javabridge" "$site/bioformats" \
         "$site"/_pylibmc*.so >>"$REPORT" 2>&1 || audit_fail=1
     if [ "$audit_fail" != 0 ]; then
         log "FAIL python $req: otool audit found forbidden library references"
         FAILURES=$((FAILURES + 1))
     else
-        log "OK python $req: otool audit clean (libtiff, glymur, openslide, pylibmc, pyvips, gdal, mapnik)"
+        log "OK python $req: otool audit clean (libtiff, glymur, openslide, pylibmc, pyvips, gdal, mapnik, javabridge)"
     fi
     if "$venv/bin/python" "$TESTROOT/test_libtiff.py" >>"$REPORT" 2>&1; then
         log "OK python $req: python functional test passed"
@@ -1038,6 +1121,24 @@ for venv in $VENVDIRS; do
             FAILURES=$((FAILURES + 1))
         fi
     fi
+    if [ -n "$(ls "$WHEELDIR"/python_javabridge-*.whl 2>/dev/null)" ]; then
+        if "$venv/bin/python" "$TESTROOT/test_javabridge.py" >>"$REPORT" 2>&1; then
+            log "OK python $req: javabridge bundled-JVM check passed"
+        else
+            log "FAIL python $req: javabridge bundled-JVM check failed"
+            FAILURES=$((FAILURES + 1))
+        fi
+        # The bundled java launcher (exposed as a console script) exercises
+        # the bundled JDK binaries and dylibs the way the bundled tiffinfo
+        # and gdalinfo do; the shared suite runs the same command inside
+        # its venvs.
+        if "$venv/bin/java" -version 2>>"$REPORT"; then
+            log "OK python $req: bundled java launcher ran"
+        else
+            log "FAIL python $req: bundled java launcher failed"
+            FAILURES=$((FAILURES + 1))
+        fi
+    fi
     if "$venv/bin/tiffinfo" /tmp/liw_test_image.tif >>"$REPORT" 2>&1; then
         log "OK python $req: bundled tiffinfo ran"
     else
@@ -1068,12 +1169,13 @@ for venv in $VENVDIRS; do
         audit_fail=0
         audit_macho "$venvsite/libtiff" "$venvsite/glymur" "$venvsite/openslide" \
             "$venvsite/pylibmc" "$venvsite/pyvips" "$venvsite/osgeo" "$venvsite/mapnik" \
+            "$venvsite/javabridge" "$venvsite/bioformats" \
             "$venvsite"/_pylibmc*.so >>"$REPORT" 2>&1 || audit_fail=1
         if [ "$audit_fail" != 0 ]; then
             log "FAIL python $req: otool audit of the test_script.sh venv found forbidden library references"
             FAILURES=$((FAILURES + 1))
         else
-            log "OK python $req: otool audit of the test_script.sh venv clean (libtiff, glymur, openslide, pylibmc, pyvips, gdal, mapnik)"
+            log "OK python $req: otool audit of the test_script.sh venv clean (libtiff, glymur, openslide, pylibmc, pyvips, gdal, mapnik, javabridge)"
         fi
         # The bundled openslide command line tool (slidetool, the only one
         # the linux wheels bundle too) is exposed as a console script; run

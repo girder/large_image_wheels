@@ -3934,6 +3934,319 @@ EOF
 }
 
 # --------------------------------------------------------------------------
+# python-javabridge and python-bioformats.
+#
+# The linux build bundles the JVM inside python_javabridge (the wheel is
+# fully self-contained; no Java is installed on the machine) and pins Java
+# 1.8 because bioformats is built for Java 1.8 and newer JVMs may fail --
+# the same constraint applies here.  Temurin publishes no JDK 8 for macOS
+# arm64, but Azul Zulu does (Community edition; GPLv2 with the Classpath
+# exception, like OpenJDK itself), so the macos wheel keeps the pinned
+# Java 8 generation.  The darwin code paths of javabridge differ from the
+# linux ones in our favor: the _javabridge extension does NOT link libjvm
+# (mac_javabridge_utils.c dlopens it at start_vm time), so there is no
+# preload patch and delocate has nothing JVM-related to bundle.
+# --------------------------------------------------------------------------
+
+# The pinned Zulu JDK 8 (see the section comment above).  zulu8.98.0.107-ca
+# is 8u512, the current Community release as of 2026-10-26.  The tarball
+# unpacks to Contents/Home, whose layout is the JDK 8 one the linux flow
+# expects (jre/lib/server/libjvm.dylib, pack200 in bin).  Host-verified:
+# the bundled libjvm starts in-process from the installed wheel
+# (javabridge.start_vm headless + kill_vm), the bundled bin tools run as
+# console scripts, bioformats reads pixels and OME metadata through it, and
+# every Mach-O in the JDK tree links only /usr or /System libraries with
+# only @loader_path-relative RPATHs.
+LIW_ZULU8_VERSION="8.98.0.107-ca-jdk8.0.512"
+
+# Rewrite every member of each zip with a fixed timestamp: the macos
+# replacement for the linux build's strip-nondeterminism -t zip (a Debian
+# tool the VM does not have).  Written once and shared by the javabridge
+# and bioformats builders.
+ensure_zip_normalizer() {
+    [ -e "$LIW_PATCHES/normalize_zips.py" ] && return 0
+    cat >"$LIW_PATCHES/normalize_zips.py" <<'EOF'
+# Rewrite every member of each zip archive with a fixed timestamp so the
+# built artifacts are reproducible (strip-nondeterminism -t zip).  Member
+# order, compression type, and permissions are preserved.
+import os
+import sys
+import zipfile
+
+FIXED = (1980, 1, 1, 0, 0, 0)
+
+
+def normalize(path):
+    tmp = path + ".norm"
+    with zipfile.ZipFile(path) as zin, \
+            zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
+        for info in zin.infolist():
+            data = zin.read(info.filename)
+            new = zipfile.ZipInfo(info.filename, date_time=FIXED)
+            new.compress_type = info.compress_type
+            new.external_attr = info.external_attr
+            new.internal_attr = info.internal_attr
+            new.create_system = info.create_system
+            zout.writestr(new, data)
+    os.replace(tmp, path)
+
+
+for path in sys.argv[1:]:
+    normalize(path)
+EOF
+}
+
+build_javabridge() {
+    skip_if_done javabridge && return 0
+    step "python-javabridge"
+    local pp="$LIW_PATCH_PYBIN"
+    ensure_zip_normalizer
+
+    # Unpack the pinned Zulu JDK 8 and repack its jars before they are
+    # copied into the wheel (the linux flow: pack200 -G --repack strips the
+    # debug info and shrinks the jars; pack200 is thread-dangerous, so this
+    # is sequential like the Dockerfile's).  The timestamp normalizer then
+    # makes the jars deterministic (the strip-nondeterminism step).
+    cd "$LIW_SRC"
+    rm -rf zulu-jdk8
+    fetch "https://cdn.azul.com/zulu/bin/zulu${LIW_ZULU8_VERSION}-macosx_aarch64.tar.gz" \
+        zulu-jdk8.tar.gz
+    mkdir zulu-jdk8
+    tar -zxf zulu-jdk8.tar.gz -C zulu-jdk8 --strip-components 1
+    local jdk="$LIW_SRC/zulu-jdk8/Contents/Home"
+    [ -e "$jdk/jre/lib/server/libjvm.dylib" ] ||
+        die "unexpected Zulu JDK 8 layout (no jre/lib/server/libjvm.dylib)"
+    [ -x "$jdk/bin/pack200" ] ||
+        die "the bundled JDK has no pack200 (pack200 only exists in Java 8)"
+    step "pack200: repacking the JDK jars"
+    find "$jdk" -name '*.jar' -size +10240c \
+        -exec "$jdk/bin/pack200" -G --repack {} \;
+    find "$jdk" -name '*.jar' -exec "$pp" "$LIW_PATCHES/normalize_zips.py" {} +
+
+    cd "$LIW_SRC"
+    rm -rf javabridge
+    git_retry https://github.com/CellProfiler/python-javabridge.git \
+        "v$(v python-javabridge)" javabridge
+    cd javabridge
+    # The pyx patch is shared with the linux build (it lives at the
+    # repository root and is copied into the VM with it).
+    patch _javabridge.pyx "$LIW_REPO/python-javabridge.pyx.patch" ||
+        die "the _javabridge.pyx patch failed"
+    # Exceptions in Java callbacks crash some JVMs when describe() runs.
+    sed -i '' 's/env.exception_describe()/pass/g' javabridge/jutil.py
+
+    # Bundle the JVM tree, like the linux build does.
+    mkdir javabridge/jvm
+    cp -r -L "$jdk/." javabridge/jvm/.
+    find javabridge -name classes.jsa -delete
+    # libsaproc is only used for debugging (the linux build removes the
+    # .so; the Zulu arm64 tree does not ship one, but a future vendor build
+    # might).
+    rm -f javabridge/jvm/jre/lib/libsaproc.dylib
+
+    # The macos patches: locate.py prefers the bundled jvm tree (the linux
+    # patch does the same inside its linux branch, which never runs on
+    # darwin); setup.py gains the jvm package data, console scripts for the
+    # bundled binaries, the .1 version suffix, and the cython/numpy
+    # modernization; pyproject.toml gets the same modernization.  No
+    # __init__.py patch: the block it guards is linux-only and is skipped
+    # on darwin.  No jutil preload patch: the mac extension dlopens libjvm
+    # at start_vm time instead of linking it.
+    cat >"$LIW_PATCHES/javabridge_patches.py" <<'EOF'
+import os
+import re
+
+# locate.py: prefer the bundled jvm tree, whichever platform we are on.
+path = "javabridge/locate.py"
+s = open(path).read()
+s = s.replace('''def find_javahome():
+    """Find JAVA_HOME if it doesn't exist"""''',
+'''def find_javahome():
+    """Find JAVA_HOME if it doesn't exist"""
+    jvm_path = os.path.join(os.path.dirname(__file__), "jvm")
+    if os.path.exists(jvm_path):
+        return jvm_path''')
+open(path, "w").write(s)
+
+# setup.py: bundle the jvm tree, expose its binaries as console scripts,
+# bump the version (linux parity: +.1), and modernize cython/numpy.
+path = "setup.py"
+s = open(path).read()
+s = s.replace("packages=['javabridge', 'javabridge.tests'],",
+              "packages=['javabridge', 'javabridge.jvm.bin', 'javabridge.tests'],")
+s = s.replace("entry_points={'nose.plugins.0.10': [",
+              """entry_points={'console_scripts': ['%s=javabridge.jvm.bin:program' % name for name in os.listdir('javabridge/jvm/bin') if not name.endswith('.py')],
+              'nose.plugins.0.10': [""")
+s = s.replace("""package_data={"javabridge": [""",
+              """package_data={"javabridge": ['jvm/*', 'jvm/*/*', 'jvm/*/*/*', 'jvm/*/*/*/*', 'jvm/*/*/*/*/*',""")
+s = re.sub(r'(version="[^"]*)"', r'\1.1"', s)
+s = re.sub(r"('Cython)[^']*'", "'Cython'", s)
+s = re.sub(r"('numpy)[^']*'", "'numpy>=2'", s)
+s = s.replace("extra_link_args=extra_link_args",
+              "extra_link_args=extra_link_args,define_macros=[(\"NPY_TARGET_VERSION\", \"NPY_2_0_API_VERSION\"),]")
+open(path, "w").write(s)
+
+# pyproject.toml: same modernization as the linux build.
+path = "pyproject.toml"
+s = open(path).read()
+s = re.sub(r"(cython)<3", "cython", s)
+s = re.sub(r"(numpy)[^\"]*", "numpy>=2", s)
+open(path, "w").write(s)
+
+# javabridge/jvm/bin/__init__.py: os.execv wrapper so each bundled JDK
+# binary is exposed as a console script.
+path = "javabridge/jvm/bin/__init__.py"
+s = """import os
+import sys
+
+def program():
+    path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0]))
+    os.execv(path, sys.argv)
+"""
+open(path, "w").write(s)
+print("javabridge patches applied")
+EOF
+    "$pp" "$LIW_PATCHES/javabridge_patches.py" || die "the javabridge patches failed"
+
+    # Build one wheel per python.  setup.py compiles the java classes with
+    # javac during every wheel build (build_java), so the bundled JDK's bin
+    # must be on PATH; pip's build isolation preserves the environment.
+    collect_pybins
+    local pybin
+    for pybin in "${PYBINS[@]}"; do
+        step "python-javabridge wheel: $(basename "$(dirname "$pybin")")"
+        (
+            cd "$LIW_SRC/javabridge" || exit 1
+            rm -rf build
+            PATH="$PWD/javabridge/jvm/bin:$PATH" \
+                "$pybin/python" -m pip wheel --no-deps -w "$LIW_WHEELHOUSE" .
+        ) || die "python-javabridge wheel build failed for $pybin"
+    done
+
+    # Bundle external dylibs with delocate (the auditwheel equivalent),
+    # then normalize the wheel's zip timestamps (delocate preserves them).
+    # The jvm tree must NOT be delocated: its dylibs resolve their
+    # inter-dependencies at runtime through their own @loader_path RPATHs
+    # (every JDK dylib carries @loader_path/. and @loader_path/..), which
+    # delocate cannot statically resolve (@rpath/libjvm.dylib has no rpath
+    # context in the wheel) and whose sanitizer would strip exactly the
+    # RPATHs that make the JVM work.  Excluding the tree leaves a pass that
+    # still verifies the platform tag and the arm64 architecture of the one
+    # Mach-O outside it, the _javabridge extension, which links nothing but
+    # system frameworks on darwin (host-verified).
+    step "delocate python-javabridge wheels"
+    "$LIW_PATCH_PIPBIN" install -q -U delocate
+    local whl
+    for whl in "$LIW_WHEELHOUSE"/python_javabridge-*.whl; do
+        [ -f "$whl" ] || continue
+        "$LIW_PATCH_DIR/bin/delocate-wheel" -e /javabridge/jvm/ "$whl" ||
+            die "delocate failed for $whl"
+        "$pp" "$LIW_PATCHES/normalize_zips.py" "$whl"
+    done
+
+    # Wheel content assertions: the JVM tree and the compiled jars are in
+    # every wheel, the console scripts were generated, and the wheel is
+    # arm64-macosx tagged.
+    local contents
+    for whl in "$LIW_WHEELHOUSE"/python_javabridge-*.whl; do
+        [ -f "$whl" ] || continue
+        case "$(basename "$whl")" in
+        *macosx_11_0_arm64*) ;;
+        *) die "unexpected python_javabridge wheel name: $whl" ;;
+        esac
+        contents="$(unzip -l "$whl")"
+        printf '%s\n' "$contents" | grep -q 'javabridge/jvm/jre/lib/server/libjvm.dylib' ||
+            die "$whl does not bundle the JVM (jre/lib/server/libjvm.dylib)"
+        printf '%s\n' "$contents" | grep -q 'javabridge/jvm/bin/__init__.py' ||
+            die "$whl does not bundle the jvm bin wrapper"
+        printf '%s\n' "$contents" | grep -q 'javabridge/jars/rhino-1.7R4.jar' ||
+            die "$whl does not bundle the rhino jar"
+        printf '%s\n' "$contents" | grep -q 'javabridge/jars/cpython.jar' ||
+            die "$whl does not bundle the compiled cpython jar"
+        printf '%s\n' "$contents" | grep -q 'javabridge/jars/runnablequeue.jar' ||
+            die "$whl does not bundle the compiled runnablequeue jar"
+        printf '%s\n' "$contents" | grep -qE 'javabridge/_javabridge\.cpython' ||
+            die "$whl does not contain the _javabridge extension"
+    done
+    ls -l "$LIW_WHEELHOUSE"
+    done_stamp javabridge
+}
+
+build_bioformats() {
+    skip_if_done bioformats && return 0
+    step "python-bioformats"
+    local pp="$LIW_PATCH_PYBIN"
+    ensure_zip_normalizer
+
+    cd "$LIW_SRC"
+    rm -rf bioformats
+    git_retry https://github.com/CellProfiler/python-bioformats.git \
+        "v$(v python-bioformats)" bioformats
+    cd bioformats
+    fetch "https://github.com/ome/bioformats/releases/download/v$(v bioformats)/bioformats_package.jar" \
+        bioformats/jars/bioformats_package.jar
+    # The linux build recompresses the jar with advzip (saves ~2.5%);
+    # advancecomp is not built for the macos prefix, so the recompression
+    # is skipped -- the jar ships as downloaded.
+
+    # Patch setup.py: append the bioformats jar version to the version so
+    # pip prefers this wheel over pypi's (linux parity), declare
+    # python_requires, and drop the unused future requirement (CVE).
+    cat >"$LIW_PATCHES/bioformats_setup.py" <<'EOF'
+import re
+path = "setup.py"
+s = open(path).read()
+# append bioformats jar version to version to make sure pip prefers this
+s = re.sub(r'(version="[^"]*)"',
+           r'\1.' + __import__("os").environ["LIW_BF_VERSION"] + '.1"' +
+           ',\n    python_requires=">=3.9",', s)
+# remove future from requires; it is not required for any python version we
+# handle and avoids a CVE
+s = s.replace('"future>=0.18.2",', "")
+open(path, "w").write(s)
+print("bioformats patches applied")
+EOF
+    LIW_BF_VERSION="$(v bioformats)" "$pp" "$LIW_PATCHES/bioformats_setup.py" ||
+        die "the bioformats patches failed"
+
+    # Pure python + a bundled jar: one wheel for every python (py3-none-any,
+    # exactly like the linux wheel; nothing to delocate).  The patch python
+    # builds it.
+    step "python-bioformats wheel"
+    (
+        cd "$LIW_SRC/bioformats" || exit 1
+        rm -rf build
+        "$pp" -m pip wheel --no-deps -w "$LIW_WHEELHOUSE" .
+    ) || die "python-bioformats wheel build failed"
+    local whl
+    for whl in "$LIW_WHEELHOUSE"/python_bioformats-*.whl; do
+        [ -f "$whl" ] || continue
+        "$pp" "$LIW_PATCHES/normalize_zips.py" "$whl"
+    done
+
+    # Wheel content assertions.
+    local contents
+    for whl in "$LIW_WHEELHOUSE"/python_bioformats-*.whl; do
+        [ -f "$whl" ] || continue
+        case "$(basename "$whl")" in
+        *-py3-none-any.whl) ;;
+        *) die "unexpected python_bioformats wheel name: $whl" ;;
+        esac
+        case "$(basename "$whl")" in
+        python_bioformats-"$(v python-bioformats)"."$(v bioformats)".1-*) ;;
+        *) die "python_bioformats wheel version does not carry the jar-version suffix: $whl" ;;
+        esac
+        contents="$(unzip -l "$whl")"
+        printf '%s\n' "$contents" | grep -q 'bioformats/jars/bioformats_package.jar' ||
+            die "$whl does not bundle the bioformats jar"
+    done
+    ls -l "$LIW_WHEELHOUSE"
+    [ -n "$(ls "$LIW_WHEELHOUSE"/python_bioformats-*.whl 2>/dev/null)" ] ||
+        die "no python_bioformats wheel was built"
+    done_stamp bioformats
+}
+
+# --------------------------------------------------------------------------
 # Packages.
 # --------------------------------------------------------------------------
 
@@ -4931,12 +5244,27 @@ fi
 PACKAGES=("$@")
 # Keep in sync with tart_build.sh's LIW_PACKAGES default: the expected-wheel
 # validation there assumes this same set when no packages are named.
-[ "${#PACKAGES[@]}" -eq 0 ] && PACKAGES=(pylibtiff glymur openslide_python pylibmc pyvips gdal mapnik)
+# python_javabridge/python_bioformats come first to fail fast while they are
+# the package under development.
+[ "${#PACKAGES[@]}" -eq 0 ] && PACKAGES=(python_javabridge python_bioformats pylibtiff glymur openslide_python pylibmc pyvips gdal mapnik)
 
 # The "${var[@]+...}" guard keeps bash 3.2 (the VM's default bash) happy
 # about empty arrays under `set -u`.
 for pkg in ${PACKAGES[@]+"${PACKAGES[@]}"}; do
     case "$pkg" in
+    python_javabridge)
+        # No native dependencies beyond the bundled JVM: the darwin
+        # _javabridge extension links only system frameworks and the JVM is
+        # dlopened at start_vm time from the tree the wheel carries (see
+        # the section comment above build_javabridge).
+        build_javabridge
+        ;;
+    python_bioformats)
+        # Pure python + the bioformats jar: no build-time dependency on
+        # javabridge (javabridge is only needed to USE bioformats, and the
+        # shared test suite covers the pair once both wheels exist).
+        build_bioformats
+        ;;
     pylibtiff)
         build_libtiff_deps
         build_pylibtiff
