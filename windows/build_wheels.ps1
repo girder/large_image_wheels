@@ -36,8 +36,9 @@
 # Parameters / environment (parameters win, then the environment, then
 # C:\mnt\run\args.json, then the defaults):
 #   -Packages     packages to build (no default: the launcher names them)
-#   -Pythons      python versions to build for (default 3.11-3.15; a
-#                 trailing t selects the free-threaded NuGet build)
+#   -Pythons      python versions to build for (default 3.11-3.15 plus
+#                 3.14t and 3.15t; a trailing t selects the free-threaded
+#                 NuGet build)
 #   -WarmCache    only download/install the toolchain and pythons, then stop
 #   LIW_PYTHONS   like -Pythons, space separated
 #   LIW_FORCE     set to 1 to ignore completed-step stamps and rebuild all
@@ -144,7 +145,9 @@ foreach ($name in @(
 # parameter values first.
 $paramPythons = @($Pythons)
 $paramPackages = @($Packages)
-$script:Pythons = @('3.11', '3.12', '3.13', '3.14', '3.15')
+# The same set as macos: the stable pythons plus the free-threaded ones
+# that NuGet publishes (python-freethreaded 3.14 and 3.15).
+$script:Pythons = @('3.11', '3.12', '3.13', '3.14', '3.15', '3.14t', '3.15t')
 $script:Packages = @()
 $script:Command = 'build'
 $script:ArgsSource = 'defaults'
