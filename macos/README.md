@@ -3,16 +3,13 @@
 This directory builds native macOS arm64 wheels (for Apple Silicon, M1 and
 newer) for the same packages as the repository's linux Dockerfile, using a
 tart macOS VM as the isolation boundary.  This file is written to be
-self-sufficient: if you are resuming work on this with no prior context,
-read it top to bottom before changing anything.
+self-sufficient: read it top to bottom before changing anything.
 
 The pipeline is standalone and manages its own VM lifecycle the way
 `docker build` manages images: `macos/tart_build.sh` provisions a base
-VM from a published macOS image once (Xcode Command Line Tools,
-Homebrew with build tools, pyenv with the pythons), and every build
-clones a fresh VM from that base.  There is no dependency on any other
-provisioning; the `agent_*` VMs of manthey/utils are unrelated to this
-pipeline.
+VM from a published macOS image once, and every build clones a fresh VM
+from that base.  There is no dependency on any other provisioning; the
+`agent_*` VMs of manthey/utils are unrelated to this pipeline.
 
 ## Design
 
@@ -21,12 +18,10 @@ framework runs Linux guests), so a tart VM plays the role that the
 manylinux container plays for the linux builds:
 
 - Every build starts from a **fresh clone of a pristine base VM**
-  (`liw_wheels_base`).  The base is provisioned by
-  `macos/tart_build.sh provision` from a published macOS image and is
-  never modified by builds; like a docker image, delete it and the next
-  build re-provisions it.  Nothing from previous builds or from the host
-  can influence the wheels.  Build VMs are deleted when the run finishes
-  (stopped and kept on failure for debugging).
+  (`liw_wheels_base`), provisioned by `macos/tart_build.sh provision`
+  from a published macOS image and never modified by builds; like a
+  docker image, delete it and the next build re-provisions it.  Build
+  VMs are deleted when the run finishes (stopped and kept on failure).
 - Inside the VM, `build_wheels.sh` is the counterpart of the monolithic
   Dockerfile: it builds every library a wheel needs **from source** into a
   private prefix (`~/liw_macos_build/prefix`) with the pinned versions from
@@ -42,118 +37,62 @@ manylinux container plays for the linux builds:
 - Wheels are built for each requested CPython (pyenv pythons in the base
   VM; missing versions are built on demand) with
   `MACOSX_DEPLOYMENT_TARGET=11.0`, so the platform tag is
-  `macosx_11_0_arm64` and the wheels run on every Apple Silicon Mac.
+  `macosx_11_0_arm64`.
 - `delocate` bundles the built dylibs into each wheel and rewrites dylib
   references to `@loader_path`-relative paths (the `auditwheel repair`
   analogue).  Bundled dylibs land in `<package>/.dylibs/` inside the wheel.
 - The linux build salts auditwheel's grafted-library hash per build
-  (`auditwheel_build_id_patch.py`) so that wheels from different builds
-  never share grafted-library names.  There is deliberately NO macos
-  analogue: delocate does not rename the libraries it bundles, and it
-  rewrites every reference to them into a per-package `@loader_path` path.
-  The linux hazard is ELF's loader deduplicating by soname -- two builds
-  shipping same-soname different-content grafted libraries get mixed when
-  both are installed.  dyld has no equivalent here: its install-name
-  dedupe only applies when a load command names an install name, while
-  every load command in our wheels names a private path, so two copies
-  with the same basename but different content simply load as separate
-  images (the one visible symptom is the objc duplicate-class warning
-  when pyvips and openslide both load their libgio copies -- the gio
-  notification backend defines an ObjC class -- documented in the pyvips
-  status entry; benign, and present even when the copies are identical).
-  A stale copy cannot survive a package upgrade either: pip replaces the
-  whole package directory, `.dylibs` included.  Build differentiation in
-  the wheelhouse comes from the same version-suffix scheme as linux
-  (package version + bundled library versions), which the macos wheels
-  share; the salt only ever made the *in-environment* grafted names
-  unique, which the macos bundling scheme achieves structurally.
-- Packages keep the same version-suffix scheme as the linux wheels
-  (e.g. `pylibtiff-0.7.0.4.7.2` = package version + bundled libtiff
-  version), so macOS and linux wheels coexist in one wheelhouse (platform
-  tags differ) and flow through the same index-generation steps.
-- Bundled executables work as on linux: the libtiff command line tools go
-  into `libtiff/bin` inside the wheel and are exposed as console scripts
-  through a `libtiff.bin:program` wrapper that `os.execv`s the binary.
+  (`auditwheel_build_id_patch.py`) so wheels from different builds never
+  share grafted-library names.  There is deliberately NO macos analogue:
+  delocate does not rename what it bundles and rewrites every reference
+  to a per-package `@loader_path` path, so dyld never dedupes same-soname
+  copies the way the ELF loader does on linux (the linux salt exists for
+  exactly that hazard).  Two copies with the same basename simply load as
+  separate images; the one visible symptom is the benign objc
+  duplicate-class warning when pyvips and openslide both load their
+  libgio copies.  A stale copy cannot survive a package upgrade either:
+  pip replaces the whole package directory, `.dylibs` included.
+  Wheelhouse differentiation comes from the same version-suffix scheme
+  as linux (package version + bundled library versions).
+- Bundled executables work as on linux: e.g. the libtiff command line
+  tools go into `libtiff/bin` inside the wheel and are exposed as console
+  scripts through a `libtiff.bin:program` wrapper that `os.execv`s the
+  binary.
 
 ## Files
 
-- `build_wheels.sh` -- the in-VM monolithic build.  Environment setup is at
-  the top; helpers (`step`, `v`, `skip_if_done`/`done_stamp`, `git_retry`,
-  `fetch`, `cmake_build`, `meson_build`/`ensure_meson`, `ensure_rust`,
-  `ensure_git_lfs`,
-  `find_version_dir`,
-  `ensure_pythons`, `collect_pybins`, `ensure_tools`, `set_patch_python`,
-  `scrub_python_sysconfig`, `sanitize_prefix_dylibs`, `fix_dylib_ids`)
-  follow; then
-  dependency builders (`build_zlib` ... `build_libtiff`, wrapped by
-  `build_libtiff_deps`, plus `build_lcms2`, `build_libpng`,
-  `build_openjpeg`, `build_cyrus_sasl`, `build_libmemcached`, the
-  openslide chain `build_libbrotli`,
-  `build_libexpat`, `build_libffi`, `build_glib`, `build_sqlite`,
-  `build_libxml2`, `build_pixman`, `build_freetype`, `build_fontconfig`,
-  `build_cairo`, `build_jxrlib`, and the pyvips tree `build_orc`,
-  `build_nifti`, `build_lz4`, `build_fftw3`, `build_libhwy`,
-  `build_jpegxl`, `build_libimagequant`, `build_libexif`,
-  `build_libarchive`, `build_libraw`, `build_harfbuzz`, `build_pango`,
-  `build_librsvg`, `build_libde265`, `build_libheif`, `build_poppler`,
-  `build_fitsio`, `build_hdf5`, `build_matio`, `build_openexr`,
-  `build_libzip`, `build_curl`, `build_imagemagick`, plus the GDAL tree
-  `build_giflib`, `build_openssl`, `build_json_c`, `build_lerc`,
-  `build_swig`, `build_openmpi`, `build_boost`, `build_proj4`,
-  `build_minizip`, `build_fossil`, `build_freexl`, `build_libgeos`,
-  `build_librttopo`, `build_libspatialite`, `build_libgeotiff`,
-  `build_librasterlite2`, `build_fyba`, `build_hdf4`,
-  `build_parallel_netcdf`, `build_netcdf`, `build_mysql`,
-  `build_postgresql`, `build_libgta`, `build_xerces_c`, `build_armadillo`,
-  `build_blosc`, `build_highfive`, `build_kealib`, `build_libopendrive`,
-  `build_libavif`, `build_icu4c`, and `build_gdal`), then package builders (`build_pylibtiff`,
-  `build_glymur`, `build_openslide`, `build_openslide_python`,
-  `build_pylibmc`, `build_pyvips`, `build_gdal_python`, `build_mapnik`,
-  `build_mapnik_python`, `build_javabridge`, `build_bioformats`, with
-  `build_libvips` in the
-  dependency section; each package
-  builder calls `sanitize_prefix_dylibs` after its dependencies are built),
-  plus the `ensure_zip_normalizer` helper (the shared
-  `strip-nondeterminism`-replacement zip timestamp normalizer the
-  javabridge and bioformats builders write to `$LIW_PATCHES`),
-  then the main `case` that maps package names to builders
-  (`dep:<name>` builds a single dependency for debugging; hyphenated
-  names such as `dep:jpeg-xl` map to their underscored builders).
+- `build_wheels.sh` -- the in-VM monolithic build, organized like the
+  Dockerfile: environment setup and helpers at the top, then one
+  `build_<dep>` function per library (installed into `$LIW_PREFIX`),
+  then one `build_<package>` function per wheel (each runs
+  `sanitize_prefix_dylibs` after its dependencies are built), then the
+  main `case` mapping package names to builders (`dep:<name>` builds a
+  single dependency for debugging; hyphenated names such as
+  `dep:jpeg-xl` map to their underscored builders).  Completed steps are
+  stamped under `~/liw_macos_build/stamps`, so re-running only redoes
+  unfinished work.
 - `tart_build.sh` -- host-side orchestrator: provisions the base VM if
-  missing (`provision` command, or automatically), clones a fresh VM,
-  copies the repo in, runs `build_wheels.sh` (nohup + polling via
-  `~/liw_macos_build/exit_code`) while streaming the in-VM build log
-  (`$LIW_GUEST_HOME/macos_build.log` inside the VM) to the terminal,
-  clears this run's stale wheels out of `./wheels/` before the copy-out
-  (only the requested packages' macosx wheels plus, for
-  python_bioformats, its shared py3-none-any wheel -- a subset run leaves
-  every other package's wheels, including the linux builds', untouched;
-  build.sh does the same on its side since it no longer clears the whole
-  directory), retrieves the macosx wheels and this run's
-  python_bioformats wheel into `./wheels/`,
-  validates that every requested package produced a wheel for every
-  requested python (dying on a missing one -- the counterpart of
-  `build.sh`'s copy-out of the expected wheels), and deletes the VM.
-  A copy of the build log is always saved to `/tmp/macos_build.log` when
-  the build finishes (success or failure; the expected-wheel validation
-  and every other failure path retrieve it too, and the dead-VM rescue in
-  `fail()` re-retrieves it after restarting a guest that died mid-build).
-  Its default package set includes `gdal`, and the overall build timeout
-  default was raised to 12 hours because the gdal tree (mysql, openmpi,
-  boost, gdal itself) pushes a full default run past the previous 6-hour
-  default.
+  missing, clones a fresh VM, copies the repo in, runs `build_wheels.sh`
+  (nohup + polling via `~/liw_macos_build/exit_code`) while streaming
+  the in-VM build log to the terminal, clears this run's stale wheels
+  out of `./wheels/` before the copy-out (only the requested packages'
+  macosx wheels plus, for python_bioformats, its shared py3-none-any
+  wheel -- other packages' wheels, including linux builds', are left
+  untouched), retrieves the wheels, validates that every requested
+  package produced a wheel for every requested python (dying on a
+  missing one), and deletes the VM.  The build log is always copied to
+  `/tmp/macos_build.log` when the build finishes, success or failure.
+  Default package set includes `gdal`; timeout default 43200 s (the
+  gdal tree pushes a full run past 6 hours).
 - `test_via_tart.sh` -- host-side isolation test: clone another fresh VM
   and run an embedded in-VM test script (phase 0: install/rebuild missing
   or Homebrew-linked pythons; phase 1: install the wheels into a venv per
   python and verify pip picks our wheel; phase 2: hide `/opt/homebrew`,
   audit every Mach-O with `otool`, run the macos-specific checks, and
-  run the shared `test/test_script.sh` per python).  The in-VM output
-  (report.txt, which holds the full detail) is streamed to the terminal
-  while the test runs.  Writes `macos_test_report.txt` and
-  `macos_test_log.txt` to `/tmp` when the in-VM test completes (success,
-  failure, timeout, or the test VM dying mid-run); stops (but keeps) the
-  VM on failure.  The in-VM timeout is configurable with
-  `LIW_TEST_TIMEOUT` (seconds; default 14400).
+  run the shared `test/test_script.sh` per python).  Writes
+  `macos_test_report.txt` and `macos_test_log.txt` to `/tmp` when the
+  in-VM test completes; stops (but keeps) the VM on failure.
+  In-VM timeout: `LIW_TEST_TIMEOUT` (seconds; default 14400).
 
 ## Usage
 
@@ -169,9 +108,6 @@ macos/tart_build.sh
 
 # build a single package
 macos/tart_build.sh pylibtiff
-macos/tart_build.sh openslide_python
-macos/tart_build.sh python_javabridge
-macos/tart_build.sh python_bioformats
 
 # verify the wheels on a different fresh VM (writes /tmp/macos_test_report.txt
 # and /tmp/macos_test_log.txt)
@@ -181,1834 +117,559 @@ macos/test_via_tart.sh
 Both host scripts accept `--base NAME` (base VM to clone; default
 `liw_wheels_base`), `--cpus N` and `--mem MB` (overriding the host-sized
 defaults: one fewer vCPU than the host's processor count, and
-max(4096 MB, one third of the host's memory) for the guest), and
-`--keep`.
+max(4096 MB, one third of the host's memory)), and `--keep`.
 `tart_build.sh` also takes `--packages`, `--pythons`,
-`--disk` (base disk size when provisioning), and `--image` (the OS image
-the base is provisioned from); `test_via_tart.sh` takes `--wheels DIR`
-and `--keep-homebrew` (to skip the Homebrew-hiding step).
+`--disk` (base disk size when provisioning), and `--image`; 
+`test_via_tart.sh` takes `--wheels DIR` and `--keep-homebrew` (to skip
+the Homebrew-hiding step).
 
-### VM naming
-
-The wheel pipeline uses its own VM namespace, distinct from the
-manthey/utils agent sandboxes (which are all named `agent_*`):
-
-- `liw_wheels_base` -- the pristine base VM that every build/test VM is
-  cloned from.  It is provisioned by `macos/tart_build.sh provision`
-  (or automatically by the first build) from a published macOS image and
-  is never modified by builds; it plays the role of the manylinux base
-  image.
-- `liw_wheels_build` -- the fresh clone that runs `build_wheels.sh`.
-- `liw_wheels_test` -- the fresh clone that runs the isolation test.
-
-`macos/tart_build.sh provision` always rebuilds the base from the
-pristine image (like a docker image build); there is no in-place update
-mode.  The test script never provisions; it fails with instructions if
-the base is missing.
+VM namespace (distinct from the manthey/utils `agent_*` sandboxes):
+`liw_wheels_base` (pristine base, the manylinux-image analogue),
+`liw_wheels_build`, `liw_wheels_test`.  `provision` always rebuilds the
+base from the pristine image; there is no in-place update mode.  The
+test script never provisions; it fails with instructions if the base is
+missing.
 
 Inside a VM, for quick iteration, `build_wheels.sh` runs directly:
 
 ```
 LIW_PYTHONS="3.13" bash macos/build_wheels.sh pylibtiff
-LIW_PYTHONS="3.13" bash macos/build_wheels.sh openslide_python
 LIW_DRYRUN=1 bash macos/build_wheels.sh       # verify env/tools/pythons only
 LIW_FORCE=1 bash macos/build_wheels.sh        # ignore completed-step stamps
 bash macos/build_wheels.sh dep:zlib           # build one dependency only
 ```
 
-Completed steps are stamped under `~/liw_macos_build/stamps`, so re-running
-only redoes unfinished work.
-
 ## Status
 
-Verified end to end as of 2026-10-15 (build VM and test VM runs on the
-current code; the list reflects what has actually been observed in VM
-runs, not just what the scripts are expected to do):
+All packages in the default set are verified end to end in VM runs (a
+fresh-VM full build, then `test_via_tart.sh` on a second fresh VM):
+pylibtiff, Glymur, openslide-python, pylibmc, pyvips, gdal, mapnik, and
+python_javabridge/python_bioformats.  The run-by-run history of how each
+package reached that state is in this branch's commit messages.
 
-- All pylibtiff and glymur dependencies build into the private prefix,
-  including the openjpeg feature assertions (lcms2, libpng, libtiff
-  linkage verified via otool after the libpng framework fix).
-- Wheels for 3.11, 3.12, 3.13, 3.14, 3.15, 3.14t, 3.15t: pylibtiff,
-  Glymur, openslide_python, pylibmc, and pyvips built.  Glymur is one
-  wheel per
-  architecture (py3-none-macosx, `packaging` declared); openslide_python
-  is one cp311-abi3 wheel for the stable pythons plus one wheel per
-  free-threaded python; pylibmc and pyvips are one cp3XX-cp3XX wheel
-  per python.
-  Wheel-identity checks pass (pip picks our wheels) for all five;
-  otool audits clean with Homebrew hidden;
-  bundled dylibs load from `.dylibs`; tiff round trip, bundled
-  `tiffinfo`, the openslide bundled-dylib check, and bundled
-  `slidetool slide quickhash1` pass on every python.
-- The shared `test/test_script.sh` runs inside the test VM per python
-  and passes on every requested python.  Its runs exposed four real
-  issues, all fixed: glymur 0.14.8 does not declare its `packaging`
-  import (fixed in both the macos and linux glymur patches);
-  large_image tiff reads segfaulted on darwin/arm64 because large_image
-  clears `libtiff.TIFFGetField.argtypes` and ctypes then mishandles the
-  variadic call (fixed by wrapping `TIFFGetField` in the pylibtiff
-  wheel; the wrapper is in the published wheels and the tiff reads pass
-  on every python); openslide-python's bundled-library lookup lost to
-  pypi's openslide-bin wheel (see the hard-won details -- the bundled
-  lookup now runs first, verified in a VM run); and the harness's own
-  `set -u` death (see below).
-- Phase 0 python rebuilds are parallelized (up to the VM's cpu count,
-  passed from `--cpus`); measured saving of about 5 of the roughly 15
-  sequential minutes at concurrency 4.
-- Second test run (with the rebuilt openslide_python wheels) hung in
-  phase 2: the openslide bundled-dylib check referenced `$rundir` before
-  it was defined, and the in-VM script's `set -u` killed the script
-  silently (its stderr goes to liw_test.log, not the stream), so the
-  host-side loop polled until the full timeout.  Fixed by defining
-  `rundir` at the top of the per-venv loop and by adding an EXIT trap
-  that records a failure the moment the script dies unexpectedly (bash
-  keeps only one EXIT trap, so the Homebrew restore moved into the same
-  trap).  The third run passed everything.
-- Next up, in rough effort order: the python-javabridge /
-  python-bioformats verification VM run (implemented 2026-10-26 and
-  verified on the host; see the remaining-packages note), then whatever
-  its run exposes.  pyproj stays pypi-sourced.
-- pyvips work is staged (2026-10-15), each stage checkpointed with a VM
-  run before the next one lands (all reachable as `dep:<name>`;
-  `tart_build.sh` skips the expected-wheel validation for those
-  pseudo-packages).  Stage 1 -- the leaf dependencies (`build_lz4`,
-  `build_orc`, `build_nifti`, `build_fftw3`, `build_libhwy`,
-  `build_jpegxl`, `build_libimagequant`, `build_libexif`,
-  `build_libarchive`, `build_libraw`) plus the rust toolchain (rustup
-  minimal profile installed by provisioning; `ensure_rust` bootstraps
-  it on base VMs provisioned before that change) -- passed its
-  dependency-only checkpoint VM run.  Stage 2 -- `build_harfbuzz`,
-  `build_pango`, `build_librsvg`, `build_libde265`, `build_libheif`,
-  `build_poppler`, `build_fitsio`, `build_hdf5`, `build_matio`,
-  `build_openexr`, `build_imagemagick` -- is implemented in
-  `build_wheels.sh` but has NOT yet been run in a VM; its checkpoint
-  run must include every earlier dependency, because each run starts
-  from a pristine base VM with empty stamps:
-  `macos/tart_build.sh --packages "dep:zlib dep:zstd dep:jbigkit
-  dep:libwebp dep:libjpeg-turbo dep:libdeflate dep:xz dep:libtiff
-  dep:lcms2 dep:libpng dep:openjpeg dep:libbrotli dep:libexpat
-  dep:libffi dep:glib dep:sqlite dep:libxml2 dep:pixman dep:freetype
-  dep:fontconfig dep:cairo dep:jxrlib dep:openslide dep:orc dep:nifti
-  dep:lz4 dep:fftw3 dep:libhwy dep:jpeg-xl dep:libimagequant
-  dep:libexif dep:libarchive dep:libraw dep:harfbuzz dep:pango
-  dep:librsvg dep:libde265 dep:libheif dep:poppler dep:fitsio dep:hdf5
-  dep:matio dep:openexr dep:libzip dep:curl dep:imagemagick"` (this is also the
-  order the `pyvips` case uses; the list has grown as full runs found
-  missed Dockerfile dependencies such as libzip).  Stage 3 -- `build_libvips`, `build_pyvips`, the
-  `pyvips` case wiring, and the test-harness additions -- is implemented
-  but has not been run in a VM either; the next step is a VM run of the
-  full `pyvips` package (`macos/tart_build.sh pyvips`, which exercises
-  stages 2 and 3 together), with the dep: list above as the
-  debugging fallback if it fails early (stamps make reruns cheap, and a
-  failed run leaves the VM stopped and kept).  The first full default
-  run (2026-10-15) rebuilt all four existing packages successfully and
-  died at the (since fixed) jpeg-xl feature assertion; the builders
-  from lz4 through libhwy passed their in-VM assertions.  The second
-  full run (2026-10-15) passed jpeg-xl and libimagequant and died at
-  the (since fixed) libexif autoreconf.  The third full run (2026-10-15)
-  passed libexif, libarchive, libraw, harfbuzz, libde265, and libheif
-  (its codec summary matches the linux configuration: libde265 built
-  in, everything else off) and died at the (since fixed) poppler
-  configure, which rejects MinSizeRel -- the Dockerfile passes
-  -DCMAKE_BUILD_TYPE=Release, which build_poppler now passes too.  The
-  fourth full run (2026-10-15) passed poppler and cfitsio and died
-  linking hdf5: its config-mode zlib find silently succeeds against
-  the cmake-built zlib's ZLIBConfig.cmake without providing the module
-  variables hdf5 links with (fixed by presetting ZLIB_LIBRARIES and
-  ZLIB_INCLUDE_DIR; verified on the host).  The fifth full run
-  (2026-10-15) passed poppler, cfitsio, hdf5, matio, and openexr and
-  died building pango: its darwin-only CoreText backend includes
-  <hb-coretext.h>, which harfbuzz's coretext feature (default
-  disabled) provides -- fixed with harfbuzz -Dcoretext=enabled.  The
-  sixth full run built harfbuzz with coretext (hb-coretext.h installed)
-  and died at harfbuzz's own assertion, which looked for the
-  ApplicationServices umbrella in the otool output; the modern linker
-  records the sub-frameworks it resolved the umbrella's symbols from
-  (CoreText, CoreFoundation, CoreGraphics) instead -- fixed by checking
-  for CoreText (verified on the host).  The seventh full run built
-  pango (fribidi wrap, pangocairo with the CoreText backend) but no
-  libpangoft2 -- pango disables fontconfig by default on darwin, like
-  cairo does; fixed with -Dfontconfig=enabled, mirroring build_cairo,
-  and the assertion now also checks the fontconfig linkage.  The
-  eighth full run (2026-10-16) passed pango (with fontconfig) and
-  librsvg and died at imagemagick's configure: libltdl is required for
-  --with-modules (the linux base image has it, the macos VM does not),
-  and libzip -- a Dockerfile dependency missed in stage 2 -- was not
-  installed either; fixed with build_libzip and --without-modules
-  (see the pyvips note for the reasoning).  The ninth full run
-  (2026-10-16) passed imagemagick (with libzip and --without-modules)
-  and built and installed libvips itself, but its meson dropped the
-  poppler-glib dependency because pkg-config could not resolve
-  poppler-glib.pc's "Requires.private: libcurl" (fixed with the prefix
-  curl build); everything else in the libvips assertion passed.  The
-  poppler assertion now also checks libcurl.  The tenth full run
-  (2026-10-16) passed imagemagick again (with libzip and curl) and
-  built and installed libvips with every loader found -- poppler-glib,
-  openslide, matio, cfitsio, raw, openjp, exif, pangocairo, lcms,
-  imagequant, fftw all resolved -- but died at the assertion on orc:
-  orc is libvips's FALLBACK SIMD package, used only when libhwy is
-  absent (libvips's meson says so outright), and the prefix always has
-  libhwy because jpeg-xl needs it -- the linux build behaves the same
-  and the Dockerfile's orc is dead weight there too.  The assertion now
-  checks libhwy instead (libvips links it directly), mirroring the
-  jpeg-xl/highway finding.  The eleventh full run (2026-10-16) passed
-  the entire libvips chain and built all seven pyvips wheels; delocate
-  then failed resolving "@rpath/libhdf5.310.dylib" requested by
-  libmatio: hdf5's HDFMacros.cmake hardcodes CMAKE_INSTALL_NAME_DIR to
-  @rpath on Apple, overriding cmake_build's absolute setting, and the
-  @rpath reference cannot be resolved once sanitize_prefix_dylibs
-  strips the prefix rpaths.  Fixed by sed'ing hdf5's macro to the
-  absolute prefix libdir (so the exported HDF5Config.cmake records an
-  absolute soname too), adding the same absolute-install-name check
-  build_lz4 makes to build_hdf5, and adding a catch-all audit to
-  build_pyvips that dies if any prefix dylib installs without an
-  absolute install name (autotools/meson installs are absolute
-  already; this catches cmake projects that override
-  CMAKE_INSTALL_NAME_DIR).  The twelfth full run (2026-10-16) proved
-  that catch worthwhile twice over: the previous fix had been recorded
-  as a comment without the sed command it described -- the exact
-  verify-the-edit failure the hard-won notes warn about -- and the
-  assertion stopped the build at hdf5 with a clear message instead of
-  at delocate; the sed is replaced outright by hdf5's own first-class
-  option -DHDF5_BUILD_WITH_INSTALL_NAME=ON (its
-  HDF5Macros.cmake sets each library's INSTALL_NAME_DIR to
-  ${CMAKE_INSTALL_PREFIX}/lib when it is on).  The thirteenth run
-  (2026-10-16) built everything and passed delocate, producing wheels
-  for all seven pythons; the test VM run then surfaced two issues, both
-  test-side, no wheel defects: (1) the pyvips bundled-library check
-  assumed the pylibmc model (the extension links the bundled dylib),
-  but pyvips's cffi extension is linked with -undefined dynamic_lookup
-  and has no libvips load command at all -- its symbols bind to
-  whatever libvips the patched __init__.py preloaded -- so the check
-  now verifies the preload by running a fresh interpreter with
-  DYLD_PRINT_LIBRARIES=1 and requiring the pyvips/.dylibs/libvips path
-  in the loaded images (plus the API-mode and .dylibs-content checks it
-  already had); and (2) the shared suite's projected-geotiff
-  getTileSource test hardcodes getTile(1178, 1507, 12), which assumes
-  the gdal source's projected level structure -- without a gdal wheel
-  the plain getTileSource falls to the vips source, whose projected
-  reads have a different level count (z=12 out of its 8 levels) -- so
-  the test is now gated on TEST_GDAL (true on linux, where
-  getTileSource prefers gdal anyway; the unprojected geotiff test stays
-  ungated and passes via vips).  Also observed: pyvips and openslide
-  both load their own libgio copies in one process, which macOS reports
-  as an objc class duplicate warning -- the linux wheels ship their own
-  .libs copies the same way, so this is parity, not a defect.  The
-  fourteenth run (2026-10-16) cleared the pyvips bundled-library check
-  on every python; the remaining per-python failure was the suite's
-  'test libvips and webp'/'jpeg' steps importing large_image_converter,
-  whose install is gated on TEST_GDAL && TEST_PYVIPS because the
-  converter extra needs the gdal source -- the macos wheelhouse does
-  not build gdal yet, so the two steps now carry the same gate (the
-  steps exercise the converter package, not the pyvips wheel, so
-  nothing is lost on macos).  The fifteenth run (2026-10-16) passed
-  everything: pyvips is verified end to end on all seven pythons (the
-  shared suite passes with the gdal-dependent steps skipped: the
-  projected-geotiff getTileSource read, the two converter steps, and
-  the GDAL/vsicurl steps, which all light back up when the gdal wheel
-  lands).  Decisions (2026-10-16) for the GDAL prerequisites: an MPI
-  (openmpi, then parallel-netcdf and netcdf) WILL be built, and an
-  OpenSSL WILL be built so the prefix curl gains TLS (see the GDAL note
-  for the recipes and the openssl 3.6.2 pin trap).  Decision
-  (2026-10-15):
-  verification runs are always full builds from a fresh base-VM clone;
-  the resume-in-a-kept-VM path (stamps) is not used for verification --
-  there is no interest in trading certainty about ordering dependencies
-  for cycle time.
-- GDAL work is implemented (2026-10-16) but has NOT yet been run in a
-  VM; the GDAL note below records every decision taken while writing it.
-  What changed, in order of blast radius:
-  - The prefix gains an OpenSSL (pinned 3.6.2 like the linux build) and
-    build_curl no longer passes -DCURL_ENABLE_SSL=OFF, so curl has TLS;
-    the builder asserts the libssl linkage.  BOTH the pyvips and gdal
-    cases now place `build_openssl` before `build_curl` (openssl+curl
-    are the first two steps after `build_libtiff_deps` in both), so the
-    fresh-VM final state converges on the linux one (a TLS prefix curl).
-    CONSEQUENCE: the pyvips wheel changes (poppler now links the prefix
-    curl, so libcrypto/libssl ride along in pyvips/.dylibs), and the
-    previously-verified pyvips wheel state needs a re-verified run --
-    the next full default run produces both wheels together and the
-    test run covers both.
-  - build_hdf5 gains the Dockerfile's MPI options
-    (HDF5_ENABLE_PARALLEL=ON, MPI_C_COMPILER, MPI_mpi_LIBRARY,
-    MPI_C_LIB_NAMES; the linux MPI_C_HEADER_DIR hint is not passed),
-    and the pyvips case builds `build_openmpi` before `build_hdf5` --
-    so a fresh pyvips run converges on the linux final state (a
-    parallel hdf5 that links libmpi, like the linux pyvips wheel).
-  - The default package set gained `gdal` (in both build_wheels.sh's
-    PACKAGES default and tart_build.sh's LIW_DEFAULT_PACKAGES), and
-    tart_build.sh's LIW_TIMEOUT default rose from 21600 to 43200 s (the
-    gdal tree -- mysql, openmpi, boost, gdal itself -- pushes a full
-    default run past six hours).
-  - New builders in build_wheels.sh for the GDAL tree: giflib, openssl,
-    json-c, lerc, swig (+ a pcre2 bootstrap via swig's
-    Tools/pcre-build.sh -- swig is a hard requirement of GDAL's python
-    bindings and the linux base image supplies it while the macos VM
-    does not), openmpi, boost (superproject with submodules; mysql
-    fetches its own boost, exactly like on linux), proj4, minizip,
-    fossil (a build tool -- the gaia-gis sources live in fossil
-    repositories), freexl, libgeos, librttopo, libspatialite,
-    libgeotiff, librasterlite2, fyba, hdf4, parallel-netcdf, netcdf,
-    mysql, postgresql, libgta, xerces-c, armadillo (linked against the
-    Accelerate framework -- no Fortran compiler exists in the VM, and a
-    Homebrew gfortran would drag its libgfortran into the wheels),
-    blosc, highfive, kealib, libopendrive, libavif, gdal, and
-    gdal_python.  Dockerfile sections deliberately skipped with reasons
-    recorded in the section comment: libtirpc/libnsl (GDAL's cmake has
-    no tirpc/nsl check at all -- verified against the pinned gdal
-    source; stale autotools-era comments), krb5 (macOS system Kerberos;
-    the pylibmc precedent), libaio (linux-only), libxcrypt (macOS
-    libSystem provides crypt), lapack (see armadillo), ogdi (GDAL 3.13's
-    cmake has no OGDI check and the shared suite's known-formats list --
-    which mirrors the linux wheel -- has no OGDI entry), and mrsid
-    (x86_64-only SDK, subtracted on arm64 by the shared suite too).
-  - A new `fix_dylib_ids` helper normalizes install names to absolute
-    prefix paths and rewrites sibling load commands before consumers
-    link (OpenSSL's makefile and boost's b2 record non-absolute ids on
-    macOS -- the hdf5 @rpath lesson, applied at the source).  openssl,
-    giflib, and boost call it right after installing.
-  - build_gdal mirrors the Dockerfile's master-at-sha flow (depth-1000
-    clone, checkout, the three .2-suffix seds, the bindings-version sed)
-    and cmake options (GDAL_USE_LERC=ON, ENABLE_DEFLATE64=OFF,
-    GDAL_USE_PUBLICDECOMPWT=ON); the Dockerfile's make USER_DEFS
-    (-Werror plus gcc-only -Wno-* flags) is NOT passed -- clang warns
-    about unknown -Wno-* options and the build must not turn diagnostics
-    into errors on a different compiler.  The python bindings are part
-    of the cmake build (swig from the prefix, -DPython_EXECUTABLE pinned
-    to the patch python, numpy pip-installed into it first, like the
-    Dockerfile's numpy install).  build_gdal then asserts libgdal's
-    linkage against every external library the linux wheel links (geos,
-    proj, curl, tiff, png, jpeg, openjpeg, webp, heif, avif, jxl,
-    poppler, cfitsio, hdf5, netcdf, mysqlclient, pq, freexl,
-    spatialite, rasterlite2, rttopo, geotiff, fyba, xerces, expat,
-    xml2, json-c, lerc, gta, kea, blosc, archive, gif, deflate, zstd,
-    lzma, z, sqlite, crypto, ssl, OpenEXR); hdf4 is not asserted (a
-    static library absorbed into its consumers -- the shared suite's
-    HDF4 format entry covers it).
-  - build_gdal_python mirrors the Dockerfile's python section: the proj
-    and gdal data trees and the gdal/proj/libgeotiff tools are bundled
-    into osgeo/ (bin/ tools exposed through an `osgeo.bin:program`
-    wrapper with PROJ_DATA/GDAL_DATA and the macOS /etc/ssl/cert.pem CA
-    bundle), setup.py gains the package_data and console-script patches,
-    and osgeo/__init__.py gains the data-path + GDAL_LIBRARY_PATH /
-    GEOS_LIBRARY_PATH patch, reading osgeo/.dylibs first with the linux
-    GDAL.libs location as fallback (both patch scripts were verified by
-    applying them to the pinned gdal source and ast-parsing the
-    results).  Prefix dylibs are stripped (strip -x, re-signed) before
-    the wheel build, like the linux build strips before pip wheel;
-    wheels are built for every requested python, renamed gdal->GDAL,
-    and delocate-bundled; the wheel content is asserted (libgdal in
-    .dylibs, the _gdal_array extension, proj.db, gdalinfo, listgeo).
-  - test_via_tart.sh: the phase-1 identity check installs the GDAL wheel
-    like the other packages (the installed-version check is what catches
-    a pypi fallback), the otool audits (phase-1 venv and the shared
-    suite's venv) now include osgeo, and the macos-specific
-    test_gdal.py check verifies GDAL_LIBRARY_PATH/GEOS_LIBRARY_PATH in
-    .dylibs, the bundled libgdal actually loaded (DYLD_PRINT_LIBRARIES),
-    an EPSG:4326 lookup through the bundled proj data, and the bundled
-    `gdalinfo` console script.
-  The next step is the verification run (fresh VM, like every
-  verification): `macos/tart_build.sh gdal` first (its chain is
-  self-sufficient; if a builder fails, the VM is kept and stamps make
-  the in-VM rerun cheap), then the full default run and
-  `macos/test_via_tart.sh`, which lights up the shared suite's
-  gdal-dependent steps (projected geotiff read, the two converter steps,
-  the GDAL/vsicurl and format-list steps) that were gated off in the
-  pyvips-only wheelhouse.  The first gdal verification run (2026-10-19)
-  passed every earlier package and died at the first GDAL-tree step,
-  giflib: upstream's Makefile has a Darwin branch whose libutil.dylib
-  rule links qprintf.o/getarg.o without libgif, leaving
-  GifErrorString undefined -- the Linux linker allows undefined symbols
-  in shared libraries, so the Dockerfile's libutil.so builds as-is
-  there, but the macOS linker rejects them.  Fixed by appending
-  -Wl,-undefined,dynamic_lookup to the Darwin rule (the jxrlib
-  lesson); libutil is not installed by the Darwin install target (only
-  libgif is), it only has to build.  The sed, the full make, the
-  install, and fix_dylib_ids's id normalization were verified on the
-  host against the pinned tarball.  The second run cleared giflib
-  through fossil and died at freexl's fossil clone: fossil's global
-  --user=root names a login that the freshly created repository does
-  not have (the Dockerfile works in the container only because $USER
-  is root there, which is the fallback seed for a clone's user table);
-  fixed by passing --admin-user root to all three gaia-gis clones
-  (freexl, libspatialite, librasterlite2), verified by building the
-  pinned fossil 2.28 on the host and running the exact clone+open
-  sequence with a non-root $USER.  The third run cleared giflib
-  through freexl (both fixes active in the log), libgeos, librttopo,
-  libspatialite, and libgeotiff and died at librasterlite2:
-  rasterlite2_private.h uses time_t (struct rl2_cached_raster's
-  last_used) without including <time.h> -- glibc defines time_t
-  transitively so the linux build never notices, the darwin headers
-  do not.  Fixed by sed'ing the include into the header in
-  build_librasterlite2 (verified on the host: the sed's diff is exactly
-  that one line, and a darwin TU using time_t without time.h reproduces
-  the log's "unknown type name 'time_t'").  The fourth run cleared
-  librasterlite2's compilation and died linking librasterlite2.la with
-  undefined sqlite3 symbols: configure.ac header-checks sqlite3.h but
-  never adds -lsqlite3 (only jpeg/gif/tiff/geotiff get AC_CHECK_LIB),
-  so the library links with undefined symbols -- the linux linker
-  permits that in a .so (they resolve at load time from libgdal's
-  libsqlite3), the macOS linker does not.  Fixed by configuring
-  librasterlite2 with LIBS="-lsqlite3": both the librasterlite2.la and
-  mod_rasterlite2.la link rules append $(LIBS), so the dylibs get real
-  libsqlite3 load commands (an explicit link rather than
-  -undefined dynamic_lookup -- the dependency is real and one-way, and
-  libgdal bundles libsqlite3 regardless).  Verified on the host: the
-  Makefile.in rules append $(LIBS), and a minimal configure project
-  shows an environment LIBS survives into the generated Makefile.
-  The fifth run cleared librasterlite2 and fyba and died at hdf4: the
-  shared libhdf linked with undefined inflate/deflate symbols (the
-  hdf5 lesson's config-mode ZLIB find -- preset ZLIB_LIBRARIES and
-  ZLIB_INCLUDE_DIR fixed that).  The deeper issue is hdf4's
-  HDFMacros.cmake setting CMAKE_INSTALL_NAME_DIR to @rpath on Apple:
-  with modern cmake the build-tree install names are @rpath regardless
-  of CMAKE_INSTALL_NAME_DIR (the property that variable initializes
-  only rewrites ids at install), and libmfhdf -- which netcdf and gdal
-  link, so it ships in the wheel -- links libdf and libxdr inside
-  hdf4's own build tree, recording @rpath references that stop
-  resolving once the prefix RPATHs are stripped (hdf5 escaped this
-  only because no wheel-shipped dylib links its dylibs within its own
-  build; HDF4_BUILD_WITH_INSTALL_NAME does not help -- like hdf5's
-  option it only rewrites installed ids).  Fixed with the generic
-  cmake variable -DCMAKE_BUILD_WITH_INSTALL_NAME_DIR=ON, which makes
-  every target's build-tree install name absolute, plus an hdf4 audit
-  (every installed libdf/libmfhdf dylib must have an absolute id and
-  no @rpath load commands).  The same reasoning applied to the pinned
-  geos exposed the identical pending landmine in the already-passed
-  libgeos build: libgeos_c links libgeos in-tree and had recorded an
-  @rpath reference that would have broken the gdal wheel's delocate
-  later -- build_libgeos now passes the same variable (verified on the
-  host against 3.15.0: without it the reference is @rpath, with it
-  both ids and the reference are absolute).  The sixth run cleared
-  through fyba and died at hdf4's own audit: the previous fix was
-  wrong -- -DCMAKE_BUILD_WITH_INSTALL_NAME_DIR=ON alone made the
-  build tree USE the INSTALL_NAME_DIR property, but hdf4's macro had
-  initialized that property to @rpath (a macro's normal-variable set
-  shadows cmake_build's cache value), so every hdf4 dylib installed
-  with an @rpath id and the audit stopped the build exactly as
-  designed.  Verified on the host with the full cmake_build flag set:
-  the variable alone reproduces the @rpath ids, the sed of the macro
-  to ${CMAKE_INSTALL_PREFIX}/lib alone leaves the build tree at
-  @rpath (the property only rewrites ids at install), and both
-  together produce absolute ids and absolute libmfhdf references;
-  also observed: the link then records /usr/lib/libz.1.dylib (Apple's
-  linker maps libz to the OS copy -- fine, always present, delocate
-  treats /usr/lib as system).  build_openexr got the same variable:
-  OpenEXR builds Iex/IlmThread/Imath siblings in-tree and upstream
-  sets no INSTALL_NAME_DIR, and the host check against 3.5.2 shows
-  libOpenEXR's three sibling references are @rpath without the flag
-  and absolute with it -- the gdal wheel bundles all four.  The
-  seventh run died before hdf4's configure: the sed used a path
-  relative to $LIW_SRC but runs before cmake_build cds into the
-  checkout -- fixed by passing the full "$LIW_SRC/hdf4/..." path
-  (the sed itself re-verified against the pinned tarball at that
-  exact path).  The eighth run cleared hdf4 (audit passing),
-  parallel-netcdf, and netcdf, and died at mysql's configure:
-  mysql's cmake/ssl.cmake hints ${HOMEBREW_HOME}/openssl for APPLE
-  under WITH_SSL=system, found Homebrew's OpenSSL 4.0.3 whose
-  opensslv.h yields an empty version string ("Not a supported
-  openssl version"), and would have leaked Homebrew regardless.
-  Fixed with -DWITH_SSL="$LIW_PREFIX" (mysql's supported
-  custom-installation mode): the prefix's pinned 3.6.2 headers/libs,
-  prefix/bin/openssl for its runtime probe, and mysql's own
-  APPLE_WITH_CUSTOM_SSL machinery copies libssl/libcrypto into the
-  build's library_output_directory and patches the copy's libcrypto
-  dependency to @loader_path.  Verified on the host by driving the
-  pinned mysql-26.7.0's ssl.cmake in a scratch project against a mock
-  prefix layout (headers with 3.6.2 version macros, the symlink chain,
-  bin/openssl): configure passes, the copies land in
-  library_output_directory, the libssl.3.dylib copy keeps its absolute
-  prefix id (what libmysqlclient records -- delocate friendly) with
-  its libcrypto dependency patched to @loader_path (which still
-  resolves inside the prefix after mysql's install copies the dylibs
-  over the prefix's own).  The ninth run cleared postgresql, libgta,
-  xerces-c, armadillo, blosc, highfive, and kealib and died compiling
-  libopendrive: AppleClang 21's libc++ specializes
-  __make_transparent<_Tp, less<_Tp>> to less<>, so std::set<T>'s
-  insert/emplace compare the VALUES with less<void> -- requiring
-  operator< on T itself -- and never call a std::less<T>
-  specialization (libstdc++ on linux does use it, hence macos-only).
-  libOpenDRIVE orders its key types through std::less specializations
-  only (RoadMarksLine, RoadMarkGroup, JunctionLaneLink,
-  JunctionPriority; LaneKey is hash/equal_to only), so
-  build_libopendrive now appends an inline operator< per type
-  delegating to its existing specialization (verified on the host:
-  without the patch the build dies with "no matching function for call
-  to object of type 'const std::less<void>'", with it the full build
-  including test-xodr passes).  The builder's assertion also said
-  dylib: the project builds a static libOpenDrive.a by default and the
-  Dockerfile does not change that -- gdal absorbs it like on linux, so
-  the assertion now checks the static library.  The tenth run cleared
-  libavif and died inside gdal's PublicDecompWT external project (the
-  MSG HRIT driver): its GitLab repository's .gitattributes LFS-marks
-  test-data/** only, but git requires the lfs filter process for the
-  clone and the VM has no git-lfs (the linux base image supplies it; it
-  is in no Dockerfile RUN).  Fixed by provisioning git-lfs with the
-  brew build tools, an ensure_git_lfs bootstrap for existing base VMs
-  (the ensure_rust precedent: brew install if missing, symlinked into
-  the private prefix so the scrubbed PATH resolves the filter command,
-  and the global filter.lfs config ensured), and GIT_LFS_SKIP_SMUDGE=1
-  around the gdal build so the clone does not pull the test-data
-  objects (nothing in the build reads them; the clone itself was
-  verified on the host against the pinned tag -- the checkout carries
-  the DISE/COMP sources the generated PublicDecompWT_all.cpp needs).
-  GDAL itself then died compiling the exr driver: OpenEXR 3.x's headers
-  span three include dirs -- prefix/include/OpenEXR (gdal's
-  openexr_headers.h includes "ImfChannelList.h" etc. directly),
-  prefix/include/Imath (it also includes "ImathMatrix.h" directly),
-  and the PARENT prefix/include (OpenEXR's headers say #include
-  <Imath/half.h>) -- but GDAL's FindOpenEXR only puts the first two in
-  OpenEXR_INCLUDE_DIRS.  On linux that parent is implicit: the prefix
-  there is /usr/local, which the compiler searches by default, while a
-  private prefix is not an implicit system path.  build_gdal now passes
-  CMAKE_C/CXX_STANDARD_INCLUDE_DIRECTORIES="$LIW_PREFIX/include" to
-  restore linux parity (cmake emits them as -isystem, searched after
-  the user paths, so nothing is shadowed; verified on the host: the two
-  subdirs alone reproduce the VM's "fatal error: 'Imath/half.h' file
-  not found", and the same include pattern passes with the parent added
-  last).  The eleventh run's gdal build and install completed -- and
-  died at the builder's own linkage assertion on librttopo, a false
-  positive: GDAL has no rttopo check at all, and on linux
-  librttopo.so appears in ldd only as a transitive dependency of
-  libspatialite (ldd prints the whole dependency closure; otool -L
-  only direct load commands -- the macos libspatialite does link the
-  prefix's librttopo, visible in the fourth run's log).  The assertion
-  now checks the transitive path (otool -L of libspatialite for
-  librttopo) instead of listing librttopo among libgdal's direct load
-  commands.  The twelfth run got past that and the assertion's next
-  catch was a plain case bug in the list itself: the LERC entry is
-  "Lerc" (Esri/lerc's cmake installs libLerc.dylib, and GDAL's
-  configure finds exactly that -- the run's log shows "-- Found LERC:
-  .../prefix/lib/libLerc.dylib"), so the stray lowercase "liblerc"
-  entry (never correct on either platform) was dropped and the Lerc
-  casing documented in the builder comment.  The thirteenth run built
-  all seven GDAL wheels and the test VM run verified them: every
-  macos-specific check passed on every python (otool audits, the
-  bundled-library check, bundled gdalinfo), the known-formats check
-  passed with the gdal driver list ("New formats: e57 icechunk lerc ntf
-  s101 tiger; Missing formats: none"), and python 3.11 -- the first
-  suite run in the VM -- passed the ENTIRE shared suite including the
-  newly lit gdal-dependent steps (projected geotiff read, both
-  converter steps, GDAL transform and Django gis, vsicurl).  The other
-  six pythons failed only on a cross-run file collision: the shared
-  suite's converter steps write to absolute /tmp paths, and all
-  pythons run in ONE VM on macos (linux runs each python's suite in a
-  fresh container, so /tmp starts clean -- python 3.11 created
-  /tmp/outfloat.tiff and every later python hit large_image_converter's
-  "Output file already exists").  Fixed in the shared test/test_script.sh
-  itself: the two converter steps now rm -f their /tmp destinations
-  first (a no-op on linux, and it makes the steps re-runnable).  The
-  next test run passed everything except one check: python 3.14's
-  "test GDAL vsicurl" hit a transient network failure (six other
-  pythons opened the identical URL in the same VM run).  The shared
-  suite's vsicurl step now retries up to three times with a pause
-  before failing the run (the suite's only network-dependent assertion;
-  failure semantics unchanged, just hardened against one-off network
-  flakes that would otherwise cost a full two-hour test rerun).  The
-  following test run passed everything: GDAL is verified end to end on
-  all seven pythons (build VM run plus test VM run, 2026-10-21) -- the
-  otool audits, the bundled-library check, the bundled gdalinfo, the
-  known-formats list, and the full shared suite including the
-  gdal-dependent steps all passed.
-- mapnik work is implemented (2026-10-21); the first verification run
-  (2026-10-21) passed every earlier package, icu4c, the cairo/harfbuzz
-  additions, and the entire mapnik build (libmapnik, all ten default-on
-  input plugins including gdal+ogr against the prefix libgdal, the three
-  tools, the fonts, the .pc files; FindPostgreSQL 18.6, SQLite3,
-  OpenSSL 3.6.2, harfbuzz, cairo, proj all resolved from the prefix) and
-  died at build_mapnik's own linkage assertion on libboost_regex -- a
-  real linkage difference, now understood and accepted: boost 1.92's b2
-  install ships TWO cmake packages for regex, a new-style
-  boost_regex-1.92.0 config that mirrors upstream libs/regex/
-  CMakeLists.txt (which defines boost_regex as a pure INTERFACE library
-  with no artifact) and the b2-built artifacts under the separately
-  named boost_regex_old-1.92.0 package.  Modern cmake's config-first
-  FindBoost therefore resolves Boost::regex to an INTERFACE target with
-  include dirs only and nothing links libboost_regex; that is upstream's
-  supported consume path and it is complete (all of mapnik's
-  boost::regex/u32regex usage instantiates from the headers, which is
-  why libmapnik, every utility, and every plugin linked with no
-  undefined symbols).  The linux wheel differs only in dead weight: its
-  cmake 3.25 FindBoost module resolves the real dylib and records a
-  DT_NEEDED for a library whose symbols are never used.  Fixed by
-  removing libboost_regex from build_mapnik's assertion list (reason
-  recorded there) and asserting the tiles plugin's libboost_url/
-  libboost_context linkage instead (those components have real b2
-  artifacts).  Also host-verified while diagnosing: delocate-wheel
-  handles .input-suffixed MODULE plugins --
-  on a synthetic wheel whose package carries __init__.py it bundles the
-  dependency into mapnik/.dylibs and rewrites the plugins' load commands
-  to @loader_path/../.dylibs (without __init__.py it falls back to a
-  top-level <dist>.dylibs, so the real wheel's package layout is what
-  makes the .dylibs location work).  The second verification run
-  (2026-10-22) rebuilt everything to the same point and died at the
-  audit's next catch: the .input plugins carry no install id at all --
-  they are MODULE libraries, which cmake links as MH_BUNDLE files on
-  macOS (bundles have no LC_ID_DYLIB because they are dlopened by path
-  and nothing links them by name; otool -D is empty, verified on the
-  host).  The audit now applies the absolute-id check only to files that
-  have an id (the libmapnik dylibs) and checks the plugins' @rpath load
-  commands and LC_RPATH entries instead (sanitize_prefix_dylibs only
-  strips RPATHs from *.dylib files, so a prefix rpath on a bundle plugin
-  would otherwise only be caught by delocate's sanitizer); and
-  build_mapnik_python now strips non-@ RPATHs from the copied tools and
-  plugins like build_gdal_python does for the gdal tools.  delocate's
-  bundle handling was re-verified on the host with MH_BUNDLE plugins
-  (bare-name and absolute-path dependency references both rewritten).
-  The third verification run (2026-10-22) cleared the entire mapnik
-  build and its assertions (279 compile units, under three minutes on
-  the VM's cpus) and died at the python step's first packaging copy:
-  `cp: packaging/mapnik/.: Not a directory` -- build_mapnik_python
-  never cd'd into the python-mapnik clone after patching it, so the
-  copies and the relative-path patch scripts ran against $LIW_SRC
-  instead of the clone (the wheel-build loop's own cd was correct, which
-  is why only this step failed).  Fixed with an explicit cd into the
-  clone before the packaging section, mirroring the linux build's
-  `cd python-mapnik`.  The fourth verification run (2026-10-22, after
-  the cd fix) built ALL SEVEN python-mapnik wheels (about 2.5 minutes
-  each) -- resolving the two remaining build questions favorably:
-  pybind11's setup_helpers picks a C++ standard that compiles mapnik's
-  c++20-only headers on AppleClang, and the libc++ std::less issue did
-  not bite mapnik's containers -- and died in delocate:
-  libboost_program_options.dylib (an AUTO-BUILT b2 dependency of
-  --with-program_options; container is not in the --with list) carried a
-  stale build-tree load command, @rpath/libboost_container.dylib.
-  fix_dylib_ids missed it because the member's INSTALLED id was already
-  absolute (b2 linked it directly to the final path), so its old id
-  never entered the rewrite list, while the consumer had been linked
-  against the build-tree copy whose id was @rpath.  fix_dylib_ids is now
-  general: besides normalizing ids, it rewrites every load command in
-  the group that references a member by any non-absolute,
-  non-@loader_path name (both cases verified on the host with synthetic
-  dylibs), and build_boost gained an audit that dies at boost build time
-  if any libboost dylib keeps a load command outside the
-  absolute-prefix / @loader_path / system set (previously this class of
-  failure surfaced only at delocate time, in whichever package first
-  linked the library).  The fifth verification run (2026-10-22) proved
-  that audit worthwhile immediately: it died at boost build time on
-  libboost_date_time.dylib -> @rpath/libboost_container.dylib -- the
-  same stale-reference class, still present after the generalized
-  fix_dylib_ids that had passed every host reproduction (the b2 install
-  pattern in the VM links date_time/program_options directly to the
-  prefix path against the build-tree container copy; the same shapes
-  pass on the host under both bash 5 and the VM's bash 3.2, with and
-  without chained fixups).  Since the identical code works everywhere
-  it can be tested, the failure must be in how the helper reads its
-  inputs inside the VM, so the helper was made independent of the
-  suspicious read and loud about its own failures:
-  fix_dylib_ids now parses both the install id (LC_ID_DYLIB) and the
-  dependency load commands from `otool -l` output (the option form the
-  rest of the pipeline proves works inside the VM --
-  sanitize_prefix_dylibs strips RPATHs from it) via a new macho_fields
-  helper, instead of `otool -D`/`otool -L`; group membership no longer
-  depends on reading a file's id (the old code excluded any file whose
-  id came back empty, which silently emptied the group and turned the
-  whole helper into a no-op if the id read failed); a dylib with no
-  readable id is logged; the helper logs its action count; and a
-  group-internal reference that survives the rewrite pass now kills the
-  build inside the helper with the surviving reference named, instead of
-  surfacing later.  While rewriting, the first draft of the new
-  two-field `while IFS= read -r kind dep` parse was caught on the host
-  (IFS= hands the whole line to `kind` and leaves `dep` empty, so the
-  collection and self-audit loops never fired) -- the host-test edition
-  of the verify-the-edit lesson; the committed version uses the default
-  IFS.  All fix_dylib_ids shapes were re-verified on the host under
-  bash 3.2 with a sabotaged otool -D (prints nothing, the hypothesized
-  VM behavior): ids normalized, stale @rpath references rewritten, the
-  self-audit silent on success and loud when install_name_tool is made
-  to fail.  The sixth verification run (2026-10-22) then produced the
-  real answer, and the logging did exactly its job: the helper reported
-  "10 files, 17 rewrites queued" (reading ids and deps fine -- the
-  otool -D hypothesis was wrong; the lz4/hdf5/hdf4/gdal/pyvips/mapnik
-  audits that read otool -D had all passed all along) and install_name_tool
-  failed loudly on date_time/program_options/thread with the error the
-  old code had been silently swallowing all along: "changing install
-  names or rpaths can't be redone ... because larger updated load
-  commands do not fit (the program must be relinked, and you may need to
-  use -headerpad or -headerpad_max_install_names)".  b2's darwin toolset
-  DOES pass -headerpad_max_install_names by default (darwin.jam), but
-  the new linker ignores it -- verified on the host: b2-built binaries
-  are byte-identical with and without the flag -- so the boost dylibs
-  have no slack, and rewriting the short @rpath/<name> build-tree
-  reference to the long absolute prefix path cannot fit.  fix_dylib_ids
-  now falls back to a same-length path: "/tmp/b/" is exactly as long as
-  "@rpath/", so "/tmp/b/<name>" (a symlink to $LIW_PREFIX/lib, created
-  on demand) replaces the @rpath prefix without changing the load
-  command size; delocate resolves it through the symlink and rewrites
-  the reference to @loader_path inside the wheel (verified on the host
-  with a synthetic wheel: the bundled copies' references come out as
-  @loader_path/.dylibs/..., and /tmp/b never appears in wheel contents).
-  The same fallback applies to -id; the self-audit and the boost audit
-  accept $LIW_SHORT_LIBDIR/* references, and the every-prefix-dylib
-  absolute-id audits (gdal_python, mapnik_python, pyvips) accept a
-  short-path id.
-  The seventh verification run (2026-10-23) cleared boost and the entire
-  mapnik build plus all seven python-mapnik wheel builds and died in the
-  mapnik delocate in a new way: the in-VM build went silent right after
-  the "delocate mapnik wheels" step (the first delocate-wheel is silent
-  for minutes -- libgdal alone is ~1.5 GB), the poll kept reporting
-  "still building" for another ~17 minutes, and then the VM ITSELF was
-  gone (fail() fired from its not-running branch, so the log copy came
-  back empty -- /tmp/macos_build.log was a 0-byte file).  A guest that
-  dies mid-build takes its log with it, so the host cannot show why.
-  Two changes target exactly that: fail() now restarts a dead VM just
-  long enough to retrieve the log before stopping it again (the next
-  such failure will say why the guest died instead of returning an empty
-  file), and the giant delocate loops (mapnik, gdal, pyvips) log a step
-  line per wheel plus the wheelhouse's free disk space, with a hard,
-  early die in the mapnik delocate when less than 10 GB is free (each
-  giant wheel's delocate churns several times its final ~2 GB size
-  through the disk).  The kept VM from a mid-build death is still the
-  fastest diagnosis path for the current failure: `tart run
-  --no-graphics liw_wheels_build`, ssh in, read ~/macos_build.log (its
-  last lines may name the killer -- an ENOSPC or a memory error -- even
-  though the host-side copy was empty), and check `df -h`.  If the disk
-  is the culprit, the base VM needs a re-provision with a larger --disk;
-  if the host is under memory pressure (the agent sandbox shares it), a
-  smaller --mem or an idle host during the delocate phase is the lever.
-  The remaining unobserved steps are the delocate run on the full
-  mapnik bundle and the test run; the next action is another
-  verification run (`macos/tart_build.sh mapnik`, then the full default
-  run and `macos/test_via_tart.sh`).
-- Host-sized VM defaults and test-run memory hygiene (2026-10-23):
-  the post-reset build completed (the delocate progress logging changed
-  its observable behavior as intended), and the test run that followed
-  exposed two host-side issues, both fixed:
-  - The test exhausted the machine's memory: the shared suite's installs
-    and runs fill the guest's file cache, and tart has no balloon driver,
-    so guest pages the host has backed once stay backed for the whole
-    run -- seven pythons of ~10 GB installs, sample files, and renders
-    touch tens of GB of cache that the guest never reclaims (it has room
-    to spare at 8 GB), and the host backing grows monotonically.  The
-    in-VM test script now runs `purge` before each python's checks
-    (falling back through sudo) so every python recycles the same guest
-    pages instead of touching new ones, and logs the guest's free-memory
-    percentage into the report so the trend is visible.
-  - The VM size defaults are now host-sized instead of fixed (4 CPUs,
-    8192 MB): both host scripts default to one fewer vCPU than the host's
-    processor count and max(4096 MB, one third of the host's memory)
-    (the 16 GB build box: 5461 MB), overridable with `--cpus`/`--mem` as
-    before.  `test_via_tart.sh` previously had NO size flags at all (it
-    hard-set 4/8192); it now takes them, and passes `--cpus` on to the
-    in-VM phase-0 python-build concurrency (whose own fallback also
-    became ncpu-1).  Two adjacent usage() bugs fixed while there: the
-    fixed line ranges truncated tart_build.sh's options list and printed
-    test_via_tart.sh's `set -u` line; both now print the header up to
-    the first `set -u` line.  Caveat recorded in the hard-won notes:
-    `build_wheels.sh`'s LIW_JOBS follows the VM's vCPU count, so a high
-    `--cpus` with a low `--mem` can starve parallel compiles.
-  - The test mapnik check printed the AttributeError
-    `'mapnik._mapnik.Projection' object has no attribute 'proj4'`: that
-    was the check's own `p.proj4` read -- python-mapnik at the pinned
-    sha (4.3.2) exposes the PROJ string through `params()`/`definition()`
-    instead of the old `proj4` property (verified against the pinned
-    binding source).  The
-    check now prints `p.definition()` and additionally asserts the
-    projection is not geographic; the construction itself is the proj.db
-    resolution test (the constructor raises a proj_init_error when the
-    EPSG code cannot be resolved through the bundled proj data).
-- The eighth mapnik verification run (2026-10-23) passed the mapnik
-  delocate and the full default build, and the test run verified mapnik
-  on every python except one harness check: everything passed -- the
-  otool audits, the mapnik bundled-library check (with the new
-  definition() read; definition() returns the raw param string, so the
-  non-empty-only assertion was the right call -- a `+proj=` content
-  assertion would have failed), the shared suite including the
-  mapnik-render grep checks and the mapnik tile reads, and the purge
-  lines show the guest's free memory holding at 51-59% across the seven
-  pythons instead of collapsing -- except `bundled mapnik-render tool
-  failed` on all seven pythons, a harness assumption bug, not a wheel
-  defect: upstream's --version branch prints `version <x>` to std::clog
-  and RETURNS 1 (like --help; verified against the pinned source), which
-  is why the shared suite judges the output through `| grep version`
-  (grep's status wins) -- the harness checked the exit status directly.
-  The harness check now captures the output and greps it like the shared
-  suite does (capture, not a pipe: the in-VM script's pipefail would
-  turn mapnik-render's status back into a failure).  The next action is
-  a test-only rerun (`macos/test_via_tart.sh`) expecting a clean RESULT.
-- Build log is always retrieved (2026-10-26): `tart_build.sh` now copies
-  the in-VM `macos_build.log` to `/tmp/macos_build.log` as soon as the
-  build finishes, success or failure -- previously only the failure paths
-  saved it, so a successful build followed by an expected-wheel validation
-  failure left no `/tmp/macos_build.log` at all (the log records what
-  built, which is exactly what is needed to debug a validation mismatch).
-  The failure paths (including the dead-VM rescue in `fail()`) still
-  retrieve it too; the early copy is idempotent.  `test_via_tart.sh`'s
-  test-VM-died path now also saves the partial `report.txt`/`liw_test.log`
-  to `/tmp` before stopping the VM (the completion, failure, and timeout
-  paths already did).
-- openslide-python's 3.15t wheel changed tag (2026-10-26): upstream 1.4.7
-  (commit 129f2f6, "Target Stable ABI on free-threaded Python 3.15+")
-  builds, on a free-threaded 3.15 interpreter, ONE wheel for both GIL
-  states, tagged `cp315-abi3.abi3t` (the ABI field carries both tags;
-  wheel spec multi-tag form), instead of the old `cp315-cp315t`.  The
-  first post-base-update run proved the shape: the wheelhouse holds
-  `openslide_python-1.4.7.1-cp315-abi3.abi3t-macosx_11_0_arm64.whl` on the
-  macos side and the twin `manylinux_2_28_aarch64` wheel on the linux
-  side, with no `cp315-cp315t` openslide wheel from either.  It requires
-  setuptools 84.2+ inside the wheel build's isolation (the builder's
-  `pip wheel` resolves the latest setuptools, so the updated base VM
-  crossed the threshold; the mapnik-verification-era runs predated it and
-  still produced `cp315-cp315t`).  3.14t still gets `cp314-cp314t` (the
-  abi3t target requires python 3.15+), and 3.11 still gets the plain
-  `cp311-abi3` wheel.  Fix: `tart_build.sh`'s expected-wheel validation
-  (`wheel_for_python`) accepts `cp315-abi3.abi3t` (and a bare `abi3t`
-  variant) for 3.15t-and-newer requests, keeping `cp315-cp315t` accepted
-  for the other packages; a plain `abi3` wheel still does NOT satisfy a
-  free-threaded request.  Verified against packaging 26.x: a free-threaded
-  3.15's compatibility-tag set contains `cp315-abi3t-macosx_11_0_arm64`,
-  the `abi3.abi3t` filename parses to both `cp315-abi3` and
-  `cp315-abi3t`, so the wheel installs on 3.15t and on GIL-enabled 3.15
-  alike, and neither the cp311-abi3 nor the cp314-cp314t wheel can be
-  picked for 3.15t.  The shared suite's `have_wheel openslide_python` gate
-  and the harness's phase-1 identity installs need no change (pip finds
-  the new wheel through `--find-links`).  Note for the linux side (not
-  changed there, benign): the Dockerfile's `_abi3` sed is now a no-op --
-  upstream rewrote the line to `_abi3 = ... and not _freethread` -- and
-  the linux 3.15t wheel came out `abi3.abi3t`-tagged anyway, which is
-  upstream's supported consume path.
-- Version tracking caught up with the macos-only build inputs (2026-10-27):
-  the four packages the macos build introduces that the linux build never
-  used -- bison (libmemcached's build tool), swig and its bundled pcre2
-  (the GDAL python bindings' wrapper generator), and the Zulu JDK 8
-  (javabridge/bioformats) -- had been hardcoded literals in
-  `build_wheels.sh` and were invisible to `check_versions.py`.  They are
-  now tracked entries in `check_versions.py`/`versions.txt` and the
-  builders read them through `v` (bison, swig, pcre2, and zulu8; zulu8
-  resolves through the Azul metadata API's latest-GA query for
-  macOS-aarch64 JDK 8).  Bumps from the latest-version check: swig
-  4.3.1 -> 4.5.1 and pcre2 10.45 -> 10.49 (not yet exercised in a VM run;
-  the next swig-touching build -- a GDAL wheel rebuild -- should watch the
-  generated-bindings step); bison (3.8.2) and zulu8 (8.98.0.107-ca,
-  8u512) were already at their latest.  libopendrive's tracking changed
-  shape: upstream publishes a separate gdal branch tagged `<version>-gdal`,
-  and the tracked version is now that full tag (`libopendrive 0.6.1-gdal`)
-  instead of the bare number, but BOTH builds stay pinned at 0.6.0-gdal
-  -- the Dockerfile's "PINNED - version 0.6.1-gdal requires external
-  pugixml and some other work" -- with the reason now recorded in
-  `build_libopendrive` too; the macos build had silently hardcoded
-  0.6.0-gdal without saying why.
+Wheels are built for 3.11, 3.12, 3.13, 3.14, 3.15, 3.14t, and 3.15t:
+
+- Glymur: one wheel per architecture (py3-none-macosx, `packaging`
+  declared).
+- openslide-python: one cp311-abi3 wheel for the stable pythons; the
+  free-threaded pythons build their own tagged wheels, and 3.15t gets
+  the upstream Stable-ABI tag `cp315-abi3.abi3t`.
+- pylibtiff, pylibmc, pyvips, gdal, mapnik: one cp3XX-cp3XX wheel per
+  python.
+- python_bioformats: one py3-none-any wheel, shared across all pythons.
+
+Known benign observation: when pyvips and openslide are loaded in one
+process, each loads its own libgio copy and macOS prints an objc
+duplicate-class warning; the linux wheels ship their own `.libs` copies
+the same way, so this is parity, not a defect.
+
+Maintenance watch items:
+
+- All macos-only build inputs (bison, swig and its pcre2, the Zulu JDK 8
+  via `zulu8`, resolved through the Azul metadata API's latest-GA query)
+  are tracked entries in `check_versions.py`/`versions.txt` read through
+  `v()`.  The swig 4.5.1 and pcre2 10.49 bumps have not yet been
+  exercised in a VM run; the next swig-touching build (a GDAL wheel
+  rebuild) should watch the generated-bindings step.
+- Deliberate pins that override `versions.txt`'s latest check: openssl
+  3.6.2 (the linux pin; versions.txt's 4.0.3 is ignored, like on linux)
+  and libopendrive 0.6.0-gdal (upstream's `<version>-gdal` branch tag is
+  tracked; 0.6.1-gdal requires external pugixml and other work).
 
 ## Hard-won details (do not lose these)
 
-- Process: when editing these scripts, **verify the edit is in the file
-  before committing** (grep for the new content); an atomic multi-part
-  edit that partially matches silently applies nothing, and a commit
-  message that over-claims is worse than no documentation.  This bit
-  us twice: once with an atomic edit that partially matched, and once
-  when a fix was recorded as a comment describing a sed whose command
-  line was never written -- build_hdf5's assertion caught it two runs
-  later.
+Durable traps from building this pipeline.  Most fixes are also recorded
+as comments in `build_wheels.sh` at the point of use.
+
+- When editing these scripts, **verify the edit is in the file before
+  committing** (grep for the new content); an atomic multi-part edit
+  that partially matches silently applies nothing.
 - CMake projects can silently override `CMAKE_INSTALL_NAME_DIR` (hdf5
-  hardcodes `@rpath` on Apple via HDFMacros.cmake); a consumer then
-  records the @rpath name at its own build time, and nothing resolves
-  it after the prefix rpaths are stripped, so delocate fails with
-  "Could not find all dependencies" long after the offending build.
-  Check each new cmake project for INSTALL_NAME_DIR overrides, and the
-  build_pyvips catch-all audit (every prefix dylib must have an
-  absolute install name) is the backstop.  meson and libtool installs
+  hardcodes `@rpath` on Apple via HDFMacros.cmake); consumers then
+  record the @rpath name and nothing resolves it once prefix rpaths are
+  stripped, so delocate fails long after the offending build.  The
+  `build_pyvips` catch-all audit (every prefix dylib must have an
+  absolute install name) is the backstop; meson and libtool installs
   mangle install names to absolute paths themselves.
-- Python cffi extensions are linked with `-undefined dynamic_lookup`
-  on macOS, so otool -L shows no load command for libraries their
-  symbols bind to at import time (pyvips's `_libvips.abi3.so` shows no
-  libvips at all -- the patched `__init__.py` ctypes preload provides
-  it).  Verify such a preload with `DYLD_PRINT_LIBRARIES=1` in a fresh
-  interpreter rather than with otool.
-- If a build fails with `retrying git clone: <url> (v)` -- the tag is
-  literally `v` -- the version lookup returned nothing: check
-  `versions.txt` first (it is shared with the linux build and is updated
-  by the version-cron; a mangled file produced exactly this).  Gating a
-  malformed `versions.txt` belongs in the version-update script, not in
-  `v()`.
-- tart refuses to start a VM once the host's VM/memory limit is reached.
-  The host scripts therefore stop their VM on every exit path (success,
-  failure, timeout, interrupt), stop leftover running `liw_wheels_*` VMs
-  before starting one, verify that `stop_vm` really stopped the VM, and
-  clone with `tart clone --overwrite` so stale VMs never block a run.
-  Only one 8 GB VM fits alongside a running sandbox; pass `--mem 4096`
-  for more headroom.  (Since 2026-10-23 the defaults are host-sized --
-  one fewer vCPU than the host's processor count and max(4096 MB, one
-  third of the host's memory) -- so on the 16 GB build box the test VM
-  defaults to 5461 MB without a flag; note that `build_wheels.sh`'s
-  `LIW_JOBS` follows the VM's vCPU count, so a high `--cpus` with a low
-  `--mem` can starve parallel compiles -- override `--cpus` down before
-  shrinking `--mem`.)
-- `getver.py` resolves `versions.txt` relative to the **current
-  directory** (the Dockerfile always runs from `/build`).  The `v()`
-  helper cds to the repository root in a subshell.
-- The VM's default `/bin/bash` is bash **3.2**: guard empty arrays under
-  `set -u` with `${var[@]+"${var[@]}"}` (see the main package loop), and
-  avoid bash-4+ features.
-- The base VM's shell profiles export `CFLAGS` containing
-  `-march=native`; the build script always overwrites CFLAGS/CXXFLAGS and
-  never inherits them (native arch flags must not leak into wheels).
-- The base VM's pyenv pythons have Homebrew linker flags
-  (`-L/opt/homebrew/...`, `-Wl,-rpath,...`) **and** `-march=native` baked
-  into their sysconfig data.  `scrub_python_sysconfig` rewrites each
-  python's `_sysconfigdata__darwin_darwin.py` (note the leading
-  underscore; the glob is `*sysconfigdata*.py`) to strip those tokens.
-  Without this, extension builds silently link Homebrew libraries.
-  The scrub must only touch **multi-token** values (flag lists):
-  single-token values are plain paths or program names (`LIBDIR`,
-  `LIBPL`, `prefix`); deleting such a value leaves an empty string, and
-  distutils feeds an emptied `LIBDIR` back into `library_dirs`, which
-  produces a bare `-L` argument that breaks every extension link.
-  The scrub also drops `-Wl,-rpath,~/.pyenv/...` tokens (they would be
+- Python cffi extensions are linked with `-undefined dynamic_lookup`:
+  otool -L shows no load command for libraries their symbols bind to at
+  import time (pyvips's `_libvips.abi3.so` shows no libvips at all --
+  the patched `__init__.py` ctypes preload provides it).  Verify such a
+  preload with `DYLD_PRINT_LIBRARIES=1` in a fresh interpreter.
+- A build failing with `retrying git clone: <url> (v)` (the tag is
+  literally `v`) means the version lookup returned nothing: check
+  `versions.txt` first.  Gating a malformed `versions.txt` belongs in
+  the version-update script, not in `v()`.
+- tart refuses to start a VM at the host's VM/memory limit.  The host
+  scripts stop their VM on every exit path, stop leftover
+  `liw_wheels_*` VMs first, verify `stop_vm` worked, and clone with
+  `tart clone --overwrite`.  `build_wheels.sh`'s LIW_JOBS follows the
+  VM's vCPU count, so a high `--cpus` with a low `--mem` can starve
+  parallel compiles.
+- `getver.py` resolves `versions.txt` relative to the current directory;
+  the `v()` helper cds to the repo root in a subshell.
+- The VM's `/bin/bash` is bash **3.2**: guard empty arrays under
+  `set -u` with `${var[@]+"${var[@]}"}` and avoid bash-4+ features.
+- The base VM's profiles export `CFLAGS` with `-march=native`; the
+  build script always overwrites CFLAGS/CXXFLAGS (native flags must not
+  leak into wheels).
+- The base VM's pyenv pythons have Homebrew linker flags and
+  `-march=native` baked into their sysconfig data.
+  `scrub_python_sysconfig` rewrites each python's
+  `_sysconfigdata__darwin_darwin.py` to strip those tokens; without it
+  extension builds silently link Homebrew.  The scrub must only touch
+  multi-token values: emptying a single-token value (`LIBDIR`, `LIBPL`,
+  `prefix`) makes distutils emit a bare `-L` that breaks every extension
+  link.  It also drops `-Wl,-rpath,~/.pyenv/...` tokens (they would be
   baked into extension `.so` files as absolute RPATHs).
-- pyenv free-threaded installs land in directories named like `3.14.8t`
-  (full version + `t`), not `3.14t`.  Free-threaded wheel tags are
-  `cp314-cp314t` (interpreter tag keeps `cp314`; the ABI tag gets the `t`).
-- python-build (pyenv) supplies its own OpenSSL for the pythons it builds;
-  do **not** inject Homebrew's OpenSSL into those builds (mixing
-  python-build's OpenSSL 4 headers with Homebrew's OpenSSL 3 library broke
-  `_ssl` with a flat-namespace symbol error).
-- `delocate`:
-  - bundles dylibs into `<package>/.dylibs` (auditwheel uses
-    `<package>.libs`-style names instead);
-  - keeps original dylib file names (`libtiff.6.dylib`; auditwheel hashes
-    them, `libtiff-<hash>.so.6`) -- any code that looks bundled libraries
-    up by name must handle both (see the `libtiff_ctypes.py` patch);
-  - sets copied dylibs' install IDs to `/DLC/<wheel path>` markers; those
-    are never used for loading (load commands are `@loader_path`-relative)
-    and must be allowed in any otool audit;
-  - `delocate-wheel` rewrites the wheel in place when given no output
-    directory;
-  - its rpath sanitizer (`--sanitize-rpaths`, on by default) only
-    processes files that *require* other libraries, so dependency-free
-    dylibs (e.g. libjpeg) keep build-tree RPATHs; `sanitize_prefix_dylibs`
-    strips RPATHs from the prefix dylibs before wheel building instead
-    (re-signing with `codesign -f -s -`, required on arm64 after
-    `install_name_tool`).  The same applies to bundled *executables*:
-    cmake-installed tools carry an RPATH to the prefix lib dir, and the
-    dependency-free ones (rdjpgcom, wrjpgcom in glymur/bin) are skipped
-    by the sanitizer, so `build_glymur` strips every non-@ RPATH from
-    `glymur/bin` and re-signs them.
-- The `tiff_h_<version>.py` header companion file is generated by running
-  `libtiff/libtiff_ctypes.py` as a script; it needs numpy installed and
-  `DYLD_LIBRARY_PATH` pointed at the prefix lib dir (this only affects the
-  generation run; wheels never rely on `DYLD_*` paths).
+- pyenv free-threaded installs live in directories like `3.14.8t`
+  (full version + `t`); free-threaded wheel tags are `cp314-cp314t`.
+- python-build (pyenv) supplies its own OpenSSL for the pythons it
+  builds; do not inject Homebrew's OpenSSL into those builds (mixing
+  OpenSSL 4 headers with OpenSSL 3 libs broke `_ssl`).
+- `delocate` bundles dylibs into `<package>/.dylibs` and keeps original
+  file names (`libtiff.6.dylib`; auditwheel hashes them) -- code that
+  looks bundled libraries up by name must handle both.  Copied dylibs'
+  install IDs are `/DLC/...` markers (never used for loading; allow
+  them in otool audits).  `delocate-wheel` rewrites the wheel in place
+  with no output dir.  Its rpath sanitizer only processes files that
+  require other libraries, so dependency-free dylibs keep build-tree
+  RPATHs -- `sanitize_prefix_dylibs` strips and re-signs the prefix
+  dylibs before wheel building (codesign is required on arm64 after
+  install_name_tool), and bundled executables get the same treatment
+  (e.g. `build_glymur` strips every non-@ RPATH from `glymur/bin`).
+- The `tiff_h_<version>.py` header companion is generated by running
+  `libtiff/libtiff_ctypes.py` as a script; it needs numpy and
+  DYLD_LIBRARY_PATH pointed at the prefix (generation run only; wheels
+  never rely on DYLD_* paths).
 - Extension builds: pass `library_dirs` explicitly in the setup.py patch
-  and provide include paths through `CFLAGS` at wheel-build time (the
+  and provide include paths through CFLAGS at wheel-build time (the
   scrubbed sysconfig data makes ours authoritative).
-- CMake on macOS installs dylibs with an `@rpath` install name by default;
-  `cmake_build` passes `-DCMAKE_INSTALL_NAME_DIR="$LIW_PREFIX/lib"` so
-  installed dylibs have absolute install names that delocate can rewrite.
-- jbig is built and linked statically into libtiff (one less dylib to
-  bundle; libtiff's configure finds the `.a`).
-- arm64 SIMD needs no `nasm` (NEON assembly is compiled by clang directly).
-- Mach-O stripping uses `strip -x` (the GNU `--strip-unneeded -p -D`
-  flags do not exist on macOS).
-- On macOS, some cmake projects default to building a framework instead
-  of a dylib: libpng produces `png.framework/png` (its otool path
-  contains no "libpng" substring, which tripped the openjpeg feature
-  assertion into flagging a missing optional dependency).  Pass
-  `-DPNG_FRAMEWORK=OFF` to get the plain `libpng16.dylib` the linux
-  build produces; framework install names would also complicate
-  delocate bundling.  When adding a cmake-built dependency, check that
-  plain dylibs (not frameworks) land in the prefix.
-- libwebp is built before libpng (it is part of the `libtiff_deps`
-  chain), so its dwebp/cwebp tools get no png support, unlike the linux
-  libwebp which was configured after libpng.  This is accepted: no wheel
-  bundles the webp tools, and the libwebp library itself does not use
-  png.
+- `cmake_build` passes `-DCMAKE_INSTALL_NAME_DIR="$LIW_PREFIX/lib"`.
+  With modern cmake, a dylib's BUILD-TREE install name is
+  `@rpath/<soname>` regardless -- the INSTALL_NAME_DIR property only
+  rewrites ids at install.  Harmless unless a wheel-shipped dylib links
+  a SIBLING dylib of the same build tree; the fix is
+  `-DCMAKE_BUILD_WITH_INSTALL_NAME_DIR=ON` (hdf4, geos, openexr, mapnik
+  use it).  It is defeated by project macros that set
+  CMAKE_INSTALL_NAME_DIR to @rpath (hdf4 needed a sed of its
+  HDFMacros.cmake; hdf5 has the first-class option
+  -DHDF5_BUILD_WITH_INSTALL_NAME=ON instead).  Project-specific options
+  like HDF4_BUILD_WITH_INSTALL_NAME only fix installed ids, not
+  build-tree references.  When adding a cmake dependency, check whether
+  any target links a sibling dylib and audit installed dylibs for @rpath
+  load commands (build_hdf4's audit is the template).
+- jbig is built and linked statically into libtiff.  arm64 SIMD needs no
+  nasm (NEON is compiled by clang directly).  Mach-O stripping uses
+  `strip -x` (the GNU flags do not exist on macOS).
+- Some cmake projects default to building a framework instead of a
+  dylib on macOS (libpng produces `png.framework/png`); pass
+  `-DPNG_FRAMEWORK=OFF` and check that plain dylibs land in the prefix
+  when adding a cmake-built dependency.
+- libwebp is built before libpng (it is in the `libtiff_deps` chain),
+  so its tools get no png support; accepted, no wheel bundles the webp
+  tools and the library does not use png.
 - ctypes calls variadic C functions differently on darwin/arm64 when
-  `argtypes` is unset: with `argtypes = None`, a call like
+  `argtypes` is unset: with `argtypes = None`,
   `TIFFGetField(tif, tag, byref(data))` segfaults inside libtiff for any
-  tag actually present in the file, while the identical call with
-  `argtypes = [TIFF, c_ttag_t]` works.  large_image clears
-  `libtiff.TIFFGetField.argtypes` at import (its patch predates arm64
-  macs and is harmless on linux, where the ABIs coincide), which made
-  every large_image tiff read segfault with our wheels.  The pylibtiff
-  wheel therefore wraps `libtiff.TIFFGetField` (see
-  `pylibtiff_libtiff_ctypes_getfield.py` in `build_pylibtiff`) so the
-  raw ctypes pointer is always invoked with explicit argtypes while the
-  wrapper still accepts `argtypes`/`restype` assignments.  Watch for
-  the same pattern with any other variadic libtiff entry point
-  (TIFFSetField, TIFFGetFieldDefaulted) if one ever crashes.
-- glymur is pure python, so `pip wheel` tags its wheels `py3-none-any`.
-  pip may also write the wheel filename in lowercase (`glymur-...`)
-  although the distribution is named Glymur; the delocate step renames
-  `glymur-*` to `Glymur-*` first (the linux build does the same sed
-  rename before auditwheel repair).  Because pip's wheel cache serves
-  the identical pure-python wheel to every python, the end result is a
-  single Glymur wheel per architecture, matching the linux build.
-  delocate never retags an `any` wheel, but it rewrites the WHEEL file's
-  tags to match the wheel filename, so the wheel is renamed to
-  `py3-none-macosx_11_0_arm64` *before* running `delocate-wheel`, which
-  then bundles the executables' dylib dependencies and fixes the WHEEL
+  tag present in the file.  large_image clears
+  `libtiff.TIFFGetField.argtypes` at import, so the pylibtiff wheel
+  wraps `TIFFGetField` (see `pylibtiff_libtiff_ctypes_getfield.py` in
+  `build_pylibtiff`).  Watch for the same pattern with TIFFSetField and
+  TIFFGetFieldDefaulted.
+- Glymur is pure python (`py3-none-any`, pip may lowercase the filename
+  -- renamed to `Glymur-*` before delocate).  delocate never retags an
+  `any` wheel but rewrites the WHEEL file's tags to match the filename,
+  so the wheel is renamed to `py3-none-macosx_11_0_arm64` *before*
+  `delocate-wheel`, which bundles the tools' dylibs and fixes the WHEEL
   file to match.
-- Patch scripts written via unquoted heredocs (`<<'EOF'`) inside a
-  function body carry the script's own column-0 layout: the indentation
-  of *inserted* code lives inside the triple-quoted replacement strings,
-  not in the heredoc.  When testing a patch by extracting it with awk,
-  do not `sed 's/^    //'` the extracted file -- that strips the
-  replacement strings' real indentation and makes a correct patch look
-  broken (or a broken one look correct).  Always verify with
-  `python3 -c "import ast; ast.parse(...)` on the patched file.
-- libtiff is built with autotools (`autogen.sh`); Homebrew installs the
-  GNU libtool binaries as `glibtool`/`glibtoolize`, so `ensure_tools`
-  creates `libtool`/`libtoolize` wrappers in the private prefix.
-- cyrus-sasl on darwin: the `macos-framework` feature is enabled by
-  default and its install hook creates /Library/Frameworks/SASL2.framework
-  symlinks outside the prefix, so `build_cyrus_sasl` passes
+- Patch scripts written via unquoted heredocs inside a function body
+  carry the script's column-0 layout: indentation of *inserted* code
+  lives inside the triple-quoted replacement strings.  Do not
+  `sed 's/^    //'` an extracted patch when testing it -- verify with
+  `python3 -c "import ast; ast.parse(...)"` on the patched file.
+- libtiff is built with autotools; Homebrew installs GNU libtool as
+  `glibtool`/`glibtoolize`, so `ensure_tools` creates `libtool`/
+  `libtoolize` wrappers in the prefix.
+- cyrus-sasl: the darwin-default `macos-framework` feature installs
+  outside the prefix, so `build_cyrus_sasl` passes
   `--disable-macos-framework`.  Do not blindly mirror the Dockerfile's
-  configure options: 2.1.28's configure has no `--enable-plain` (the
-  plain plugin is always built), and the openssl-backed mechanisms
-  (otp, srp, scram, ntlm, passdss) and the openldap-backed ldapdb,
-  sql, and auth-sasldb are explicitly disabled or silently dropped
-  because the isolated prefix has no openssl or openldap.
-- The VM's Homebrew autoconf is 2.73, and autoconf 2.72+ changes how
-  `AC_PROG_CC` picks the C standard: it probes for the newest edition
-  the compiler supports and **bakes `-std=gnu23` into `$CC`** (it does
-  not check what the compiler defaults to).  C23 removed K&R function
-  definitions, so cyrus-sasl's md5.c died in the first VM run with
-  confusing "unknown type name 'context'" errors (the K&R parameter
-  names are parsed as types).  The linux build never sees this because
-  the container's autoconf is older.  Fix: pass `-std=gnu17` in CFLAGS
-  -- our CFLAGS land after `$CC` in every compile command, so the later
-  flag wins, and the C23 probe itself then fails, leaving `$CC` clean.
-  Any future autotools build of pre-C23 code in the VM may need the
-  same flag.
-- `( some steps ) || die ...` disables `set -e` for every command
-  inside the subshell: when a compound command's status is checked
-  (`||`), bash turns errexit off inside it.  A failed `make -j` in an
-  autotools builder therefore keeps going into `make install`, and the
-  log shows two failure chains; `die` still fires because the last
-  command's status is the subshell's.  The cmake/meson helpers avoid
-  this with explicit `|| exit 1` on each step; keep that pattern in
-  mind when reading (or writing) autotools builders.
+  configure options: 2.1.28's configure has no `--enable-plain`, and
+  the openssl/openldap-backed mechanisms are explicitly disabled because
+  the prefix has no openssl or openldap.
+- The VM's Homebrew autoconf 2.73 bakes `-std=gnu23` into `$CC`
+  (C23 removed K&R definitions; cyrus-sasl's md5.c died on it).  Fix:
+  pass `-std=gnu17` in CFLAGS -- ours land after `$CC`, the later flag
+  wins, and the C23 probe then fails, leaving `$CC` clean.  Any future
+  autotools build of pre-C23 code may need the same flag.
+- `( some steps ) || die ...` disables `set -e` inside the subshell: a
+  failed `make -j` keeps going into `make install` and the log shows two
+  failure chains.  The cmake/meson helpers use explicit `|| exit 1` per
+  step; keep that in mind for autotools builders.
 - The scrubbed PATH has /usr/bin ahead of the prefix, so a prefix-built
-  tool does not shadow a same-named CLT tool (bison: the CLT's 2.3 vs
-  the prefix's 3.8.2 -- the build log's "unrecognized option
-  --warnings=all" looks like the prefix bison failed, but it was the
-  CLT's).  When a configure script resolves a tool by name at configure
-  time, pass it explicitly by absolute path
-  (`build_libmemcached` passes YACC="$LIW_PREFIX/bin/bison
-  --warnings=all").
-- meson is not part of the base VM's Homebrew build-tool set (cmake,
-  ninja, pkgconf, autotools are).  `ensure_meson` pip-installs meson
-  into the patch python (build tool only; never enters a wheel) and
-  `meson_build` runs it.  Beware meson's dependency resolution: when
-  pkg-config misses, meson falls back to its own cmake method, which
-  searches /opt/homebrew and /usr/local -- our cmake-build isolation
-  flags do not apply to meson's internal cmake calls.  Every meson
-  dependency must therefore resolve through the prefix's pkg-config
-  files (all of openslide's do: zlib, zstd, jpeg, png, tiff, openjpeg,
-  glib, gio, gobject, cairo, xml2, sqlite3, and jxrlib via the
-  libjxr.pc that jxrlib itself installs).  glib's pcre2 and libdicom are
-  fetched and built by meson subproject wraps (meson's default wrap mode
-  allows the fallback; the linux build relies on the same wraps).
-- glib is a special case for the meson fallback hazard: its meson does
-  `dependency('libpcre2-8', required: false)` and then falls back to a
-  bare `cc.find_library('pcre2-8')` before reaching its own subproject
-  wrap, and find_library searches Homebrew.  On the host shadow run this
-  linked Homebrew's pcre2 into libglib (min target 27.0, which delocate
-  rejects for an 11.0 wheel).  `build_glib` therefore passes
-  `--force-fallback-for=libpcre2-8` so glib builds the wrap's pcre2
-  (which carries an apple-platforms fix patch) statically into itself.
-  Watch for the same `cc.find_library` pattern in future meson builds:
-  pkg-config being prefix-scoped does not make find_library prefix-scoped.
-- The in-VM test script runs under `set -u`, and any unbound variable
-  kills it *silently*: its stderr goes to liw_test.log (not streamed),
-  the failures file is never written, and the host-side loop polls
-  "still testing" until the full timeout -- which looks exactly like a
-  hang.  This bit us with the openslide check referencing `$rundir`
-  before its assignment.  Two defenses now: `rundir` is defined at the
-  top of the per-venv loop, and an EXIT trap records a failure the
-  moment the script dies unexpectedly, so the host fails fast with
-  "the in-VM test script died unexpectedly".  Remember that bash keeps
-  only ONE EXIT trap -- a second `trap ... EXIT` replaces the first (the
-  Homebrew restore and the failure recorder live in one combined trap).
+  tool does not shadow a same-named CLT tool (bison 2.3 vs 3.8.2).  When
+  a configure script resolves a tool by name at configure time, pass it
+  explicitly by absolute path.
+- meson (pip-installed into the patch python by `ensure_meson`; not in
+  the base VM's brew set) is a hazard for prefix isolation: when
+  pkg-config misses, meson falls back to its own cmake method or
+  `cc.find_library`, both of which search /opt/homebrew -- our cmake
+  isolation flags do not apply.  Every meson dependency must resolve
+  through the prefix's pkg-config files; glib needs
+  `--force-fallback-for=libpcre2-8` (its `cc.find_library` fallback
+  would link Homebrew's pcre2).  Meson's pc *discovery* also needs
+  PKG_CONFIG_LIBDIR (not just PKG_CONFIG_PATH + ALLOW_SYSTEM_LIBS=0,
+  which only filter output): discovery scans pkgconf's built-in default
+  dirs, which include /opt/homebrew.  glib's pcre2 and libdicom come
+  from meson subproject wraps, like on linux.
+- The in-VM test script runs under `set -u`, and an unbound variable
+  kills it *silently* (stderr goes to liw_test.log, not streamed; the
+  host polls until the full timeout -- looks exactly like a hang).
+  Defenses: `rundir` defined at the top of the per-venv loop, and an
+  EXIT trap recording a failure the moment the script dies unexpectedly.
+  bash keeps only ONE EXIT trap -- a second `trap ... EXIT` replaces
+  the first.
 - openslide-python's bundled-dylib lookup must run BEFORE upstream's
-  `import openslide_bin` fast path in `_load_library`.  On macos pypi
-  publishes openslide-bin wheels and `large-image[openslide]` installs
-  one into every venv, so upstream's fast path wins whenever it runs
-  first -- and pypi's libopenslide is unpatched upstream (no
-  flattened-MIRAX support), which failed the shared suite's mrxs test
-  with a bare "Unsupported or missing image file" (openslide_open
-  returned NULL, i.e. no vendor detected -- a vendor *open* failure would
-  instead surface as OpenSlideError with a message).  On linux this never
-  showed because there is no aarch64 openslide-bin wheel on pypi, so the
-  linux venvs fall through to the bundled library.  Consequence of
-  shadowing openslide-bin on purpose: our bundled libopenslide always
-  wins over a user-installed openslide-bin, matching the linux wheels'
-  behavior.  The phase-1 harness check asserts the loaded dylib path is
-  in `.dylibs` precisely so this class of regression fails loudly.
-- meson's pkg-config isolation needs PKG_CONFIG_LIBDIR, not just
-  PKG_CONFIG_PATH + PKG_CONFIG_ALLOW_SYSTEM_LIBS: those only order and
-  filter the *output*; pc *discovery* still scans pkgconf's built-in
-  default dirs, which for Homebrew's pkgconf include /opt/homebrew.  Any
-  meson "auto" feature whose library is installed in Homebrew but not in
-  the prefix silently leaks in -- observed on the build host, where a
-  `brew install cairo` pulled in X11/lzo/freetype and cairo's auto xlib
-  and lzo features lit up mid-build.  PKG_CONFIG_LIBDIR replaces the
-  default search entirely, so discovery is prefix-scoped.
+  `import openslide_bin` fast path in `_load_library`: on macos pypi
+  publishes openslide-bin wheels and installs them into every venv, and
+  pypi's libopenslide is unpatched (no flattened-MIRAX support), which
+  failed the shared suite's mrxs test with a bare "Unsupported or
+  missing image file".  On linux this never shows (no aarch64
+  openslide-bin wheel on pypi).  Consequence of the shadowing: our
+  bundled libopenslide always wins over a user-installed openslide-bin,
+  matching the linux wheels.  The phase-1 harness check asserts the
+  loaded dylib path is in `.dylibs` so a regression fails loudly.
 - cairo's meson disables freetype and fontconfig by default on darwin
-  (it prefers CoreText there; on linux they are required).  The linux
-  wheel's cairo has both compiled in, so `build_cairo` passes
-  `-Dfreetype=enabled -Dfontconfig=enabled` and asserts the linkage.
-  fontconfig is built with `-Dnls=disabled`: NLS only adds translated
-  messages, and without it fontconfig's non-pkg-config intl lookup would
-  pull a foreign libintl on hosts that have gettext (the VM has none, so
-  it lands disabled there anyway).
-- fontconfig needs `gperf`, which is neither in the base VM's brew set
-  nor in the CLT; fontconfig's meson falls back to its own gperf
-  subproject, so nothing extra has to be provisioned.
-- fontconfig's meson option `cache-build` (default enabled) runs the
-  just-built `fc-cache -s -f -v` as an install script, exactly like the
-  linux build.  On macOS this floods the log with ~25k
-  "invalid cache file: ...-le64.cache-N" lines from the fontconfig
-  step: fontconfig's own `05-macos.conf` adds the system font-asset
-  stores (/System/Library/AssetsV2/* and Assets/*) as font dirs, so
-  fc-cache writes a 0-font cache for every directory in the live
-  UnifiedAssetFramework tree (as four names each -- cache-9/10/11 are
-  compat symlinks to the real cache-12), and its final cleaning pass
-  then finds them stale because the system's asset daemons changed the
-  directory mtimes in between.  The message is fc-cache -v's own
-  cleanup reporting; it unlinks the stale files itself, the real font
-  caches survive, and runtime fontconfig never prints anything like it
-  (cache validation failures in the library are silent without
-  FC_DEBUG=cache).  The meson_build helper filters the install step's
-  output for these three patterns (`: invalid cache file: `,
-  `: skipping, looped directory detected`,
-  `: caching, new cache contents: 0 fonts,` -- exclusive to fc-cache's
-  verbose output) purely to reduce the log volume; the fc-cache run
-  itself is untouched.  Cosmetic; do not chase it further.
-- The Dockerfile is deliberate about every flag; treat each library as
-  its own special case and check each flag against the upstream build
-  system at the pinned version instead of assuming a generic default.
-  Every pyvips-stage build failure so far came from substituting a
-  "reasonable generic" for something the Dockerfile spelled out:
-  jpeg-xl's vendored static highway (HWY_FORCE_STATIC_LIBS + the
-  submodule clone), libexif needing the image's gettext-devel for its
-  autoreconf, poppler hard-rejecting MinSizeRel (hence its explicit
-  -DCMAKE_BUILD_TYPE=Release), and imagemagick's linux-only -lrt.
-  Even flags that look inert may encode real constraints (cfitsio's
-  CMAKE_POLICY_VERSION_MINIMUM, hdf5's ZLIB_DIR) -- mirror them rather
-  than pruning them, and only drop a flag with a written reason.
+  (it prefers CoreText; on linux they are required), so `build_cairo`
+  passes `-Dfreetype=enabled -Dfontconfig=enabled` and asserts the
+  linkage.  fontconfig is built with `-Dnls=disabled` (no foreign
+  libintl).  fontconfig needs `gperf` (falls back to its own meson
+  subproject).  fontconfig's `cache-build` option runs `fc-cache -s -f
+  -v` on install, which floods the log with ~25k "invalid cache file"
+  lines on macOS (it caches the system font-asset stores, whose mtimes
+  the asset daemons change under it).  Cosmetic only; meson_build
+  filters those three fc-cache-verbose patterns; do not chase it.
+- The Dockerfile is deliberate about every flag; check each flag against
+  the upstream build system at the pinned version instead of assuming a
+  generic default, and only drop a flag with a written reason (jpeg-xl's
+  vendored static highway, poppler rejecting MinSizeRel, imagemagick's
+  linux-only -lrt, cfitsio's CMAKE_POLICY_VERSION_MINIMUM, hdf5's
+  ZLIB_DIR).
 - The macOS linker rejects undefined symbols in dylibs where the Linux
   linker allows them.  jxrlib's shared-library rules rely on the Linux
-  behavior (libjxrglue references symbols that live in libjpegxr); the
-  build passes `-Wl,-undefined,dynamic_lookup` to those two link rules
-  to restore the Linux semantics.  Verified by an encode/decode round
-  trip through both dylibs on the host.  The same rules get
-  `-Wl,-install_name,$(DIR_INSTALL)/lib/$(notdir $@)` so the installed
-  dylibs have absolute install names (delocate can then rewrite them;
-  clang's `-shared` otherwise records the bare output path).
+  behavior; the build passes `-Wl,-undefined,dynamic_lookup` to those
+  two link rules plus `-Wl,-install_name,<absolute path>` so delocate
+  can rewrite them.
 - openslide is pinned by commit sha (`openslide-sha`), so it needs a
-  full clone (`git_retry` with an empty tag) -- a sha is not contained in
-  a `--depth=1` clone of the branch tip.
-- openslide-python's abi3 wheel: upstream master's `_abi3` is
-  `version >= (3, 11) and not Py_GIL_DISABLED`, so 3.11+ stable builds
-  one cp311-abi3 wheel covering 3.11-3.15 and the free-threaded
-  interpreters build their own cp3XX-cp3XXt wheels.  Building for every
-  stable python would just produce duplicate abi3 wheels (the linux
-  build excludes 3.12-3.15 for the same reason), so
-  `build_openslide_python` selects 3.11 and the `*t` pythons from
-  `PYBINS`.  `tart_build.sh`'s expected-wheel validation already accepts
-  an abi3 wheel for any stable python newer than the abi3 baseline.
-- glib on darwin does not need util-linux's libmount/libblkid (the
-  Dockerfile builds util-linux only for glib's Linux-side needs), so the
-  macos build has no util-linux counterpart.
+  full clone -- a sha is not in a `--depth=1` clone.
+- `fix_dylib_ids` normalizes install ids to absolute prefix paths AND
+  rewrites every load command in its group that references a member by
+  a non-absolute, non-@loader_path name (stale build-tree references,
+  e.g. b2-built boost dylibs).  It parses ids and load commands from
+  `otool -l` via the `macho_fields` helper (not `otool -D`/`-L`), logs
+  its action count, and dies with the surviving reference named if a
+  rewrite fails.  When a rewritten load command would not fit (the new
+  linker ignores -headerpad_max_install_names, so b2-built boost dylibs
+  have no slack), it falls back to a same-length path: "@rpath/" and
+  "/tmp/b/" are the same length, so "/tmp/b/<name>" (a symlink to
+  $LIW_PREFIX/lib, created on demand) replaces the @rpath prefix;
+  delocate resolves it through the symlink and rewrites to @loader_path
+  inside the wheel.  The build_boost audit dies at boost build time if
+  any libboost dylib keeps a load command outside the absolute-prefix /
+  @loader_path / system set; the audits accept $LIW_SHORT_LIBDIR/*.
+- If a guest dies mid-build, its log dies with it (the host-side copy
+  comes back empty).  `tart_build.sh`'s `fail()` restarts a dead VM
+  just long enough to retrieve the log, but the kept VM is the fastest
+  diagnosis path: `tart run --no-graphics liw_wheels_build`, ssh in,
+  read ~/macos_build.log, check `df -h` (disk -> re-provision with a
+  larger `--disk`; memory -> smaller `--mem`).
+- tart has no balloon driver, so guest file-cache pages stay backed on
+  the host for the whole run.  The in-VM test script runs `purge`
+  before each python's checks so every python recycles the same guest
+  pages, and logs the guest's free-memory percentage into the report.
+- glib on darwin does not need util-linux's libmount/libblkid (linux
+  only), so the macos build has no util-linux counterpart.
+- On macOS the linker maps libz to /usr/lib/libz.1.dylib (always
+  present; delocate treats /usr/lib as system).
 
 ## Adding a package
 
 1. Find the package's section in the Dockerfile and every dependency
    section it pulls in; note the build order and flags.
-2. Add a `build_<dep>` function for each new dependency to
-   `build_wheels.sh`, mirroring the Dockerfile's flags, using the helpers
-   (`git_retry`/`fetch`, `cmake_build`, or explicit autotools commands),
-   with `skip_if_done`/`done_stamp` stamps.  Install everything into
+2. Add a `build_<dep>` function per new dependency, mirroring the
+   Dockerfile's flags, using the helpers (`git_retry`/`fetch`,
+   `cmake_build`, `meson_build`, or explicit autotools commands), with
+   `skip_if_done`/`done_stamp` stamps.  Install everything into
    `$LIW_PREFIX` only.
 3. Add a `build_<package>` function following the `build_pylibtiff`
-   pattern:
-   - clone the package at the `versions.txt` pin;
-   - apply patches (inline python heredocs written into `$LIW_PATCHES`,
-     like the Dockerfile's inline patches; take `$LIW_PREFIX` from the
-     environment, not hardcoded paths);
-   - handle any header/metadata generation steps;
-   - commit the patches and tag with the combined version
-     (`$(v <package>).$(v <bundled lib>)`);
-   - loop over `${PYBINS[@]}` (set by `collect_pybins`) building wheels
-     with `pip wheel --no-deps`;
-   - run `delocate-wheel` over the results;
-   - `done_stamp <package>`.
-4. Wire the package into the main `case` (with the dependency builders it
-   needs).  Two rules govern that list:
-   - **Completeness on a fresh VM**: every build starts from a pristine
-     base, so the case must build the package's *full* dependency tree,
-     not just what some earlier package's run happened to leave in the
-     prefix.  Order matters just as much: configure-time feature
-     detection silently drops optional libraries that are not installed
-     yet, so every library the linux build makes available to this
-     package must be built before the package's configure step (mirror
-     the Dockerfile's final state; see `build_openjpeg` and its feature
-     assertions for the pattern).
-   - **Feature assertions**: after a dependency-sensitive build, assert
-     the feature set rather than trusting configure's silence.  Grep
+   pattern: clone at the `versions.txt` pin; apply patches (inline
+   python heredocs written into `$LIW_PATCHES`, taking `$LIW_PREFIX`
+   from the environment); handle header/metadata generation; commit the
+   patches and tag with the combined version
+   (`$(v <package>).$(v <bundled lib>)`); loop over `${PYBINS[@]}` with
+   `pip wheel --no-deps`; run `delocate-wheel`; `done_stamp`.
+4. Wire the package into the main `case`.  Two rules:
+   - **Completeness on a fresh VM**: the case must build the package's
+     *full* dependency tree, in an order that mirrors the Dockerfile's
+     final state -- configure-time feature detection silently drops
+     optional libraries that are not installed yet (see `build_openjpeg`
+     and its feature assertions).
+   - **Feature assertions**: after a dependency-sensitive build, grep
      `otool -L` output of the produced binaries for every optional
      library the linux wheel links, and die if one is missing.  A
-     missing optional library would otherwise only surface as a
-     reduced-capability wheel that the functional tests may never
-     exercise.
+     missing optional library otherwise only surfaces as a
+     reduced-capability wheel the functional tests may never exercise.
 5. Build and test: `LIW_PYTHONS="3.13" bash macos/build_wheels.sh
    <package>` inside the VM, then the full host flow (`tart_build.sh` +
    `test_via_tart.sh`).
 
-Notes on the remaining packages:
+Per-package quick reference.  Every builder's comment in
+`build_wheels.sh` records the full reasoning at the point of use; these
+are the headlines and the traps that are not obvious from the code.
 
-- **Glymur**: implemented (`glymur` case: `build_libtiff_deps`,
-  `build_lcms2`, `build_libpng`, `build_openjpeg`, `build_glymur`).
-  lcms2 and libpng are built because the linux openjpeg (rebuilt after
-  they existed) links them into the bundled `opj_*` tools; skipping them
-  would silently ship feature-reduced tools.  `build_openjpeg` asserts
-  the linkage.  Like the linux build, openjpeg is built *after* libtiff
-  (the linux Dockerfile builds it twice; one build after libtiff reaches
-  the same final state).  The bundled `opj_*` and libjpeg tools go into
-  `glymur/bin` with the same `glymur.bin:program` wrapper pylibtiff
-  uses; `config.py` is patched to find the bundled openjpeg dylib in
-  `glymur/.dylibs` (with the linux `Glymur.libs` location as fallback),
-  and `pyproject.toml` is patched for the console scripts, package data,
-  python 3.10, and the `0.14.8.1` version.  Its dependencies are also
-  patched to declare `packaging`: glymur 0.14.8 imports it in
-  `version.py` without declaring it (an upstream bug the shared test
-  exposed -- `import glymur` fails on a clean install of upstream
-  0.14.8, and the linux wheel has the same latent issue until the
-  Dockerfile patch is rebuilt).  Verified end to end in the VM: the
-  wheel passes the identity, otool, and shared-suite checks on every
-  requested python.
-- **pyvips**: implemented and verified end to end (2026-10-16; the
-  status entries record how each stage was proven).  The linux wheel
-  bundles libvips and
-  its whole feature set, so the macos build must mirror the
-  Dockerfile's final state before libvips configures: the openslide
-  chain (libvips links openslide like any other loader), orc, nifti,
-  lz4, fftw3, libhwy, jpeg-xl (which needs libhwy and brotli),
-  libimagequant (rust), libexif, libarchive, libraw, harfbuzz, pango,
-  librsvg (rust), libde265 + libheif, poppler, cfitsio, hdf5, matio
-  (hdf5 first, like the linux build order), openexr, libzip, and
-  imagemagick (after librsvg, so --with-rsvg finds it).  libexif is built from its
-  release tarball (which ships a pre-generated configure) with
-  --disable-nls: its configure.ac cannot be re-generated in the VM
-  because the NLS macros (AM_PO_SUBDIRS, AM_GNU_GETTEXT, AM_ICONV) and
-  autopoint come from gettext, which the VM deliberately does not have
-  (the linux build gets them from its gettext-devel package); NLS only
-  adds translated messages, the same reasoning as fontconfig's
-  -Dnls=disabled, and the linux dylib gets NLS from glibc's gettext,
-  not a bundled library.  The rust toolchain mirrors
-  the Dockerfile: rustup minimal profile installed at base-VM
-  provisioning time, `cargo install cargo-c` for libimagequant,
-  `cargo cinstall --prefix=$LIW_PREFIX` for the library itself.
-  Stage-2 decisions so far (all to be confirmed by the checkpoint run):
-  pango's fribidi is a hard dependency with no prefix copy, so pango is
-  configured with `--force-fallback-for=fribidi` to build its own
-  subproject wrap statically into libpango (meson's cmake fallback
-  method is not prefix-scoped, so a Homebrew fribidi could otherwise
-  leak in); pango is built with `-Dfontconfig=enabled` for the same
-  reason cairo is: pango (like cairo) disables fontconfig by default on
-  darwin because it prefers CoreText, and without the flag it silently
-  builds no libpangoft2 at all -- the linux build gets pangoft2 because
-  fontconfig is required on linux; harfbuzz is built with `-Dcoretext=enabled` because pango's
-  macOS build requires it -- its HAVE_CORE_TEXT probe (a CoreText link
-  test) always succeeds on darwin, there is no pango option to skip the
-  resulting pangocoretext.c sources, and they include <hb-coretext.h>
-  from harfbuzz (a darwin-only addition; the linux wheel has no
-  CoreText shaper).  The linkage lands as the CoreText,
-  CoreFoundation, and CoreGraphics system frameworks -- the modern
-  linker resolves the ApplicationServices umbrella's symbols from its
-  sub-frameworks and records those instead -- all /System paths the
-  otool audits allow.  librsvg passes `-Dpixbuf=disabled` (gdk-pixbuf is built in
-  neither pipeline, and leaving the feature auto could pull librsvg's
-  gdk-pixbuf subproject wrap) and appends `lto = true` to Cargo.toml
-  like the Dockerfile; jpeg-xl's highway is statically embedded by
-  libjxl itself (its third_party/CMakeLists.txt sets
-  HWY_FORCE_STATIC_LIBS and the --recurse-submodules clone provides the
-  vendored copy, exactly as on linux -- the prefix's libhwy mirrors the
-  Dockerfile but is not what libjxl links), and libjxl's vendored brotli
-  (shared, same 1.2.0 sonames) is installed over the prefix's copy; poppler passes `-DENABLE_BOOST=OFF` (a
-  deviation: boost is not in the prefix yet -- it is a
-  splash-performance option that links nothing into the dylibs;
-  revisit when boost is built for mapnik/GDAL) while NSS, GPGME, and
-  the QT test options mirror the Dockerfile; hdf5 drops the
-  Dockerfile's MPI-dependent options (HDF5_ENABLE_PARALLEL and the MPI
-  variables -- the prefix has no MPI; parallel netcdf is a GDAL-stage
-  concern that will need an MPI built into the prefix) and
-  HDF5_ENABLE_DIRECT_VFD (linux-only, O_DIRECT); hdf5 also presets
-  ZLIB_LIBRARIES/ZLIB_INCLUDE_DIR (hdf5's config-mode zlib find
-  silently succeeds against the cmake-built zlib's ZLIBConfig.cmake,
-  which provides imported targets but not the module variables hdf5's
-  filter code consumes, leaving the deflate filter compiled but zlib
-  unlinked -- the linux linker tolerates the resulting undefined
-  symbols, the macOS one does not); imagemagick drops -lrt from LIBS
-  (linux-only) and is built with `--without-modules` -- a deliberate
-  deviation: --with-modules needs libltdl (in the linux base image,
-  absent here and Homebrew is forbidden) and, more importantly, the
-  dlopened coder modules are never bundled into a wheel by either
-  delocate or auditwheel, so the linux wheel ships a MagickCore whose
-  coders cannot load at runtime; with --without-modules every coder is
-  compiled into libMagickCore, the bundled dylib is fully functional,
-  and the whole delegate feature set (png, jpeg, tiff, webp, heif,
-  jxl, raw, rsvg, openjpeg, zip, fftw, lzma, zstd, bzip2) is asserted
-  on the core library's own linkage.  clang's lack of OpenMP also
-  means IM builds without it (linux's gcc builds with OpenMP) -- an
-  unavoidable platform delta; libzip and curl were added to the chain
-  (Dockerfile dependencies missed in stage 2).  curl mirrors the
-  Dockerfile's release-tarball build (which exists so libcurl.pc
-  exists for pkg-config consumers -- poppler-glib.pc's
-  "Requires.private: libcurl" cannot resolve the macOS system libcurl,
-  which made meson silently drop the whole poppler-glib dependency and
-  libvips's pdf loader) with two forced deviations, verified on the
-  host: -DCURL_ENABLE_SSL=OFF (the VM has no OpenSSL and curl's cmake
-  hard-requires a TLS backend; nothing in the wheel's tree uses curl
-  for TLS) and -DCURL_USE_LIBPSL=OFF (no libpsl in the prefix); LDAP
-  resolves to the system LDAP.framework, which the audits allow;
-  matio's hand-written matio.pc points at $LIW_PREFIX (mirroring the
-  Dockerfile's overwrite); libvips will need
-  `-Dnifti-prefix-dir=$LIW_PREFIX` (the Dockerfile passes /usr/local);
-  gobject-introspection is deferred (it produces metadata, not linked
-  features, and the macos openslide chain has been fine without it --
-  revisit only if libvips's meson requires it).  The wheel (stage 3,
-  mirroring the Dockerfile's pyvips section): `pyvips/__init__.py`
-  preloads the bundled libvips dylib from `pyvips/.dylibs` (with the
-  linux `pyvips.libs` location as fallback) before importing the cffi
-  extension, `pyvips_build.py` names the extension `pyvips._libvips`,
-  `version.py` gains the `.8.18.7` suffix (wheel version
-  `3.2.0.8.18.7`), the bundled `vips` tools and `magick` go into
-  `pyvips/bin` with the `pyvips.bin:program` wrapper, and the effective
-  packaging changes come from the pyproject.toml patch (include-package
-  data, package-data `bin/*`, and the console scripts): pyvips 3.2.0's
-  setup.py has no `packages=pyvips_packages,` line, so the setup.py
-  patch's replaces are inert no-ops -- the linux build carries the same
-  inert patches.  `build_libvips` asserts the linked loader set
-  (gobject, openslide, MagickCore, heif, jxl, jpeg, tiff, png, webp,
-  rsvg, poppler, cfitsio, matio, nifti, archive, raw, openjp, exif,
-  orc, fftw, lcms, imagequant, pangocairo).
-  The GDAL work (2026-10-16) changed two things in this chain, so the
-  previously verified pyvips wheel state needs a re-verified run: the
-  case now builds `build_openssl` and `build_curl` first (right after
-  `build_libtiff_deps`), so the prefix curl has TLS like the linux one
-  and poppler links it (the libcrypto/libssl dylibs then ride along in
-  `pyvips/.dylibs` through the libcurl linkage; build_curl asserts the
-  libssl linkage, replacing the old "nothing uses curl for TLS"
-  deviation comment), and the case builds `build_openmpi` before
-  `build_hdf5`, whose builder now carries the Dockerfile's MPI options
-  (a parallel hdf5 linking libmpi, like the linux pyvips wheel).  The
-  full default run (which now ends with the gdal case) produces both
-  wheels in one VM, so one build-plus-test cycle re-verifies pyvips
-  together with gdal.
-Notes on the remaining packages:
-
-- **openslide_python**: implemented (`openslide_python` case:
-  `build_libtiff_deps`, `build_lcms2`, `build_libpng`, `build_openjpeg`,
-  then the openslide chain `build_libbrotli`, `build_libexpat`,
-  `build_libffi`, `build_glib`, `build_sqlite`, `build_libxml2`,
-  `build_pixman`, `build_freetype`, `build_fontconfig`, `build_cairo`,
-  `build_jxrlib`, `build_openslide`, `build_openslide_python`).
-  openslide 4.x is a meson build and requires (hard deps) glib/gio/gobject,
-  cairo, libxml2, sqlite3, zlib, libzstd, libjpeg, libpng, libtiff,
-  libopenjp2, and libdicom; libdicom is not built separately -- openslide's
-  own `subprojects/libdicom.wrap` fetches and builds it (meson's default
-  wrap mode allows the fallback, like the linux build).  The two repo
-  patches (`openslide-iewchen-zeiss-czi-jxr.patch`,
-  `openslide-vendor-mirax.c.patch`) are applied with `git am` at the
-  `openslide-sha` pin (a full clone, since a sha is not in a depth-1
-  clone); the zeiss patch adds optional JXR support, so `build_jxrlib`
-  runs before openslide and `build_openslide` asserts the linked feature
-  set (cairo, glib, gobject, sqlite3, xml2, jxrglue, jpegxr, png, tiff,
-  openjpeg, jpeg) via `otool -L`.  util-linux (libmount/libblkid) is a
-  Linux-only glib dependency and has no macos counterpart.  meson itself
-  is not in the base VM's Homebrew set; `ensure_meson` pip-installs it
-  into the patch python and `meson_build` mirrors the Dockerfile's meson
-  flags (`--buildtype=release --optimization=3`).  openslide-python is
-  cloned from master (the release tag is stale) and patched like the
-  linux build: `lowlevel.py` learns to load the bundled libopenslide
-  dylib from `openslide/.dylibs` (with the linux `openslide_python.libs`
-  fallback) *before* the `openslide-bin` wheel import and the system
-  search; the bundled `slidetool` goes into `openslide/bin` with the same
-  `openslide.bin:program` wrapper pylibtiff uses (the linux wheels bundle
-  only slidetool as well: the `openslide-quickhash1sum`-style names are
-  install-time symlinks that do not exist in the meson build directory,
-  so the linux find-based copy also produces slidetool only); `setup.py`
-  links
-  `_convert` against the prefix's libopenslide (`library_dirs`),
-  `_version.py` gains the `.1` suffix, and `pyproject.toml` gets the
-  package data and console scripts.  Upstream master already carries the
-  free-threading `_abi3` guard the linux patch adds.  Because 3.11+ builds
-  one abi3 wheel covering 3.11-3.15 (the free-threaded interpreters build
-  their own tagged wheels), `build_openslide_python` builds only for 3.11
-  and the requested `*t` pythons; `tart_build.sh`'s expected-wheel
-  validation already accepts abi3 wheels for the stable pythons, and the
-  test harness verifies the version identity per python.  Verified end
-  to end in the VM (see the hard-won details for the openslide-bin
-  shadowing issue the first VM run exposed and its fix).
-- **GDAL**: implemented (2026-10-16; see the status entry for the full
-  change list and the verification recipe -- the builders are written
-  but have NOT been run in a VM yet).  The `gdal` case is self-sufficient
-  on a fresh VM: the base format libraries (libtiff chain, giflib),
-  openssl+curl (TLS, first, like the linux order), json-c, lerc,
-  jpeg-xl, the openjpeg feature set, the XML/compression helpers (expat,
-  xml2, lz4, libarchive), sqlite, proj4, freetype+fontconfig (what
-  poppler needs here), swig, openmpi, boost, minizip, fossil, the
-  geos/spatialite/rasterlite2 tree, libgeotiff, fyba, hdf4, hdf5 (with
-  parallel), parallel-netcdf, netcdf, mysql, postgresql, libgta,
-  xerces-c, armadillo, blosc, highfive+kealib, libde265+libheif,
-  poppler, cfitsio, openexr, libopendrive, libavif, then gdal and its
-  python bindings.  The vips-only tree is deliberately NOT in the case
-  (GDAL's cmake checks none of it); the shared suite's known-formats
-  check polices the resulting driver set, and build_gdal asserts the
-  linked feature set.
-  Decisions taken while writing the builders (all with the reason
-  recorded in the builder's comment in build_wheels.sh):
-  - MPI and parallel netcdf are built, as decided: openmpi from the
-    release tarball with the Dockerfile's configure flags (its single-dash
-    '-disable-oshmem-profile' typo is spelled correctly here),
-    parallel-netcdf from the checkpoint branch with the LT_PREREQ
-    2.5.4->2.4.6 sed, and build_hdf5 carries the Dockerfile's MPI options
-    (the linux MPI_C_HEADER_DIR hint is not passed -- FindMPI resolves
-    everything from the prefix's mpicc on macOS).  The pyvips case also
-    builds openmpi before hdf5, so every fresh-VM run converges on the
-    linux final state (a parallel hdf5 linking libmpi).
-  - The OpenSSL is built with the linux 3.6.2 pin (versions.txt's 4.0.3
-    deliberately ignored, like the linux build) and curl drops
-    -DCURL_ENABLE_SSL=OFF; CURL_USE_LIBPSL=OFF stays (no prefix libpsl;
-    an open question whether one is worth building).  OpenSSL installs
-    relative install names on macOS, so build_openssl normalizes them
-    with the new fix_dylib_ids helper before any consumer links.
-  - GDAL's python bindings are a hard SWIG consumer, and the macos VM
-    has no swig: build_swig builds the sourceforge release tarball
-    (pre-generated configure) into the prefix, with PCRE2 from swig's own
-    Tools/pcre-build.sh (a downloaded pcre2 tarball built as a static
-    library inside the swig tree, never installed into the prefix).  Both
-    versions are pinned in the builder (like bison), not versions.txt.
-  - mysql is built for the MySQL driver (it is in the shared suite's
-    known-formats list).  Its WITH_BOOST expression is mirrored verbatim;
-    the find matches nothing in the boost superproject (the headers are
-    generated at build time), so mysql fetches its own boost -- the same
-    thing the linux build does.  libaio is skipped (linux-only).
-  - postgresql is configured --without-icu (PG 16+ fails configure
-    without it and the prefix has no ICU; ICU only affects collation
-    variants) and --without-readline (the prefix has none and the base
-    VM's Homebrew readline must not be linked), with --with-ssl=openssl
-    mirroring the linux libpq-openssl linkage.
-  - armadillo links the macOS Accelerate framework (its cmake does this
-    by default on APPLE when no BLAS/LAPACK is found): there is no
-    Fortran compiler in the VM to build the Dockerfile's lapack, and a
-    Homebrew gfortran would drag Homebrew's libgfortran into the wheels.
-    build_armadillo asserts the Accelerate linkage, which also satisfies
-    GDAL's ARMA_USE_LAPACK config check.
-  - Dockerfile sections skipped with reasons (recorded in the section
-    comment): libtirpc/libnsl (GDAL's cmake has no tirpc/nsl check --
-    stale autotools-era comments; the linux build installs both and
-    nothing links them), krb5 (macOS system Kerberos; the pylibmc
-    precedent), libxcrypt (macOS libSystem provides crypt), ogdi (GDAL
-    3.13's cmake has no OGDI check and the linux wheel has no OGDI
-    driver -- the known-formats list proves it), and mrsid (x86_64-only
-    SDK; the shared suite subtracts it on arm64).  librasterlite2 IS
-    built (linux builds it before gdal; GDAL's RASTERLITE2 check feeds
-    the SQLite raster driver).
-  - The Dockerfile's make USER_DEFS (-Werror + gcc-only -Wno-* flags)
-    is not passed to the gdal build: clang warns about unknown -Wno-*
-    options and the build must not turn diagnostics into errors on a
-    different compiler.
-  The python wheel: the osgeo patch exports GDAL_LIBRARY_PATH and
-  GEOS_LIBRARY_PATH from the bundled dylibs (osgeo/.dylibs first, the
-  linux GDAL.libs location as fallback), points PROJ and GDAL at the
-  bundled data trees, and adds the macOS CA bundle to CURL_CA_BUNDLE;
-  the bundled tools (gdal, proj, libgeotiff) are exposed as console
-  scripts through `osgeo.bin:program`.  The known-formats assertion in
-  the shared suite (>= 98 formats, every known format present except
-  mrsid on arm64) is the functional gate for the driver set.
-- **pyproj**: intentionally not built for macOS.  pyproj4 publishes
-  macosx arm64 wheels, so the tests install pyproj from pypi like any
-  other dependency; the linux pipeline no longer builds a pyproj wheel
-  either (the pyproj4 section's `pip wheel` commands are disabled).  Do
-  not confuse this with the `proj4` library section of the Dockerfile
-  ("Used by gdal and mapnik"): that library is still required and must
-  be built before GDAL or mapnik, mirroring its position in the
-  Dockerfile's order.
-- **pylibmc**: implemented (`pylibmc` case: `build_zlib`,
-  `build_bison`, `build_cyrus_sasl`, `build_libmemcached`,
-  `build_pylibmc`) and verified end to end in the VM (build, wheel
-  assertions, and the test run pass on every requested python; the
-  suite's pylibmc test is currently just `import pylibmc`, which does
-  exercise the bundled plugin loading -- pylibmc's module init runs
-  `sasl_client_init`, which dlopens every bundled sasl2 plugin and
-  aborts the import if one is missing or unparseable).
-  The dependency builds were first proven on the host, then observed
-  in the VM (two VM rounds: the autoconf C23 issue and the bison
-  assertion, both below).  Order
-  mirrors the Dockerfile: cyrus-sasl is built before libmemcached
-  because libmemcached's configure only compiles its SASL support in
-  when libsasl2 is found; `build_libmemcached` asserts the libsasl2
-  linkage, since pylibmc's C module keys its SASL paths off
-  LIBMEMCACHED_WITH_SASL_SUPPORT and would silently compile them out
-  otherwise.  zlib is built first so the extension's `-lz` and
-  libmemcached's optional compression resolve to our library.
-  libmemcached needs two extra pieces on macOS: `build_bison` (its
-  configure hardcodes YACC='bison --warnings=all', the CLT's bison is
-  2.3 which predates that option, and the CSL parser the bison rule
-  generates is compiled into the library itself), and two clang-compat
-  fixes with comments in `build_libmemcached` (the
-  `ac_cv_have_htonll=no` cache override so byteorder.cc takes its
-  swap64 fallback like on linux, and the `memflush.cc` `== false` sed
-  that gcc's -fpermissive hides on linux).  The wheel mirrors the linux
-  patches: `libs =
-  ["memcached", "sasl2"]`, package_data for the bundled plugins,
-  `library_dirs` pointed at the prefix (the linux build relies on
-  /usr/local being the default search path; the scrubbed sysconfig data
-  makes ours authoritative), the `.1` version suffix, and the
-  `__init__.py` patch that sets SASL_PATH to the bundled `pylibmc/sasl2`
-  copy before `_pylibmc` is imported.  Plugin delta vs. the linux wheel:
-  the linux base image's openssl/krb5/openldap let cyrus-sasl build the
-  otp/srp/scram/passdss/ldapdb plugins (auditwheel then bundles
-  libcrypto, libkrb5, libldap, and even libpq/libmysqlclient into
-  pylibmc.libs); the macos prefix has none of those and system copies
-  are forbidden, so those mechanisms are explicitly disabled and the
-  bundled set is the self-contained one (PLAIN, CRAM-MD5, DIGEST-MD5,
-  LOGIN, ANONYMOUS, SASLDB over ndbm) plus GSSAPIv2 against the macOS
-  system Kerberos framework (a /System path the otool audit allows).
-  NTLM stays enabled like the Dockerfile but silently drops out
-  without an OpenSSL in the prefix, and would light up automatically
-  if one is ever added.  The GDAL work (2026-10-16) DID add an OpenSSL
-  to the prefix -- but only in the pyvips and gdal cases, and the
-  default run's package order (pylibmc before pyvips) keeps the
-  fresh-VM pylibmc state unchanged: cyrus-sasl still configures without
-  OpenSSL there.  The plugin set is therefore case-order-dependent for
-  mixed runs (e.g. `tart_build.sh gdal pylibmc` in one command would
-  build sasl after openssl and the NTLM plugin would light up); a
-  deliberate single-package `pylibmc` run keeps the documented
-  self-contained set.  Delocate puts
-  libmemcached/libsasl2 into `pylibmc/.dylibs` (the pylibmc package is
-  the wheel's only directory, and the build asserts the wheel content);
-  note the C extension is a *top-level* module (`_pylibmc.cpython-*.so`
-  next to the pylibmc package, since its setup.py gives the extension no
-  package qualifier), so the test harness audits it separately from the
-  package directory.  The expected-wheel validation in tart_build.sh
-  needs no per-package change (one cp3XX-cp3XX wheel per python, like
-  pylibtiff).
-- **python_javabridge / python-bioformats**: implemented (2026-10-26) and
-  verified on the host; the VM verification run is the next step (the two
-  packages lead the default PACKAGES list so a fresh run fails fast at
-  them).  Decisions taken while writing the builders, with the reasoning:
-  - The JVM vendor question resolved itself: **Azul Zulu publishes JDK 8
-    for macOS aarch64** (Community edition, GPLv2 with the Classpath
-    exception; queried through api.azul.com -- Temurin has none, which is
-    why the earlier note expected a newer-JVM fallback to be needed).  The
-    wheel therefore keeps the linux pin's Java 8 generation: Zulu
-    8.98.0.107-ca (8u512, current Community release at implementation
-    time), now tracked as the `zulu8` versions.txt entry (check_versions.py
-    resolves it through the Azul metadata API; see the 2026-10-27 status
-    bullet).  The tarball unpacks to the
-    classic JDK 8 layout (jre/lib/server/libjvm.dylib, pack200 in bin),
-    which is exactly what the linux bundling flow expects.
-  - The darwin code paths of javabridge make the macos wheel **simpler**
-    than the linux one, not harder: setup.py's is_mac branch does NOT link
-    libjvm into the extension (mac_javabridge_utils.c dlopens libjvm.dylib
-    and libjli.dylib by absolute path at start_vm time), so the linux
-    jutil.py preload patch and the LD_LIBRARY_PATH export are unnecessary;
-    the linux __init__.py patch guards a linux-only block that darwin
-    skips anyway; and delocate has nothing JVM-related to bundle.  The
-    linux patches that DO carry over verbatim: the _javabridge.pyx patch
-    (the shared repo file), the jutil.py exception_describe sed, the
-    setup.py package_data/entry_points/version-suffix/cython-numpy
-    patches, and the pyproject.toml modernization.  locate.py gets a
-    macos-shaped variant of the linux patch: find_javahome returns the
-    bundled `javabridge/jvm` tree when it exists (the linux patch inserts
-    the check inside find_javahome's linux branch, which never runs on
-    darwin).  This also serves the build itself: with the tree copied in
-    before the wheels build, find_javahome resolves the bundled JDK and
-    setup.py compiles against its jni.h with no JAVA_HOME needed; the
-    bundled bin is prepended to PATH so build_java's javac/jar calls
-    resolve there (pip's build isolation preserves the environment).
-  - The linux jar tricks carry over: pack200 -G --repack exists in JDK 8
-    (sequential -- thread-dangerous, like the Dockerfile says) and
-    strip-nondeterminism is replaced by a small `normalize_zips.py`
-    helper (written to $LIW_PATCHES by `ensure_zip_normalizer`) that
-    rewrites every zip member with a fixed timestamp; it runs on the JDK
-    jars before the copy, and on each finished wheel after delocate
-    (delocate preserves zip timestamps, so the normalization must come
-    last).  The linux placeholder-jar trick is skipped: it exists to
-    shrink docker image layers, and the VM has no such layer problem.
-  - delocate runs with `-e /javabridge/jvm/`: the JDK's dylibs depend on
-    each other through `@rpath/libjvm.dylib`-style load commands that have
-    no rpath context inside a wheel, so a plain delocate-wheel dies with
-    "Could not find all dependencies"; at runtime every JDK dylib carries
-    its own `@loader_path/.` and `@loader_path/..` RPATHs and resolves its
-    siblings itself (the linux analogue is the post-auditwheel restore of
-    the original jvm tree -- auditwheel's rewrites break hard-coded
-    relative paths the same way).  delocate's rpath sanitizer would strip
-    exactly those RPATHs, so excluding the tree is what keeps the JVM
-    working; the exclusion still leaves delocate verifying the platform
-    tag and the arm64 architecture of the one Mach-O outside the tree, the
-    _javabridge extension (which links only CoreFoundation/libSystem --
-    host-verified with otool).  Host-verified end to end: the wheel
-    builds (105 MB), delocate passes, the installed wheel starts the
-    bundled Zulu 8u512 JVM in-process headless (start_vm, a static call,
-    kill_vm), the bundled `java`/`javac`/`jar` console scripts run from a
-    venv, and the jvm tree's otool picture is audit-clean (only /usr and
-    /System dependencies, only @loader_path-relative RPATHs, valid
-    signatures).
-  - python_bioformats is unchanged from linux: pure python + the pinned
-    bioformats_package.jar (8.5.0), one py3-none-any wheel built with the
-    patch python (the linux advzip recompression is skipped -- advancecomp
-    is not built for the macos prefix and it saves ~2.5%).  The version
-    suffix (4.1.0.8.5.0.1) is what makes pip prefer it over pypi's 4.1.0,
-    exactly like on linux.  tart_build.sh's expected-wheel validation
-    accepts py3-none-any wheels for it, and the shared test_script.sh's
-    javabridge/bioformats steps light up automatically once both wheels
-    are present (their `java -version` step exercises the bundled java
-    console script through the suite venv's bin).  Because the wheel is
-    tagged py3-none-any, test_via_tart.sh's wheel collection -- a plain
-    `*macosx*.whl` glob -- would silently drop it, and the suite would
-    then skip every javabridge/bioformats step; the collection now also
-    takes `python_bioformats-*py3-none-any.whl`.  Host-verified: the
-    bioformats wheel reads pixels and OME-XML metadata through the
-    bundled JVM from the two macos wheels together.
-  - The test harness gained the identity checks (installed-version
-    equality against the wheelhouse wheel), the javabridge/bioformats
-    entries in both otool audit lists (the whole bundled JDK tree is
-    audited; host-verified clean), and a `test_javabridge.py` macos check:
-    locate.py must resolve site-packages/javabridge/jvm, the tree must
-    contain libjvm.dylib, and after start_vm the running JVM's java.home
-    must be the bundled tree's jre (the strongest possible proof that the
-    bundled JVM, not a system Java, is what runs), plus a bundled-java
-    launcher run.
-- **mapnik**: implemented (2026-10-21; builders written and
-  host-verified where feasible, but NOT yet run in a VM -- the next
-  action is the verification run).  The `mapnik` case is the full gdal
-  case verbatim plus the additions mapnik's cmake needs: `build_icu4c`
-  (right after the libtiff chain, the Dockerfile's position) and the
-  cairo/harfbuzz chain (`build_libffi`, `build_glib`, `build_pixman`,
-  `build_cairo`, `build_harfbuzz`) after gdal, since nothing in the gdal
-  tree checks them.  Decisions taken while writing the builders (all with
-  the reason recorded in the builder's comment in build_wheels.sh):
-  - libiconv is deliberately NOT built.  The Dockerfile's libiconv
-    section carries the "Used by mapnik.  Unicode support" comment, but
-    mapnik's cmake build has no iconv check at all and no mapnik source
-    at the pin uses iconv (verified against the pinned sha); the section
-    predates the cmake build.  The one real iconv consumer in mapnik's
-    tree, libxml2, already resolves the macOS system iconv in /usr/lib
-    (allowed by the audits), so the macos prefix needs no libiconv.
-  - icu4c (release-77-1 tag, versions.txt icu4c) is built with the
-    Dockerfile's configure flags except: the UNISTR_FROM_CHAR/STRING_
-    EXPLICIT=explicit defines are dropped and -Wl,--gc-sections becomes
-    -Wl,-dead_strip.  Verified on the host: with the UNISTR defines the
-    build dies in tools/ctestfw's tstdtmod.cpp (UnicodeString(const
-    char*) is explicit, so `UnicodeString(u"expected: ") +
-    u_errorName(...)` has no viable overload) -- a tool `make` builds
-    even with --disable-tests, which upstream never passes so upstream
-    never sees it.  The defines only affect inline-header conversion
-    strictness, not the library ABI, and ICU consumers (mapnik) compile
-    without them on both platforms.  Without them the full build and
-    install pass on the host, producing libicuuc/libicui18n/libicudata
-    (data embedded in the dylib, 32 MB) and the icu-uc/icu-i18n .pc
-    files mapnik.pc's Requires line needs.  NOTE: this also flags a
-    latent linux issue -- the same UNISTR flags plus icu 77-1 should
-    fail tools/ctestfw on the linux build too (gcc rejects the same
-    overload resolution); the linux wheelhouse may predate the icu
-    77-1 bump.  Worth checking on the linux side before its next icu
-    rebuild.
-  - ICU's libtool installs bare sonames as install ids
-    ("libicuuc.77.dylib"), so build_icu4c calls fix_dylib_ids on the
-    libicu* dylibs before any consumer links (the OpenSSL/boost
-    precedent), and asserts icu-uc.pc/icu-i18n.pc and the three
-    dylibs.
-  - build_mapnik mirrors the Dockerfile's mapnik section: depth-1000
-    recurse-submodules clone at mapnik-sha, git am of
-    mapnik_data_path.patch and mapnik_tls.patch, the Dockerfile's seds
-    verbatim (with BSD-sed adaptations: `sed -i ''` throughout, and the
-    two line-inserting seds -- csv_utils.cpp's boost include and
-    image_util.cpp's PSTL defines -- use embedded literal newlines
-    because BSD sed does not interpret GNU \n; both verified on the host
-    against the pinned patched source), the demo/test removal dance, and
-    the Dockerfile's cmake flags.  Deviations, reasoned in the builder:
-    the CXXFLAGS -std=c++17 is dropped (mapnik's cmake requires C++20
-    and appends its own -std flag after CXXFLAGS, so the linux flag is
-    inert there); the gcc-only -Wno-* warning flags are kept (clang
-    warnings only, like build_boost); -DCMAKE_BUILD_WITH_INSTALL_NAME_
-    DIR=ON is added because the .input plugins and the utilities link
-    libmapnik inside mapnik's own build tree (the hdf4/geos @rpath
-    lesson).  The Dockerfile's -DMAPNIK_USE_PKG_CONFIG=ON is inert at
-    this revision (no such option in mapnik's cmake) and kept for
-    parity.  Assertions: libmapnik.dylib, the three .pc files
-    (libmapnik.pc is what the python build resolves), the three tools,
-    the fonts, all ten default-on input plugins (csv, gdal+ogr, geobuf,
-    geojson, postgis+pgraster, raster, shape, sqlite, tiles, topojson),
-    libmapnik's otool linkage (icuuc, icui18n, icudata, boost_regex,
-    freetype, harfbuzz, png, jpeg, tiff, webp, avif, cairo, proj, xml2),
-    plugin linkage (gdal+ogr -> libgdal and libmapnik; tiles ->
-    libsqlite3 and libssl; postgis+pgraster -> libpq), and the @rpath
-    audit over libmapnik and every plugin.
-  - build_mapnik_python mirrors the Dockerfile's python-mapnik section:
-    clone at python-mapnik-sha (full clone; a sha pin), git am of
-    python-mapnik.patch and python-mapnik_data_path.patch, the
-    pyproject.toml patch (version = libmapnik version + ".2", via
-    `pkgconf --modversion libmapnik` = 4.3.2, so wheel version 4.3.2.2;
-    the pybind11 pin replace is a no-op at this revision, which requires
-    pybind11 >= 3.0.4), the packaged copies of the input plugins, fonts,
-    proj and gdal data trees and the three tools (stripped and re-signed
-    like the gdal tools), the bin/__init__.py program() wrapper with the
-    macOS CA bundle, then one wheel per requested python and delocate.
-    The macos-specific patch is in packaging/mapnik/__init__.py only:
-    the linux patch preloads libgdal from mapnik.libs; the macos patch
-    looks in mapnik/.dylibs first with mapnik.libs as fallback (the
-    gdal/openslide precedent), verified on the host by applying it to
-    the pinned patched source and ast-parsing the result (the pyproject
-    result is tomllib-parsed too).  Note the linux paths.py's
-    mapniklibpath value is dead weight: only inputpluginspath and
-    fontscollectionpath are consumed at runtime, and both point inside
-    the package on both platforms.
-  The remaining unknowns for the python-mapnik wheel build (to be
-  observed in the next verification run): pybind11's chosen C++ standard
-  against mapnik's c++20-only headers, and the libc++ std::less issue
-  (the libopendrive lesson) against mapnik's heavy std::map/set usage.
-  The delocate question is already answered on the host (see the status
-  entry): .input MODULE plugins are bundled and rewritten like any other
-  Mach-O in the wheel, and the bundled libraries land in mapnik/.dylibs
-  because the mapnik package carries __init__.py.
+- **Glymur** (`build_libtiff_deps`, `build_lcms2`, `build_libpng`,
+  `build_openjpeg`, `build_glymur`): lcms2/libpng exist so the bundled
+  `opj_*` tools keep their feature set (`build_openjpeg` asserts the
+  linkage); openjpeg is built after libtiff, like the linux final
+  state.  Tools go to `glymur/bin` with the `glymur.bin:program`
+  wrapper; `config.py` finds the bundled openjpeg in `glymur/.dylibs`
+  (linux `Glymur.libs` fallback); dependencies patched to declare
+  `packaging` (glymur 0.14.8 imports it without declaring it -- the
+  linux wheel carries the same latent issue until rebuilt).
+- **pylibmc** (`build_zlib`, `build_bison`, `build_cyrus_sasl`,
+  `build_libmemcached`, `build_pylibmc`): cyrus-sasl before libmemcached
+  (SASL only compiles in when libsasl2 is found; asserted); bison is
+  needed (YACC passed by absolute path).  Plugin set is the
+  self-contained one (PLAIN, CRAM-MD5, DIGEST-MD5, LOGIN, ANONYMOUS,
+  SASLDB/ndbm, GSSAPIv2 vs the system Kerberos framework); NTLM stays
+  enabled but silently drops without an OpenSSL in the prefix -- and the
+  pyvips/gdal cases DO build one, so a mixed run (`tart_build.sh gdal
+  pylibmc`) would light NTLM up while the default package order (pylibmc
+  before pyvips) keeps the self-contained set.  The extension is a
+  top-level module (audited separately from the package directory).
+- **openslide_python** (libtiff chain, openjpeg, then the openslide
+  chain `build_libbrotli` ... `build_cairo`, `build_jxrlib`,
+  `build_openslide`, `build_openslide_python`): openslide 4.x is a meson
+  build; libdicom comes from its own subproject wrap.  The two repo
+  patches are applied with `git am` at the sha pin.  `build_openslide`
+  asserts the linked feature set.  lowlevel.py loads the bundled dylib
+  from `openslide/.dylibs` *before* the `openslide-bin` import (see
+  hard-won details).  Only `slidetool` is bundled.  abi3 selection:
+  3.11 + the `*t` pythons; 3.15t gets `cp315-abi3.abi3t` (upstream 1.4.7
+  targets the Stable ABI on free-threaded 3.15+; needs setuptools 84.2+
+  in build isolation); `wheel_for_python` in tart_build.sh accepts that
+  tag for 3.15t+ requests and never accepts a plain `abi3` wheel for a
+  free-threaded request.  Linux-side note: the Dockerfile's `_abi3` sed
+  is now a no-op and the linux 3.15t wheel comes out `abi3.abi3t`-tagged
+  anyway (upstream's supported consume path).
+- **pyproj**: deliberately not built (pyproj4 publishes arm64 macosx
+  wheels).  The `proj4` library is still built for gdal/mapnik.
+- **pyvips** (libtiff chain, openssl+curl, the openslide chain, then
+  orc, nifti, lz4, fftw3, libhwy, jpegxl, libimagequant, libexif,
+  libarchive, libraw, harfbuzz, pango, librsvg, libde265, libheif,
+  poppler, fitsio, hdf5, matio, openexr, libzip, imagemagick, libvips,
+  pyvips): the case must mirror the Dockerfile's final state before
+  libvips configures.  Headlines: harfbuzz `-Dcoretext=enabled` and
+  pango/cairo `-Dfontconfig=enabled` (darwin defaults disable them;
+  pango's darwin build hard-requires the CoreText shaper, whose linkage
+  lands as CoreText/CoreFoundation/CoreGraphics frameworks); pango
+  `--force-fallback-for=fribidi`; librsvg `-Dpixbuf=disabled`; poppler
+  gets `-DENABLE_BOOST=OFF`, matching the linux build: the boost use is
+  header-only splash-backend code that links nothing into the dylibs,
+  our consumers render through poppler-glib's cairo backend rather than
+  splash, and poppler's cmake FATAL_ERRORs when ENABLE_BOOST is on but
+  boost is missing (the pyvips case does not build boost); hdf5 carries
+  the MPI options with `build_openmpi` first (parallel hdf5, like linux)
+  and presets ZLIB_LIBRARIES/ZLIB_INCLUDE_DIR (its config-mode zlib find
+  provides imported targets but not the module variables its filter code
+  consumes; the linux linker tolerates the resulting undefined symbols,
+  the macOS one does not); imagemagick `--without-modules` -- deliberate
+  deviation: neither delocate nor auditwheel ever bundles dlopened coder
+  modules, so the linux wheel's coders cannot load at runtime either,
+  while --without-modules compiles every coder in (the full delegate set
+  is asserted); curl is built so poppler-glib.pc's "Requires.private:
+  libcurl" resolves (without it meson silently drops poppler-glib and
+  libvips's pdf loader).  orc is deliberately absent: it is libvips's
+  FALLBACK SIMD package, used only when libhwy is absent, and the prefix
+  always has libhwy (jpeg-xl needs it) -- the linux build behaves the
+  same; the assertion checks libhwy.  The wheel preloads the bundled
+  libvips from `pyvips/.dylibs` before importing the cffi extension;
+  `build_pyvips` runs the catch-all absolute-install-name audit.
+- **GDAL** (its case is self-sufficient on a fresh VM: libtiff chain,
+  giflib, openssl+curl, json-c, lerc, jpeg-xl, the openjpeg set, expat/
+  xml2/lz4/libarchive, sqlite, proj4, freetype+fontconfig, swig, openmpi,
+  boost, minizip, fossil, the geos/spatialite/rasterlite2 tree,
+  libgeotiff, fyba, hdf4, hdf5, parallel-netcdf, netcdf, mysql,
+  postgresql, libgta, xerces-c, armadillo, blosc, highfive+kealib,
+  libde265+libheif, poppler, cfitsio, openexr, libopendrive, libavif,
+  gdal, gdal_python): the vips-only tree is deliberately NOT in the
+  case.  Headlines: swig is built (GDAL's python bindings are a hard
+  SWIG consumer; PCRE2 from swig's own Tools/pcre-build.sh, static
+  inside the swig tree); mysql gets -DWITH_SSL="$LIW_PREFIX" (its APPLE
+  default hints Homebrew; the custom-SSL machinery copies libssl/libcrypto
+  and patches the copy's libcrypto to @loader_path); postgresql
+  --without-icu --without-readline; armadillo links the Accelerate
+  framework (no Fortran compiler in the VM; a Homebrew gfortran would
+  drag its libgfortran into the wheels); OpenEXR needs
+  CMAKE_C/CXX_STANDARD_INCLUDE_DIRECTORIES="$LIW_PREFIX/include"
+  (GDAL's FindOpenEXR omits the parent include dir, which is implicit
+  only because linux's prefix is /usr/local); librasterlite2 needs a
+  `<time.h>` include sed and LIBS="-lsqlite3" (its configure never links
+  sqlite3; the macOS linker rejects the resulting undefined symbols);
+  the gaia-gis fossil clones pass `--admin-user root`.  Skipped
+  Dockerfile sections, with reasons in the section comments:
+  libtirpc/libnsl (GDAL's cmake has no such check), krb5 (system
+  Kerberos), libxcrypt (libSystem provides crypt), lapack (see
+  armadillo), ogdi (no OGDI check in GDAL 3.13's cmake), mrsid
+  (x86_64-only SDK).  The Dockerfile's -Werror USER_DEFS is NOT passed
+  (clang warns on unknown -Wno-* options).  build_gdal mirrors the
+  master-at-sha flow and asserts libgdal's linkage against every
+  external library the linux wheel links (librttopo only transitively,
+  via libspatialite; hdf4 not asserted -- static, absorbed).  The
+  PublicDecompWT clone needs the provisioned git-lfs with
+  GIT_LFS_SKIP_SMUDGE=1.  `build_gdal_python` bundles the proj/gdal data
+  trees and tools into osgeo/ (`osgeo.bin:program` wrapper,
+  PROJ_DATA/GDAL_DATA, /etc/ssl/cert.pem), patches
+  GDAL_LIBRARY_PATH/GEOS_LIBRARY_PATH into osgeo/__init__.py
+  (osgeo/.dylibs first, linux GDAL.libs fallback), strips and re-signs
+  prefix dylibs before the wheel build, renames gdal->GDAL, and asserts
+  the wheel content.  The shared suite's known-formats assertion (>= 98
+  formats, all except mrsid on arm64) is the functional gate for the
+  driver set.  boost 1.92: Boost::regex resolves to an INTERFACE cmake
+  target (nothing links libboost_regex; all usage instantiates from
+  headers -- upstream's supported path; the linux wheel's DT_NEEDED is
+  dead weight), so assertions use the tiles plugin's libboost_url/
+  libboost_context instead.
+- **python_javabridge / python_bioformats** (lead the default PACKAGES
+  list so a fresh run fails fast at them): the JVM is Azul Zulu JDK 8
+  for macOS aarch64 (Temurin publishes none; `zulu8` versions.txt entry
+  via the Azul metadata API).  The darwin code paths make the macos
+  wheel *simpler*: setup.py's is_mac branch does not link libjvm
+  (mac_javabridge_utils.c dlopens libjvm/libjli by absolute path at
+  start_vm), so no preload patch; the linux pyx/jutil/setup.py/
+  pyproject patches carry over; locate.py gets a macos-shaped variant
+  (find_javahome returns the bundled `javabridge/jvm` tree when present
+  -- which also serves the build: no JAVA_HOME needed).  pack200 -G
+  --repack carries over; strip-nondeterminism is replaced by
+  `ensure_zip_normalizer`'s `normalize_zips.py` (runs on the JDK jars
+  before the copy and on each wheel AFTER delocate, which preserves zip
+  timestamps).  delocate runs with `-e /javabridge/jvm/`: the JDK dylibs
+  resolve their siblings through their own `@loader_path/.` and
+  `@loader_path/..` RPATHs, which delocate's rpath sanitizer would strip
+  (the linux analogue is the post-auditwheel jvm-tree restore).  The
+  bioformats wheel is py3-none-any; tart_build.sh accepts that tag for
+  it and test_via_tart.sh's collection takes
+  `python_bioformats-*py3-none-any.whl` (a plain `*macosx*` glob would
+  silently drop it and skip the javabridge steps).  The harness's
+  `test_javabridge.py` check: locate.py resolves
+  site-packages/javabridge/jvm, libjvm.dylib present, and after
+  start_vm the running JVM's java.home is the bundled tree's jre.
+- **mapnik** (gdal case verbatim + `build_icu4c` after the libtiff
+  chain + the cairo/harfbuzz chain after gdal): libiconv is deliberately
+  NOT built (mapnik's cmake has no iconv check; libxml2 resolves the
+  system iconv, allowed by the audits).  icu4c drops the Dockerfile's
+  UNISTR_*_EXPLICIT=explicit defines (with them, clang fails to compile
+  icu 77-1's tools/ctestfw, which `make` builds even with
+  --disable-tests; the linux build passes the same defines with gcc and
+  compiles that tool fine, so this is a compiler difference, not a
+  version issue) and uses -Wl,-dead_strip instead of -Wl,--gc-sections.
+  The defines only affect inline-header conversion strictness, not the
+  library ABI, and ICU consumers (mapnik) compile without them on both
+  platforms.  ICU's libtool installs bare soname ids, so fix_dylib_ids
+  runs before consumers link.  build_mapnik keeps the Dockerfile seds
+  with BSD-sed adaptations (`sed -i ''`; embedded literal newlines for
+  line-inserting seds), adds -DCMAKE_BUILD_WITH_INSTALL_NAME_DIR=ON
+  (plugins/utilities link libmapnik in-tree), drops the inert
+  -std=c++17, and keeps the inert -DMAPNIK_USE_PKG_CONFIG=ON for
+  parity.  The .input plugins are MH_BUNDLE modules (no install id;
+  dlopened by path): the audit checks their @rpath load commands and
+  LC_RPATH entries instead of ids, and build_mapnik_python strips their
+  RPATHs.  delocate bundles them into mapnik/.dylibs because the
+  package carries __init__.py (without it delocate falls back to a
+  top-level <dist>.dylibs).  python-mapnik: wheel version 4.3.2.2 via
+  `pkgconf --modversion libmapnik`; the macos `__init__.py` patch looks
+  in mapnik/.dylibs first with mapnik.libs fallback; the harness reads
+  the PROJ string through `p.definition()` (the pinned 4.3.2 has no
+  `proj4` property) and greps mapnik-render's output (its --version
+  prints to std::clog and returns 1 upstream, like --help).
 
 ## Test parity with the linux build
 
 The linux wheels are verified by `test/test_script.sh` (driven by
-`test_via_docker.py`, which runs one container per python version --
-see also `test/python.Dockerfile` and `test/li_script.sh`).  Decision
-(2026-10): the macOS wheels are verified by the **same script**, not by
-a separate python check harness; a parallel rewrite would drift from the
+`test_via_docker.py`, one container per python -- see
+`test/python.Dockerfile` and `test/li_script.sh`).  The macOS wheels are
+verified by the **same script**; a parallel rewrite would drift from the
 authoritative suite.
 
 `test_script.sh` extensions that keep this workable on both platforms
 (all no-ops for the linux containers):
 
 - Each `TEST_*` flag combines the interpreter-feature conditions with a
-  check that the corresponding wheel exists in the wheelhouse (its first
-  argument).  On linux every wheel is present, so the gates reduce to
-  the interpreter conditions; on partial wheelhouses (the macOS build
-  produces only some packages) the absent packages' tests are skipped
-  instead of failing to install -- or worse, silently installing a pypi
-  wheel.  `tart_build.sh` hard-fails on any missing expected wheel
-  before tests run, so a skip here means the package was not requested,
-  not that a build silently failed.
-- `LIW_PYTHON_BIN_DIR`, when set, is prepended to PATH after
-  `. /etc/profile` (which resets PATH to the stock system value in the
-  VM); the macOS harness sets it to the interpreter under test so
-  `python3` and the script's venv are the requested version.
-- The sample-file downloads go through a `dl` helper that caches in
-  `LIW_TEST_CACHE` when set; the macOS harness runs the script once per
-  python in one VM and would otherwise re-download everything seven
-  times.
-- The arch gates treat `aarch64` and `arm64` as the same machine
-  (`$(arch)` prints `arm64` on macOS; `platform.machine()` likewise),
-  so the czi test and the gdal `mrsid` subtraction behave identically on
-  both arm64 platforms.
+  check that the wheel exists in the wheelhouse; on a partial wheelhouse
+  the absent packages' tests are skipped instead of failing to install
+  or silently installing a pypi wheel.  `tart_build.sh` hard-fails on
+  any missing expected wheel before tests run, so a skip means the
+  package was not requested, not that a build silently failed.
+- `LIW_PYTHON_BIN_DIR` is prepended to PATH after `. /etc/profile` (the
+  macOS harness sets it so `python3` and the script's venv are the
+  requested version).
+- Sample-file downloads go through a `dl` helper caching in
+  `LIW_TEST_CACHE` (the macOS harness would otherwise re-download for
+  each of the seven pythons).
+- The arch gates treat `aarch64` and `arm64` as the same machine.
+- The two converter steps `rm -f` their /tmp destinations first (on
+  macos all pythons run in ONE VM; also makes the steps re-runnable),
+  and the `test GDAL vsicurl` step retries up to three times (the
+  suite's only network-dependent assertion).
+- The projected-geotiff `getTileSource` test and the
+  large_image_converter-importing steps are gated on `TEST_GDAL`
+  (without a gdal wheel, getTileSource falls to the vips source, whose
+  projected level structure differs; the converter extra needs the gdal
+  source; the unprojected geotiff test stays ungated and passes via
+  vips).
 
 The macOS harness (`test_via_tart.sh`) keeps only the platform layers
 around the shared script: phase 0 python rebuilding, phase 1 venv
-installation with wheel-identity checks (pylibtiff, Glymur,
-openslide-python, pylibmc, pyvips, gdal, mapnik), Homebrew-hiding, the `otool` audits -- scoped to
-the packages our wheels provide (libtiff, glymur, openslide, pylibmc,
-pyvips, gdal/osgeo, mapnik),
-since the venvs
-also contain pypi wheels pulled in as dependencies whose build artifacts
-(e.g. Pillow's RPATH to its own build machine, lxml's self-referencing
-load commands) are not ours to police -- and the macos-specific checks
-(`@loader_path` verification that the bundled dylib is the one loaded,
-bundled `tiffinfo`, bundled `slidetool slide quickhash1` against the
-suite's downloaded slide, the pylibmc bundled-library check:
-SASL_PATH points into the installed package and the extension's otool
-output shows libmemcached loading from `.dylibs`, and the gdal
-bundled-library check: GDAL_LIBRARY_PATH and GEOS_LIBRARY_PATH point
-into `osgeo/.dylibs`, a fresh interpreter loads the bundled libgdal
-(DYLD_PRINT_LIBRARIES), and an EPSG lookup resolves through the bundled
-proj data -- plus the bundled `gdalinfo`; and the mapnik
-bundled-library check: paths.py's input-plugin and font paths point
-inside the installed package with the plugin set present, the
-extension's otool output shows libmapnik loading from `.dylibs`,
-set_data_paths points at the bundled proj/gdal trees, and an EPSG:3857
-Projection resolves through the bundled proj.db -- plus the bundled
-`mapnik-render`).  The embedded
-duplicate functional checks were
-removed.  `li_script.sh` (large_image's own tox suite) remains
-linux-only; running it in the VM is a possible later extension.
+installation with wheel-identity checks, Homebrew-hiding, the `otool`
+audits -- scoped to the packages our wheels provide, since the venvs
+also contain pypi wheels whose build artifacts are not ours to police --
+and the macos-specific checks (per package: the bundled dylib is the one
+actually loaded, via `@loader_path` verification or
+DYLD_PRINT_LIBRARIES; the bundled `tiffinfo`/`slidetool`/`gdalinfo`/
+`mapnik-render` tools run; the pylibmc/gdal/mapnik/javabridge
+bundled-library checks assert the paths and data trees described in the
+per-package notes).  `li_script.sh` (large_image's own tox suite)
+remains linux-only; running it in the VM is a possible later extension.
 
 ## Notes and differences from the linux build
 
-- `strip-nondeterminism` and `advzip` normalization is not yet applied to
-  the macOS wheels; wheel reproducibility is a possible follow-up.
-- The Homebrew-hiding test needs passwordless sudo in the VM (our
-  provisioning creates it via /etc/sudoers.d/liw-nopasswd); without it,
-  the test falls back to the otool audit only and says so in the report.
-- The base VM's pyenv pythons all link Homebrew libraries (libintl for
-  3.11--3.13; other libraries for the newer ones), so with Homebrew
-  hidden the interpreters themselves cannot be trusted.  The test VM
-  rebuilds those pythons with a scrubbed environment before testing, so
-  the test measures the wheels, not the interpreter's dependencies.
-  Since the rebuilds are discarded with the VM, every test run repeats
-  them; phase 0 therefore runs the builds concurrently (up to the VM's
-  cpu count, passed from `--cpus`).  Measured: about 5 of the roughly
-  15 sequential minutes saved at concurrency 4.  An alternative that
-  was deferred rather than rejected: using uv to download prebuilt
-  interpreters (python-build-standalone) instead of building them with
-  pyenv.  Parallelism was tried first and proved sufficient for the
-  moment, so uv was not pursued; revisit it if interpreter build time
-  becomes a problem again.  If picked up, the known considerations
-  are: it changes the rarely-run provisioning (deliberately left
-  alone); the PBS interpreters' sysconfig data is unverified against
-  the scrub (they are self-contained and should not link Homebrew,
-  which could also remove the need for the phase-0 rebuilds);
-  availability of every requested version (including free-threaded)
-  in the PBS catalog must be checked; and `find_version_dir`/
-  `ensure_pythons`/`collect_pybins` match pyenv's directory layout and
-  would need to move to uv's.
+- `strip-nondeterminism` and `advzip` normalization is not applied to
+  most macOS wheels; reproducibility is a possible follow-up (the
+  javabridge/bioformats wheels are the exception).
+- The Homebrew-hiding test needs passwordless sudo in the VM
+  (/etc/sudoers.d/liw-nopasswd); without it the test falls back to the
+  otool audit only and says so in the report.
+- The base VM's pyenv pythons link Homebrew libraries, so with Homebrew
+  hidden the interpreters themselves cannot be trusted; the test VM
+  rebuilds them with a scrubbed environment before testing (phase 0,
+  parallelized).  A deferred alternative: uv with prebuilt
+  python-build-standalone interpreters (considerations: changes the
+  rarely-run provisioning; PBS sysconfig data is unverified against the
+  scrub; every requested version including free-threaded must be in the
+  PBS catalog; the pyenv-layout helpers would need to move to uv's).
 - Free-threaded wheels import with a `RuntimeWarning` about re-enabling
-  the GIL because the C extension is not annotated for free-threading;
-  this matches upstream behavior and the linux wheels.
-- With modern cmake (4.x, the VM's Homebrew cmake), a cmake-built
-  dylib's BUILD-TREE install name is `@rpath/<soname>` regardless of
-  CMAKE_INSTALL_NAME_DIR: the INSTALL_NAME_DIR property that variable
-  initializes only rewrites ids when the dylib is installed.  This is
-  harmless unless a dylib that ships in a wheel links a SIBLING dylib
-  of the same build tree -- then the recorded `@rpath` reference stops
-  resolving once the prefix RPATHs are stripped (delocate: "Could not
-  find all dependencies", long after the offending build).  The fix is
-  `-DCMAKE_BUILD_WITH_INSTALL_NAME_DIR=ON` next to cmake_build's
-  `-DCMAKE_INSTALL_NAME_DIR`: it makes every target's build-tree
-  install name absolute, so sibling references and installed ids are
-  all absolute.  Two things can defeat it: project macros that set
-  CMAKE_INSTALL_NAME_DIR (a normal-variable set shadows cmake_build's
-  cache value, so the property is initialized to @rpath -- hdf4 and
-  hdf5 do this; hdf4 needed a sed of its HDFMacros.cmake to the
-  absolute prefix libdir in addition to the variable), and projects
-  whose property is never initialized at all (geos, openexr: their
-  INSTALL_NAME_DIR handling is commented out or absent, but
-  cmake_build's -DCMAKE_INSTALL_NAME_DIR initializes the property, so
-  the variable alone works there).  Project-specific options like
-  HDF4_BUILD_WITH_INSTALL_NAME / HDF5_BUILD_WITH_INSTALL_NAME only set
-  the INSTALL_NAME_DIR property -- they fix installed ids, not
-  build-tree references, and hdf5 only escaped the problem because no
-  wheel-shipped dylib links its dylibs within its own build (hdf4's
-  libmfhdf does exactly that, and geos's libgeos_c too).  When adding
-  a cmake-built dependency, check whether any target links a sibling
-  dylib of the same tree and audit the installed dylibs for @rpath
-  load commands (build_hdf4's audit is the template).
+  the GIL (the C extension is not annotated for free-threading); matches
+  upstream and the linux wheels.
 - AppleClang 21's libc++ specializes __make_transparent<_Tp, less<_Tp>>
-  to less<>, so std::set<T>/std::map<T, ...>'s insert/emplace/find with
-  a value_type key compares the VALUES with less<void> -- requiring
-  operator< on T itself -- and never calls a std::less<T>
-  specialization.  libstdc++ uses the specialization, so code that
-  orders key types only through std::less specializations compiles on
-  linux and dies on macOS with "no matching function for call to object
-  of type 'const std::less<void>'" (libopendrive's RoadMarkGroup et al.).
-  The fix is an inline operator< per type (free function in the type's
-  namespace, found via ADL) delegating to the existing specialization.
-  Types used only in unordered containers (hash/equal_to) are
-  unaffected.
-- fossil's global `--user` option only names the login to select; it
-  does not create it.  `fossil clone` seeds the fresh repository's user
-  table from `--admin-user`, falling back to `$USER`, and then
-  `user_select()` dies with "no such user: <name>" when the global
-  `--user` names a user the fresh repository lacks.  The Dockerfile's
-  `--user=root` clones work in the container only because `$USER` is
-  root there; the VM's `$USER` is not, so the gaia-gis clones pass
-  `--admin-user root` in addition (verified with the pinned fossil 2.28
-  on the host: the un-fixed command reproduces the failure, the fixed
-  one clones and opens with a non-root `$USER`).
+  to less<>, so std::set/std::map with a value_type key compares the
+  VALUES with less<void> and never calls a std::less<T> specialization
+  (libstdc++ does, hence linux-only).  Code ordering key types only
+  through std::less specializations dies with "no matching function for
+  call to object of type 'const std::less<void>'"; the fix is an inline
+  operator< per type delegating to the existing specialization
+  (libopendrive's RoadMarksLine, RoadMarkGroup, JunctionLaneLink,
+  JunctionPriority; hash/equal_to-only types are unaffected).
+- fossil's global `--user` only selects a login; `fossil clone` seeds
+  the user table from `--admin-user` (falling back to `$USER`).  The
+  Dockerfile's `--user=root` works in the container only because $USER
+  is root there; the gaia-gis clones pass `--admin-user root` too.
