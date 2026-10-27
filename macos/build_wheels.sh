@@ -1050,15 +1050,14 @@ build_libtiff_deps() {
 # compiled into libmemcached itself (options.cc), so a modern bison is
 # required -- the CLT's bison is 2.3, which predates --warnings=all.  The
 # base VM's Homebrew set has no bison, so build one from source into the
-# prefix (no Homebrew re-provision needed).  The version is pinned here
-# rather than in versions.txt: versions.txt is shared with the linux
-# build and maintained by the version-cron, and the linux container's
-# distro bison never needed an entry.  The bison tarball ships a
-# pre-generated configure, so no autotools bootstrap is involved.
+# prefix (no Homebrew re-provision needed).  The version comes from
+# versions.txt (a macos-only tracked entry; the linux container's distro
+# bison never needed one).  The bison tarball ships a pre-generated
+# configure, so no autotools bootstrap is involved.
 build_bison() {
     skip_if_done bison && return 0
     step "bison"
-    local bison_version=3.8.2
+    local bison_version="$(v bison)"
     cd "$LIW_SRC"
     rm -rf bison
     fetch "https://ftp.gnu.org/gnu/bison/bison-$bison_version.tar.gz" \
@@ -2122,11 +2121,13 @@ build_lerc() {
 # autogen.sh and bison); PCRE2 comes from swig's own Tools/pcre-build.sh,
 # which builds a downloaded PCRE2 tarball as a static library into the
 # swig source tree where swig's configure finds it automatically -- it is
-# never installed into the prefix.
+# never installed into the prefix.  Both versions come from versions.txt
+# (macos-only tracked entries; swig and pcre2 ship in the linux base
+# image).
 build_swig() {
     skip_if_done swig && return 0
-    step "swig (pinned 4.3.1; a build tool for the GDAL python bindings)"
-    local swig_version=4.3.1 pcre2_version=10.45
+    step "swig ($(v swig); a build tool for the GDAL python bindings)"
+    local swig_version="$(v swig)" pcre2_version="$(v pcre2)"
     cd "$LIW_SRC"
     rm -rf swig
     fetch "https://downloads.sourceforge.net/project/swig/swig/swig-$swig_version/swig-$swig_version.tar.gz" \
@@ -2985,8 +2986,12 @@ build_kealib() {
     done_stamp kealib
 }
 
-# Used by GDAL (the XODR driver).  The 0.6.0-gdal tag is pinned by the
-# Dockerfile comment (0.6.1-gdal requires external pugixml and more).
+# Used by GDAL (the XODR driver).  versions.txt tracks the full
+# gdal-branch tag (libopendrive, e.g. 0.6.1-gdal), but both builds stay
+# pinned at 0.6.0-gdal -- the Dockerfile's reason: "PINNED - version
+# 0.6.1-gdal requires external pugixml and some other work" -- so the
+# pin trails the tracked value until the linux build unpins;
+# check_versions.py may flag the mismatch.
 build_libopendrive() {
     skip_if_done libopendrive && return 0
     step "libopendrive"
@@ -3948,16 +3953,18 @@ EOF
 # preload patch and delocate has nothing JVM-related to bundle.
 # --------------------------------------------------------------------------
 
-# The pinned Zulu JDK 8 (see the section comment above).  zulu8.98.0.107-ca
-# is 8u512, the current Community release as of 2026-10-26.  The tarball
-# unpacks to Contents/Home, whose layout is the JDK 8 one the linux flow
-# expects (jre/lib/server/libjvm.dylib, pack200 in bin).  Host-verified:
-# the bundled libjvm starts in-process from the installed wheel
-# (javabridge.start_vm headless + kill_vm), the bundled bin tools run as
-# console scripts, bioformats reads pixels and OME metadata through it, and
-# every Mach-O in the JDK tree links only /usr or /System libraries with
-# only @loader_path-relative RPATHs.
-LIW_ZULU8_VERSION="8.98.0.107-ca-jdk8.0.512"
+# The Zulu JDK 8 (see the section comment above).  The version comes from
+# versions.txt (zulu8, a macos-only tracked entry resolved through the
+# Azul metadata API; the value is the tarball name minus the zulu prefix
+# and platform suffix, e.g. 8.98.0.107-ca-jdk8.0.512 for 8u512).  The
+# tarball unpacks to Contents/Home, whose layout is the JDK 8 one the
+# linux flow expects (jre/lib/server/libjvm.dylib, pack200 in bin).
+# Host-verified: the bundled libjvm starts in-process from the installed
+# wheel (javabridge.start_vm headless + kill_vm), the bundled bin tools
+# run as console scripts, bioformats reads pixels and OME metadata through
+# it, and every Mach-O in the JDK tree links only /usr or /System
+# libraries with only @loader_path-relative RPATHs.
+LIW_ZULU8_VERSION="$(v zulu8)"
 
 # Rewrite every member of each zip with a fixed timestamp: the macos
 # replacement for the linux build's strip-nondeterminism -t zip (a Debian
