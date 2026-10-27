@@ -967,6 +967,27 @@ runs, not just what the scripts are expected to do):
   upstream rewrote the line to `_abi3 = ... and not _freethread` -- and
   the linux 3.15t wheel came out `abi3.abi3t`-tagged anyway, which is
   upstream's supported consume path.
+- Version tracking caught up with the macos-only build inputs (2026-10-27):
+  the four packages the macos build introduces that the linux build never
+  used -- bison (libmemcached's build tool), swig and its bundled pcre2
+  (the GDAL python bindings' wrapper generator), and the Zulu JDK 8
+  (javabridge/bioformats) -- had been hardcoded literals in
+  `build_wheels.sh` and were invisible to `check_versions.py`.  They are
+  now tracked entries in `check_versions.py`/`versions.txt` and the
+  builders read them through `v` (bison, swig, pcre2, and zulu8; zulu8
+  resolves through the Azul metadata API's latest-GA query for
+  macOS-aarch64 JDK 8).  Bumps from the latest-version check: swig
+  4.3.1 -> 4.5.1 and pcre2 10.45 -> 10.49 (not yet exercised in a VM run;
+  the next swig-touching build -- a GDAL wheel rebuild -- should watch the
+  generated-bindings step); bison (3.8.2) and zulu8 (8.98.0.107-ca,
+  8u512) were already at their latest.  libopendrive's tracking changed
+  shape: upstream publishes a separate gdal branch tagged `<version>-gdal`,
+  and the tracked version is now that full tag (`libopendrive 0.6.1-gdal`)
+  instead of the bare number, but BOTH builds stay pinned at 0.6.0-gdal
+  -- the Dockerfile's "PINNED - version 0.6.1-gdal requires external
+  pugixml and some other work" -- with the reason now recorded in
+  `build_libopendrive` too; the macos build had silently hardcoded
+  0.6.0-gdal without saying why.
 
 ## Hard-won details (do not lose these)
 
@@ -1675,9 +1696,9 @@ Notes on the remaining packages:
     why the earlier note expected a newer-JVM fallback to be needed).  The
     wheel therefore keeps the linux pin's Java 8 generation: Zulu
     8.98.0.107-ca (8u512, current Community release at implementation
-    time), pinned as `LIW_ZULU8_VERSION` in build_wheels.sh (NOT in
-    versions.txt -- check_versions.py regenerates that file from its own
-    package list and would drop the entry).  The tarball unpacks to the
+    time), now tracked as the `zulu8` versions.txt entry (check_versions.py
+    resolves it through the Azul metadata API; see the 2026-10-27 status
+    bullet).  The tarball unpacks to the
     classic JDK 8 layout (jre/lib/server/libjvm.dylib, pack200 in bin),
     which is exactly what the linux bundling flow expects.
   - The darwin code paths of javabridge make the macos wheel **simpler**
