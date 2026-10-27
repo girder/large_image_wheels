@@ -31,7 +31,7 @@ param(
     [string]$Command = 'build',
     # Default package set; keep in sync with build_wheels.ps1's builders.
     [string[]]$Packages = @('pylibtiff'),
-    [string[]]$Pythons = @('3.11', '3.12', '3.13', '3.14', '3.15'),
+    [string[]]$Pythons = @('3.11', '3.12', '3.13', '3.14', '3.15', '3.14t', '3.15t'),
     [int]$MemoryMB = 8192,
     [int]$TimeoutSec = 14400,
     [string]$RepoDir = '',

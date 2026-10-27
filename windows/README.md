@@ -342,22 +342,23 @@ exercised in dev mode inside the agent sandbox:
   toolchain (PortableGit 2.56.0.windows.4, cmake 4.4.4, ninja 1.13.2,
   nasm 3.02, MSVC 14.44.17.14 = toolset 14.44.35207, Windows SDK
   10.0.26100.0, python 3.13 from NuGet) without administrator rights.
-- `build_wheels.ps1 -Packages pylibtiff -Pythons 3.13` builds the whole
-  libtiff chain (zlib, zstd, jbigkit, libwebp, libjpeg-turbo, libdeflate,
-  xz, libtiff with every feature asserted through tiffconf.h and the
-  DLL import table) and a pylibtiff wheel that delvewheel repairs to
-  eight bundled, name-mangled DLLs.  Installed into a clean venv with a
-  scrubbed PATH, `check_wheels.py` confirms the loaded libtiff is the
-  bundled copy, the lzw round trip, the bundled `tiffinfo` through its
-  console-script wrapper, and zstd/webp/jpeg/deflate writes.
+- `build_wheels.ps1 -Packages pylibtiff` builds the whole libtiff chain
+  (zlib, zstd, jbigkit, libwebp, libjpeg-turbo, libdeflate, xz, libtiff
+  with every feature asserted through tiffconf.h and the DLL import
+  table) and pylibtiff wheels for all seven pythons (3.11-3.15, 3.14t,
+  3.15t -- the free-threaded ones from NuGet's `python-freethreaded`),
+  each repaired by delvewheel to eight bundled, name-mangled DLLs.
+  Installed into a clean venv with a scrubbed PATH, `check_wheels.py`
+  confirms (on 3.11, 3.13, and 3.14t) the loaded libtiff is the bundled
+  copy, the lzw round trip, the bundled `tiffinfo` through its
+  console-script wrapper, and zstd/webp/jpeg/deflate writes.  The
+  free-threaded import carries the GIL re-enable `RuntimeWarning` the
+  linux and macos wheels also show.
 
 Next step: the first host verification run (transfer the tip, end the
 agent session, open `windows\build.wsb` or run `sandbox_build.ps1`,
-watch `liw_wheels\run\build.log`), with all five stable pythons; then
-the free-threaded pythons (`python-freethreaded` exists on NuGet for
-3.14/3.15; the builder handles the `t` suffix but no `t` wheel has been
-built yet); then the shared `test/test_script.sh` in a test sandbox
-(`test_via_sandbox.ps1`, not written yet -- the macos
+watch `liw_wheels\run\build.log`); then the shared `test/test_script.sh`
+in a test sandbox (`test_via_sandbox.ps1`, not written yet -- the macos
 `test_via_tart.sh` is the model).  Only after pylibtiff is verified end
 to end does Glymur start.
 
