@@ -14,6 +14,21 @@ urllib3.disable_warnings()
 
 verbose = len([arg for arg in sys.argv[1:] if arg == '-v'])
 
+
+@functools.lru_cache
+def vsManifestIds(channelUrl):
+    """
+    The package ids of the Visual Studio manifest that a VS channel JSON
+    points at (the channel only names the manifest; the toolchain versions
+    live in the manifest's packages).  Shared by the msvc and winsdk
+    entries, which the windows pipeline installs by version.
+    """
+    channel = getUrl(channelUrl, {}).json()
+    manifest = next(entry for entry in channel['channelItems']
+                    if entry['id'] == 'Microsoft.VisualStudio.Manifests.VisualStudio')
+    return [pkg['id'] for pkg in getUrl(manifest['payloads'][0]['url'], {}).json()['packages']]
+
+
 Packages = {
     'advancecomp': {
         'git': 'https://github.com/amadvance/advancecomp.git',
@@ -61,6 +76,10 @@ Packages = {
     'curl': {
         'git': 'https://github.com/curl/curl.git',
         're': r'curl-([0-9]+_[0-9]+(|_[0-9]+))$',
+    },
+    # windows
+    'delvewheel': {
+        'pypi': 'delvewheel',
     },
     'cyrus-sasl': {
         'git': 'https://github.com/cyrusimap/cyrus-sasl.git',
@@ -122,6 +141,13 @@ Packages = {
     'giflib': {
         'filelist': 'https://sourceforge.net/projects/giflib/files/giflib-6.x',
         're': r'giflib-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.gz\/download',
+    },
+    # windows.  The release tag without its v (2.56.0.windows.4); GitHub's
+    # latest-release redirect avoids the rate-limited API, and the windows
+    # pipeline derives the PortableGit asset name from the tag.
+    'git-for-windows': {
+        'filelist': 'https://github.com/git-for-windows/git/releases/latest',
+        're': r'/releases/tag/v([0-9]+\.[0-9]+\.[0-9]+\.windows\.[0-9]+)$',
     },
     'glib': {
         'git': 'https://github.com/GNOME/glib.git',
@@ -399,10 +425,24 @@ Packages = {
     #     'filelist': 'https://www.extensis.com/support/developers-sdk-version-downloads',
     #     're': r'MrSID_DSDK-([0-9]+\.[0-9]+(|\.[0-9]+(|\.[0-9]+)))-rhel[0-9]+.x86-64.gcc[0-9]+\.(tar\.gz|zip)$',  # noqa
     # },
+    # windows.  The MSVC toolset and Windows SDK versions in the current VS
+    # 2022 manifest; windows/install_msvc.py installs them by version.
+    'msvc': {
+        'json': 'https://aka.ms/vs/17/release/channel',
+        'keys': lambda data: vsManifestIds('https://aka.ms/vs/17/release/channel'),
+        # The manifest's package version (14.44.17.14: toolset 14.44 of VS
+        # 17.14), not the toolset's own build number (14.44.35207).
+        're': r'^Microsoft\.VC\.([0-9]+(\.[0-9]+)+)\.Tools\.HostX64\.TargetX64\.base$',
+    },
     'mysql': {
         'filelist': 'https://dev.mysql.com/downloads/mysql/?tpl=version&os=src',
         # 're': r'mysql-boost-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)(&|$)',
         're': r'mysql-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)(&|$)',
+    },
+    # windows
+    'nasm': {
+        'filelist': 'https://www.nasm.us/pub/nasm/releasebuilds/',
+        're': r'^([0-9]+\.[0-9]+(|\.[0-9]+))/$',
     },
     'netcdf': {
         'git': 'https://github.com/Unidata/netcdf-c.git',
@@ -410,6 +450,11 @@ Packages = {
     },
     'nifti': {
         'git': 'https://github.com/NIFTI-Imaging/nifti_clib.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
+    # windows
+    'ninja': {
+        'git': 'https://github.com/ninja-build/ninja.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'ogdi': {
@@ -583,6 +628,13 @@ Packages = {
     'util-linux': {
         'git': 'https://github.com/util-linux/util-linux.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
+    # windows.  The Windows SDK build number (10.0.<build>.0) offered by the
+    # VS 2022 manifest; see msvc.
+    'winsdk': {
+        'json': 'https://aka.ms/vs/17/release/channel',
+        'keys': lambda data: vsManifestIds('https://aka.ms/vs/17/release/channel'),
+        're': r'^Microsoft\.VisualStudio\.Component\.Windows1[01]SDK\.([0-9]+)$',
     },
     'xerces-c': {
         'git': 'https://github.com/apache/xerces-c.git',

@@ -24,10 +24,10 @@ keeps exactly that shape:
   afterwards; nothing about the build environment persists between runs.
 - **The only persistent host-side artifact is a download cache**
   (`liw_wheels\cache`, a sibling of the repository, mapped read-write).
-  It holds portable toolchain
-  downloads (PortableGit, cmake, ninja, nasm, python.org NuGet packages,
-  the VS Build Tools bootstrapper) so a run does not re-download
-  multi-GB toolchains.  The cache must never contain build outputs,
+  It holds the toolchain downloads (PortableGit, cmake, ninja, nasm, the
+  python.org NuGet packages, the MSVC/Windows SDK payloads from the
+  Visual Studio manifest) and source tarballs, so a run does not
+  re-download them.  The cache must never contain build outputs,
   stamps, or anything that could make one run's result depend on a
   previous run; it is the analog of docker layer cache, not of a base
   image.  Verification policy, as on macos: full builds from a fresh
@@ -36,6 +36,13 @@ keeps exactly that shape:
   software is by construction empty (Windows Sandbox is a disposable VM),
   and nothing from the host is visible except the four mapped folders
   (repo read-only; cache, wheels, run read-write).
+- **Everything is pinned through `versions.txt`**, including the Windows
+  toolchain (`msvc`, `winsdk`, `git-for-windows`, `cmake`, `ninja`,
+  `nasm`, `delvewheel`; tracked by `check_versions.py` like the macos-only
+  `bison`/`swig`/`zulu8` entries).  Nothing is fetched as "latest", and
+  the GitHub releases API is not used (it rate-limits unauthenticated
+  callers, and a NAT'd sandbox shares its address with everything else on
+  the host).
 
 ### Trust model and the purpose of the isolation
 
@@ -53,8 +60,10 @@ code, and it matches the established shape of this repository: on macos
 the agent session runs in a tart VM and `tart_build.sh` -- the host-side
 orchestrator -- is run by a human on the mac host; on linux the whole
 build runs inside `docker build`.  The Windows pipeline has the same
-two roles: this agent session runs inside one sandbox (the agent safety
-boundary), and a second, fresh sandbox does the build (the library
+two roles: the agent session runs inside one Windows Sandbox (the agent
+safety boundary: a manthey/utils `agent_sandbox.py` sandbox, where the
+agent is the non-administrator user `agent` with sshd listening for
+the host), and a second, fresh sandbox does the build (the library
 isolation boundary).  Because Windows Sandbox cannot be nested, the
 agent cannot start the build sandbox itself; a human starts it from the
 host.  The checked-in `windows\build.wsb` is data, not code: four folder
@@ -65,6 +74,16 @@ needs only their own commands.  `sandbox_build.ps1` is an optional
 convenience launcher, not a requirement; treat it as frozen
 infrastructure -- audited once, changed only with care, since running it
 executes it on the host.
+
+What the agent sandbox CAN do is compile: `build_wheels.ps1` has a dev
+mode (any checkout without the `C:\mnt\repo` mapping) that installs the
+same pinned toolchain under `C:\liw_build` without administrator rights
+and builds exactly as the build sandbox does.  Dev builds are
+rehearsals: they shake out script bugs and build-system surprises before
+a host run is spent on them.  They are never the verification -- every
+stage is proven by a full build from a fresh sandbox on the host,
+followed by the tests, before the next wheel is started (the macos
+discipline: one wheel at a time, always building everything).
 
 ### The toolchain decision: MSVC
 
@@ -85,17 +104,22 @@ MSVC was chosen over MSYS2/MinGW-w64 because:
 
 Costs and mitigations of the MSVC choice:
 
-- VS Build Tools cannot be installed into the cache (it installs into
-  `C:\Program Files`), so every build run pays the install time.  The
-  payload is cached as a pinned offline `--layout`
-  (`liw_wheels\cache\downloads\vs_layout`, built once by
-  `-Command cache`), so later runs install offline from the cache and
-  stay pinned to the VS version the layout was built with; without a
-  layout, runs fall back to the bootstrapper-from-net (which pins
-  nothing).
+- The compiler is NOT installed with the Visual Studio installer (which
+  needs elevation, installs into Program Files, cannot be cached, and
+  pins nothing).  `windows\install_msvc.py` (adapted from manthey/utils)
+  downloads the MSVC toolset and Windows SDK packages straight from
+  Microsoft's VS 2022 manifest at the versions pinned in `versions.txt`
+  (`msvc` is the manifest's package version, e.g. `14.44.17.14` = toolset
+  14.44 of VS 17.14, which installs as toolset build `14.44.35207`;
+  `winsdk` is the SDK build number), checks their hashes, unpacks the
+  .vsix zips and the .msi cabinets itself, and writes the compiler
+  environment (INCLUDE, LIB, PATH entries) to a JSON file that
+  `build_wheels.ps1` loads in place of `vcvars64`.  The ~400 MB of
+  payloads live in the cache; a sandbox run only extracts.  Use is
+  subject to the VS Build Tools license.
 - NASM (libjpeg-turbo/libwebp SIMD) and perl (openssl/curl TLS, later
-  GDAL work) must be provided separately; both are portable and live in
-  the cache.
+  GDAL work; PortableGit ships one) must be provided separately; both
+  are portable and live in the cache.
 
 ### Architectures
 
@@ -139,17 +163,37 @@ cache is the likely starting point.
   wheel for every requested python, and reports.  Commands:
   - `sandbox_build.ps1` -- full build (default; `pylibtiff` only so far).
   - `sandbox_build.ps1 -Command cache` -- pre-warm the download cache in
-    a throwaway sandbox (toolchains, pythons, and the pinned VS offline
-    layout).
+    a throwaway sandbox (toolchain downloads, the MSVC/SDK payloads, and
+    the pythons; a later build run then only extracts).
 - `build_wheels.ps1` -- the in-sandbox monolithic build, the counterpart
   of the monolithic Dockerfile (and of `macos/build_wheels.sh`).  Run by
-  the `.wsb` LogonCommand as the elevated sandbox account; it can also be
-  run directly inside an open sandbox for debugging.  It takes its
-  parameters from `C:\mnt\run\args.json` when the launcher wrote one and
-  from built-in defaults otherwise (the source is logged), writes its log
-  to `C:\mnt\run\build.log`, and its exit code to `C:\mnt\run\exit_code`.
-  It clears both markers at startup, so a persistent run folder works
-  across runs.
+  the `.wsb` LogonCommand in the build sandbox; in any other checkout it
+  runs in dev mode (see Usage).  Parameters: `-Packages`, `-Pythons`
+  (a trailing `t` selects the free-threaded NuGet python), `-WarmCache`
+  (toolchain and pythons only); without parameters it reads
+  `C:\mnt\run\args.json` when the launcher wrote one and uses built-in
+  defaults otherwise (the source is logged).  It writes its log to
+  `<run>\build.log` and its exit code to `<run>\exit_code`, clearing
+  both at startup, so a persistent run folder works across runs.
+- `install_msvc.py` -- the no-installer MSVC + Windows SDK install (see
+  the toolchain section); run by `build_wheels.ps1` with the patch
+  python, never by hand in the normal flow.
+- `dev_setup.ps1` -- rebuilds a development environment after an agent
+  sandbox reset: `build_wheels.ps1 -WarmCache` in dev mode (the pinned
+  toolchain and pythons under `C:\liw_build`) plus the extras the build
+  itself does not need (`requests`/`packaging` for `check_versions.py`).
+- `check_wheels.py` -- the windows-specific per-package isolation
+  checks, run with a python that has the wheels installed and a scrubbed
+  PATH (the counterpart of the macos harness's per-package checks):
+  the loaded library is the bundled `<dist>.libs` copy (verified through
+  the process's module list), the bundled tools run through their
+  wrappers, and the asserted codecs work.  In dev mode:
+  ```
+  C:\liw_build\python\3.13\python.exe -m venv %TEMP%\v313
+  set PATH=C:\Windows\System32;C:\Windows;%TEMP%\v313\Scripts
+  pip install numpy C:\liw_build\wheels\pylibtiff-*cp313*.whl
+  python -I windows\check_wheels.py pylibtiff
+  ```
 - `macos/README.md` -- the macos branch's notes; its process lessons
   (verify edits before committing, stage work behind checkpoint runs,
   assert every optional dependency, full fresh builds for verification)
@@ -207,39 +251,70 @@ If a guest-initiated shutdown is ever refused (a first-run property to
 verify), close the window by hand; never taskkill, which is
 indiscriminate and could hit the agent sandbox.
 
+### Dev mode (the agent sandbox, or any checkout)
+
+```
+# once per sandbox (after a reset): toolchain + pythons under C:\liw_build
+powershell -File windows\dev_setup.ps1
+
+# build one package for one python; log in C:\liw_build\run\build.log,
+# wheels in C:\liw_build\wheels
+powershell -File windows\build_wheels.ps1 -Packages pylibtiff -Pythons 3.13
+```
+
+Dev mode differs from the build sandbox only in where the four folders
+are (`C:\liw_build\{run,cache,wheels}` and the checkout instead of the
+`C:\mnt` mappings) and in not shutting the machine down at the end.
+Stamps under `C:\liw_build\stamps` skip finished steps on reruns
+(`LIW_FORCE=1` ignores them); dev builds are for shaking out problems,
+and nothing built in dev mode is ever used as a result.
+
 ## Iteration protocol
 
 The development loop, as practiced on the macos branch and adapted here
 for the single-instance limit:
 
-1. The agent (inside the agent sandbox) makes a change, verifies what it
-   can locally (syntax parses, desk checks against the linux Dockerfile
-   and the macos builders), and commits.
-2. The human transfers the commit out of the agent sandbox and applies it
-   to the host checkout.
+1. The agent (inside the agent sandbox) makes a change and builds it in
+   dev mode until the package builds and its wheel passes the local
+   checks; then commits.
+2. The human pulls the commit from the agent sandbox into the host
+   checkout.  The agent sandbox runs sshd for the host's key, so this is
+   a plain fetch (the IP is printed by `agent_sandbox.py` and is in the
+   sandbox's run folder):
+   `git fetch ssh://agent@<sandbox-ip>/C:/Users/agent/large_image_wheels windows`
+   followed by `git merge --ff-only FETCH_HEAD` on the `windows` branch.
 3. The human ends the agent sandbox (only one Windows Sandbox instance
    is allowed, and the agent session is one), then runs the build by
-   opening `windows\build.wsb`.
-4. The human copies the build log (`liw_wheels\run\build.log`) into the
-   agent sandbox and restarts the agent session.
+   opening `windows\build.wsb`, and runs the tests.
+4. The human restarts the agent session and copies the build log
+   (`liw_wheels\run\build.log`) and the test report into it
+   (`agent_sandbox.py cp <file> in:<path>`, or `scp` to the sandbox).
 5. The agent diagnoses from the log, fixes, commits; repeat until the
    build passes, then the same loop with test failure logs until the
-   tests pass.
+   tests pass.  Only then is the next wheel started.
+
+With a second Windows machine as the build host, steps 3-4 lose the
+stop/restart: the agent sandbox stays up, the build host fetches over
+the network (the sandbox's address is on the host's NAT, so the fetch
+goes through the agent host or the commit is pushed to a shared remote)
+and the log comes back the same way.  Either way the state of the work
+is always recoverable from this README plus the repository: nothing
+that matters lives only in a session.
 
 Consequences to design around:
 
-- The agent never sees a build run.  The log is the only feedback
+- The agent never sees a verification run.  The log is the only feedback
   channel, so `build_wheels.ps1` must stay self-diagnosing: name the
   failing step, log the failing command and its exit code, and fail at
   the first problem instead of continuing past it.
 - A restarted agent session may be a fresh context with none of the
-  previous session's temp files.  All durable knowledge lives in
-  committed files only -- this README (status and hard-won list), the
-  scripts, and the build log the human passes in.  Never rely on session
-  scratch state surviving a restart.
-- Each iteration costs a full sandbox run (toolchain install included),
-  so batch fixes: verify everything verifiable before ending the
-  session.
+  previous session's temp files (and `C:\liw_build` is gone after a
+  sandbox reset; `dev_setup.ps1` brings it back).  All durable knowledge
+  lives in committed files only -- this README (status and hard-won
+  list), the scripts, and the build log the human passes in.  Never rely
+  on session scratch state surviving a restart.
+- Each host iteration costs a full sandbox run, so batch fixes: a host
+  run is only spent on code that already builds in dev mode.
 
 ## Resuming with no prior context
 
@@ -258,49 +333,123 @@ If you are a fresh agent instance resuming this work:
 
 ## Status
 
-Work in progress (2026-10-19).  No build sandbox has run yet: the early
+Work in progress (2026-10-27).  No build sandbox has run yet (the early
 host attempts were blocked by the single-instance rule while the agent
-session was running (see the hard-won list).  Next step: the first real
-build run -- transfer the current tip to the host checkout, end the
-agent session, open `windows\build.wsb`, and watch
-`liw_wheels\run\build.log`; the first run is expected to surface the
-risks listed below.  The scripts were
-written against the dockerfile recipes, the macos builders, and the
-platform properties documented in the agent sandbox code; host runs must
-be done by hand with the agent session closed, and the findings belong
-in the hard-won list below.
+session was running; see the hard-won list).  The pipeline has been
+exercised in dev mode inside the agent sandbox:
 
-Expected first-run risks, in rough order:
+- `dev_setup.ps1` / `build_wheels.ps1 -WarmCache` installs the pinned
+  toolchain (PortableGit 2.56.0.windows.4, cmake 4.4.4, ninja 1.13.2,
+  nasm 3.02, MSVC 14.44.17.14 = toolset 14.44.35207, Windows SDK
+  10.0.26100.0, python 3.13 from NuGet) without administrator rights.
+- `build_wheels.ps1 -Packages pylibtiff -Pythons 3.13` builds the whole
+  libtiff chain (zlib, zstd, jbigkit, libwebp, libjpeg-turbo, libdeflate,
+  xz, libtiff with every feature asserted through tiffconf.h and the
+  DLL import table) and a pylibtiff wheel that delvewheel repairs to
+  eight bundled, name-mangled DLLs.  Installed into a clean venv with a
+  scrubbed PATH, `check_wheels.py` confirms the loaded libtiff is the
+  bundled copy, the lzw round trip, the bundled `tiffinfo` through its
+  console-script wrapper, and zstd/webp/jpeg/deflate writes.
 
-- libtiff's cmake jbig detection on Windows (the explicit
-  `-DJBIG_LIBRARY`/`-DJBIG_INCLUDE_DIR` cache variables and the
-  tiffconf.h feature assertion exist for this; verify the variable names
-  against the checked-out libtiff's CMakeLists if configure ignores them).
-- jbigkit has no MSVC build system; `build_jbigkit` compiles its two
-  translation units with `cl` directly.  Any header errors surface here.
-- DLL output names produced by each project's cmake on Windows (zlib1.dll,
-  libzstd.dll, jpeg62.dll, libwebp*.dll, libdeflate.dll, tiff.dll vs
-  libtiff.dll) are asserted but were written from knowledge, not from a
-  run; fix the assertions to reality and record the names below.
-- delvewheel's repaired-wheel layout (`.libs` directory name, its
-  `_delvewheel_patch` insertion point in `libtiff/__init__.py`) must be
-  confirmed against the version pinned in the cache.
-- Free-threaded python availability as NuGet packages is unverified; the
-  default pythons are 3.11-3.15 without free-threaded variants until
-  checked.
+Next step: the first host verification run (transfer the tip, end the
+agent session, open `windows\build.wsb` or run `sandbox_build.ps1`,
+watch `liw_wheels\run\build.log`), with all five stable pythons; then
+the free-threaded pythons (`python-freethreaded` exists on NuGet for
+3.14/3.15; the builder handles the `t` suffix but no `t` wheel has been
+built yet); then the shared `test/test_script.sh` in a test sandbox
+(`test_via_sandbox.ps1`, not written yet -- the macos
+`test_via_tart.sh` is the model).  Only after pylibtiff is verified end
+to end does Glymur start.
+
+Known gaps, in rough order:
+
+- No sandbox test harness yet (`check_wheels.py` is the per-package
+  isolation check; the shared functional suite still has to be driven
+  under PortableGit's bash with a scrubbed PATH in a fresh sandbox).
 - Wheel timestamp reproducibility (linux uses strip-nondeterminism +
-  advzip; macos accepts delocate's output): not yet implemented.
+  advzip; macos accepts delocate's output): not yet implemented; the
+  macos `normalize_zips.py` approach is the candidate.
 - The guest-initiated shutdown (`shutdown /s /t 5` issued by the
   in-sandbox script after the exit code) is desk-checked only; if a
   sandbox does not close itself when the run ends, close the window by
   hand and record the finding here.
+- `sandbox_build.ps1` has not run on a host since the toolchain change
+  (it is unchanged in what it does: start the sandbox, stream the log,
+  validate the wheels per python and package).
+- `check_versions.py` runs the `git` entries through `timeout`, which is
+  Windows' timeout.exe here; run it on linux (its normal home), or check
+  the windows entries by name (`delvewheel`, `git-for-windows`, `msvc`,
+  `nasm`, `winsdk` resolve on Windows).
 
 ## Hard-won details (do not lose these)
 
 - The `.wsb` LogonCommand runs as the **elevated** WDAGUtilityAccount
-  (confirmed from the agent sandbox code's file-backend path), so
-  installers and machine-wide changes need no UAC handling.  Verify on
-  the first run.
+  (from the agent sandbox code's file-backend path; verify on the first
+  run).  Nothing in the pipeline needs elevation any more, though: the
+  toolchain is portable and the agent sandbox's non-administrator
+  `agent` user runs the identical install in dev mode.
+- **delvewheel mangles DLL names** (`tiff-<sha256 prefix>.dll` in
+  `pylibtiff.libs`) and rewrites the import tables of the wheel's
+  binaries to match; the content hash means identical DLLs in two wheels
+  share a name and differing ones never do.  Keep it that way: the
+  Windows loader resolves an import by base name against the modules
+  already loaded in the process, so two unmangled `tiff.dll` copies in
+  two wheels would silently share whichever loaded first -- this is the
+  hazard the linux BUILD_ID salt exists for, solved here by delvewheel's
+  default.  Code that looks bundled libraries up by name must match the
+  mangled prefix (`startswith("tiff")`).
+- **MSVC's linker records no import for a DLL whose symbols are
+  unused**, so delvewheel (which only follows import tables) saw no
+  dependencies in the pylibtiff wheel: `tif_lzw` links `tiff.lib` but
+  imports nothing from it.  On linux the `-ltiff` DT_NEEDED survives and
+  auditwheel bundles libtiff through it.  Libraries a package loads with
+  ctypes must be forced in with `--include <name>.dll`, and
+  `--analyze-existing-exes` vendors the bundled tools' dependencies.
+  Assert the wheel's content after repair (`Assert-WheelContains`); the
+  unrepaired wheel is a silent isolation failure, not an error.
+- Bundled .exe tools resolve their (mangled) DLL imports through the
+  normal search order -- the exe's directory, then PATH -- and a child
+  process does not inherit `os.add_dll_directory`.  The console-script
+  wrapper prepends `<dist>.libs` and `sys.base_prefix` (for the
+  `vcruntime140.dll` that python ships and delvewheel deliberately does
+  not bundle) to the child's PATH.
+- PowerShell: at the top level of a script the parameters are
+  script-scope variables, so `$script:Pythons = <default>` silently
+  overwrote `-Pythons`; parameter values are copied aside first.
+  PowerShell does not expand `$var` inside a bare `-DNAME=$var` token
+  (cmake configured zlib into a literal `$LIW_PREFIX` directory); quote
+  such arguments.  Paths given to cmake as cache variables must use
+  forward slashes: a backslashed `JBIG_LIBRARY` reached libtiff's
+  `check_symbol_exists` try_compile as a string with escape sequences.
+  Native stderr redirection (`cmd 2>&1`) is a terminating error under
+  `$ErrorActionPreference = 'Stop'` in Windows PowerShell 5.1 (so is a
+  native command that merely writes to stderr when redirected);
+  `Run-Logged` relaxes the preference around such commands.
+- DLL names as the chain's cmake builds produce them on Windows
+  (observed): `z.dll` (zlib 1.3.2's `OUTPUT_NAME z`; `zlib1.dll` is
+  history, and the static `zs.lib` is turned off so no consumer can pick
+  it), `zstd.dll`, `jpeg62.dll` + `turbojpeg.dll`, `libwebp.dll` with
+  `libwebpmux/decoder/demux.dll` and `libsharpyuv.dll` (libwebp builds
+  static libraries unless `BUILD_SHARED_LIBS=ON`), `deflate.dll`,
+  `liblzma.dll`, `tiff.dll`.  libtiff's `tiffconf.h` records JBIG as a
+  bare `#define JBIG_SUPPORT` (no value) and does not mention ZSTD/WEBP
+  at all (they are in the internal `tif_config.h`); the feature
+  assertion reads tiffconf.h for ZIP/JPEG/JBIG/LIBDEFLATE and the DLL
+  import table for the rest.
+- `versions.txt`'s `msvc` entry is the VS manifest's package version
+  (`14.44.17.14`), which is what `install_msvc.py` selects by; the
+  toolset's own build number (`14.44.35207`) names the install
+  directory.  `install_msvc.py` records the pins it was given in its
+  `msvc_env.json` so a cached install is reused only at the pinned
+  versions.
+- The GitHub releases API answers 403 to the sandbox's NAT address
+  within minutes of use; every download URL is derived from a
+  `versions.txt` pin instead (PortableGit's asset name comes from the
+  `git-for-windows` tag: `2.56.0.windows.4` -> `PortableGit-2.56.0.4`,
+  `.windows.1` -> no suffix).
+- The NuGet `python` package names its interpreter `python.exe`; the
+  `python-freethreaded` package names it `python3.14t.exe` (the builder
+  copies it to `python.exe` in the version directory).
 - Windows Sandbox cannot be nested: the agent session runs inside one
   sandbox and the build runs in a separate sandbox started by a human on
   the host; the agent can write and review the scripts but can never

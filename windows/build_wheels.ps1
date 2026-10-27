@@ -4,13 +4,11 @@
 # a single self-contained script that installs the toolchain, builds every
 # library a wheel needs from source into a private prefix with the pinned
 # versions from the shared versions.txt, then builds and repairs the python
-# wheels.  It is meant to run inside a fresh Windows Sandbox (started by
-# sandbox_build.ps1 on the host through the .wsb LogonCommand, which runs as
-# the elevated sandbox account) so that nothing from the host's installed
-# software can influence the built wheels.  It can also be run directly
-# inside an open sandbox for quick iteration.
+# wheels.  It is meant to run inside a fresh Windows Sandbox (started on
+# the host through the .wsb LogonCommand) so that nothing from the host's
+# installed software can influence the built wheels.
 #
-# Mapped folders (created by sandbox_build.ps1):
+# Mapped folders (from build.wsb / sandbox_build.ps1):
 #   C:\mnt\repo    the repository (read-only)
 #   C:\mnt\cache   the download cache (read-write; holds upstream artifacts
 #                  only -- toolchains, pythons, source tarballs.  Nothing
@@ -18,14 +16,30 @@
 #   C:\mnt\wheels  wheel output (read-write; repaired wheels land here)
 #   C:\mnt\run     per-run exchange (read-write; log, args.json, exit_code)
 #
+# Dev mode: when C:\mnt\repo is not mapped (the agent sandbox, or any
+# checkout), the repository is this script's parent directory and the run,
+# cache and wheels folders live under the build directory.  Nothing else
+# differs: the same portable toolchain is installed the same way, so a
+# build that passes here is a faithful rehearsal -- but never the
+# verification, which is always a fresh sandbox run from the host.
+#
 # Everything is built in C:\liw_build (sandbox-local disk; mapped folders
 # are slow).  The sandbox is disposable: no state outside the mapped
 # folders survives the run.
 #
-# Environment notes:
-#   LIW_PYTHONS   python versions to build for (default "3.11 3.12 3.13
-#                 3.14 3.15"; free-threaded variants are not verified on
-#                 Windows yet)
+# Toolchain: no administrator rights are needed.  MSVC and the Windows SDK
+# are installed into the build directory by windows\install_msvc.py (from
+# Microsoft's VS manifest, at the versions pinned in versions.txt; the
+# payloads are cached), PortableGit, cmake, ninja, nasm and the python.org
+# NuGet pythons are expanded from cached downloads.
+#
+# Parameters / environment (parameters win, then the environment, then
+# C:\mnt\run\args.json, then the defaults):
+#   -Packages     packages to build (no default: the launcher names them)
+#   -Pythons      python versions to build for (default 3.11-3.15; a
+#                 trailing t selects the free-threaded NuGet build)
+#   -WarmCache    only download/install the toolchain and pythons, then stop
+#   LIW_PYTHONS   like -Pythons, space separated
 #   LIW_FORCE     set to 1 to ignore completed-step stamps and rebuild all
 #   LIW_BUILD     working directory (default C:\liw_build)
 #
@@ -34,6 +48,8 @@
 # full fresh sandbox run.
 
 param(
+    [string[]]$Packages = @(),
+    [string[]]$Pythons = @(),
     [switch]$WarmCache
 )
 
@@ -46,10 +62,24 @@ $ErrorActionPreference = 'Stop'
 # Run exchange.
 # --------------------------------------------------------------------------
 
-$RunDir = 'C:\mnt\run'
-$RepoDir = 'C:\mnt\repo'
-$CacheDir = 'C:\mnt\cache'
-$WheelsDir = 'C:\mnt\wheels'
+$LIW_BUILD = if ($env:LIW_BUILD) { $env:LIW_BUILD } else { 'C:\liw_build' }
+# The build sandbox has the repository mapped at C:\mnt\repo; anything
+# else is dev mode (see the header).
+$script:DevMode = -not (Test-Path 'C:\mnt\repo\windows\build_wheels.ps1')
+if ($script:DevMode) {
+    $RepoDir = Split-Path -Parent $PSScriptRoot
+    $RunDir = Join-Path $LIW_BUILD 'run'
+    $CacheDir = Join-Path $LIW_BUILD 'cache'
+    $WheelsDir = Join-Path $LIW_BUILD 'wheels'
+} else {
+    $RepoDir = 'C:\mnt\repo'
+    $RunDir = 'C:\mnt\run'
+    $CacheDir = 'C:\mnt\cache'
+    $WheelsDir = 'C:\mnt\wheels'
+}
+foreach ($dir in @($RunDir, $CacheDir, $WheelsDir)) {
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+}
 $LogPath = Join-Path $RunDir 'build.log'
 $ExitCodePath = Join-Path $RunDir 'exit_code'
 
@@ -73,7 +103,6 @@ function Assert-Exit([string]$What) {
 # Build layout and environment.
 # --------------------------------------------------------------------------
 
-$LIW_BUILD = 'C:\liw_build'
 $LIW_PREFIX = Join-Path $LIW_BUILD 'prefix'
 $LIW_SRC = Join-Path $LIW_BUILD 'src'
 $LIW_STAMPS = Join-Path $LIW_BUILD 'stamps'
@@ -83,9 +112,15 @@ $LIW_TOOLS = Join-Path $LIW_BUILD 'tools'
 $LIW_PY = Join-Path $LIW_BUILD 'python'
 $LIW_DL = Join-Path $LIW_BUILD 'dl'
 $LIW_JOBS = $env:NUMBER_OF_PROCESSORS
+# The prefix with forward slashes, for paths passed to cmake (backslashes
+# are escape characters once a path lands in a generated CMakeLists).
+$script:CmakePrefix = $LIW_PREFIX -replace '\\', '/'
+# The source patches take the prefix from the environment, as on macos.
+$env:LIW_PREFIX = $LIW_PREFIX
 
 foreach ($dir in @($LIW_BUILD, $LIW_PREFIX, $LIW_SRC, $LIW_STAMPS,
-                   $LIW_PATCHES, $LIW_WHEELHOUSE, $LIW_TOOLS, $LIW_DL)) {
+                   $LIW_PATCHES, $LIW_WHEELHOUSE, $LIW_TOOLS, $LIW_PY,
+                   $LIW_DL)) {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
 }
 
@@ -104,6 +139,11 @@ foreach ($name in @(
 
 # The repository is mapped read-only, so everything mutable lives under
 # C:\liw_build.  Version pins always come from the shared versions.txt.
+# At the top level of a script the parameters ARE script-scope variables,
+# so the defaults below would overwrite -Pythons/-Packages; keep the
+# parameter values first.
+$paramPythons = @($Pythons)
+$paramPackages = @($Packages)
 $script:Pythons = @('3.11', '3.12', '3.13', '3.14', '3.15')
 $script:Packages = @()
 $script:Command = 'build'
@@ -120,6 +160,15 @@ if ($env:LIW_PYTHONS) {
     $script:Pythons = $env:LIW_PYTHONS -split '\s+'
     $script:ArgsSource = 'LIW_PYTHONS'
 }
+if ($paramPythons.Count -gt 0) {
+    $script:Pythons = $paramPythons
+    $script:ArgsSource = 'parameters'
+}
+if ($paramPackages.Count -gt 0) {
+    $script:Packages = $paramPackages
+    $script:ArgsSource = 'parameters'
+}
+if ($WarmCache) { $script:Command = 'cache' }
 # The run exchange persists between runs now that the launcher may be the
 # static .wsb (which does not reset it), so clear the last run's markers;
 # the log is recreated by the first Log call.  A stale args.json from an
@@ -231,11 +280,14 @@ function Fetch-Tarball([string]$Url, [string]$Name, [string]$Dest) {
 function Cmake-Build([string]$Src, [string[]]$CmakeArgs = @()) {
     $build = Join-Path $Src '_build'
     if (Test-Path $build) { Remove-Item -Recurse -Force $build }
+    # (Quoted: PowerShell does not expand a variable inside a bare
+    # -DNAME=$var token, which configured zlib into a literal
+    # "$LIW_PREFIX" directory on the first dev run.)
     & cmake -S $Src -B $build -G Ninja `
-        -DCMAKE_BUILD_TYPE=MinSizeRel `
-        -DCMAKE_PREFIX_PATH=$LIW_PREFIX `
-        -DCMAKE_INSTALL_PREFIX=$LIW_PREFIX `
-        -DCMAKE_INSTALL_LIBDIR=lib `
+        '-DCMAKE_BUILD_TYPE=MinSizeRel' `
+        "-DCMAKE_PREFIX_PATH=$script:CmakePrefix" `
+        "-DCMAKE_INSTALL_PREFIX=$script:CmakePrefix" `
+        '-DCMAKE_INSTALL_LIBDIR=lib' `
         @CmakeArgs
     Assert-Exit "cmake configure failed in $Src"
     & cmake --build $build --parallel $LIW_JOBS
@@ -255,16 +307,37 @@ function Assert-Files([string]$Dir, [string[]]$Patterns, [string]$What) {
     }
 }
 
+# Every pattern must match a member of the wheel (the post-repair content
+# assertion: a missing bundled DLL would otherwise only surface as an
+# import failure in the tests, or worse, as a silent fall-through to a
+# system DLL).
+function Assert-WheelContains([string]$Wheel, [string[]]$Patterns, [string]$What) {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($Wheel)
+    try {
+        $names = @($zip.Entries | ForEach-Object { $_.FullName })
+    } finally {
+        $zip.Dispose()
+    }
+    foreach ($pattern in $Patterns) {
+        if (-not ($names | Where-Object { $_ -match $pattern })) {
+            Die "${What}: $Wheel has no member matching $pattern"
+        }
+    }
+}
+
 # dumpbin /DEPENDENTS listing for one image, as a flat set of names.
 function Get-Dependents([string]$Image) {
+    # Only the indented one-name-per-line entries of the "has the
+    # following dependencies" block, not the "Dump of file ...dll" header.
     $out = (& dumpbin /DEPENDENTS $Image | Out-String)
     $names = @()
     foreach ($line in ($out -split "`n")) {
-        if ($line -match '\.dll') {
-            $names += ($line.Trim() -split '\s+')
+        if ($line -match '^\s+(\S+\.dll)\s*$') {
+            $names += $Matches[1]
         }
     }
-    return $names | Where-Object { $_ }
+    return $names
 }
 
 function Assert-Dependents([string]$Image, [string[]]$Names, [string]$What) {
@@ -277,25 +350,10 @@ function Assert-Dependents([string]$Image, [string[]]$Names, [string]$What) {
     }
 }
 
-# Get-GitHubAsset / Get-Json: ported from the agent sandbox payload's
-# well-tested helpers (browser download url of the newest release asset
-# matching a regex; pre-releases considered when no stable release has one).
 function Get-Json([string]$Url) {
     return Invoke-RestMethod -Uri $Url -Headers @{
         'User-Agent' = 'large_image_wheels'
     }
-}
-
-function Get-GitHubAsset([string]$Repo, [string]$Pattern) {
-    foreach ($release in (Get-Json "https://api.github.com/repos/$Repo/releases?per_page=15")) {
-        $asset = $release.assets |
-            Where-Object { $_.name -match $Pattern } |
-            Select-Object -First 1
-        if ($asset) {
-            return @{ Url = $asset.browser_download_url; Tag = $release.tag_name }
-        }
-    }
-    throw "no asset matching $Pattern in $Repo releases"
 }
 
 # Run a native command with its output streamed into the log.  Native
@@ -332,16 +390,27 @@ function Add-ToolPath([string]$Root, [string]$ExeName) {
     return $found.FullName
 }
 
+# Every tool is pinned through versions.txt and fetched from a URL derived
+# from the pin: the GitHub releases API is deliberately not used (it rate
+# limits unauthenticated callers, and a NAT'd sandbox shares its address),
+# and nothing is "latest".
 function Ensure-Toolchain {
     $bin = Join-Path $LIW_TOOLS 'bin'
     New-Item -ItemType Directory -Force -Path $bin | Out-Null
 
-    # --- git (PortableGit; bash comes with it for the shared test script)
+    # --- git (PortableGit; bash comes with it for the shared test script).
+    # The pin is the release tag without its v (2.56.0.windows.4); the
+    # asset is named after the version with the windows build number
+    # appended when it is not the first (PortableGit-2.56.0.4-64-bit.7z.exe,
+    # PortableGit-2.56.0-64-bit.7z.exe for 2.56.0.windows.1).
+    $gitVersion = V 'git-for-windows'
     $gitDir = Join-Path $LIW_TOOLS 'git'
-    if (-not (Test-Path (Join-Path $gitDir 'bin\bash.exe'))) {
-        Log 'fetching PortableGit'
-        $asset = Get-GitHubAsset 'git-for-windows/git' '^PortableGit-.*-64-bit\.7z\.exe$'
-        $file = Fetch $asset.Url 'PortableGit.7z.exe'
+    if (-not (Test-Path (Join-Path $gitDir "bin\bash.exe"))) {
+        Log "fetching PortableGit $gitVersion"
+        $tag = "v$gitVersion"
+        $assetVersion = ($gitVersion -replace '\.windows\.1$', '') -replace '\.windows\.', '.'
+        $asset = "PortableGit-$assetVersion-64-bit.7z.exe"
+        $file = Fetch "https://github.com/git-for-windows/git/releases/download/$tag/$asset" $asset
         if (Test-Path $gitDir) { Remove-Item -Recurse -Force $gitDir }
         $proc = Start-Process -FilePath $file `
             -ArgumentList "-o `"$gitDir`" -y" -Wait -PassThru
@@ -354,138 +423,121 @@ function Ensure-Toolchain {
     $script:ToolPaths += (Join-Path $gitDir 'bin')
 
     # --- cmake and ninja
+    $cmakeVersion = V 'cmake'
     $cmakeDir = Join-Path $LIW_TOOLS 'cmake'
-    if (-not (Test-Path (Join-Path $cmakeDir '.installed'))) {
-        Log 'fetching cmake'
-        $asset = Get-GitHubAsset 'Kitware/CMake' '^cmake-.*-windows-x86_64\.zip$'
-        Expand-Zip (Fetch $asset.Url 'cmake.zip') $cmakeDir
-        New-Item -ItemType File -Force -Path (Join-Path $cmakeDir '.installed') | Out-Null
+    if (-not (Test-Path (Join-Path $cmakeDir ".installed-$cmakeVersion"))) {
+        Log "fetching cmake $cmakeVersion"
+        $name = "cmake-$cmakeVersion-windows-x86_64.zip"
+        Expand-Zip (Fetch "https://github.com/Kitware/CMake/releases/download/v$cmakeVersion/$name" $name) $cmakeDir
+        New-Item -ItemType File -Force -Path (Join-Path $cmakeDir ".installed-$cmakeVersion") | Out-Null
     }
     Add-ToolPath $cmakeDir 'cmake.exe' | Out-Null
+    $ninjaVersion = V 'ninja'
     $ninjaFile = Join-Path $bin 'ninja.exe'
-    if (-not (Test-Path $ninjaFile)) {
-        Log 'fetching ninja'
-        Copy-Item (Fetch 'https://github.com/ninja-build/ninja/releases/latest/download/ninja-win.zip' 'ninja-win.zip') "$ninjaFile.zip"
-        Expand-Zip "$ninjaFile.zip" (Join-Path $LIW_DL 'ninja')
-        Copy-Item (Add-ToolPath (Join-Path $LIW_DL 'ninja') 'ninja.exe') $ninjaFile -Force
+    if (-not (Test-Path (Join-Path $bin ".ninja-$ninjaVersion"))) {
+        Log "fetching ninja $ninjaVersion"
+        $zip = Fetch "https://github.com/ninja-build/ninja/releases/download/v$ninjaVersion/ninja-win.zip" "ninja-$ninjaVersion-win.zip"
+        Expand-Zip $zip (Join-Path $LIW_DL 'ninja')
+        Copy-Item (Join-Path $LIW_DL 'ninja\ninja.exe') $ninjaFile -Force
+        New-Item -ItemType File -Force -Path (Join-Path $bin ".ninja-$ninjaVersion") | Out-Null
     }
     if ($script:ToolPaths -notcontains $bin) { $script:ToolPaths += $bin }
 
     # --- nasm (libjpeg-turbo SIMD; x86-only upstream, fine while win_amd64
     # is the only target)
+    $nasmVersion = V 'nasm'
     $nasmDir = Join-Path $LIW_TOOLS 'nasm'
-    if (-not (Test-Path (Join-Path $nasmDir '.installed'))) {
-        Log 'fetching nasm'
-        $nasmVersion = '2.16.03'
-        $url = "https://www.nasm.us/pub/nasm/releasebuilds/$nasmVersion/win64/nasm-$nasmVersion-win64.zip"
-        Expand-Zip (Fetch $url "nasm-$nasmVersion-win64.zip") $nasmDir
-        New-Item -ItemType File -Force -Path (Join-Path $nasmDir '.installed') | Out-Null
+    if (-not (Test-Path (Join-Path $nasmDir ".installed-$nasmVersion"))) {
+        Log "fetching nasm $nasmVersion"
+        $name = "nasm-$nasmVersion-win64.zip"
+        Expand-Zip (Fetch "https://www.nasm.us/pub/nasm/releasebuilds/$nasmVersion/win64/$name" $name) $nasmDir
+        New-Item -ItemType File -Force -Path (Join-Path $nasmDir ".installed-$nasmVersion") | Out-Null
     }
     Add-ToolPath $nasmDir 'nasm.exe' | Out-Null
 
-    # --- VS Build Tools (MSVC x64 + Windows SDK).  Cannot live in the
-    # cache (it installs into Program Files), so every run pays the
-    # install.  The payload itself can live in the cache as an offline
-    # --layout (built once by the cache warm-up), which avoids the
-    # per-run download and pins the VS version; runs without a cached
-    # layout fall back to the bootstrapper-from-net.
-    if ($WarmCache) {
-        $vsLayout = Join-Path (Join-Path $CacheDir 'downloads') 'vs_layout'
-        if (-not (Test-Path (Join-Path $vsLayout 'vs_buildtools.exe'))) {
-            Log 'fetching the VS Build Tools offline layout (once; several GB)'
-            $boot = Fetch 'https://aka.ms/vs/17/release/vs_buildtools.exe' 'vs_buildtools.exe'
-            $proc = Start-Process -FilePath $boot -Wait -PassThru `
-                -ArgumentList @('--quiet', '--layout', $vsLayout,
-                                '--lang', 'en-US',
-                                '--add',
-                                'Microsoft.VisualStudio.Workload.VCTools',
-                                '--includeRecommended')
-            if ($proc.ExitCode -ne 0) {
-                Die "VS layout fetch failed (exit code $($proc.ExitCode))"
-            }
-            if (-not (Test-Path (Join-Path $vsLayout 'vs_buildtools.exe'))) {
-                Die 'the VS layout fetch produced no bootstrapper'
-            }
-        } else {
-            Log 'the VS Build Tools offline layout is already cached'
+    # --- MSVC and the Windows SDK, installed without the VS installer and
+    # without elevation by windows\install_msvc.py at the pinned versions.
+    # The manifest payloads live in the cache (so a sandbox run only
+    # extracts); the install itself is sandbox-local.
+    $msvcVersion = V 'msvc'
+    $sdkVersion = V 'winsdk'
+    $msvcDir = Join-Path $LIW_TOOLS 'msvc'
+    $envJson = Join-Path $LIW_TOOLS 'msvc_env.json'
+    # The pin is the manifest's package version (14.44.17.14); the
+    # installer records the pins it was given next to the toolset build
+    # number it found (14.44.35207), and an install is reused only when its
+    # recorded pins are the current ones.
+    $installed = $false
+    if (Test-Path $envJson) {
+        $info = Get-Content $envJson -Raw | ConvertFrom-Json
+        $installed = ($info.pins.msvc -eq $msvcVersion) -and
+            ($info.pins.sdk -eq $sdkVersion) -and
+            (Test-Path (Join-Path $info.env.VCToolsInstallDir 'bin\Hostx64\x64\cl.exe'))
+    }
+    if (-not $installed) {
+        Log "installing MSVC $msvcVersion and Windows SDK $sdkVersion (cached payloads are reused)"
+        Run-Logged $script:PatchPython @(
+            '-I', (Join-Path $RepoDir 'windows\install_msvc.py'),
+            '--dest', $msvcDir,
+            '--downloads', (Join-Path $CacheDir 'downloads\vs'),
+            '--env-json', $envJson,
+            '--msvc-version', $msvcVersion,
+            '--sdk-version', $sdkVersion) 'install_msvc.py'
+        $info = Get-Content $envJson -Raw | ConvertFrom-Json
+        if ($info.sdk -ne "10.0.$sdkVersion.0") {
+            Die "install_msvc.py installed SDK $($info.sdk), not the pinned 10.0.$sdkVersion.0"
         }
-        return
     }
-    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-    $vsPath = $null
-    if (Test-Path $vswhere) {
-        $vsPath = & $vswhere -latest -products * `
-            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
-            -property installationPath
-    }
-    if (-not $vsPath) {
-        $vsAdd = @('--add', 'Microsoft.VisualStudio.Workload.VCTools',
-                   '--includeRecommended')
-        $vsLayout = Join-Path (Join-Path $CacheDir 'downloads') 'vs_layout'
-        $layoutBoot = Join-Path $vsLayout 'vs_buildtools.exe'
-        if (Test-Path $layoutBoot) {
-            Log ('installing VS Build Tools from the cached offline ' +
-                'layout (several minutes, no download)')
-            $proc = Start-Process -FilePath $layoutBoot -Wait -PassThru `
-                -ArgumentList (@('--quiet', '--wait', '--norestart',
-                                 '--nocache', '--noWeb') + $vsAdd)
-            if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) {
-                Die ('VS Build Tools install from the layout failed ' +
-                    "(exit code $($proc.ExitCode))")
-            }
-        } else {
-            Log ('installing VS Build Tools (C++ x64 workload; several ' +
-                'minutes); pre-warm an offline layout with -Command ' +
-                'cache to skip the per-run download and pin the VS ' +
-                'version')
-            $boot = Fetch 'https://aka.ms/vs/17/release/vs_buildtools.exe' 'vs_buildtools.exe'
-            $proc = Start-Process -FilePath $boot -Wait -PassThru `
-                -ArgumentList (@('--quiet', '--wait', '--norestart',
-                                 '--nocache') + $vsAdd)
-            if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) {
-                Die "VS Build Tools install failed (exit code $($proc.ExitCode))"
-            }
-        }
-        $vsPath = & $vswhere -latest -products * `
-            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
-            -property installationPath
-        if (-not $vsPath) { Die 'VS Build Tools installed but not found by vswhere' }
-    }
-    $script:VsPath = $vsPath
-    Log "using VS Build Tools at $vsPath"
+    $script:MsvcEnvJson = $envJson
+    Log "using MSVC $($info.msvc) and Windows SDK $($info.sdk) at $msvcDir"
 }
 
 function Ensure-Pythons {
     # python.org builds via their NuGet packages (no installer, no machine
-    # state beyond the expanded directory), one directory per minor under
-    # C:\liw_build\python.
-    $index = Get-Json 'https://api.nuget.org/v3-flatcontainer/python/index.json'
+    # state beyond the expanded directory), one directory per requested
+    # version under C:\liw_build\python.  A trailing t (3.14t) selects the
+    # free-threaded build, which NuGet publishes as a separate
+    # python-freethreaded package with the same version strings.  The
+    # newest patch release of each minor is taken (the linux build likewise
+    # takes whatever patch release the manylinux image ships).
+    $indexes = @{}
     foreach ($minor in $script:Pythons) {
         $dest = Join-Path $LIW_PY $minor
         if (Test-Path (Join-Path $dest 'python.exe')) { continue }
-        # Free-threaded builds must not be picked for the normal pythons;
-        # exclude both prerelease and free-threaded version strings.
-        $candidates = @($index.versions |
-            Where-Object { $_ -like "$minor.*" -and $_ -notmatch '[t-]' })
+        $package = if ($minor.EndsWith('t')) { 'python-freethreaded' } else { 'python' }
+        $base = $minor.TrimEnd('t')
+        if (-not $indexes.ContainsKey($package)) {
+            $indexes[$package] = Get-Json "https://api.nuget.org/v3-flatcontainer/$package/index.json"
+        }
+        # Prereleases carry a -rc/-a/-b suffix; exclude them.
+        $candidates = @($indexes[$package].versions |
+            Where-Object { $_ -like "$base.*" -and $_ -notmatch '[a-z-]' })
         if ($candidates.Count -eq 0) {
-            Die "no stable python $minor on nuget.org"
+            Die "no stable python $minor ($package) on nuget.org"
         }
         $full = $candidates | Sort-Object { [version]$_ } | Select-Object -Last 1
-        Log "installing python $full"
-        $file = Fetch "https://api.nuget.org/v3-flatcontainer/python/$full/python.$full.nupkg" "python-$full.nupkg"
-        Expand-Zip $file (Join-Path $LIW_DL "python-$full")
+        Log "installing python $minor ($package $full)"
+        $file = Fetch "https://api.nuget.org/v3-flatcontainer/$package/$full/$package.$full.nupkg" "$package-$full.nupkg"
+        Expand-Zip $file (Join-Path $LIW_DL "$package-$full")
         if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
-        Move-Item (Join-Path $LIW_DL "python-$full\tools") $dest
+        Move-Item (Join-Path $LIW_DL "$package-$full\tools") $dest
+        if (-not (Test-Path (Join-Path $dest 'python.exe'))) {
+            # The free-threaded package names its interpreter python3.14t.exe.
+            $exe = Get-ChildItem -Path $dest -Filter 'python3*t.exe' -File | Select-Object -First 1
+            if (-not $exe) { Die "no python.exe in the $package $full package" }
+            Copy-Item $exe.FullName (Join-Path $dest 'python.exe')
+        }
         & (Join-Path $dest 'python.exe') -m ensurepip --upgrade | Out-Null
         Assert-Exit "ensurepip failed for python $full"
         & (Join-Path $dest 'python.exe') -m pip install --quiet `
             --no-warn-script-location --upgrade pip setuptools wheel | Out-Null
         Assert-Exit "pip bootstrap failed for python $full"
     }
-    # The patch python (newest requested) runs getver.py, writes the source
-    # patches, and drives delvewheel.
+    # The patch python (newest requested stable python) runs getver.py and
+    # install_msvc.py, writes the source patches, and drives delvewheel.
     $best = $null
     foreach ($minor in $script:Pythons) {
+        if ($minor.EndsWith('t')) { continue }
         $candidate = Join-Path $LIW_PY "$minor\python.exe"
         if (Test-Path $candidate) {
             if (-not $best -or
@@ -494,7 +546,7 @@ function Ensure-Pythons {
             }
         }
     }
-    if (-not $best) { Die 'no python was installed' }
+    if (-not $best) { Die 'no stable python was installed (the patch python must not be free-threaded)' }
     $script:PatchPython = Join-Path $LIW_PY "$best\python.exe"
     Log "patch python: $script:PatchPython"
 }
@@ -512,23 +564,25 @@ function Set-BuildPath {
     $env:PATH = (@($base) + $script:ToolPaths + @("$LIW_PREFIX\bin")) -join ';'
 }
 
-function Enter-DevShell {
+function Enter-Msvc {
     # Bring the MSVC toolset into this session (INCLUDE, LIB, PATH for cl,
-    # link, dumpbin) for the x64 target.
-    $module = Join-Path $script:VsPath 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll'
-    if (-not (Test-Path $module)) {
-        Die "VS Dev Shell module not found at $module"
+    # link, dumpbin, rc, mt) for the x64 target, from the environment
+    # install_msvc.py wrote (the equivalent of vcvars64 / Enter-VsDevShell).
+    $info = Get-Content $script:MsvcEnvJson -Raw | ConvertFrom-Json
+    foreach ($prop in $info.env.PSObject.Properties) {
+        Set-Item -Path "env:$($prop.Name)" -Value $prop.Value
     }
-    Import-Module $module
-    Enter-VsDevShell -VsInstallPath $script:VsPath -SkipAutomaticLocation `
-        -DevCmdArguments '-arch=x64 -host_arch=x64'
+    $env:PATH = (@($env:PATH -split ';') + @($info.paths)) -join ';'
     # The private prefix supplies our libraries; put it ahead of the SDK in
     # the search path for both the compiler and the linker.
     $env:INCLUDE = "$LIW_PREFIX\include;$env:INCLUDE"
     $env:LIB = "$LIW_PREFIX\lib;$env:LIB"
-    # Re-assert the scrubbed PATH (the dev shell prepends its own entries).
-    $env:PATH = ($env:PATH -split ';' |
-        Where-Object { $_ -match '^[A-Za-z]:\\' }) -join ';'
+    # (No `cl 2>&1` probe here: cl prints its banner to stderr, and a
+    # redirected native stderr is a terminating error under
+    # ErrorActionPreference Stop in Windows PowerShell 5.1.)
+    if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
+        Die 'cl.exe is not on PATH after Enter-Msvc'
+    }
 }
 
 # --------------------------------------------------------------------------
@@ -543,8 +597,12 @@ function Build-Zlib {
     Log '=== zlib'
     $src = Git-Clone 'https://github.com/madler/zlib.git' "v$(V zlib)" `
         (Join-Path $LIW_SRC 'zlib')
-    Cmake-Build $src @('-DZLIB_BUILD_TESTING=OFF')
-    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('zlib*.dll') 'zlib'
+    # zlib 1.3.2's cmake names the Windows DLL z.dll (OUTPUT_NAME z; the
+    # zlib1.dll name of the old win32/Makefile.msc days is gone) and the
+    # static library zs.lib; the static build is turned off so no consumer
+    # can pick the static library over the DLL.
+    Cmake-Build $src @('-DZLIB_BUILD_TESTING=OFF', '-DZLIB_BUILD_STATIC=OFF')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('z.dll') 'zlib'
     Done-Stamp 'zlib'
 }
 
@@ -556,7 +614,7 @@ function Build-Zstd {
     Cmake-Build (Join-Path $src 'build\cmake') @(
         '-DBUILD_SHARED_LIBS=ON', '-DZSTD_BUILD_STATIC=OFF',
         '-DZSTD_BUILD_PROGRAMS=OFF', '-DZSTD_BUILD_TESTS=OFF')
-    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('libzstd*.dll') 'zstd'
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('zstd.dll') 'zstd'
     Done-Stamp 'zstd'
 }
 
@@ -599,14 +657,19 @@ function Build-Libwebp {
     $src = Fetch-Tarball `
         "https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-$(V libwebp).tar.gz" `
         'libwebp.tar.gz' (Join-Path $LIW_SRC 'libwebp')
+    # libwebp's cmake builds static libraries unless BUILD_SHARED_LIBS is
+    # on (the first dev run installed only libwebp.lib archives).
     Cmake-Build $src @(
+        '-DBUILD_SHARED_LIBS=ON',
         '-DWEBP_BUILD_CWEBP=OFF', '-DWEBP_BUILD_DWEBP=OFF',
         '-DWEBP_BUILD_GIF2WEBP=OFF', '-DWEBP_BUILD_IMG2WEBP=OFF',
         '-DWEBP_BUILD_VWEBP=OFF', '-DWEBP_BUILD_WEBPINFO=OFF',
-        '-DWEBP_BUILD_WEBPQUALITY=OFF', '-DWEBP_BUILD_EXTRAS=OFF',
+        '-DWEBP_BUILD_WEBPMUX=OFF', '-DWEBP_BUILD_ANIM_UTILS=OFF',
+        '-DWEBP_BUILD_EXTRAS=OFF',
         '-DWEBP_BUILD_LIBWEBPMUX=ON', '-DWEBP_BUILD_LIBWEBPDECODER=ON')
     Assert-Files (Join-Path $LIW_PREFIX 'bin') @(
-        'libwebp*.dll', 'libwebpmux*.dll', 'libwebpdecoder*.dll') 'libwebp'
+        'libwebp.dll', 'libwebpmux.dll', 'libwebpdecoder.dll',
+        'libsharpyuv.dll') 'libwebp'
     Done-Stamp 'libwebp'
 }
 
@@ -628,7 +691,7 @@ function Build-Libdeflate {
     $src = Git-Clone 'https://github.com/ebiggers/libdeflate.git' `
         "v$(V libdeflate)" (Join-Path $LIW_SRC 'libdeflate')
     Cmake-Build $src @('-DLIBDEFLATE_BUILD_STATIC_LIB=OFF')
-    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('libdeflate*.dll') 'libdeflate'
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('deflate.dll') 'libdeflate'
     Done-Stamp 'libdeflate'
 }
 
@@ -639,7 +702,7 @@ function Build-Xz {
         (Join-Path $LIW_SRC 'xz')
     Cmake-Build $src @(
         '-DBUILD_SHARED_LIBS=ON', '-DBUILD_TESTING=OFF', '-DENABLE_NLS=OFF')
-    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('liblzma*.dll') 'xz'
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('liblzma.dll') 'xz'
     Done-Stamp 'xz'
 }
 
@@ -652,11 +715,14 @@ function Build-Libtiff {
     # so hand it the paths explicitly; the option spellings for deflate are
     # not certain, so pass both plausible names and let the tiffconf.h
     # assertion (below) catch a silent feature drop.
+    # Paths handed to cmake as cache variables must use forward slashes:
+    # a backslashed JBIG_LIBRARY reached libtiff's check_symbol_exists
+    # try_compile as a string with escape sequences and broke configure.
     Cmake-Build $src @(
         '-Dzlib=ON', '-Djpeg=ON', '-Djbig=ON', '-Dzstd=ON', '-Dwebp=ON',
         '-Ddeflate=ON', '-Dlibdeflate=ON',
-        "-DJBIG_LIBRARY=$(Join-Path $LIW_PREFIX 'lib\libjbig.lib')",
-        "-DJBIG_INCLUDE_DIR=$(Join-Path $LIW_PREFIX 'include')")
+        "-DJBIG_LIBRARY=$script:CmakePrefix/lib/libjbig.lib",
+        "-DJBIG_INCLUDE_DIR=$script:CmakePrefix/include")
     # Feature assertions: the linux wheels' libtiff links zlib, jpeg, zstd,
     # webp, and libdeflate, and statically embeds jbig.  A missing optional
     # dependency at configure time would otherwise silently reduce the
@@ -665,11 +731,14 @@ function Build-Libtiff {
     if (-not (Test-Path $tiffconf)) {
         Die "libtiff: tiffconf.h not found at $tiffconf"
     }
+    # tiffconf.h records some features as "#define X 1" and others as a
+    # bare "#define X" (JBIG); ZSTD/WEBP are only in the internal
+    # tif_config.h, so those two are asserted through the DLL imports
+    # below instead.
     $conf = Get-Content $tiffconf -Raw
     foreach ($feature in @('ZIP_SUPPORT', 'JPEG_SUPPORT', 'JBIG_SUPPORT',
-                           'ZSTD_SUPPORT', 'WEBP_SUPPORT',
                            'LIBDEFLATE_SUPPORT')) {
-        if ($conf -notmatch "#define\s+$feature\s+1") {
+        if ($conf -notmatch "(?m)^#define\s+$feature\b") {
             Die ("libtiff: $feature is not enabled in tiffconf.h (an " +
                 'optional dependency was not found at configure time)')
         }
@@ -677,9 +746,14 @@ function Build-Libtiff {
     $tiffDll = Get-ChildItem -Path (Join-Path $LIW_PREFIX 'bin') `
         -Filter '*tiff*.dll' -File | Select-Object -First 1
     if (-not $tiffDll) { Die 'libtiff: no tiff DLL in the prefix' }
+    Log "libtiff DLL $($tiffDll.Name) depends on: $((Get-Dependents $tiffDll.FullName) -join ', ')"
+    Log "prefix DLLs: $((Get-ChildItem -Path (Join-Path $LIW_PREFIX 'bin') -Filter '*.dll' | ForEach-Object { $_.Name }) -join ', ')"
+    # DLL names as the chain's cmake builds produce them on Windows
+    # (observed, not assumed): z.dll, zstd.dll, jpeg62.dll, libwebp.dll,
+    # deflate.dll, liblzma.dll.
     Assert-Dependents $tiffDll.FullName @(
-        'jpeg62.dll', 'zlib1.dll', 'libzstd.dll', 'libwebp.dll',
-        'libdeflate.dll') 'libtiff'
+        'jpeg62.dll', 'z.dll', 'zstd.dll', 'libwebp.dll',
+        'deflate.dll') 'libtiff'
     Done-Stamp 'libtiff'
 }
 
@@ -692,11 +766,15 @@ function Build-Pylibtiff {
     Log '=== pylibtiff'
     $pp = $script:PatchPython
 
-    & $pp -m pip install --quiet -U setuptools-scm delvewheel | Out-Null
+    & $pp -m pip install --quiet --no-warn-script-location -U setuptools-scm `
+        "delvewheel==$(V delvewheel)" | Out-Null
     Assert-Exit 'pip install of setuptools-scm/delvewheel failed'
 
     $src = Git-Clone 'https://github.com/pearu/pylibtiff.git' "v$(V pylibtiff)" `
         (Join-Path $LIW_SRC 'pylibtiff')
+    # The patch scripts use paths relative to the source tree, like the
+    # Dockerfile's and macos's (which cd into the clone first).
+    Push-Location $src
 
     # Bundle the libtiff tools with the wheel, like the linux build does:
     # for each tool in libtiff's source tools directory, take the matching
@@ -715,15 +793,24 @@ function Build-Pylibtiff {
     # Wrapper module so each bundled tool is exposed as a console script.
     # Windows has no os.execv replacement semantics to rely on, so the
     # wrapper runs the tool as a child and exits with its code (the
-    # macos/linux wrappers use os.execv).
+    # macos/linux wrappers use os.execv).  delvewheel rewrites the tools'
+    # import tables to the mangled DLL names in pylibtiff.libs, but a
+    # child process does not inherit os.add_dll_directory, so the wrapper
+    # puts that directory (and the base interpreter's, for the VC runtime
+    # python ships) first on the child's PATH.
     $wrapper = @'
 import os
 import subprocess
 import sys
 
 def program():
-    path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0]))
-    sys.exit(subprocess.call([path] + sys.argv[1:]))
+    here = os.path.dirname(os.path.abspath(__file__))
+    name = os.path.splitext(os.path.basename(sys.argv[0]))[0]
+    path = os.path.join(here, name + '.exe')
+    libs = os.path.join(os.path.dirname(os.path.dirname(here)), 'pylibtiff.libs')
+    env = dict(os.environ)
+    env['PATH'] = os.pathsep.join([libs, sys.base_prefix, env.get('PATH', '')])
+    sys.exit(subprocess.call([path] + sys.argv[1:], env=env))
 '@
     Set-Content -Path (Join-Path $binDir '__init__.py') -Value $wrapper -Encoding ascii
 
@@ -807,6 +894,7 @@ open(path, "w").write(s)
         -Value $pyprojectPatch -Encoding ascii
     & $pp (Join-Path $LIW_PATCHES 'pylibtiff_pyproject.py')
     Assert-Exit 'the pylibtiff pyproject.toml patch failed'
+    Pop-Location
 
     # Note (windows watch item): large_image clears
     # libtiff.TIFFGetField.argtypes; with no argtypes ctypes passes the
@@ -819,7 +907,7 @@ open(path, "w").write(s)
     # Generate the tiff header companion file (needs numpy present; the
     # prefix bin dir is on PATH so the generation run finds our libtiff;
     # wheels never rely on that PATH).
-    & $pp -m pip install --quiet numpy | Out-Null
+    & $pp -m pip install --quiet --no-warn-script-location numpy | Out-Null
     Assert-Exit 'pip install of numpy failed'
     Push-Location $src
     try {
@@ -858,19 +946,42 @@ open(path, "w").write(s)
             '-w', $LIW_WHEELHOUSE, $src) "pylibtiff wheel build for python $minor"
     }
 
+    # delvewheel only follows the import tables of the wheel's .pyd files,
+    # and MSVC's linker records no import for a DLL whose symbols are
+    # unused: tif_lzw links tiff.lib but imports nothing from it (on linux
+    # the -ltiff DT_NEEDED entry survives and auditwheel bundles libtiff
+    # through it).  The library pylibtiff loads with ctypes is therefore
+    # forced in with --include, and --analyze-existing-exes vendors the
+    # bundled tools' dependencies and rewrites their import tables to the
+    # mangled names.  Mangling stays on: the Windows loader reuses an
+    # already-loaded module by base name, so unmangled tiff.dll copies in
+    # two wheels would silently share one (the hazard the linux BUILD_ID
+    # salt exists for).
     Log 'delvewheel repair of the pylibtiff wheels'
     foreach ($whl in (Get-ChildItem -Path $LIW_WHEELHOUSE `
             -Filter 'pylibtiff-*.whl' -File)) {
         Run-Logged $pp @(
-            '-m', 'delvewheel', 'repair', '-w', $WheelsDir, $whl.FullName) 
-            "delvewheel repair of $($whl.Name)"
+            '-m', 'delvewheel', 'repair', '-w', $WheelsDir,
+            '--add-path', (Join-Path $LIW_PREFIX 'bin'),
+            '--analyze-existing-exes', '--include', 'tiff.dll',
+            $whl.FullName) "delvewheel repair of $($whl.Name)"
     }
 
     $expected = $script:Pythons.Count
-    $found = @(Get-ChildItem -Path $WheelsDir `
-        -Filter 'pylibtiff-*win_amd64*.whl' -File).Count
-    if ($found -lt $expected) {
-        Die "pylibtiff: only $found win_amd64 wheels, expected $expected"
+    $repaired = @(Get-ChildItem -Path $WheelsDir `
+        -Filter 'pylibtiff-*win_amd64*.whl' -File)
+    if ($repaired.Count -lt $expected) {
+        Die "pylibtiff: only $($repaired.Count) win_amd64 wheels, expected $expected"
+    }
+    foreach ($whl in $repaired) {
+        Assert-WheelContains $whl.FullName @(
+            '^pylibtiff\.libs/tiff-[0-9a-f]+\.dll$',
+            '^pylibtiff\.libs/jpeg62-[0-9a-f]+\.dll$',
+            '^pylibtiff\.libs/zstd-[0-9a-f]+\.dll$',
+            '^pylibtiff\.libs/libwebp-[0-9a-f]+\.dll$',
+            '^pylibtiff\.libs/deflate-[0-9a-f]+\.dll$',
+            '^pylibtiff\.libs/z-[0-9a-f]+\.dll$',
+            '^libtiff/bin/tiffinfo\.exe$') 'pylibtiff'
     }
     Done-Stamp 'pylibtiff'
 }
@@ -885,14 +996,19 @@ function Main {
     Log "pythons: $($script:Pythons -join ' ')"
     Log "packages: $($script:Packages -join ' ')"
 
-    Ensure-Toolchain
+    # Pythons first: V() runs getver.py with the patch python, and the
+    # toolchain pins come from versions.txt.
     Ensure-Pythons
+    Ensure-Toolchain
     Set-BuildPath
-    Enter-DevShell
+    Enter-Msvc
 
-    if ($WarmCache -or $script:Command -eq 'cache') {
-        Log '=== cache warm-up complete'
+    if ($script:Command -eq 'cache') {
+        Log '=== cache warm-up complete (toolchain and pythons installed)'
         return
+    }
+    if ($script:Packages.Count -eq 0) {
+        Die 'no packages requested (-Packages, LIW_PYTHONS/args.json, or the launcher)'
     }
 
     foreach ($pkg in $script:Packages) {
@@ -932,6 +1048,9 @@ Log "=== exit code $exitCode"
 # As on macos: the log is out (streamed to the host and saved in the
 # mapped run folder), so shut the build environment down; the sandbox
 # holds the single-instance slot, so there is no virtue in leaving it
-# running.  The short delay lets the last log writes flush.
-& shutdown.exe /s /t 5
+# running.  The short delay lets the last log writes flush.  Dev mode
+# (a checkout, not a disposable sandbox) is left alone.
+if (-not $script:DevMode) {
+    & shutdown.exe /s /t 5
+}
 exit $exitCode
