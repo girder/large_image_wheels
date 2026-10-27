@@ -73,9 +73,14 @@ if ([Security.Principal.WindowsIdentity]::GetCurrent().Name `
         'Sandbox cannot be nested; run this script on the host machine ' +
         'that launched this sandbox.')
 }
+# An agent_sandbox.py session runs as its own non-administrator user
+# (`agent`), so the account check above does not catch it; the feature
+# check below does, because a sandbox guest never has WindowsSandbox.exe.
 $sandboxExe = Join-Path $env:SystemRoot 'System32\WindowsSandbox.exe'
 if (-not (Test-Path $sandboxExe)) {
-    Die ('Windows Sandbox is not installed; enable it with ' +
+    Die ('Windows Sandbox is not installed here.  Inside a sandbox (an ' +
+        'agent session, for example) that is expected: run this script ' +
+        'on the host.  On a host, enable it with ' +
         "'Enable-WindowsOptionalFeature -Online -FeatureName " +
         "Containers-DisposableClientVM' and reboot.")
 }
@@ -289,15 +294,57 @@ while ($true) {
 $result = [int]((Get-Content (Join-Path $RunDir 'exit_code') -Raw).Trim())
 
 # --- validate and report ------------------------------------------------------
-if ($Command -eq 'build') {
-    $expected = $Packages.Count * $Pythons.Count
-    $found = @(Get-ChildItem -Path $WheelsDir -Filter 'pylibtiff-*win_amd64*.whl' `
-        -ErrorAction SilentlyContinue).Count
-    # TODO: derive the expected wheel-name prefix per package instead of
-    # hard-coding pylibtiff as the package set grows.
-    if ($result -eq 0 -and $found -lt $expected) {
-        Info "found $found pylibtiff win_amd64 wheels, expected $expected"
+# Every requested package must have produced a wheel that every requested
+# python can install, as tart_build.sh checks on macos (the counterpart of
+# build.sh copying the expected wheels out of the docker build): a silently
+# missing wheel would otherwise only surface as quietly skipped tests.
+function Wheel-Prefix([string]$Package) {
+    switch ($Package) {
+        'glymur' { return 'Glymur' }
+        'gdal' { return 'GDAL' }
+        default { return $Package }
+    }
+}
+
+function Wheel-ForPython([string]$Prefix, [string]$Req) {
+    $base = $Req.TrimEnd('t')
+    $num = $base -replace '\.', ''
+    $any = @(Get-ChildItem -Path $WheelsDir -Filter "$Prefix-*py3-none-any.whl" `
+        -ErrorAction SilentlyContinue)
+    if ($any.Count -gt 0) { return $true }
+    $plat = @(Get-ChildItem -Path $WheelsDir -Filter "$Prefix-*py3-none-win_amd64.whl" `
+        -ErrorAction SilentlyContinue)
+    if ($plat.Count -gt 0) { return $true }
+    if ($Req.EndsWith('t')) {
+        $tags = @("cp$num-cp${num}t", "cp$num-abi3.abi3t", "cp$num-abi3t")
+    } else {
+        $tags = @("cp$num-cp$num")
+        foreach ($b in @('310', '311', '312', '313', '314', '315')) {
+            if ([int]$b -le [int]$num) { $tags += "cp$b-abi3" }
+        }
+    }
+    foreach ($tag in $tags) {
+        $found = @(Get-ChildItem -Path $WheelsDir -Filter "$Prefix-*-$tag-win_amd64.whl" `
+            -ErrorAction SilentlyContinue)
+        if ($found.Count -gt 0) { return $true }
+    }
+    return $false
+}
+
+if ($Command -eq 'build' -and $result -eq 0) {
+    $missing = @()
+    foreach ($pkg in $Packages) {
+        if ($pkg.StartsWith('dep:')) { continue }
+        $prefix = Wheel-Prefix $pkg
+        foreach ($req in $Pythons) {
+            if (-not (Wheel-ForPython $prefix $req)) { $missing += "$pkg/$req" }
+        }
+    }
+    if ($missing.Count -gt 0) {
+        Info "missing expected wheels: $($missing -join ' ')"
         $result = 1
+    } else {
+        Get-ChildItem -Path $WheelsDir -Filter '*.whl' | ForEach-Object { Info "wheel: $($_.Name)" }
     }
 }
 
