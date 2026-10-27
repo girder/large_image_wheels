@@ -1677,13 +1677,16 @@ build_poppler() {
     git_retry https://gitlab.freedesktop.org/poppler/poppler.git \
         "poppler-$(v poppler)" poppler
     # The Dockerfile's devtoolset block is linux-only.  NSS and GPGME are
-    # disabled like on linux.  Boost is disabled: nothing in the macos
-    # prefix provides it yet (it is a splash-performance option and links
-    # nothing into the dylibs; revisit when boost is built for
-    # mapnik/GDAL).  libcurl comes from the prefix's own curl build (see
-    # build_curl): poppler-glib.pc's "Requires.private: libcurl" cannot
-    # resolve the system libcurl, which made pkg-config fail the whole
-    # poppler-glib lookup.
+    # disabled like on linux.  Boost is disabled (-DENABLE_BOOST=OFF,
+    # matching the linux build): the boost use is header-only
+    # splash-backend code (a small_vector in SplashXPathScanner) that
+    # links nothing into the dylibs, our consumers render through
+    # poppler-glib's cairo backend rather than splash, and poppler's
+    # cmake FATAL_ERRORs when ENABLE_BOOST is on but boost is missing
+    # (the pyvips case does not build boost).  libcurl comes from the
+    # prefix's own curl build (see build_curl): poppler-glib.pc's
+    # "Requires.private: libcurl" cannot resolve the system libcurl,
+    # which made pkg-config fail the whole poppler-glib lookup.
     cmake_build "$LIW_SRC/poppler" \
         -DCMAKE_BUILD_TYPE=Release \
         -DENABLE_UNSTABLE_API_ABI_HEADERS=on \
