@@ -2326,7 +2326,6 @@ open(path, "w").write(s)' && \
 path = "setup.py" \n\
 s = open(path).read().replace( \n\
     "_convert.c\'", "_convert.c\'], libraries=[\'openslide\'") \n\
-s = s.replace("_abi3 = sys.version_info >= (3, 11)", "_abi3 = sys.version_info >= (3, 11) and getattr(sys.flags, \'gil\', 1)") \n\
 open(path, "w").write(s)' && \
     # Adding .1 to version \
     python -c $'# \n\
