@@ -630,11 +630,48 @@ if [ "$code" != "0" ]; then
     fail
 fi
 
+wheel_prefix() { # wheel_prefix <package name> -> wheel filename prefix
+    case "$1" in
+    glymur) echo Glymur ;;
+    gdal) echo GDAL ;;
+    *) echo "$1" ;;
+    esac
+}
+
 info "build succeeded; retrieving wheels"
 mkdir -p "$REPO_DIR/wheels"
+# Clear this run's stale wheels before the copy-out, like build.sh does
+# before its docker cp: a package that silently fails to produce a wheel
+# must not be masked by a wheel left over from an earlier build (the
+# expected-wheel validation below reads this directory).  Only wheels this
+# run could have created are removed -- the requested packages' macosx
+# wheels and, for python_bioformats, its pure py3-none-any wheel (shared
+# with the linux build, byte-identical content) -- so a subset run (the
+# documented single-package debugging workflow) leaves every other
+# package's wheels untouched, and neither script deletes the other
+# platform's wheels.
+for pkg in $LIW_PACKAGES; do
+    [ "${pkg#dep:}" != "$pkg" ] && continue
+    prefix="$(wheel_prefix "$pkg")"
+    rm -f "$REPO_DIR/wheels/${prefix}"-*macosx*.whl \
+        "$REPO_DIR/wheels/${prefix}"-*py3-none-any.whl
+done
 run_ssh "cd $LIW_GUEST_HOME/liw_macos_build/wheelhouse && tar -cf - *macosx*.whl" |
     tar -xf - -C "$REPO_DIR/wheels/" ||
     die "could not retrieve the wheels (VM $VM_NAME left running for debugging)"
+case " $LIW_PACKAGES " in
+*" python_bioformats "*)
+    # The bioformats wheel is pure python (py3-none-any, byte-identical to
+    # the linux build's), so the macosx glob does not match it; retrieve it
+    # when this run built it, so the wheels directory carries this run's
+    # copy whether the wheelhouse is macos-only or shared with linux.
+    run_ssh "cd $LIW_GUEST_HOME/liw_macos_build/wheelhouse && \
+        tar -cf - python_bioformats-*py3-none-any.whl" |
+        tar -xf - -C "$REPO_DIR/wheels/" ||
+        die "could not retrieve the python_bioformats wheel (VM $VM_NAME left running for debugging)"
+    ls -l "$REPO_DIR/wheels/"python_bioformats-*py3-none-any.whl
+    ;;
+esac
 ls -l "$REPO_DIR/wheels/"*macosx*.whl
 
 # Every requested package must have produced a wheel that every requested
@@ -644,13 +681,8 @@ ls -l "$REPO_DIR/wheels/"*macosx*.whl
 # quietly skipped tests, since the shared test script gates on wheel
 # presence.  Pure python wheels (py3-none) cover every python; abi3 wheels
 # cover their baseline version and newer.
-wheel_prefix() { # wheel_prefix <package name> -> wheel filename prefix
-    case "$1" in
-    glymur) echo Glymur ;;
-    gdal) echo GDAL ;;
-    *) echo "$1" ;;
-    esac
-}
+# (wheel_prefix is defined above the retrieval step, where the stale-wheel
+# clearing loop uses it.)
 
 wheel_for_python() { # wheel_for_python <wheels dir> <prefix> <req>
     local dir="$1" prefix="$2" req="$3" base num bn

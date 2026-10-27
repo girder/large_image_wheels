@@ -124,7 +124,13 @@ manylinux container plays for the linux builds:
   copies the repo in, runs `build_wheels.sh` (nohup + polling via
   `~/liw_macos_build/exit_code`) while streaming the in-VM build log
   (`$LIW_GUEST_HOME/macos_build.log` inside the VM) to the terminal,
-  retrieves wheels into `./wheels/`,
+  clears this run's stale wheels out of `./wheels/` before the copy-out
+  (only the requested packages' macosx wheels plus, for
+  python_bioformats, its shared py3-none-any wheel -- a subset run leaves
+  every other package's wheels, including the linux builds', untouched;
+  build.sh does the same on its side since it no longer clears the whole
+  directory), retrieves the macosx wheels and this run's
+  python_bioformats wheel into `./wheels/`,
   validates that every requested package produced a wheel for every
   requested python (dying on a missing one -- the counterpart of
   `build.sh`'s copy-out of the expected wheels), and deletes the VM.
