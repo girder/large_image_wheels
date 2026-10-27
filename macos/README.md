@@ -46,6 +46,27 @@ manylinux container plays for the linux builds:
 - `delocate` bundles the built dylibs into each wheel and rewrites dylib
   references to `@loader_path`-relative paths (the `auditwheel repair`
   analogue).  Bundled dylibs land in `<package>/.dylibs/` inside the wheel.
+- The linux build salts auditwheel's grafted-library hash per build
+  (`auditwheel_build_id_patch.py`) so that wheels from different builds
+  never share grafted-library names.  There is deliberately NO macos
+  analogue: delocate does not rename the libraries it bundles, and it
+  rewrites every reference to them into a per-package `@loader_path` path.
+  The linux hazard is ELF's loader deduplicating by soname -- two builds
+  shipping same-soname different-content grafted libraries get mixed when
+  both are installed.  dyld has no equivalent here: its install-name
+  dedupe only applies when a load command names an install name, while
+  every load command in our wheels names a private path, so two copies
+  with the same basename but different content simply load as separate
+  images (the one visible symptom is the objc duplicate-class warning
+  when pyvips and openslide both load their libgio copies -- the gio
+  notification backend defines an ObjC class -- documented in the pyvips
+  status entry; benign, and present even when the copies are identical).
+  A stale copy cannot survive a package upgrade either: pip replaces the
+  whole package directory, `.dylibs` included.  Build differentiation in
+  the wheelhouse comes from the same version-suffix scheme as linux
+  (package version + bundled library versions), which the macos wheels
+  share; the salt only ever made the *in-environment* grafted names
+  unique, which the macos bundling scheme achieves structurally.
 - Packages keep the same version-suffix scheme as the linux wheels
   (e.g. `pylibtiff-0.7.0.4.7.2` = package version + bundled libtiff
   version), so macOS and linux wheels coexist in one wheelhouse (platform
