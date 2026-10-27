@@ -34,6 +34,14 @@ Packages = {
         'git': 'https://github.com/ome/bioformats.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
+    # macos
+    'bison': {
+        'altfilelist': [
+            'https://mirror.csclub.uwaterloo.ca/gnu/bison/',
+            'https://ftp.gnu.org/pub/gnu/bison/'],
+        'filelist': 'https://ftpmirror.gnu.org/gnu/bison/',
+        're': r'bison-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)$',
+    },
     'blosc': {
         'git': 'https://github.com/Blosc/c-blosc.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
@@ -466,6 +474,11 @@ Packages = {
         'git': 'https://github.com/NixOS/patchelf.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
+    # macos
+    'pcre2': {
+        'git': 'https://github.com/PCRE2Project/pcre2.git',
+        're': r'pcre2-([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
     'pixman': {
         'git': 'https://gitlab.freedesktop.org/pixman/pixman.git',
         're': r'pixman-([0-9]+\.[0-9]+(|\.[0-9]+))$',
@@ -551,6 +564,11 @@ Packages = {
         'keys': lambda data: ['.'.join(re.search(
             r'([0-9]{4})\/sqlite-autoconf-([0-9]+).tar.(gz|xz)', data).groups()[:2])],
     },
+    # macos
+    'swig': {
+        'git': 'https://github.com/swig/swig.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
     'strip-nondeterminism': {
         'git': 'https://github.com/esoule/strip-nondeterminism.git',
         're': r'(0\.[0-9]+(|\.[0-9]+))$',
@@ -582,6 +600,12 @@ Packages = {
     'zstd': {
         'git': 'https://github.com/facebook/zstd.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
+    # macos jdk
+    'zulu8': {
+        'json': 'https://api.azul.com/metadata/v1/zulu/packages/?availability=true&os=macos&arch=aarch64&java_version=8&release_status=ga&latest=true',
+        'keys': lambda data: [entry['name'] for entry in data],
+        're': r'zulu(.+-ca-jdk[0-9.]+)-macosx_aarch64\.tar\.gz$',
     },
 }
 
