@@ -47,14 +47,20 @@ $script:Self = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $script:Self 'sandbox_common.ps1')
 
 if (-not $RepoDir) { $RepoDir = Split-Path -Parent $script:Self }
-# The writable mapped folders must not nest inside the read-only repo
-# mapping (nested mapped folders are unproven on Windows Sandbox), so
-# they default to a liw_wheels sibling of the repository; the checked-in
-# windows\build.wsb uses the same layout, and both flows share the cache.
-$workDir = Join-Path (Split-Path -Parent $RepoDir) 'liw_wheels'
+# (Get-Item: the on-disk spelling, so a lowercase drive letter from the
+# command line does not show up in the paths reported.)
+$RepoDir = (Get-Item $RepoDir).FullName
+# Everything lives under the repository, as on linux and macos: the wheels
+# in <repo>\wheels (gitignored, where build.sh and tart_build.sh put
+# theirs), the windows-specific cache and run exchanges under
+# <repo>\windows (cache, run, test_run; gitignored).  The checked-in
+# windows\build.wsb uses the same layout.  Those folders are mapped
+# read-write at their own guest paths; the repo mapping (read-only)
+# merely also shows them, which is harmless.
+$workDir = Join-Path $RepoDir 'windows'
 if (-not $CacheDir) { $CacheDir = Join-Path $workDir 'cache' }
 if (-not $RunDir) { $RunDir = Join-Path $workDir 'run' }
-if (-not $WheelsDir) { $WheelsDir = Join-Path $workDir 'wheels' }
+if (-not $WheelsDir) { $WheelsDir = Join-Path $RepoDir 'wheels' }
 
 # --- sanity checks -----------------------------------------------------------
 Assert-SandboxHost

@@ -80,7 +80,14 @@ function Expand-Zip([string]$Zip, [string]$Dest) {
         Copy-Item $Zip $zipPath -Force
     }
     if (Test-Path $Dest) { Remove-Item -Recurse -Force $Dest }
-    Expand-Archive -Path $zipPath -DestinationPath $Dest
+    try {
+        Expand-Archive -Path $zipPath -DestinationPath $Dest
+    } catch {
+        # A truncated or corrupt download would otherwise stay in the cache
+        # and fail every later run the same way.
+        Remove-Item -Path $Zip, $zipPath -Force -ErrorAction SilentlyContinue
+        Die "cannot expand $Zip (removed from the cache; rerun to download it again): $($_.Exception.Message)"
+    }
 }
 
 function Get-Json([string]$Url) {

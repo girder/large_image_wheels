@@ -38,13 +38,15 @@ $script:Self = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $script:Self 'sandbox_common.ps1')
 
 if (-not $RepoDir) { $RepoDir = Split-Path -Parent $script:Self }
-# The same liw_wheels sibling layout as sandbox_build.ps1 and the checked-in
-# windows\test.wsb; the run exchange is separate (test_run) so a test does
-# not disturb the build's log.
-$workDir = Join-Path (Split-Path -Parent $RepoDir) 'liw_wheels'
+$RepoDir = (Get-Item $RepoDir).FullName
+# The same layout as sandbox_build.ps1 and the checked-in windows\test.wsb
+# (wheels in <repo>\wheels, the rest under <repo>\windows); the run
+# exchange is separate (test_run) so a test does not disturb the build's
+# log.
+$workDir = Join-Path $RepoDir 'windows'
 if (-not $CacheDir) { $CacheDir = Join-Path $workDir 'cache' }
 if (-not $RunDir) { $RunDir = Join-Path $workDir 'test_run' }
-if (-not $WheelsDir) { $WheelsDir = Join-Path $workDir 'wheels' }
+if (-not $WheelsDir) { $WheelsDir = Join-Path $RepoDir 'wheels' }
 
 # --- sanity checks -----------------------------------------------------------
 Assert-SandboxHost
