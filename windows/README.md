@@ -543,8 +543,9 @@ Known gaps, in rough order:
   pythons whose venv pip is older than pypi's (`pip.exe` cannot replace
   itself: "To modify pip, please run python -m pip"); the script uses
   `python -m pip` now, which is the same thing everywhere else.  The
-  `sample.czi` read is gated on bioformats/javabridge: it was gated on
-  the architecture only, which never mattered with every wheel present.
+  `sample.czi` read is gated on the libraries that can read a czi
+  (openslide, bioformats with javabridge, or vips): it was gated on the
+  architecture only, which never mattered with every wheel present.
 - Console-script names come from the files in `<package>/bin`, which
   carry `.exe` on Windows: naming an entry point `tiffinfo.exe` makes
   pip generate `tiffinfo.exe.exe`, which CreateProcess still finds for
