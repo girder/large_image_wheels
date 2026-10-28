@@ -67,14 +67,10 @@ the host), and a second, fresh sandbox does the build (the library
 isolation boundary).  Because Windows Sandbox cannot be nested, the
 agent cannot start the build or test sandbox itself; a human starts
 them from the host with `windows\sandbox_build.bat &&
-windows\test_via_sandbox.bat`.  Those launchers (and the
-`sandbox_common.ps1` they share) are the only agent-authored code that
-runs on the host; treat them as frozen infrastructure -- audited once,
-changed only with care.  The checked-in `windows\build.wsb` and
-`windows\test.wsb` are the same two runs as data, not code: folder
-mappings and one LogonCommand line each, for a workflow where nothing
-agent-authored runs on the host (read once, adjust the host paths, open
-the file, read the log and the exit-code file).
+windows\test_via_sandbox.bat`.  Those two entry points and
+`sandbox_run.ps1`, which both call, are the only agent-authored code
+that runs on the host; treat them as frozen infrastructure -- audited
+once, changed only with care.
 
 What the agent sandbox CAN do is compile: `build_wheels.ps1` has a dev
 mode (any checkout without the `C:\mnt\repo` mapping) that installs the
@@ -107,7 +103,8 @@ Costs and mitigations of the MSVC choice:
 
 - The compiler is NOT installed with the Visual Studio installer (which
   needs elevation, installs into Program Files, cannot be cached, and
-  pins nothing).  `windows\install_msvc.py` (adapted from manthey/utils)
+  pins nothing).  The `install_msvc.py` embedded in `build_wheels.ps1`
+  (adapted from manthey/utils)
   downloads the MSVC toolset and Windows SDK packages straight from
   Microsoft's VS 2022 manifest at the versions pinned in `versions.txt`
   (`msvc` is the manifest's package version, e.g. `14.44.17.14` = toolset
@@ -192,8 +189,9 @@ path).  The layout is therefore:
 - the real tools live in `<dist>.libs`, next to their DLLs, together with
   an unmangled `vcruntime140.dll` that delvewheel is told to bundle
   (`--include`; delvewheel otherwise leaves it out for cpython wheels);
-- `<package>/bin/<tool>.exe` is the **launcher** (`windows/launcher.c`,
-  5 KB, kernel32 only, no C runtime): it locates `<dist>.libs` relative
+- `<package>/bin/<tool>.exe` is the **launcher** (a 5 KB C program
+  embedded in `build_wheels.ps1`, kernel32 only, no C runtime): it
+  locates `<dist>.libs` relative
   to itself, puts it first on PATH, runs the real tool with the unchanged
   command line and the inherited console, and exits with its status.
   `build_wheels.ps1` compiles it once per library directory name
@@ -213,6 +211,16 @@ redistributable.
 
 ## Files
 
+Six files, the same shape as the macos directory (one monolithic build
+script, one host orchestrator per role, one in-VM test, a README).  As
+on linux and macos, everything a component needs -- jxrlib's
+`CMakeLists.txt`, the launcher's C source, the MSVC installer, the
+per-package python checks, the source patches -- is embedded in the
+script that uses it (a PowerShell here-string, the counterpart of the
+`cat > file <<'EOF'` blocks in `macos/build_wheels.sh`) and written out
+at run time.  Do not add per-component files; they multiply the
+maintenance burden and were removed once already.
+
 Host side (run on the host, outside any sandbox):
 
 - `sandbox_build.bat` / `test_via_sandbox.bat` -- the two entry points,
@@ -222,91 +230,84 @@ Host side (run on the host, outside any sandbox):
   ```
   windows\sandbox_build.bat && windows\test_via_sandbox.bat
   ```
-  Each is one line that runs the `.ps1` of the same name and returns its
-  exit code; options are passed through.
-- `sandbox_build.ps1` -- the build launcher (agent-authored; audit before
-  trusting).  It checks the host, generates a `.wsb` with the folder
-  layout below, starts the sandbox, streams the in-sandbox build log,
-  waits for the exit marker, validates that every requested package
-  produced a wheel for every requested python, and reports.
-  `-Packages`, `-Pythons`, `-MemoryMB`, `-TimeoutSec`; `-Command cache`
-  pre-warms the download cache in a throwaway sandbox (toolchain
-  downloads, the MSVC/SDK payloads, and the pythons).
-- `test_via_sandbox.ps1` -- the test launcher: a fresh sandbox with the
-  repository and the wheels mapped read-only, running `test_wheels.ps1`;
-  it streams the log, prints `report.txt`, and exits with the result.
-  `-Pythons`, `-MemoryMB`, `-TimeoutSec`.
-- `sandbox_common.ps1` -- what the two launchers share: the host sanity
-  checks, the two backends, the log streaming, the wait, the stop.  The
-  backends are agent_sandbox.py's: `cli` when `wsb.exe` is on PATH
-  (Windows 11 24H2+; headless, `wsb start --config` gives a sandbox id,
-  the in-sandbox script runs as SYSTEM through `wsb exec`, `wsb stop`
-  tears it down, and several sandboxes can coexist when the Windows
-  build allows it, so the agent session can stay up), else `file` (the
-  generated `.wsb` is launched like a double-click, the script runs from
-  the LogonCommand, one sandbox at a time).
-- `build.wsb` / `test.wsb` -- the same two sandbox configurations checked
-  in as data, for the human-only workflow without the launchers: the
-  mapped folders (repo read-only at `C:\mnt\repo`; cache at
+  Each is one line that runs `sandbox_run.ps1 build` or
+  `sandbox_run.ps1 test` and returns its exit code; options are passed
+  through.
+- `sandbox_run.ps1` -- the host launcher (agent-authored; audit before
+  trusting): `build`, `test`, or `cache` as its first argument.  It
+  checks the host, generates the sandbox configuration with the folder
+  layout below, starts the sandbox, streams the in-sandbox log, waits
+  for the exit marker, and reports: for `build` it validates that every
+  requested package produced a wheel for every requested python
+  (`-Packages`, `-Pythons`, `-MemoryMB`, `-TimeoutSec`); for `test` it
+  runs a fresh sandbox with the repository and the wheels mapped
+  read-only, prints `report.txt`, and exits with the result (`-Pythons`,
+  `-MemoryMB`, `-TimeoutSec`); `cache` pre-warms the download cache in a
+  throwaway sandbox (toolchain downloads, the MSVC/SDK payloads, and the
+  pythons).  The backends are agent_sandbox.py's: `cli` when `wsb.exe`
+  is on PATH (Windows 11 24H2+; headless, `wsb start --config` gives a
+  sandbox id, the in-sandbox script runs as SYSTEM through `wsb exec`,
+  `wsb stop` tears it down, and several sandboxes can coexist when the
+  Windows build allows it, so the agent session can stay up), else
+  `file` (the generated `.wsb` is launched like a double-click, the
+  script runs from the LogonCommand, one sandbox at a time).  The
+  mapped folders: repo read-only at `C:\mnt\repo`; cache at
   `C:\mnt\cache` from `<repo>\windows\cache`; wheels at `C:\mnt\wheels`
   from `<repo>\wheels` -- where build.sh and tart_build.sh put theirs --
   read-write for the build and read-only for the test; the per-run
   exchange at `C:\mnt\run`, from `<repo>\windows\run` for the build and
-  `<repo>\windows\test_run` for the test; all gitignored) and the
-  LogonCommand.  The `HostFolder` paths are host-specific; adjust them
-  once, then open the file.  Only one sandbox may run at a time.
+  `<repo>\windows\test_run` for the test; all gitignored.  The
+  configuration it used is saved in the run folder
+  (`liw_wheels_build.wsb` / `liw_wheels_test.wsb`).
 
-In-sandbox side (run by the LogonCommand; dev mode in any checkout):
+In-sandbox side (run by the launcher; dev mode in any checkout):
 
 - `build_wheels.ps1` -- the monolithic build, the counterpart of the
   monolithic Dockerfile (and of `macos/build_wheels.sh`).  Parameters:
   `-Packages`, `-Pythons` (a trailing `t` selects the free-threaded NuGet
-  python), `-WarmCache` (toolchain and pythons only); without parameters
-  it reads `C:\mnt\run\args.json` when the launcher wrote one and uses
-  built-in defaults otherwise (the source is logged).  It writes its log
-  to `<run>\build.log` and its exit code to `<run>\exit_code`, clearing
-  both at startup, so a persistent run folder works across runs.
+  python), `-WarmCache` (toolchain and pythons only), `-DevSetup` (dev
+  mode only: `-WarmCache` plus the extras development needs that the
+  build does not, `requests`/`packaging` for `check_versions.py`; the one
+  command that rebuilds a development environment after an agent sandbox
+  reset); without parameters it reads `C:\mnt\run\args.json` when the
+  launcher wrote one and uses built-in defaults otherwise (the source is
+  logged).  It writes its log to `<run>\build.log` and its exit code to
+  `<run>\exit_code`, clearing both at startup, so a persistent run folder
+  works across runs.  Embedded in it: the logging, `versions.txt`
+  lookup, cached-download, NuGet python and PortableGit helpers; the
+  launcher's C source (see "Bundled command line tools"); jxrlib's
+  `CMakeLists.txt` (same source lists, defines, header layout and
+  `libjxr.pc` as its GNU Makefile, so openslide's zeiss-czi-jxr patch
+  finds it through pkg-config as on linux); `install_msvc.py`, the
+  no-installer MSVC + Windows SDK install (see the toolchain section),
+  run with the patch python; and the per-package source patches.
 - `test_wheels.ps1` -- the in-sandbox test, the counterpart of the in-VM
   part of `macos/test_via_tart.sh`.  For every python: install the
   wheels by exact version into a clean venv (a pypi fallback would show
-  as a version mismatch), run `check_wheels.py` there with a scrubbed
-  PATH, run the shared `test/test_script.sh` under PortableGit's bash
-  with a scrubbed PATH and the python under test, and run
-  `check_wheels.py` in the venv the suite created.  Every check is one
-  `OK:`/`FAIL:` line in `<run>\report.txt`; the log is `<run>\test.log`.
-- `liw_common.ps1` -- what the two in-sandbox scripts share: logging,
-  `versions.txt` lookups, cached downloads, the NuGet python and
-  PortableGit installs.
-- `check_wheels.py` -- the windows-specific per-package isolation checks
-  (the counterpart of the macos harness's otool audit and per-package
-  checks), run with a python that has the wheels installed and a
-  scrubbed PATH: a PE import audit of every `.pyd`/`.dll`/`.exe` our
-  wheel provides (each import must be in the wheel, python's DLL, an API
-  set, or in System32 -- the tools nobody runs are checked too), the
-  loaded library is the bundled `<dist>.libs` copy (through the
-  process's module list), the bundled tools run through their wrappers
-  and by path with nothing but the system directories on PATH, and the
-  asserted codecs work.  By hand in dev mode:
+  as a version mismatch), run the embedded `check_wheels.py` there with
+  a scrubbed PATH, run the shared `test/test_script.sh` under
+  PortableGit's bash with a scrubbed PATH and the python under test, and
+  run `check_wheels.py` in the venv the suite created.  Every check is
+  one `OK:`/`FAIL:` line in `<run>\report.txt`; the log is
+  `<run>\test.log`.  It carries its own copies of the helpers it shares
+  with the build (as the macos scripts do; a change to one belongs in
+  both).  `check_wheels.py` is the windows-specific per-package
+  isolation check (the counterpart of the macos harness's otool audit
+  and per-package checks), run with a python that has the wheels
+  installed and a scrubbed PATH: a PE import audit of every
+  `.pyd`/`.dll`/`.exe` our wheel provides (each import must be in the
+  wheel, python's DLL, an API set, or in System32 -- the tools nobody
+  runs are checked too), the loaded library is the bundled `<dist>.libs`
+  copy (through the process's module list), the bundled tools run
+  through their wrappers and by path with nothing but the system
+  directories on PATH, and the asserted codecs work.  The test writes it
+  to the test root, where it can be run by hand after a dev-mode test:
   ```
   C:\liw_build\python\3.13\python.exe -m venv %TEMP%\v313
   set PATH=C:\Windows\System32;C:\Windows;%TEMP%\v313\Scripts
   pip install numpy C:\liw_build\wheels\pylibtiff-*cp313*.whl
-  python -I windows\check_wheels.py pylibtiff
+  python -I C:\liw_build\test\check_wheels.py pylibtiff
   ```
-- `launcher.c` -- the stand-in for the bundled tools (see the section
-  above); compiled by `build_wheels.ps1`.
-- `jxrlib.cmake` -- a cmake build for jxrlib (JPEG XR), whose own build
-  is a GNU Makefile; copied into the source tree as `CMakeLists.txt`.
-  Same source lists, defines, header layout and `libjxr.pc` as the
-  Makefile, so openslide's zeiss-czi-jxr patch finds it through
-  pkg-config as on linux.
-- `install_msvc.py` -- the no-installer MSVC + Windows SDK install (see
-  the toolchain section); run by `build_wheels.ps1` with the patch
-  python, never by hand in the normal flow.
-- `dev_setup.ps1` -- rebuilds a development environment after an agent
-  sandbox reset: `build_wheels.ps1 -WarmCache` in dev mode (the pinned
-  toolchain and pythons under `C:\liw_build`) plus the extras the build
-  itself does not need (`requests`/`packaging` for `check_versions.py`).
 - `macos/README.md` -- the macos branch's notes; its process lessons
   (verify edits before committing, stage work behind checkpoint runs,
   assert every optional dependency, full fresh builds for verification)
@@ -345,25 +346,10 @@ which is indiscriminate and could hit the agent sandbox.
 Options when needed (the `.bat` files pass them through):
 
 ```
-powershell -File windows\sandbox_build.ps1 -Command cache     # pre-warm the download cache
-powershell -File windows\sandbox_build.ps1 -Packages pylibtiff
-powershell -File windows\sandbox_build.ps1 -Pythons 3.12,3.13 -MemoryMB 8192
-powershell -File windows\test_via_sandbox.ps1 -Pythons 3.13
-```
-
-The same two runs without the launchers (no agent-authored code on the
-host; the `.wsb` files are data): create the writable folders, check the
-`HostFolder` paths once, open the `.wsb`, and watch the log:
-
-```
-mkdir wheels windows\cache windows\run windows\test_run
-start windows\build.wsb
-powershell -Command "Get-Content windows\run\build.log -Wait"
-# when windows\run\exit_code appears (0 or 1), the wheels are in wheels\
-# and the sandbox shuts down shortly after; then
-start windows\test.wsb
-powershell -Command "Get-Content windows\test_run\test.log -Wait"
-# the result is windows\test_run\report.txt and exit_code
+windows\sandbox_build.bat -Packages pylibtiff
+windows\sandbox_build.bat -Pythons 3.12,3.13 -MemoryMB 8192
+windows\test_via_sandbox.bat -Pythons 3.13
+powershell -File windows\sandbox_run.ps1 cache     # pre-warm the download cache
 ```
 
 Remember that only one sandbox instance may run at a time -- the agent
@@ -375,7 +361,7 @@ interrupted at the host leaves its sandbox running until it is closed.
 
 ```
 # once per sandbox (after a reset): toolchain + pythons under C:\liw_build
-powershell -File windows\dev_setup.ps1
+powershell -File windows\build_wheels.ps1 -DevSetup
 
 # build one package for one python; log in C:\liw_build\run\build.log,
 # wheels in C:\liw_build\wheels
@@ -440,7 +426,8 @@ Consequences to design around:
   the first problem instead of continuing past it.
 - A restarted agent session may be a fresh context with none of the
   previous session's temp files (and `C:\liw_build` is gone after a
-  sandbox reset; `dev_setup.ps1` brings it back).  All durable knowledge
+  sandbox reset; `build_wheels.ps1 -DevSetup` brings it back).  All
+  durable knowledge
   lives in committed files only -- this README (status and hard-won
   list), the scripts, and the build log the human passes in.  Never rely
   on session scratch state surviving a restart.
@@ -468,12 +455,11 @@ If you are a fresh agent instance resuming this work:
 
 ## Status
 
-Work in progress (2026-10-28).  No build or test sandbox has run on a
-host yet (the early host attempts were blocked by the single-instance
-rule while the agent session was running; see the hard-won list).  The
-pipeline has been exercised in dev mode inside the agent sandbox:
+Work in progress (2026-10-28).  Three packages are verified end to end
+on the host; the pipeline is exercised in dev mode inside the agent
+sandbox before every host run:
 
-- `dev_setup.ps1` / `build_wheels.ps1 -WarmCache` installs the pinned
+- `build_wheels.ps1 -DevSetup` (or `-WarmCache`) installs the pinned
   toolchain (PortableGit 2.56.0.windows.4, cmake 4.4.4, ninja 1.13.2,
   nasm 3.02, MSVC 14.44.17.14 = toolset 14.44.35207, Windows SDK
   10.0.26100.0, the NuGet pythons) without administrator rights.
@@ -496,19 +482,23 @@ pipeline has been exercised in dev mode inside the agent sandbox:
 - **Glymur is verified end to end on the host (2026-10-28)** the same
   way: lcms2, libpng and openjpeg, one py3-none-win_amd64 wheel with the
   bundled openjp2 and the opj/jpeg tools.
-- openslide_python builds and passes every dev-mode check for all
-  seven pythons (2026-10-28): meson/pkgconf and clang-cl as build
-  tools, the glib and cairo chains (libbrotli, libexpat, glib, sqlite,
-  libxml2, pixman, freetype, fontconfig, cairo), jxrlib through
-  `jxrlib.cmake`, openslide with the repository's two patches and
-  libdicom from its wrap, and the openslide-python wheels (abi3 from the
-  oldest stable python plus the free-threaded ones) with slidetool and
-  the three legacy tools bundled -- 31 DLLs in the wheel.  Not yet
-  verified on the host.
+- **openslide_python is verified end to end on the host (2026-10-28)**
+  the same way: meson/pkgconf and clang-cl as build tools, the glib and
+  cairo chains (libbrotli, libexpat, glib, sqlite, libxml2, pixman,
+  freetype, fontconfig, cairo), jxrlib through the embedded cmake build,
+  openslide with the repository's two patches and libdicom from its
+  wrap, and the openslide-python wheels (abi3 from the oldest stable
+  python plus the free-threaded ones) with slidetool and the three
+  legacy tools bundled -- 31 DLLs in the wheel.
+- The windows directory was then consolidated to six files (2026-10-28;
+  see "Files"): the per-component files, the shared-function files and
+  the checked-in `.wsb` data files were folded into the three scripts.
+  The embedded sources are byte-for-byte the former files; the first
+  host run after the consolidation is the one that proves it.
 
-Next step: finish openslide_python (dev build and test, then the host
-run of `windows\sandbox_build.bat && windows\test_via_sandbox.bat`,
-which builds the three packages by default), then pyvips.
+Next step: the host run of `windows\sandbox_build.bat &&
+windows\test_via_sandbox.bat` on the consolidated scripts (the three
+packages by default), then pyvips.
 
 Known gaps, in rough order:
 
@@ -565,8 +555,9 @@ Known gaps, in rough order:
 
 ## Hard-won details (do not lose these)
 
-- The `.wsb` LogonCommand runs as the **elevated** WDAGUtilityAccount
-  (file backend); `wsb exec -r System` runs the script as SYSTEM (cli
+- The generated `.wsb`'s LogonCommand runs as the **elevated**
+  WDAGUtilityAccount (file backend); `wsb exec -r System` runs the
+  script as SYSTEM (cli
   backend, whose profile is `C:\Windows\system32\config\systemprofile`
   and whose TEMP is `C:\Windows\Temp`).  Nothing in the pipeline needs
   either: the toolchain is portable and the agent sandbox's
@@ -641,7 +632,8 @@ Known gaps, in rough order:
   proxy-libintl; openslide's libdicom and uthash).  glib's libffi and
   intl wraps build DLLs (`ffi-8.dll`, `intl-8.dll`), pcre2 a static
   library; all of them land in the prefix and get bundled like ours.
-- jxrlib under MSVC/clang-cl (`jxrlib.cmake`): its ANSI header sizes
+- jxrlib under MSVC/clang-cl (the embedded `CMakeLists.txt`): its ANSI
+  header sizes
   the pointer-width integers by `__LP64__`, which MSVC never defines
   (define it for 64-bit builds, in the `.pc` Cflags too, since
   consumers compile the same headers); `JXRMeta.h` knows
@@ -783,7 +775,7 @@ Known gaps, in rough order:
   running instance of Windows Sandbox is allowed', seen on the host).
   The running instance may be the agent session itself: never kill
   running sandboxes blindly -- end the agent session deliberately before
-  a build run.  sandbox_build.ps1 refuses to start while any sandbox is
+  a build run.  sandbox_run.ps1 refuses to start while any sandbox is
   running and says so.
 - Mapped folders are slow for I/O-heavy work: the build happens in
   `C:\liw_build` (sandbox-local disk); mapped folders only carry
