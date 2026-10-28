@@ -3106,7 +3106,10 @@ build_gdal() {
         https://github.com/OSGeo/gdal.git gdal || die "git clone failed: gdal"
     (
         cd gdal || exit 1
-        git checkout -q "$(v gdal-sha)" || exit 1
+        # For versioned gdal
+        git checkout -q v"$(v gdal)" || exit 1
+        # For latest gdal
+        # git checkout -q "$(v gdal-sha)" || exit 1
         git gc --prune=all || exit 1
         # use .2 as a suffix (three spots), like the linux build
         sed -i '' 's/define GDAL_VERSION_BUILD    0/define GDAL_VERSION_BUILD    2/g' \
