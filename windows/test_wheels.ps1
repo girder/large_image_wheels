@@ -253,6 +253,7 @@ function Test-Python([string]$Req) {
     }
 
     # --- the windows-specific isolation checks
+    Log "--- check_wheels.py in the install venv for python $Req"
     Invoke-CheckWheels $vpy "python ${Req}: check_wheels.py in the install venv"
 
     # --- the shared functional suite
@@ -277,6 +278,7 @@ function Test-Python([string]$Req) {
     $env:PATH = "$shim;$(Join-Path $script:GitDir 'usr\bin');C:\Windows\System32;C:\Windows"
     $env:LIW_PYTHON_BIN_DIR = To-PosixPath $shim
     $env:LIW_TEST_CACHE = To-PosixPath $testCache
+    Log "--- test_script.sh for python $Req in $rundir (bash $bash, wheels $WheelsDir, PATH $env:PATH)"
     Push-Location $rundir
     try {
         $code = Run-Logged $bash @((To-PosixPath $script:SuiteScript),
@@ -289,6 +291,7 @@ function Test-Python([string]$Req) {
     Check ($code -eq 0) "python ${Req}: shared test_script.sh (exit $code)"
     $suitePython = Join-Path $rundir 'venv\Scripts\python.exe'
     if (Test-Path $suitePython) {
+        Log "--- check_wheels.py in the test_script.sh venv for python $Req"
         Invoke-CheckWheels $suitePython "python ${Req}: check_wheels.py in the test_script.sh venv"
     } else {
         Check $false "python ${Req}: test_script.sh left no venv to check"

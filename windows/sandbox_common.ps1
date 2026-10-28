@@ -207,43 +207,63 @@ function Invoke-SandboxRun {
         Info "sandbox $id started; running the in-sandbox script (wsb exec, as SYSTEM)"
         # wsb exec blocks for the command's duration and can fail while the
         # sandbox is still booting, so it is retried until the log shows
-        # the script started (agent_sandbox.py does the same).
+        # the script started (agent_sandbox.py does the same).  Once the
+        # log exists, the exit marker is the only authority on whether the
+        # script finished: wsb exec returning early, or a transient wsb
+        # list hiccup, must not end a run that is still writing its log.
+        # The run is given up only when the sandbox is gone for good
+        # (three polls in a row), the log has been silent for QuietSec, or
+        # the overall timeout passes -- and then the sandbox is left
+        # running for inspection, as the macos harness keeps its VM.
+        $QuietSec = 1800
         $attempts = 0
         $proc = $null
         $result = $null
+        $missing = 0
+        $lastGrowth = Get-Date
+        $execEnded = $false
+        $failed = $true
         try {
             while ($true) {
-                if (-not $proc) {
+                if (-not $proc -and -not $execEnded) {
                     $attempts++
                     $proc = Start-Process -FilePath 'wsb.exe' -ArgumentList @(
                         'exec', '--id', $id, '-r', 'System', '-c', "`"$Command`"") `
                         -PassThru -WindowStyle Hidden
                 }
+                $before = $streamed
                 $streamed = Stream-Log $logPath $streamed
+                if ($streamed -ne $before) { $lastGrowth = Get-Date }
                 if (Test-Path $exitPath) { break }
-                if ($proc.HasExited) {
-                    if ($proc.ExitCode -ne 0 -and -not (Test-Path $logPath)) {
+                if ($proc -and $proc.HasExited) {
+                    $code = $proc.ExitCode
+                    $proc = $null
+                    if ($code -ne 0 -and -not (Test-Path $logPath)) {
                         if ($attempts -ge 20) {
-                            Die "wsb exec kept failing ($($proc.ExitCode)) before the script started; giving up"
+                            Die "wsb exec kept failing ($code) before the script started; giving up"
                         }
                         Start-Sleep -Seconds 5
-                        $proc = $null
                         continue
                     }
-                    # The script ran and ended; give the exit marker a
-                    # moment (the mapped folder lags the guest slightly).
+                    # The script started; the exit marker decides the rest.
+                    $execEnded = $true
+                    Info "wsb exec returned ($code); waiting for the exit marker"
                     Start-Sleep -Seconds 3
-                    $streamed = Stream-Log $logPath $streamed
-                    if (Test-Path $exitPath) { break }
-                    Die ("the in-sandbox script ended (wsb exec exit " +
-                        "$($proc.ExitCode)) without writing $exitPath; see $logPath")
+                    continue
                 }
                 if ((Get-RunningSandboxIds) -notcontains $id) {
-                    Die "sandbox $id is no longer running; see $logPath"
+                    $missing++
+                    if ($missing -ge 3) {
+                        Die "sandbox $id is no longer running; see $logPath"
+                    }
+                } else {
+                    $missing = 0
                 }
                 if ((Get-Date) -gt $deadline) {
-                    Info "timed out after $TimeoutSec seconds; the log stays at $logPath"
-                    Die "see $logPath"
+                    Die "timed out after $TimeoutSec seconds; the log stays at $logPath"
+                }
+                if ((Test-Path $logPath) -and ((Get-Date) - $lastGrowth).TotalSeconds -gt $QuietSec) {
+                    Die "no log output for $QuietSec seconds; see $logPath"
                 }
                 if (-not (Test-Path $logPath) -and ((Get-Date) - $lastBeat).TotalSeconds -ge 60) {
                     $elapsed = [int]((Get-Date) - $startTime).TotalSeconds
@@ -253,15 +273,22 @@ function Invoke-SandboxRun {
                 Start-Sleep -Seconds 2
             }
             $result = [int]((Get-Content $exitPath -Raw).Trim())
+            $failed = $false
         } finally {
-            Info "stopping sandbox $id"
-            Invoke-Wsb @('stop', '--id', $id) | Out-Null
-            $stopDeadline = (Get-Date).AddSeconds(60)
-            while ((Get-Date) -lt $stopDeadline -and ((Get-RunningSandboxIds) -contains $id)) {
-                Start-Sleep -Seconds 2
-            }
-            if ((Get-RunningSandboxIds) -contains $id) {
-                Info "sandbox $id is still listed after wsb stop; stop it by hand (wsb stop --id $id)"
+            if ($failed) {
+                Info ("sandbox $id is left running for inspection (wsb exec --id $id " +
+                    "-r System -c <command> runs something inside it); discard it " +
+                    "with: wsb stop --id $id")
+            } else {
+                Info "stopping sandbox $id"
+                Invoke-Wsb @('stop', '--id', $id) | Out-Null
+                $stopDeadline = (Get-Date).AddSeconds(60)
+                while ((Get-Date) -lt $stopDeadline -and ((Get-RunningSandboxIds) -contains $id)) {
+                    Start-Sleep -Seconds 2
+                }
+                if ((Get-RunningSandboxIds) -contains $id) {
+                    Info "sandbox $id is still listed after wsb stop; stop it by hand (wsb stop --id $id)"
+                }
             }
         }
         return $result

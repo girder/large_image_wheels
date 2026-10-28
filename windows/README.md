@@ -480,13 +480,18 @@ Known gaps, in rough order:
   in-sandbox scripts after the exit code) is desk-checked only; if a
   sandbox does not close itself when the run ends, close the window by
   hand and record the finding here.
-- The host launchers' cli backend is proven only as far as the first
-  host run got (2026-10-28): `wsb start` gave an id, `wsb exec` ran
-  `build_wheels.ps1` as SYSTEM, the log and exit code came back through
-  the run folder.  The run died in the python downloads (curl exit 35,
-  a TLS connection error, on the seventh download in a row; retries now
-  cover every error).  Not yet seen on a host: the toolchain install,
-  the build itself, `wsb stop`, and the test launcher.
+- The host build has passed once (2026-10-28, cli backend): a fresh
+  sandbox installed the toolchain, built the chain and all seven
+  pylibtiff wheels, exit code 0.  The host test run got through python
+  3.11's install and `check_wheels.py` (all ok, 47 files audited) and
+  then stopped without an exit code where the shared suite starts; the
+  launcher's own console output is the missing evidence (it either
+  declared the run dead -- `wsb exec` returning early, or a `wsb list`
+  hiccup -- and stopped the sandbox, which the launcher no longer does:
+  it now trusts only the exit marker, tolerates `wsb exec` returning,
+  requires three missed `wsb list` polls, gives up only after 30 silent
+  minutes or the timeout, and leaves a failed sandbox running for
+  inspection).  `test_wheels.ps1` now logs a line before starting bash.
 - The C++ packages to come (pyvips, GDAL, mapnik) will import
   `msvcp140.dll` (delvewheel bundles it from the redist directory that
   `--add-path` names) and `vcruntime140_1.dll` (which delvewheel leaves

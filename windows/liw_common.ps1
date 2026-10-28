@@ -117,7 +117,15 @@ function Run-Logged([string]$Exe, [string[]]$CmdArgs, [string]$What, [switch]$No
     $prev = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        & $Exe @CmdArgs 2>&1 | ForEach-Object { Log "$_" }
+        & $Exe @CmdArgs 2>&1 | ForEach-Object {
+            # A stderr line arrives as an ErrorRecord; "$_" of one renders
+            # as its exception type, not its text.
+            if ($_ -is [System.Management.Automation.ErrorRecord]) {
+                Log "$($_.Exception.Message)"
+            } else {
+                Log "$_"
+            }
+        }
         $code = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $prev
