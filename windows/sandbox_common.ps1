@@ -150,12 +150,23 @@ function Stream-Log([string]$LogPath, [long]$Streamed) {
         return $Streamed
     }
     if ($size -le $Streamed) { return $Streamed }
-    $stream = [System.IO.FileStream]::new($LogPath, 'Open', 'Read', 'ReadWrite')
+    # The in-sandbox Add-Content holds the file for each line, and through
+    # the mapped folder that shows up here as a sharing violation on open
+    # (it ended the first host test run: the exception reached the cleanup
+    # and stopped the sandbox).  A read that cannot open the file just
+    # waits for the next poll.
+    try {
+        $stream = [System.IO.FileStream]::new($LogPath, 'Open', 'Read', 'ReadWrite')
+    } catch {
+        return $Streamed
+    }
     try {
         $stream.Seek($Streamed, 'Begin') | Out-Null
         $reader = [System.IO.StreamReader]::new($stream)
         $chunk = $reader.ReadToEnd()
         $reader.Dispose()
+    } catch {
+        return $Streamed
     } finally {
         $stream.Dispose()
     }
