@@ -457,19 +457,23 @@ pipeline has been exercised in dev mode inside the agent sandbox:
   each repaired by delvewheel to eight bundled, name-mangled DLLs plus
   `vcruntime140.dll`, with the libtiff tools in `pylibtiff.libs` and the
   launcher in `libtiff/bin` (see "Bundled command line tools").
-- `test_wheels.ps1` in dev mode passes every check for all seven
-  pythons against those wheels (2026-10-28): the exact-version install,
-  `check_wheels.py` (import audit, bundled DLL identity, tools by
-  wrapper and by path with a bare PATH, codec writes), the shared
-  `test/test_script.sh`, and `check_wheels.py` in the suite's venv.  The
-  free-threaded import carries the GIL re-enable `RuntimeWarning` the
-  linux and macos wheels also show.
+- **pylibtiff is verified end to end on the host (2026-10-28)**: a
+  fresh build sandbox produced the seven wheels and a fresh test sandbox
+  passed every check for all seven pythons (the exact-version install,
+  `check_wheels.py` -- import audit, bundled DLL identity, tools by
+  wrapper and by path with a bare PATH, codec writes -- the shared
+  `test/test_script.sh`, and `check_wheels.py` in the suite's venv).
+  The free-threaded import carries the GIL re-enable `RuntimeWarning`
+  the linux and macos wheels also show.
+- Glymur is the wheel in progress: lcms2, libpng and openjpeg build
+  stages, the glymur build (one py3-none-win_amd64 wheel with the
+  bundled openjp2 and the opj/jpeg tools), and its `check_wheels.py`
+  checks are written; see the git log for the state of the dev runs and
+  the host verification.
 
-Next step: the first host run, `windows\sandbox_build.bat &&
-windows\test_via_sandbox.bat` (transfer the tip, end the agent session,
-run, send back `windows\run\build.log`, `windows\test_run\
-report.txt` and `test.log`).  Only after pylibtiff is verified end to
-end does Glymur start.
+Next step: finish Glymur (dev build and test, then the host run of
+`windows\sandbox_build.bat && windows\test_via_sandbox.bat`, which
+builds pylibtiff and glymur by default), then openslide_python.
 
 Known gaps, in rough order:
 
@@ -480,19 +484,32 @@ Known gaps, in rough order:
   in-sandbox scripts after the exit code) is desk-checked only; if a
   sandbox does not close itself when the run ends, close the window by
   hand and record the finding here.
-- The host build has passed once (2026-10-28, cli backend): a fresh
-  sandbox installed the toolchain, built the chain and all seven
-  pylibtiff wheels, exit code 0.  The host test run got through python
-  3.11's install and `check_wheels.py` (all ok, 47 files audited) and
-  then stopped without an exit code where the shared suite starts: the
-  launcher's log streaming hit a sharing violation opening `test.log`
-  through the mapped folder (the sandbox's `Add-Content` held it), the
-  exception reached the cleanup, and the cleanup stopped the sandbox.
-  The streaming now retries on the next poll instead, the launcher
-  trusts only the exit marker, tolerates `wsb exec` returning, requires
-  three missed `wsb list` polls, gives up only after 30 silent minutes
-  or the timeout, and leaves a failed sandbox running for inspection.
-  The test launcher has yet to pass on a host.
+- CMake's `FindTIFF` (4.4) first tries libtiff's own `tiff-config.cmake`
+  and takes the import library from the imported target's
+  `IMPORTED_IMPLIB`, `_RELEASE`, `_RELWITHDEBINFO` or `_DEBUG` property;
+  our MinSizeRel libtiff exports `_MINSIZEREL`, so `TIFF_LIBRARIES`
+  became `bin\tiff.dll` and openjpeg's tools failed to link (LNK1107
+  "invalid or corrupt file").  Every cmake build passes
+  `-DCMAKE_DISABLE_FIND_PACKAGE_Tiff=ON` (the key is the name as the
+  module spells it, `Tiff`), which makes the module find `tiff.lib`.
+  Expect the same shape of problem from any Find module that consults a
+  config package by property name.
+- Pure-python wheels with bundled binaries (Glymur) are built once and
+  retagged `py3-none-win_amd64` with the `wheel tags` tool before the
+  repair; delvewheel reads the architecture from the platform tag and
+  the host validation and the test harness accept that tag for every
+  python.  With the `none` ABI tag delvewheel does not know which VC
+  runtime the python ships, so `vcruntime140.dll` is a plain dependency
+  there: bundled, and kept unmangled with `--no-mangle` to match the
+  other wheels.  delvewheel and the `wheel` tool find the dist-info
+  through the wheel's file name, and setuptools writes it in lowercase
+  (`glymur-0.14.8.1.dist-info`): a wheel renamed to `Glymur-` *before*
+  the repair made delvewheel take the dist-info for a package (it
+  patched an `__init__.py` into it and left RECORD with a hash of
+  itself).  Repair and relocate under the lowercase name (library
+  directory `glymur.libs`; the config patch looks for both spellings)
+  and rename the finished wheel to `Glymur-` last, which is all the
+  linux build's rename does too.
 - The C++ packages to come (pyvips, GDAL, mapnik) will import
   `msvcp140.dll` (delvewheel bundles it from the redist directory that
   `--add-path` names) and `vcruntime140_1.dll` (which delvewheel leaves
@@ -520,6 +537,14 @@ Known gaps, in rough order:
   one.  agent_sandbox.py allows a minute; the launcher now allows 90
   seconds, and on a 24H2 host it uses the `wsb` CLI instead, which
   reports the sandbox id synchronously.
+- The first host test run stopped mid-way: the launcher's log streaming
+  hit a sharing violation opening `test.log` through the mapped folder
+  (the sandbox's `Add-Content` held it), the exception reached the
+  cleanup, and the cleanup stopped a healthy sandbox.  Since then the
+  streaming retries on the next poll, the launcher trusts only the exit
+  marker, tolerates `wsb exec` returning, requires three missed `wsb
+  list` polls, gives up only after 30 silent minutes or the timeout, and
+  leaves a failed sandbox running for inspection.
 - Reading a log through a mapped folder while the sandbox appends to it
   fails intermittently with "being used by another process", even with
   `FileShare.ReadWrite` on the host side.  Anything in the host loop
@@ -555,6 +580,15 @@ Known gaps, in rough order:
   hazard the linux BUILD_ID salt exists for, solved here by delvewheel's
   default.  Code that looks bundled libraries up by name must match the
   mangled prefix (`startswith("tiff")`).
+- Two wheels that bundle the same library get the same mangled file
+  name (the hash is of the content), and when each loads its own copy
+  by full path the process holds two modules of that name (the loader
+  matches full-path loads by path, name-only loads by base name).  That
+  is the intended isolation, not a leak: `check_wheels.py` accepts a
+  loaded copy from any wheel's `.libs` directory and fails only on a
+  copy from anywhere else.  Its import of every known package before
+  the checks is what made glymur's libtiff show up during the pylibtiff
+  check.
 - **MSVC's linker records no import for a DLL whose symbols are
   unused**, so delvewheel (which only follows import tables) saw no
   dependencies in the pylibtiff wheel: `tif_lzw` links `tiff.lib` but
@@ -626,7 +660,12 @@ Known gaps, in rough order:
   it), `zstd.dll`, `jpeg62.dll` + `turbojpeg.dll`, `libwebp.dll` with
   `libwebpmux/decoder/demux.dll` and `libsharpyuv.dll` (libwebp builds
   static libraries unless `BUILD_SHARED_LIBS=ON`), `deflate.dll`,
-  `liblzma.dll`, `tiff.dll`.  libtiff's `tiffconf.h` records JBIG as a
+  `liblzma.dll`, `tiff.dll`, `lcms2.dll` (lcms2's own cmake build,
+  `LCMS2_BUILD_SHARED`; the linux build uses autotools), `libpng16.dll`,
+  `openjp2.dll` (openjpeg 2.5 names its options
+  `BUILD_SHARED_LIBS`/`BUILD_STATIC_LIBS`; the `BUILD_SHARED`/
+  `BUILD_STATIC` spellings the linux and macos builds pass are ignored
+  there, and `BUILD_THIRDPARTY=OFF` keeps the tools on our libraries).  libtiff's `tiffconf.h` records JBIG as a
   bare `#define JBIG_SUPPORT` (no value) and does not mention ZSTD/WEBP
   at all (they are in the internal `tif_config.h`); the feature
   assertion reads tiffconf.h for ZIP/JPEG/JBIG/LIBDEFLATE and the DLL

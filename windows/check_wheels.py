@@ -91,14 +91,21 @@ def loaded_modules():
 
 
 def loaded_from_libs(stem, libs_dir_name):
-    """The loaded module whose basename starts with <stem>, if it is in a
-    <libs_dir_name> directory (delvewheel mangles names to
-    <stem>-<hash>.dll, so a prefix match is the lookup)."""
+    """The loaded modules whose basename starts with <stem> (delvewheel
+    mangles names to <stem>-<hash>.dll, so a prefix match is the lookup):
+    all of them, the ones in the <libs_dir_name> directory, and the ones
+    outside any wheel's .libs directory.  Several of our wheels may bundle
+    the same library (identical content gets the same mangled name), and
+    a full-path load of each is a separate module, so a copy in another
+    wheel's .libs directory is legitimate; a copy anywhere else means a
+    system or third-party library won the load."""
     hits = [path for path in loaded_modules()
             if os.path.basename(path).lower().startswith(stem.lower())]
     bundled = [path for path in hits
                if os.path.basename(os.path.dirname(path)).lower() == libs_dir_name.lower()]
-    return hits, bundled
+    foreign = [path for path in hits
+               if not os.path.basename(os.path.dirname(path)).lower().endswith('.libs')]
+    return hits, bundled, foreign
 
 
 def pe_imports(path):
@@ -218,8 +225,8 @@ def run_path(exe, args, env=None):
 def check_pylibtiff(package_dir, libs_dir):
     from libtiff import TIFF
 
-    hits, bundled = loaded_from_libs('tiff', os.path.basename(libs_dir))
-    report(bool(bundled) and len(hits) == len(bundled),
+    hits, bundled, foreign = loaded_from_libs('tiff', os.path.basename(libs_dir))
+    report(bool(bundled) and not foreign,
            f'pylibtiff loads its bundled libtiff: {hits}')
     with tempfile.TemporaryDirectory() as tmp:
         path = os.path.join(tmp, 'check.tif')
@@ -255,9 +262,40 @@ def check_pylibtiff(package_dir, libs_dir):
                 report(False, f'pylibtiff writes {compression}: {exc}')
 
 
+def check_glymur(package_dir, libs_dir):
+    import glymur
+    import numpy
+
+    hits, bundled, foreign = loaded_from_libs('openjp2', os.path.basename(libs_dir))
+    report(bool(bundled) and not foreign,
+           f'glymur loads its bundled openjp2: {hits}')
+    version = glymur.version.openjpeg_version
+    report(bool(version) and version.startswith('2.'), f'openjpeg version {version}')
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, 'check.jp2')
+        data = (numpy.arange(64 * 48 * 3, dtype=numpy.uint32).reshape(48, 64, 3) % 251
+                ).astype(numpy.uint8)
+        glymur.Jp2k(path, data=data)
+        back = glymur.Jp2k(path)[:]
+        report(numpy.array_equal(data, back), 'glymur jp2 write/read round trip (lossless)')
+        nemo = glymur.Jp2k(glymur.data.nemo())
+        report(nemo.shape == (1456, 2592, 3), f'bundled nemo.jp2 reads: shape {nemo.shape}')
+        code, out = run_tool('opj_dump', ['-i', path])
+        report(code == 0 and 'x1=64' in out.replace(' ', ''),
+               f'bundled opj_dump runs as a console script (exit {code})')
+        launcher = os.path.join(package_dir, 'bin', 'opj_dump.exe')
+        code, out = run_path(launcher, ['-i', path], env=scrubbed_env())
+        report(code == 0 and 'x1=64' in out.replace(' ', ''),
+               f'bundled opj_dump runs by path with a bare PATH (exit {code})')
+        code, out = run_tool('djpeg', ['-version'])
+        report(code == 0 and 'libjpeg-turbo' in out,
+               f'bundled djpeg runs as a console script (exit {code}): {out.strip().splitlines()[:1]}')
+
+
 # package -> (import name, <dist>.libs directory name, package check)
 PACKAGES = {
     'pylibtiff': ('libtiff', 'pylibtiff.libs', check_pylibtiff),
+    'glymur': ('glymur', 'glymur.libs', check_glymur),
 }
 
 
