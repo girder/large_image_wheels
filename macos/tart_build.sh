@@ -17,6 +17,9 @@
 #   macos/tart_build.sh provision [options]   provision the base VM
 #   macos/tart_build.sh [options] [packages]  build wheels (default)
 #
+# Safe to run from crontab: the script sets its own PATH (cron's default
+# is /usr/bin:/bin, which misses sysctl and the Homebrew tart).
+#
 # The build command provisions the base automatically if it does not
 # exist yet (delete the base to force a re-provision, like a docker
 # image rebuild).
@@ -29,7 +32,7 @@
 #                   ghcr.io/cirruslabs/macos-golden-gate-base:latest)
 #   --name NAME     name for the build VM (default: liw_wheels_build)
 #   --cpus N        vCPUs for the build VM (default: one fewer than the
-#                   host's processor count)
+#                   host's processor count, minimum 4)
 #   --mem MB        memory for the build VM in MB (default: the larger of
 #                   4096 and one third of the host's memory)
 #   --disk GB       disk size when provisioning the base (default: 150)
@@ -43,6 +46,12 @@
 
 set -u
 set -o pipefail
+
+# cron runs commands with PATH=/usr/bin:/bin, which misses /usr/sbin
+# (sysctl) and the Homebrew prefix (tart).  Export a full PATH before
+# anything is invoked so the script works unchanged from crontab.
+PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH
 
 LIW_TART_USER="${LIW_TART_USER:-admin}"
 LIW_TART_PASS="${LIW_TART_PASS:-admin}"
@@ -60,16 +69,45 @@ LIW_PYTHONS="${LIW_PYTHONS:-3.11 3.12 3.13 3.14 3.15 3.14t 3.15t}"
 LIW_KEEP=0
 # Defaults sized from the host, overridable with --cpus/--mem (or the
 # LIW_CPUS/LIW_MEM_MB variables): one fewer vCPU than the host has
-# processors, and max(4096 MB, one third of the host's memory) for the
-# guest.  The smaller guest keeps the host (which shares its memory with
-# the agent sandbox) out of swap when the guest fills its own memory.
-liw_host_cpus="$(sysctl -n hw.ncpu 2>/dev/null || echo 2)"
-liw_host_mem_mb=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 4294967296) / 1048576 ))
-LIW_DEFAULT_CPUS=$(( liw_host_cpus > 1 ? liw_host_cpus - 1 : 1 ))
+# processors (never fewer than LIW_MIN_CPUS, like agent_tart.sh -- a
+# one- or two-core guest would exceed the timeout budget), and
+# max(4096 MB, one third of the host's memory) for the guest.  The
+# smaller guest keeps the host (which shares its memory with the agent
+# sandbox) out of swap when the guest fills its own memory.
+#
+# sysctl is called by absolute path because cron's default PATH
+# (/usr/bin:/bin) does not include /usr/sbin: with the bare "sysctl" the
+# probes fail under cron, the "|| echo" fallbacks fired, and the CPU
+# default came out as 2 - 1 = 1, which tart rejects ("VM should have 2
+# CPU cores at minimum (requested 1)") even on an 8-core host.
+LIW_MIN_CPUS=4
+liw_host_cpus="$(/usr/sbin/sysctl -n hw.ncpu 2>/dev/null)" || liw_host_cpus=""
+liw_host_mem_mb="$(/usr/sbin/sysctl -n hw.memsize 2>/dev/null)" || liw_host_mem_mb=""
+liw_host_mem_mb=$(( ${liw_host_mem_mb:-4294967296} / 1048576 ))
+if [ -z "$liw_host_cpus" ]; then
+    echo "warning: could not read hw.ncpu; assuming $LIW_MIN_CPUS CPUs" >&2
+    liw_host_cpus="$LIW_MIN_CPUS"
+fi
+LIW_DEFAULT_CPUS=$(( liw_host_cpus - 1 ))
+if [ "$LIW_DEFAULT_CPUS" -lt "$LIW_MIN_CPUS" ]; then
+    # Never ask tart for more cores than the host has.
+    if [ "$liw_host_cpus" -lt "$LIW_MIN_CPUS" ]; then
+        LIW_DEFAULT_CPUS="$liw_host_cpus"
+    else
+        LIW_DEFAULT_CPUS="$LIW_MIN_CPUS"
+    fi
+fi
 LIW_DEFAULT_MEM_MB=$(( liw_host_mem_mb / 3 ))
 [ "$LIW_DEFAULT_MEM_MB" -ge 4096 ] || LIW_DEFAULT_MEM_MB=4096
 LIW_CPUS="${LIW_CPUS:-$LIW_DEFAULT_CPUS}"
 LIW_MEM_MB="${LIW_MEM_MB:-$LIW_DEFAULT_MEM_MB}"
+# The floor applies to explicit overrides too: tart rejects anything
+# below 2, and anything under LIW_MIN_CPUS would overrun the timeout
+# budget (the --cpus 1 request that produced the cron failure).
+if [ "$LIW_CPUS" -lt "$LIW_MIN_CPUS" ]; then
+    echo "warning: LIW_CPUS=$LIW_CPUS is below the $LIW_MIN_CPUS-core minimum; using $LIW_MIN_CPUS" >&2
+    LIW_CPUS="$LIW_MIN_CPUS"
+fi
 LIW_DISK_GB="${LIW_DISK_GB:-150}"
 # Overall build/provision timeout in seconds (default 16 hours).
 # The gdal wheel's dependency tree (mysql, openmpi, boost, gdal itself)
@@ -134,6 +172,20 @@ VM_NAME="$LIW_VM_NAME"
 command -v tart >/dev/null 2>&1 || die "tart not found on the host"
 command -v ssh >/dev/null 2>&1 || die "ssh not found on the host"
 mkdir -p "$LIW_LOG_DIR" "$LIW_SSH_DIR"
+
+# tart runs macOS guests through Virtualization.framework, whose VM
+# processes live inside the user's GUI (Aqua) session.  An ssh login does
+# not create one, so on a Mac sitting at the login window (fresh reboot
+# or nightly logout) the VM start fails deep inside tart with a cryptic
+# error.  Detect that case up front: /dev/console is owned by the logged-
+# in console user, and by root when only the login window is showing.
+# The fix is automatic login on the host (System Settings > Users &
+# Groups > Login Options; requires FileVault to be off) plus
+# 'sudo pmset -a sleep 0' so the session is never suspended.
+console_owner="$(stat -f %Su /dev/console 2>/dev/null || true)"
+if [ -z "$console_owner" ] || [ "$console_owner" = "root" ]; then
+    die "no active GUI session on this host (nobody logged in at the console); tart needs one to run VMs. Log in at the console once after any boot, or enable automatic login (System Settings > Users & Groups > Login Options, requires FileVault off) and 'sudo pmset -a sleep 0' so the session is never suspended"
+fi
 
 # --- ssh key handling (same conventions as manthey/utils agent_tart.sh) ----
 LIW_SSH_KEY=""
