@@ -1,8 +1,24 @@
 # sandbox_common.ps1 - host-side functions shared by sandbox_build.ps1 and
-# test_via_sandbox.ps1: the host sanity checks, the .wsb generation, the
-# sandbox launch, the log streaming, and the wait for the exit marker.
-# Dot-sourced by those scripts (which set $script:Tool to their own name
-# for messages); nothing here runs on its own.
+# test_via_sandbox.ps1: the host sanity checks, the sandbox launch (both
+# backends), the log streaming, the wait for the exit marker, and the
+# stop.  Dot-sourced by those scripts (which set $script:Tool to their own
+# name for messages); nothing here runs on its own.
+#
+# Backends, as in manthey/utils agent_sandbox.py (the same host runs the
+# agent session this way):
+#   cli   Windows 11 24H2+ with wsb.exe on PATH: headless.  `wsb start
+#         --config <xml>` returns a sandbox id, `wsb list --raw` lists the
+#         running ids, `wsb exec --id <id> -r System -c <command>` runs the
+#         in-sandbox script as SYSTEM (the LogonCommand is not used), and
+#         `wsb stop --id <id>` tears the sandbox down.  Several sandboxes
+#         can exist when the Windows build allows it, so the agent session
+#         need not be stopped first (if the build allows only one, `wsb
+#         start` fails and says so).
+#   file  Windows 10 (or no wsb.exe): the generated .wsb file is launched
+#         like a double-click, which opens the sandbox window; the
+#         in-sandbox script runs from the LogonCommand as the elevated
+#         built-in account.  Only one sandbox at a time, and the agent
+#         session is one.
 
 function Die([string]$Message) {
     throw "$($script:Tool): $Message"
@@ -12,6 +28,35 @@ function Info([string]$Message) {
     Write-Host "$($script:Tool): $Message"
 }
 
+function Get-SandboxBackend {
+    if (Get-Command 'wsb.exe' -ErrorAction SilentlyContinue) { return 'cli' }
+    return 'file'
+}
+
+# Output of wsb.exe (stdout and stderr) as one string; -Check dies on a
+# nonzero exit.
+function Invoke-Wsb([string[]]$WsbArgs, [switch]$Check) {
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $out = (& wsb.exe @WsbArgs 2>&1 | Out-String)
+        $code = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+    if ($Check -and $code -ne 0) {
+        Die "wsb $($WsbArgs -join ' ') failed ($code): $($out.Trim())"
+    }
+    return $out
+}
+
+$script:GuidRe = '[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}'
+
+function Get-RunningSandboxIds {
+    $out = Invoke-Wsb @('list', '--raw')
+    return @([regex]::Matches($out, $script:GuidRe) | ForEach-Object { $_.Value.ToLower() })
+}
+
 # This script must run on the host.  Windows Sandbox cannot be nested: the
 # guest gets no virtualization extensions, so a sandbox started from inside
 # a sandbox hangs windowless forever.  In-sandbox sessions run as the
@@ -19,11 +64,10 @@ function Info([string]$Message) {
 # refuse here instead of hanging later.  An agent_sandbox.py session runs
 # as its own non-administrator user (`agent`), so the account check does
 # not catch it; the feature check does, because a sandbox guest never has
-# WindowsSandbox.exe.  Only one instance of Windows Sandbox may run at a
-# time ('Only one running instance of Windows Sandbox is allowed'), and
-# the agent session is itself a sandbox on this host: a run can only start
-# when the agent sandbox has been ended.  Never kill a running sandbox
-# blindly.
+# WindowsSandbox.exe (nor wsb.exe).  With the file backend only one
+# sandbox may run at a time ('Only one running instance of Windows Sandbox
+# is allowed'), and the agent session is itself a sandbox on this host.
+# Never kill a running sandbox blindly.
 function Assert-SandboxHost {
     if ([Security.Principal.WindowsIdentity]::GetCurrent().Name `
         -like '*\WDAGUtilityAccount') {
@@ -32,17 +76,27 @@ function Assert-SandboxHost {
             'that launched this sandbox.')
     }
     $sandboxExe = Join-Path $env:SystemRoot 'System32\WindowsSandbox.exe'
-    if (-not (Test-Path $sandboxExe)) {
+    if (-not (Test-Path $sandboxExe) -and (Get-SandboxBackend) -eq 'file') {
         Die ('Windows Sandbox is not installed here.  Inside a sandbox (an ' +
             'agent session, for example) that is expected: run this script ' +
             'on the host.  On a host, enable it with ' +
             "'Enable-WindowsOptionalFeature -Online -FeatureName " +
             "Containers-DisposableClientVM' and reboot.")
     }
+    if ((Get-SandboxBackend) -eq 'cli') {
+        $ids = Get-RunningSandboxIds
+        if ($ids.Count -gt 0) {
+            Info ("sandboxes already running: $($ids -join ', ') (an agent " +
+                'session, probably); the run gets its own sandbox if this ' +
+                'Windows build allows more than one')
+        }
+        return
+    }
     if (Get-Process -Name 'WindowsSandbox*' -ErrorAction SilentlyContinue) {
         Die ('a Windows Sandbox is already running; only one instance is ' +
-            'allowed.  It may be the agent session itself -- do not kill it ' +
-            'blindly; end the agent session deliberately before building.')
+            'allowed with the .wsb file backend.  It may be the agent ' +
+            'session itself -- do not kill it blindly; end the agent ' +
+            'session deliberately before the run.')
     }
 }
 
@@ -50,24 +104,7 @@ function Escape-Xml([string]$Text) {
     return [System.Security.SecurityElement]::Escape($Text)
 }
 
-# Start a fresh sandbox from a generated .wsb and wait for the in-sandbox
-# script to finish.  MappedFolders is a list of @{ Host; Guest; ReadOnly }.
-# The in-sandbox script writes its log as <RunDir>\<LogName> and its exit
-# code to <RunDir>\exit_code; the log is streamed to the console as it
-# grows.  Returns the exit code.  The sandbox is closed by the in-sandbox
-# script itself (it shuts the VM down after writing the exit code, on
-# success and failure alike, as on macos); the host never taskkills
-# anything.
-function Invoke-SandboxRun {
-    param(
-        [string]$RunDir,
-        [object[]]$MappedFolders,
-        [string]$LogonCommand,
-        [string]$LogName,
-        [int]$MemoryMB,
-        [int]$TimeoutSec,
-        [string]$WsbName
-    )
+function New-SandboxConfig([object[]]$MappedFolders, [string]$LogonCommand, [int]$MemoryMB) {
     $folders = ''
     foreach ($folder in $MappedFolders) {
         $ro = if ($folder.ReadOnly) { 'true' } else { 'false' }
@@ -80,9 +117,16 @@ function Invoke-SandboxRun {
 
 "@
     }
-    # The LogonCommand runs as the elevated sandbox account; nothing in the
-    # pipeline needs that, the toolchain is portable.
-    $xml = @"
+    $logon = ''
+    if ($LogonCommand) {
+        $logon = @"
+  <LogonCommand>
+    <Command>$(Escape-Xml $LogonCommand)</Command>
+  </LogonCommand>
+
+"@
+    }
+    return @"
 <Configuration>
   <vGPU>Disable</vGPU>
   <Networking>Enable</Networking>
@@ -93,111 +137,201 @@ function Invoke-SandboxRun {
   <MemoryInMB>$MemoryMB</MemoryInMB>
   <MappedFolders>
 $folders  </MappedFolders>
-  <LogonCommand>
-    <Command>$(Escape-Xml $LogonCommand)</Command>
-  </LogonCommand>
-</Configuration>
+$logon</Configuration>
 "@
+}
+
+# Stream the new part of the log file to the console.  Returns the new
+# streamed size.
+function Stream-Log([string]$LogPath, [long]$Streamed) {
+    try {
+        $size = (Get-Item $LogPath -ErrorAction Stop).Length
+    } catch {
+        return $Streamed
+    }
+    if ($size -le $Streamed) { return $Streamed }
+    $stream = [System.IO.FileStream]::new($LogPath, 'Open', 'Read', 'ReadWrite')
+    try {
+        $stream.Seek($Streamed, 'Begin') | Out-Null
+        $reader = [System.IO.StreamReader]::new($stream)
+        $chunk = $reader.ReadToEnd()
+        $reader.Dispose()
+    } finally {
+        $stream.Dispose()
+    }
+    Write-Host $chunk
+    return $size
+}
+
+# Start a fresh sandbox and wait for the in-sandbox script to finish.
+# MappedFolders is a list of @{ Host; Guest; ReadOnly }; Command is the
+# in-sandbox command line (the LogonCommand with the file backend, the
+# `wsb exec` command with the cli backend).  The in-sandbox script writes
+# its log as <RunDir>\<LogName> and its exit code to <RunDir>\exit_code;
+# the log is streamed to the console as it grows.  Returns the exit code.
+# The sandbox is stopped afterwards: by the in-sandbox script itself
+# (it shuts the VM down after writing the exit code, on success and
+# failure alike, as on macos) and, with the cli backend, by `wsb stop` as
+# well.  The host never taskkills anything.
+function Invoke-SandboxRun {
+    param(
+        [string]$RunDir,
+        [object[]]$MappedFolders,
+        [string]$Command,
+        [string]$LogName,
+        [int]$MemoryMB,
+        [int]$TimeoutSec,
+        [string]$WsbName
+    )
+    $backend = Get-SandboxBackend
+    $logPath = Join-Path $RunDir $LogName
+    $exitPath = Join-Path $RunDir 'exit_code'
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    $startTime = Get-Date
+    $streamed = 0
+    $lastBeat = $startTime
+
+    if ($backend -eq 'cli') {
+        # The configuration travels on the command line, as one line.
+        $xml = New-SandboxConfig $MappedFolders '' $MemoryMB
+        $xml | Set-Content -Path (Join-Path $RunDir $WsbName) -Encoding ascii
+        $oneLine = $xml -replace '\r?\n\s*', ''
+        Info 'starting a headless sandbox (wsb start)'
+        $out = Invoke-Wsb @('start', '--config', $oneLine) -Check
+        $match = [regex]::Match($out, $script:GuidRe)
+        if (-not $match.Success) {
+            Die "wsb start did not report a sandbox id: $($out.Trim())"
+        }
+        $id = $match.Value.ToLower()
+        Set-Content -Path (Join-Path $RunDir 'sandbox_id') -Value $id -Encoding ascii
+        Info "sandbox $id started; running the in-sandbox script (wsb exec, as SYSTEM)"
+        # wsb exec blocks for the command's duration and can fail while the
+        # sandbox is still booting, so it is retried until the log shows
+        # the script started (agent_sandbox.py does the same).
+        $attempts = 0
+        $proc = $null
+        $result = $null
+        try {
+            while ($true) {
+                if (-not $proc) {
+                    $attempts++
+                    $proc = Start-Process -FilePath 'wsb.exe' -ArgumentList @(
+                        'exec', '--id', $id, '-r', 'System', '-c', "`"$Command`"") `
+                        -PassThru -WindowStyle Hidden
+                }
+                $streamed = Stream-Log $logPath $streamed
+                if (Test-Path $exitPath) { break }
+                if ($proc.HasExited) {
+                    if ($proc.ExitCode -ne 0 -and -not (Test-Path $logPath)) {
+                        if ($attempts -ge 20) {
+                            Die "wsb exec kept failing ($($proc.ExitCode)) before the script started; giving up"
+                        }
+                        Start-Sleep -Seconds 5
+                        $proc = $null
+                        continue
+                    }
+                    # The script ran and ended; give the exit marker a
+                    # moment (the mapped folder lags the guest slightly).
+                    Start-Sleep -Seconds 3
+                    $streamed = Stream-Log $logPath $streamed
+                    if (Test-Path $exitPath) { break }
+                    Die ("the in-sandbox script ended (wsb exec exit " +
+                        "$($proc.ExitCode)) without writing $exitPath; see $logPath")
+                }
+                if ((Get-RunningSandboxIds) -notcontains $id) {
+                    Die "sandbox $id is no longer running; see $logPath"
+                }
+                if ((Get-Date) -gt $deadline) {
+                    Info "timed out after $TimeoutSec seconds; the log stays at $logPath"
+                    Die "see $logPath"
+                }
+                if (-not (Test-Path $logPath) -and ((Get-Date) - $lastBeat).TotalSeconds -ge 60) {
+                    $elapsed = [int]((Get-Date) - $startTime).TotalSeconds
+                    Info "no log after $elapsed seconds (wsb exec attempt $attempts); still waiting"
+                    $lastBeat = Get-Date
+                }
+                Start-Sleep -Seconds 2
+            }
+            $result = [int]((Get-Content $exitPath -Raw).Trim())
+        } finally {
+            Info "stopping sandbox $id"
+            Invoke-Wsb @('stop', '--id', $id) | Out-Null
+            $stopDeadline = (Get-Date).AddSeconds(60)
+            while ((Get-Date) -lt $stopDeadline -and ((Get-RunningSandboxIds) -contains $id)) {
+                Start-Sleep -Seconds 2
+            }
+            if ((Get-RunningSandboxIds) -contains $id) {
+                Info "sandbox $id is still listed after wsb stop; stop it by hand (wsb stop --id $id)"
+            }
+        }
+        return $result
+    }
+
+    # --- file backend
+    $xml = New-SandboxConfig $MappedFolders $Command $MemoryMB
     $wsbPath = Join-Path $RunDir $WsbName
     # XML without a declaration defaults to UTF-8; the content is ASCII.
     $xml | Set-Content -Path $wsbPath -Encoding ascii
-
-    # Watch the host side of the run exchange (mapped at C:\mnt\run in the
-    # guest), not the guest paths.
-    $logPath = Join-Path $RunDir $LogName
-    $deadline = (Get-Date).AddSeconds($TimeoutSec)
-
     Info "starting the sandbox from $wsbPath (the log streams here)"
     Start-Process -FilePath $wsbPath
     Info ("waiting for the in-sandbox script to start writing $logPath " +
         '(the sandbox takes a moment to boot)')
-
-    $streamed = 0
     $started = $false
     $windowSeen = $false
     $windowAt = $null
-    $startTime = Get-Date
-    $lastBeat = $startTime
     while ($true) {
-        if (Test-Path $logPath) {
-            $started = $true
-            try {
-                $size = (Get-Item $logPath -ErrorAction Stop).Length
-            } catch {
-                $size = 0
-            }
-            if ($size -gt $streamed) {
-                $stream = [System.IO.FileStream]::new(
-                    $logPath, 'Open', 'Read', 'ReadWrite')
-                try {
-                    $stream.Seek($streamed, 'Begin') | Out-Null
-                    $reader = [System.IO.StreamReader]::new($stream)
-                    $chunk = $reader.ReadToEnd()
-                    $reader.Dispose()
-                } finally {
-                    $stream.Dispose()
-                }
-                $streamed = $size
-                Write-Host $chunk
-            }
-        }
-        if (Test-Path (Join-Path $RunDir 'exit_code')) {
-            break
-        }
-        $sandboxes = @(Get-Process -Name 'WindowsSandbox*' `
-            -ErrorAction SilentlyContinue)
-        if (-not $sandboxes) {
+        if (Test-Path $logPath) { $started = $true }
+        $streamed = Stream-Log $logPath $streamed
+        if (Test-Path $exitPath) { break }
+        $sandboxes = @(Get-Process -Name 'WindowsSandbox*' -ErrorAction SilentlyContinue)
+        # The launch goes through the shell; the sandbox processes take a
+        # while to appear (agent_sandbox.py allows a minute).
+        if (-not $sandboxes -and ((Get-Date) - $startTime).TotalSeconds -gt 90) {
             if ($started) {
-                Die ('the sandbox closed before reporting an exit code; see ' +
-                    "$logPath")
+                Die "the sandbox closed before reporting an exit code; see $logPath"
             }
             Die ('the sandbox did not start; is the Windows Sandbox feature ' +
                 'enabled and up to date?')
         }
         foreach ($proc in $sandboxes) {
-            if ($proc.MainWindowTitle) {
-                if (-not $windowSeen) {
-                    $windowSeen = $true
-                    $windowAt = Get-Date
-                }
+            if ($proc.MainWindowTitle -and -not $windowSeen) {
+                $windowSeen = $true
+                $windowAt = Get-Date
             }
         }
         if ((Get-Date) -gt $deadline) {
-            Info ('timed out after ' +
-                "$TimeoutSec seconds; the in-sandbox script keeps running and " +
-                'the sandbox will shut itself down when it finishes; the log ' +
-                'stays at ' + "$logPath")
+            Info ("timed out after $TimeoutSec seconds; the in-sandbox script " +
+                'keeps running and the sandbox will shut itself down when it ' +
+                "finishes; the log stays at $logPath")
             Die "see $logPath"
         }
         # The runs are long and quiet during toolchain install, so keep the
         # host from looking hung: report once a minute until the log appears.
-        if (((Get-Date) - $lastBeat).TotalSeconds -ge 60) {
+        if (-not $started -and ((Get-Date) - $lastBeat).TotalSeconds -ge 60) {
             $elapsed = [int]((Get-Date) - $startTime).TotalSeconds
-            $titles = @($sandboxes | ForEach-Object { $_.MainWindowTitle }) `
-                -join ', '
+            $titles = @($sandboxes | ForEach-Object { $_.MainWindowTitle }) -join ', '
             if (-not $titles) { $titles = '(no window)' }
             if (-not $windowSeen) {
-                Info ("no log after $elapsed seconds; sandbox " +
-                    "processes: $($sandboxes.Count), window titles: " +
-                    "$titles.  A window titled " +
-                    '"Windows Sandbox" may be the sandbox desktop or a ' +
-                    'one-instance error dialog (only one sandbox may run at ' +
-                    'a time, and the agent session is itself a sandbox); no ' +
-                    'window means the sandbox VM never started.')
+                Info ("no log after $elapsed seconds; sandbox processes: " +
+                    "$($sandboxes.Count), window titles: $titles.  A window " +
+                    'titled "Windows Sandbox" may be the sandbox desktop or a ' +
+                    'one-instance error dialog (only one sandbox may run at a ' +
+                    'time with this backend, and the agent session is itself ' +
+                    'a sandbox); no window means the sandbox VM never started.')
             } else {
-                Info ("no log after $elapsed seconds although the " +
-                    'sandbox desktop is up; the LogonCommand either did not ' +
-                    'run or died before its first log write.  On the sandbox ' +
-                    'desktop, look for a console window with an error, and ' +
-                    'check that C:\\mnt\\run shows args.json (if it does ' +
-                    'not, the mapped folders are not working).')
+                Info ("no log after $elapsed seconds although the sandbox " +
+                    'desktop is up; the LogonCommand either did not run or died ' +
+                    'before its first log write.  On the sandbox desktop, look ' +
+                    'for a console window with an error, and check that ' +
+                    'C:\\mnt\\run shows args.json (if it does not, the mapped ' +
+                    'folders are not working).')
                 if (((Get-Date) - $windowAt).TotalSeconds -gt 180) {
-                    Die ('the sandbox window has been up for over three ' +
-                        'minutes without a log; if it is the sandbox ' +
-                        'desktop, investigate as described above; if it is ' +
-                        'the one-instance error dialog, a sandbox is already ' +
-                        'running (possibly the agent session, which must be ' +
-                        'closed deliberately before a run).')
+                    Die ('the sandbox window has been up for over three minutes ' +
+                        'without a log; if it is the sandbox desktop, investigate ' +
+                        'as described above; if it is the one-instance error ' +
+                        'dialog, a sandbox is already running (possibly the ' +
+                        'agent session, which must be closed deliberately ' +
+                        'before a run with this backend).')
                 }
             }
             $lastBeat = Get-Date
@@ -211,22 +345,24 @@ $folders  </MappedFolders>
             Die ('the sandbox process has run for over five minutes without ' +
                 'ever showing a window or writing a log; the sandbox VM is ' +
                 'not starting on this host.  Check that no other sandbox is ' +
-                'running (only one instance is allowed; the agent session ' +
-                'itself counts and must be closed deliberately first), that ' +
-                'the Containers-DisposableClientVM optional feature is ' +
-                'Enabled, that virtualization is enabled in the firmware (see the ' +
-                'Hyper-V Requirements section of systeminfo), that the ' +
-                'CmService is not Disabled, and that starting "Windows ' +
-                'Sandbox" from the Start menu shows a window; also try ' +
-                '-MemoryMB 4096 in case 8192 exceeds what the host can give.')
+                'running (only one instance is allowed with this backend; the ' +
+                'agent session itself counts and must be closed deliberately ' +
+                'first), that the Containers-DisposableClientVM optional ' +
+                'feature is Enabled, that virtualization is enabled in the ' +
+                'firmware (see the Hyper-V Requirements section of ' +
+                'systeminfo), that the CmService is not Disabled, and that ' +
+                'starting "Windows Sandbox" from the Start menu shows a ' +
+                'window; also try -MemoryMB 4096 in case 8192 exceeds what ' +
+                'the host can give.')
         }
         Start-Sleep -Seconds 2
     }
-    return [int]((Get-Content (Join-Path $RunDir 'exit_code') -Raw).Trim())
+    return [int]((Get-Content $exitPath -Raw).Trim())
 }
 
 function Report-SandboxShutdown {
-    if (Get-Process -Name 'WindowsSandbox*' -ErrorAction SilentlyContinue) {
+    if ((Get-SandboxBackend) -eq 'file' -and
+        (Get-Process -Name 'WindowsSandbox*' -ErrorAction SilentlyContinue)) {
         Info ('the sandbox has not shut itself down yet (it schedules its ' +
             'own shutdown after writing the exit code); if it is still up ' +
             'in a minute, close the window by hand -- taskkill is ' +

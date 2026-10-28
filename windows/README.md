@@ -214,8 +214,14 @@ Host side (run on the host, outside any sandbox):
   it streams the log, prints `report.txt`, and exits with the result.
   `-Pythons`, `-MemoryMB`, `-TimeoutSec`.
 - `sandbox_common.ps1` -- what the two launchers share: the host sanity
-  checks (not inside a sandbox, feature installed, no sandbox running),
-  the `.wsb` generation, the launch, the log streaming, the wait.
+  checks, the two backends, the log streaming, the wait, the stop.  The
+  backends are agent_sandbox.py's: `cli` when `wsb.exe` is on PATH
+  (Windows 11 24H2+; headless, `wsb start --config` gives a sandbox id,
+  the in-sandbox script runs as SYSTEM through `wsb exec`, `wsb stop`
+  tears it down, and several sandboxes can coexist when the Windows
+  build allows it, so the agent session can stay up), else `file` (the
+  generated `.wsb` is launched like a double-click, the script runs from
+  the LogonCommand, one sandbox at a time).
 - `build.wsb` / `test.wsb` -- the same two sandbox configurations checked
   in as data, for the human-only workflow without the launchers: the
   mapped folders (repo read-only at `C:\mnt\repo`; cache at
@@ -288,7 +294,9 @@ named by `LIW_PYTHON_BIN_DIR`, the same variable the macos harness uses.
 ## Usage
 
 On the host (Windows 10/11 with the Windows Sandbox feature enabled),
-from a command prompt in the repository, with no agent sandbox running:
+from a command prompt in the repository (with the `wsb` CLI of Windows
+11 24H2+ the agent session can stay up if the Windows build allows more
+than one sandbox; without it, end the agent session first):
 
 ```
 windows\sandbox_build.bat && windows\test_via_sandbox.bat
@@ -375,9 +383,10 @@ for the single-instance limit:
    sandbox's run folder):
    `git fetch ssh://agent@<sandbox-ip>/C:/Users/agent/large_image_wheels windows`
    followed by `git merge --ff-only FETCH_HEAD` on the `windows` branch.
-3. The human ends the agent sandbox (only one Windows Sandbox instance
-   is allowed, and the agent session is one), then runs
-   `windows\sandbox_build.bat && windows\test_via_sandbox.bat`.
+3. The human runs `windows\sandbox_build.bat &&
+   windows\test_via_sandbox.bat` on the host (with the file backend, or
+   a Windows build that allows one sandbox, the agent session has to be
+   ended first).
 4. The human restarts the agent session and copies the build log
    (`liw_wheels\run\build.log`), the test report and log
    (`liw_wheels\test_run\report.txt`, `test.log`) into it
@@ -489,10 +498,24 @@ Known gaps, in rough order:
 ## Hard-won details (do not lose these)
 
 - The `.wsb` LogonCommand runs as the **elevated** WDAGUtilityAccount
-  (from the agent sandbox code's file-backend path; verify on the first
-  run).  Nothing in the pipeline needs elevation any more, though: the
-  toolchain is portable and the agent sandbox's non-administrator
-  `agent` user runs the identical install in dev mode.
+  (file backend); `wsb exec -r System` runs the script as SYSTEM (cli
+  backend, whose profile is `C:\Windows\system32\config\systemprofile`
+  and whose TEMP is `C:\Windows\Temp`).  Nothing in the pipeline needs
+  either: the toolchain is portable and the agent sandbox's
+  non-administrator `agent` user runs the identical install in dev mode.
+- The first host run (2026-10-28) died at once with "the sandbox did not
+  start": the file-backend launcher looked for a `WindowsSandbox*`
+  process on its first loop iteration, before the shell had spawned
+  one.  agent_sandbox.py allows a minute; the launcher now allows 90
+  seconds, and on a 24H2 host it uses the `wsb` CLI instead, which
+  reports the sandbox id synchronously.
+- `a.bat && b.bat` at an interactive prompt runs `b.bat` even when
+  `a.bat` ended with `exit /b 1` (reproduced with cmd reading its
+  commands from a file; `cmd /c` does not show it).  Ending the batch
+  with `cmd /c exit %ERRORLEVEL%` makes `&&` honor the status.  The
+  launchers guard the chain too: the build removes the requested
+  packages' old wheels first, and the test refuses when the build's
+  `exit_code` is not 0.
 - **delvewheel mangles DLL names** (`tiff-<sha256 prefix>.dll` in
   `pylibtiff.libs`) and rewrites the import tables of the wheel's
   binaries to match; the content hash means identical DLLs in two wheels

@@ -19,12 +19,13 @@
 #
 # The Windows Sandbox feature must be enabled
 # (Enable-WindowsOptionalFeature -Online -FeatureName
-# Containers-DisposableClientVM, then reboot).  This script uses the .wsb
-# file backend only and does not need the wsb CLI.  The sandbox is closed
-# by the in-sandbox script itself: after writing its exit code and final
-# log line (both already visible on the host through the mapped run
-# folder) it shuts the VM down, on success and failure alike, as on macos.
-# The host never taskkills anything.
+# Containers-DisposableClientVM, then reboot).  With wsb.exe on PATH
+# (Windows 11 24H2+) the sandbox is headless and the script runs in it
+# through wsb exec; otherwise the generated .wsb file is launched and the
+# script runs from its LogonCommand (see sandbox_common.ps1).  The sandbox
+# is stopped afterwards by the in-sandbox script itself (it shuts the VM
+# down after writing its exit code, on success and failure alike, as on
+# macos) and by wsb stop.  The host never taskkills anything.
 
 param(
     [ValidateSet('build', 'cache')]
@@ -64,12 +65,32 @@ if ($Command -eq 'build' -and $Packages.Count -eq 0) {
     Die 'no packages requested'
 }
 
+# The wheel file prefix of a package (as build.sh's copy-out list names
+# them).
+function Wheel-Prefix([string]$Package) {
+    switch ($Package) {
+        'glymur' { return 'Glymur' }
+        'gdal' { return 'GDAL' }
+        default { return $Package }
+    }
+}
+
 # --- folder setup ------------------------------------------------------------
 New-Item -ItemType Directory -Force -Path $CacheDir, $WheelsDir | Out-Null
 New-Item -ItemType Directory -Force `
     -Path (Join-Path $CacheDir 'downloads') | Out-Null
 if (Test-Path $RunDir) { Remove-Item -Recurse -Force $RunDir }
 New-Item -ItemType Directory -Force -Path $RunDir | Out-Null
+# The previous wheels of the requested packages go first, as build.sh
+# removes them before copying the new ones out: a failed build must not
+# leave old wheels for the test run to pick up.
+if ($Command -eq 'build') {
+    foreach ($pkg in $Packages) {
+        if ($pkg.StartsWith('dep:')) { continue }
+        Remove-Item -Path (Join-Path $WheelsDir "$(Wheel-Prefix $pkg)-*.whl") `
+            -Force -ErrorAction SilentlyContinue
+    }
+}
 
 @{
     packages = @($Packages)
@@ -83,7 +104,7 @@ $logon = ('powershell.exe -NoProfile -ExecutionPolicy Bypass -File ' +
           "$repoGuest\windows\build_wheels.ps1")
 if ($Command -eq 'cache') { $logon = "$logon -WarmCache" }
 
-$result = Invoke-SandboxRun -RunDir $RunDir -LogonCommand $logon `
+$result = Invoke-SandboxRun -RunDir $RunDir -Command $logon `
     -LogName 'build.log' -MemoryMB $MemoryMB -TimeoutSec $TimeoutSec `
     -WsbName 'liw_wheels_build.wsb' -MappedFolders @(
         @{ Host = $RepoDir; Guest = $repoGuest; ReadOnly = $true },
@@ -96,14 +117,6 @@ $result = Invoke-SandboxRun -RunDir $RunDir -LogonCommand $logon `
 # python can install, as tart_build.sh checks on macos (the counterpart of
 # build.sh copying the expected wheels out of the docker build): a silently
 # missing wheel would otherwise only surface as quietly skipped tests.
-function Wheel-Prefix([string]$Package) {
-    switch ($Package) {
-        'glymur' { return 'Glymur' }
-        'gdal' { return 'GDAL' }
-        default { return $Package }
-    }
-}
-
 function Wheel-ForPython([string]$Prefix, [string]$Req) {
     $base = $Req.TrimEnd('t')
     $num = $base -replace '\.', ''
