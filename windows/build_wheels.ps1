@@ -1265,6 +1265,24 @@ function Ensure-Toolchain {
     $script:GitDir = $gitDir
     $script:ToolPaths += (Join-Path $gitDir 'cmd')
     $script:ToolPaths += (Join-Path $gitDir 'bin')
+    # TLS trust for the python downloaders (meson's subproject wraps,
+    # install_msvc.py): python verifies with OpenSSL against the Windows
+    # certificate store, and a fresh sandbox's store has about sixteen
+    # roots -- github.com's is not among them.  Windows fetches a missing
+    # root on demand only for Schannel clients (curl.exe, Invoke-WebRequest),
+    # which is why the first runs got through: a curl download from
+    # github.com (cmake, ninja, the LLVM tarball) had installed the root
+    # before meson needed it, and the first run with everything cached
+    # failed glib's pcre2 wrap with CERTIFICATE_VERIFY_FAILED.  PortableGit
+    # ships the curl CA bundle git itself uses; OpenSSL honors SSL_CERT_FILE
+    # (python's load_default_certs loads it in addition to the store), so
+    # every python download verifies against the same pinned bundle.
+    $bundle = Get-ChildItem -Path $gitDir -Recurse -Depth 4 -Filter 'ca-bundle.crt' -File |
+        Where-Object { $_.FullName -match '\\ssl\\certs\\' } |
+        Sort-Object FullName | Select-Object -First 1
+    if (-not $bundle) { Die "no ca-bundle.crt under $gitDir (PortableGit layout changed?)" }
+    $env:SSL_CERT_FILE = $bundle.FullName
+    Log "python TLS trust: SSL_CERT_FILE=$($bundle.FullName)"
 
     # --- cmake and ninja
     $cmakeVersion = V 'cmake'
