@@ -505,8 +505,8 @@ if $TEST_BIOFORMATS && $TEST_JAVABRIDGE; then
   python -c 'import large_image_source_bioformats;print(large_image_source_bioformats._getBioformatsVersion())'
 fi
 
-# The czi file is read through bioformats.
-if $TEST_BIOFORMATS && $TEST_JAVABRIDGE && [ "$(arch)" != "aarch64" ] && [ "$(arch)" != "arm64" ]; then
+# The czi file is read through openslide, bioformats, or vips.
+if { $TEST_OPENSLIDE || $TEST_PYVIPS || { $TEST_BIOFORMATS && $TEST_JAVABRIDGE; }; } && [ "$(arch)" != "aarch64" ] && [ "$(arch)" != "arm64" ]; then
   echo 'Use large_image to read a czi file'
   python <<EOF
 import large_image, pprint
