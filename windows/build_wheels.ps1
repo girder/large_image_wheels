@@ -5,10 +5,15 @@
 # library a wheel needs from source into a private prefix with the pinned
 # versions from the shared versions.txt, then builds and repairs the python
 # wheels.  It is meant to run inside a fresh Windows Sandbox (started on
-# the host through the .wsb LogonCommand) so that nothing from the host's
+# the host by windows\sandbox_run.ps1) so that nothing from the host's
 # installed software can influence the built wheels.
 #
-# Mapped folders (from build.wsb / sandbox_build.ps1):
+# As on linux and macos, everything a component needs is embedded here
+# (the launcher's C source, jxrlib's CMakeLists.txt, the MSVC installer,
+# the python patch scripts) and written out at build time; the windows
+# directory holds no per-component files.
+#
+# Mapped folders (from sandbox_run.ps1):
 #   C:\mnt\repo    the repository (read-only)
 #   C:\mnt\cache   the download cache (read-write; holds upstream artifacts
 #                  only -- toolchains, pythons, source tarballs.  Nothing
@@ -28,10 +33,10 @@
 # folders survives the run.
 #
 # Toolchain: no administrator rights are needed.  MSVC and the Windows SDK
-# are installed into the build directory by windows\install_msvc.py (from
-# Microsoft's VS manifest, at the versions pinned in versions.txt; the
-# payloads are cached), PortableGit, cmake, ninja, nasm and the python.org
-# NuGet pythons are expanded from cached downloads.
+# are installed into the build directory by the install_msvc.py embedded
+# below (from Microsoft's VS manifest, at the versions pinned in
+# versions.txt; the payloads are cached), PortableGit, cmake, ninja, nasm
+# and the python.org NuGet pythons are expanded from cached downloads.
 #
 # Parameters / environment (parameters win, then the environment, then
 # C:\mnt\run\args.json, then the defaults):
@@ -40,6 +45,11 @@
 #                 3.14t and 3.15t; a trailing t selects the free-threaded
 #                 NuGet build)
 #   -WarmCache    only download/install the toolchain and pythons, then stop
+#   -DevSetup     dev mode only: -WarmCache plus the extras development
+#                 needs that the build does not (requests and packaging for
+#                 check_versions.py, into the checkout's own python).  The
+#                 one command that rebuilds a development environment after
+#                 an agent sandbox reset.
 #   LIW_PYTHONS   like -Pythons, space separated
 #   LIW_FORCE     set to 1 to ignore completed-step stamps and rebuild all
 #   LIW_BUILD     working directory (default C:\liw_build)
@@ -51,7 +61,8 @@
 param(
     [string[]]$Packages = @(),
     [string[]]$Pythons = @(),
-    [switch]$WarmCache
+    [switch]$WarmCache,
+    [switch]$DevSetup
 )
 
 $ErrorActionPreference = 'Stop'
@@ -159,12 +170,14 @@ if ($paramPackages.Count -gt 0) {
     $script:Packages = $paramPackages
     $script:ArgsSource = 'parameters'
 }
-if ($WarmCache) { $script:Command = 'cache' }
-# The run exchange persists between runs now that the launcher may be the
-# static .wsb (which does not reset it), so clear the last run's markers;
-# the log is recreated by the first Log call.  A stale args.json from an
-# earlier launcher run is possible; the parameter source is logged so a
-# static-.wsb run that picks one up is visible at once.
+if ($WarmCache -or $DevSetup) { $script:Command = 'cache' }
+# (-DevSetup installs into the checkout's python, which must be found
+# before Main scrubs PATH.)
+$script:CheckoutPython = (Get-Command python -ErrorAction SilentlyContinue).Source
+# The run exchange persists between runs in dev mode (C:\liw_build\run),
+# so clear the last run's markers; the log is recreated by the first Log
+# call.  The parameter source is logged so a run that picks up a stale
+# args.json is visible at once.
 Remove-Item -Path (Join-Path $RunDir 'exit_code') -Force `
     -ErrorAction SilentlyContinue
 Remove-Item -Path $LogPath -Force -ErrorAction SilentlyContinue
@@ -174,9 +187,250 @@ Remove-Item -Path $LogPath -Force -ErrorAction SilentlyContinue
 # supply headers, link targets, or DLLs.
 $script:ToolPaths = @()
 
-# Log, Die, Assert-Exit, V, Fetch, Expand-Zip, Get-Json, Run-Logged,
-# Ensure-Pythons, Ensure-PortableGit (shared with test_wheels.ps1).
-. (Join-Path $PSScriptRoot 'liw_common.ps1')
+# --------------------------------------------------------------------------
+# Logging, downloads, pythons, PortableGit (test_wheels.ps1 carries its own
+# copies of the ones it needs; the two in-sandbox scripts are
+# self-contained, as the macos scripts are).
+# --------------------------------------------------------------------------
+
+function Log([string]$Message) {
+    Write-Host $Message
+    Add-Content -Path $LogPath -Value $Message -Encoding utf8
+}
+
+function Die([string]$Message) {
+    Log "error: $Message"
+    throw "liw: $Message"
+}
+
+function Assert-Exit([string]$What) {
+    if ($LASTEXITCODE -ne 0) {
+        Die "$What failed (exit code $LASTEXITCODE)"
+    }
+}
+
+# Version pins come from the shared versions.txt, exactly like the linux
+# build uses through getver.py.  getver.py resolves versions.txt relative
+# to the current directory, so run it from the repository root.
+function V([string]$Name, [string[]]$Extra = @()) {
+    if (-not $script:PatchPython) {
+        Die 'V() called before the pythons were installed'
+    }
+    Push-Location $RepoDir
+    # Relaxed ErrorActionPreference: a getver.py failure must be reported by
+    # the check below, not turned into a terminating NativeCommandError by
+    # the stderr redirection.  Extra arguments are getver.py's component
+    # selection (e.g. sqlite's year and release number).
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $out = (& $script:PatchPython (Join-Path $RepoDir 'getver.py') $Name @Extra |
+                Out-String).Trim()
+    } finally {
+        Pop-Location
+        $ErrorActionPreference = $prev
+    }
+    if (-not $out) {
+        Die "getver.py returned nothing for $Name (check versions.txt)"
+    }
+    return $out
+}
+
+# Downloads always land in the persistent cache (mapped read-write); the
+# cache holds upstream artifacts only and is never a source of build
+# outputs.  Expansion happens on the sandbox-local disk.
+function Fetch([string]$Url, [string]$Name) {
+    $downloads = Join-Path $CacheDir 'downloads'
+    New-Item -ItemType Directory -Force -Path $downloads | Out-Null
+    $dest = Join-Path $downloads $Name
+    if (Test-Path $dest) {
+        Log "cached: $Name"
+        return $dest
+    }
+    Log "downloading $Url"
+    # --retry-all-errors: by itself --retry covers only timeouts and some
+    # server errors; the first host run died on a TLS connection error
+    # (curl exit 35) on the seventh download in a row.  The file is
+    # downloaded under a temporary name so a failed or interrupted
+    # download never looks like a cached file.
+    $part = "$dest.part"
+    Remove-Item -Path $part -Force -ErrorAction SilentlyContinue
+    & curl.exe --retry 8 --retry-delay 5 --retry-all-errors --silent --show-error `
+        --location --fail $Url -o $part
+    if ($LASTEXITCODE -ne 0) {
+        Remove-Item -Path $part -Force -ErrorAction SilentlyContinue
+        Die "download failed (curl exit code $LASTEXITCODE): $Url"
+    }
+    Move-Item -Path $part -Destination $dest -Force
+    return $dest
+}
+
+function Expand-Zip([string]$Zip, [string]$Dest) {
+    # Expand-Archive insists on a .zip extension.
+    $zipPath = $Zip
+    if (-not $zipPath.EndsWith('.zip')) {
+        $zipPath = "$Zip.zip"
+        Copy-Item $Zip $zipPath -Force
+    }
+    if (Test-Path $Dest) { Remove-Item -Recurse -Force $Dest }
+    try {
+        Expand-Archive -Path $zipPath -DestinationPath $Dest
+    } catch {
+        # A truncated or corrupt download would otherwise stay in the cache
+        # and fail every later run the same way.
+        Remove-Item -Path $Zip, $zipPath -Force -ErrorAction SilentlyContinue
+        Die "cannot expand $Zip (removed from the cache; rerun to download it again): $($_.Exception.Message)"
+    }
+}
+
+function Get-Json([string]$Url) {
+    return Invoke-RestMethod -Uri $Url -Headers @{
+        'User-Agent' = 'large_image_wheels'
+    }
+}
+
+# Run a native command with its output streamed into the log.  Native
+# stderr must not be redirected while $ErrorActionPreference is Stop (the
+# redirection turns stderr lines into terminating error records in
+# Windows PowerShell 5.1), so it is relaxed for the duration.  Returns the
+# exit code when -NoDie is given instead of dying on a nonzero one.
+function Run-Logged([string]$Exe, [string[]]$CmdArgs, [string]$What, [switch]$NoDie) {
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $Exe @CmdArgs 2>&1 | ForEach-Object {
+            # A stderr line arrives as an ErrorRecord; "$_" of one renders
+            # as its exception type, not its text.
+            if ($_ -is [System.Management.Automation.ErrorRecord]) {
+                Log "$($_.Exception.Message)"
+            } else {
+                Log "$_"
+            }
+        }
+        $code = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+    if ($NoDie) { return $code }
+    if ($code -ne 0) { Die "$What failed (exit code $code)" }
+}
+
+# Output of a native command as one string, without stderr redirection
+# turning into a terminating error.
+function Capture-Native([string]$Exe, [string[]]$CmdArgs) {
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        return (& $Exe @CmdArgs 2>&1 | Out-String)
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+}
+
+# Write one of the sources embedded in this script (here-strings below)
+# with LF endings and no BOM, whatever line endings the checkout has.
+function Write-Embedded([string]$Path, [string]$Text) {
+    [System.IO.File]::WriteAllText($Path,
+        (($Text -replace "`r`n", "`n").TrimEnd() + "`n"),
+        [System.Text.UTF8Encoding]::new($false))
+}
+
+function Ensure-Pythons {
+    # python.org builds via their NuGet packages (no installer, no machine
+    # state beyond the expanded directory), one directory per requested
+    # version under $LIW_PY.  A trailing t (3.14t) selects the
+    # free-threaded build, which NuGet publishes as a separate
+    # python-freethreaded package with the same version strings.  The
+    # newest patch release of each minor is taken (the linux build likewise
+    # takes whatever patch release the manylinux image ships).
+    $indexes = @{}
+    foreach ($minor in $script:Pythons) {
+        $dest = Join-Path $LIW_PY $minor
+        if (Test-Path (Join-Path $dest 'python.exe')) { continue }
+        $package = if ($minor.EndsWith('t')) { 'python-freethreaded' } else { 'python' }
+        $base = $minor.TrimEnd('t')
+        if (-not $indexes.ContainsKey($package)) {
+            $indexes[$package] = Get-Json "https://api.nuget.org/v3-flatcontainer/$package/index.json"
+        }
+        # Prereleases carry a -rc/-a/-b suffix; exclude them.
+        $candidates = @($indexes[$package].versions |
+            Where-Object { $_ -like "$base.*" -and $_ -notmatch '[a-z-]' })
+        if ($candidates.Count -eq 0) {
+            Die "no stable python $minor ($package) on nuget.org"
+        }
+        $full = $candidates | Sort-Object { [version]$_ } | Select-Object -Last 1
+        Log "installing python $minor ($package $full)"
+        # (Cached as .zip: a .nupkg is a zip, and Expand-Archive insists on
+        # the extension; the cache need not hold every package twice.)
+        $file = Fetch "https://api.nuget.org/v3-flatcontainer/$package/$full/$package.$full.nupkg" "$package-$full.nupkg.zip"
+        Expand-Zip $file (Join-Path $LIW_DL "$package-$full")
+        if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
+        Move-Item (Join-Path $LIW_DL "$package-$full\tools") $dest
+        if (-not (Test-Path (Join-Path $dest 'python.exe'))) {
+            # The free-threaded package names its interpreter python3.14t.exe.
+            $exe = Get-ChildItem -Path $dest -Filter 'python3*t.exe' -File | Select-Object -First 1
+            if (-not $exe) { Die "no python.exe in the $package $full package" }
+            Copy-Item $exe.FullName (Join-Path $dest 'python.exe')
+        }
+        & (Join-Path $dest 'python.exe') -m ensurepip --upgrade | Out-Null
+        Assert-Exit "ensurepip failed for python $full"
+        & (Join-Path $dest 'python.exe') -m pip install --quiet `
+            --no-warn-script-location --upgrade pip setuptools wheel | Out-Null
+        Assert-Exit "pip bootstrap failed for python $full"
+    }
+    # The patch python (newest requested stable python) runs getver.py and
+    # install_msvc.py, writes the source patches, and drives delvewheel.
+    $best = $null
+    foreach ($minor in $script:Pythons) {
+        if ($minor.EndsWith('t')) { continue }
+        $candidate = Join-Path $LIW_PY "$minor\python.exe"
+        if (Test-Path $candidate) {
+            if (-not $best -or
+                ([version]($minor) -gt [version]($best))) {
+                $best = $minor
+            }
+        }
+    }
+    if (-not $best) { Die 'no stable python was installed (the patch python must not be free-threaded)' }
+    $script:PatchPython = Join-Path $LIW_PY "$best\python.exe"
+    Log "patch python: $script:PatchPython"
+}
+
+# PortableGit: git for the source clones, bash for the shared test script.
+# The pin is the release tag without its v (2.56.0.windows.4); the asset is
+# named after the version with the windows build number appended when it is
+# not the first (PortableGit-2.56.0.4-64-bit.7z.exe,
+# PortableGit-2.56.0-64-bit.7z.exe for 2.56.0.windows.1).  Returns the
+# directory it was expanded into.
+function Ensure-PortableGit {
+    $gitVersion = V 'git-for-windows'
+    $gitDir = Join-Path $LIW_TOOLS 'git'
+    if (-not (Test-Path (Join-Path $gitDir "bin\bash.exe"))) {
+        Log "fetching PortableGit $gitVersion"
+        $tag = "v$gitVersion"
+        $assetVersion = ($gitVersion -replace '\.windows\.1$', '') -replace '\.windows\.', '.'
+        $asset = "PortableGit-$assetVersion-64-bit.7z.exe"
+        $file = Fetch "https://github.com/git-for-windows/git/releases/download/$tag/$asset" $asset
+        if (Test-Path $gitDir) { Remove-Item -Recurse -Force $gitDir }
+        $proc = Start-Process -FilePath $file `
+            -ArgumentList "-o `"$gitDir`" -y" -Wait -PassThru
+        if ($proc.ExitCode -ne 0) { Die 'PortableGit extraction failed' }
+        if (-not (Test-Path (Join-Path $gitDir 'bin\bash.exe'))) {
+            Die 'bash.exe missing after PortableGit extraction'
+        }
+    }
+    return $gitDir
+}
+
+# A Windows path in the POSIX form PortableGit's bash uses (C:\a\b ->
+# /c/a/b).
+function To-PosixPath([string]$Path) {
+    $p = $Path -replace '\\', '/'
+    if ($p -match '^([A-Za-z]):(.*)$') {
+        return '/' + $Matches[1].ToLower() + $Matches[2]
+    }
+    return $p
+}
 
 # --------------------------------------------------------------------------
 # Helpers.
@@ -320,16 +574,196 @@ function Assert-Dependents([string]$Image, [string[]]$Names, [string]$What) {
     }
 }
 
-# Build the launcher (windows\launcher.c) for a wheel's library directory:
-# the stand-in installed as <package>/bin/<tool>.exe that runs the real
-# tool from <dist>.libs with that directory first on PATH (launcher.c
-# explains why: no rpath on Windows).  Compiled once per library directory
-# name, without the C runtime.
+# The launcher: the stand-in for a command line tool bundled in a wheel.
+#
+# The linux and macos wheels ship their bundled tools (tiffinfo, gdalinfo,
+# vips, ...) as <package>/bin/<tool> with an rpath to the wheel's library
+# directory, so the tool runs when invoked by path.  Windows has no rpath:
+# an .exe finds its DLLs in its own directory, the system directories and
+# PATH, and delvewheel keeps the bundled (name-mangled) DLLs in the
+# wheel's top-level <dist>.libs directory, two levels up from
+# <package>/bin.  The build therefore moves each real tool into
+# <dist>.libs, next to its DLLs (and next to the vcruntime140.dll the tools
+# need and python's own directory would otherwise have to supply), and
+# installs this launcher under the tool's name in <package>/bin.  The
+# launcher finds <dist>.libs relative to its own location, puts it first on
+# PATH, runs the tool there with the unchanged command line and the
+# inherited console, and exits with the tool's exit status.  Nothing is
+# duplicated; the real tool is a normal executable in a directory that is
+# self-sufficient.
+#
+# It is built without the C runtime (kernel32 only, static buffers, no
+# optimizer so no memset/memcpy intrinsics are introduced); see
+# Build-Launcher for the command lines.  LIW_LIBS_NAME is the name of the
+# wheel's library directory (a bare token, stringified in the source,
+# because quotes do not survive a PowerShell native command line);
+# LIW_LIBS_UP (default 2) is how many directories above the launcher's own
+# directory that directory's parent is (<site-packages>/<package>/bin ->
+# 2).
+$script:LauncherSource = @'
+#include <windows.h>
+
+#ifndef LIW_LIBS_NAME
+#error LIW_LIBS_NAME must be defined (the wheel's library directory name)
+#endif
+#ifndef LIW_LIBS_UP
+#define LIW_LIBS_UP 2
+#endif
+#define LIW_STR2(x) #x
+#define LIW_STR(x) LIW_STR2(x)
+#define LIW_WIDE2(s) L ## s
+#define LIW_WIDE(s) LIW_WIDE2(s)
+#define LIW_LIBS_DIR LIW_WIDE(LIW_STR(LIW_LIBS_NAME))
+
+#define BUF 32768
+
+static wchar_t self[BUF];
+static wchar_t target[BUF];
+static wchar_t libs[BUF];
+static wchar_t oldpath[BUF];
+static wchar_t newpath[2 * BUF];
+static char narrow[BUF];
+static STARTUPINFOW si;
+static PROCESS_INFORMATION pi;
+
+static DWORD wlen(const wchar_t *s)
+{
+    DWORD n = 0;
+    while (s[n]) {
+        n++;
+    }
+    return n;
+}
+
+static void wcat(wchar_t *dest, DWORD *pos, const wchar_t *src)
+{
+    while (*src) {
+        dest[(*pos)++] = *src++;
+    }
+    dest[*pos] = 0;
+}
+
+static void say(const wchar_t *text)
+{
+    HANDLE err = GetStdHandle(STD_ERROR_HANDLE);
+    DWORD written = 0;
+    int n;
+    if (err == INVALID_HANDLE_VALUE || err == NULL) {
+        return;
+    }
+    if (WriteConsoleW(err, text, wlen(text), &written, NULL)) {
+        return;
+    }
+    /* Redirected stderr: write the text as bytes in the ANSI code page. */
+    n = WideCharToMultiByte(CP_ACP, 0, text, -1, narrow, BUF, NULL, NULL);
+    if (n > 1) {
+        WriteFile(err, narrow, (DWORD)(n - 1), &written, NULL);
+    }
+}
+
+static void fail(const wchar_t *what, const wchar_t *detail)
+{
+    say(L"launcher: ");
+    say(what);
+    if (detail) {
+        say(L": ");
+        say(detail);
+    }
+    say(L"\r\n");
+    ExitProcess(127);
+}
+
+void entry(void)
+{
+    DWORD n, pos, code = 127, up;
+    const wchar_t *name;
+    BYTE *p;
+    DWORD i;
+
+    n = GetModuleFileNameW(NULL, self, BUF);
+    if (n == 0 || n >= BUF - 1) {
+        fail(L"cannot determine my own path", NULL);
+    }
+    /* name = the launcher's own file name; cut LIW_LIBS_UP + 1 path
+     * components off to reach the directory that holds LIW_LIBS_DIR. */
+    while (n > 0 && self[n - 1] != L'\\' && self[n - 1] != L'/') {
+        n--;
+    }
+    name = self + n;
+    for (up = 0; up <= LIW_LIBS_UP; up++) {
+        while (n > 0 && (self[n - 1] == L'\\' || self[n - 1] == L'/')) {
+            n--;
+        }
+        if (up == LIW_LIBS_UP) {
+            break;
+        }
+        while (n > 0 && self[n - 1] != L'\\' && self[n - 1] != L'/') {
+            n--;
+        }
+    }
+    if (n == 0) {
+        fail(L"my path is too shallow to locate the library directory", self);
+    }
+    pos = 0;
+    for (i = 0; i < n; i++) {
+        libs[pos++] = self[i];
+    }
+    libs[pos] = 0;
+    wcat(libs, &pos, L"\\");
+    wcat(libs, &pos, LIW_LIBS_DIR);
+    pos = 0;
+    wcat(target, &pos, libs);
+    wcat(target, &pos, L"\\");
+    wcat(target, &pos, name);
+    if (GetFileAttributesW(target) == INVALID_FILE_ATTRIBUTES) {
+        fail(L"bundled tool not found", target);
+    }
+
+    pos = 0;
+    wcat(newpath, &pos, libs);
+    n = GetEnvironmentVariableW(L"PATH", oldpath, BUF);
+    if (n > 0 && n < BUF) {
+        wcat(newpath, &pos, L";");
+        wcat(newpath, &pos, oldpath);
+    }
+    if (!SetEnvironmentVariableW(L"PATH", newpath)) {
+        fail(L"cannot set PATH", NULL);
+    }
+
+    /* Ctrl-C goes to the tool (same console); the launcher ignores it and
+     * reports the tool's exit status. */
+    SetConsoleCtrlHandler(NULL, TRUE);
+
+    p = (BYTE *)&si;
+    for (i = 0; i < sizeof(si); i++) {
+        p[i] = 0;
+    }
+    si.cb = sizeof(si);
+    if (!CreateProcessW(target, GetCommandLineW(), NULL, NULL, TRUE, 0,
+                        NULL, NULL, &si, &pi)) {
+        fail(L"cannot start bundled tool", target);
+    }
+    CloseHandle(pi.hThread);
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    if (!GetExitCodeProcess(pi.hProcess, &code)) {
+        code = 127;
+    }
+    CloseHandle(pi.hProcess);
+    ExitProcess(code);
+}
+'@
+
+# Build the launcher (above) for a wheel's library directory: the stand-in
+# installed as <package>/bin/<tool>.exe that runs the real tool from
+# <dist>.libs with that directory first on PATH.  Compiled once per
+# library directory name, without the C runtime.
 function Build-Launcher([string]$LibsName) {
     $exe = Join-Path $LIW_LAUNCHERS "$LibsName.exe"
     if (Test-Path $exe) { return $exe }
     $work = Join-Path $LIW_LAUNCHERS "$LibsName.build"
     New-Item -ItemType Directory -Force -Path $work | Out-Null
+    $source = Join-Path $work 'launcher.c'
+    Write-Embedded $source $script:LauncherSource
     Push-Location $work
     try {
         # kernel32 only, static buffers, no optimizer (it would introduce
@@ -337,7 +771,7 @@ function Build-Launcher([string]$LibsName) {
         # the source file name, which would otherwise become part of this
         # function's return value.)
         Run-Logged 'cl' @('/nologo', '/Od', '/GS-', '/W4', "/DLIW_LIBS_NAME=$LibsName",
-            '/c', (Join-Path $RepoDir 'windows\launcher.c')) 'launcher compile'
+            '/c', $source) 'launcher compile'
         Run-Logged 'link' @('/nologo', '/NODEFAULTLIB', '/ENTRY:entry',
             '/SUBSYSTEM:CONSOLE', "/OUT:$exe", 'launcher.obj', 'kernel32.lib') 'launcher link'
     } finally {
@@ -401,6 +835,423 @@ function Add-ToolPath([string]$Root, [string]$ExeName) {
     return $found.FullName
 }
 
+# install_msvc.py: install MSVC (with ATL) and the Windows SDK into a
+# directory without administrator rights or the Visual Studio installer.
+#
+# Adapted from manthey/utils install_msvc.py for the wheel pipeline: the
+# destination, the download cache, and the versions are parameters, and
+# the compiler environment is written to a JSON file (read by Enter-Msvc)
+# instead of the user's registry.  This is what lets the toolchain live in
+# the download cache (unlike a VS Build Tools install, which lands in
+# Program Files, needs elevation, and would be paid on every sandbox run)
+# and lets the agent sandbox, where nobody is an administrator, build the
+# same way the build sandbox does.
+#
+# The packages come straight from Microsoft's Visual Studio manifest: the
+# compiler's .vsix packages are zip files, and the SDK's .msi packages are
+# unpacked like an administrative install (msiexec /a) but by reading the
+# MSI tables with msi.dll and exploding the cabinets with expand.exe, so
+# the Windows Installer service is not needed.  Payload hashes from the
+# manifest are checked.  vctip.exe, the compiler's usage reporter, is
+# removed.
+#
+#   install_msvc.py --dest DIR --downloads DIR --env-json FILE
+#                   [--msvc-version 14.44.17.14] [--sdk-version 26100]
+#                   [--env-only]
+#
+# --env-only writes the environment for an existing --dest without
+# downloading anything.  Without version pins the newest in the manifest
+# is installed and the versions used are printed, so a pin can be
+# recorded.  Using these tools is subject to the Visual Studio Build Tools
+# license:
+# https://visualstudio.microsoft.com/license-terms/vs2022-ga-diagnosticbuildtools/
+$script:InstallMsvcSource = @'
+import argparse
+import concurrent.futures
+import ctypes
+import ctypes.wintypes
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+import urllib.parse
+import urllib.request
+import zipfile
+from pathlib import Path
+
+CHANNEL = 'https://aka.ms/vs/17/release/channel'
+# Packages (Microsoft.VC.<version>.<suffix>) for x64 host and target.  MFC
+# is deliberately not included (nothing in the dependency tree uses it);
+# ATL headers are small and some cmake projects probe for them.
+MSVC_PACKAGES = (
+    'Tools.HostX64.TargetX64.base',
+    'Tools.HostX64.TargetX64.Res.base',
+    'CRT.Headers.base',
+    'CRT.x64.Desktop.base',
+    'CRT.x64.Store.base',
+    'CRT.Redist.X64.base',
+    'ATL.Headers.base',
+    'ATL.X64.base',
+)
+SDK_MSIS = (
+    'Windows SDK Desktop Headers x64-x86_en-us.msi',
+    # The x64-named header MSIs only carry x64-specific files; the
+    # architecture-neutral headers (most of um and shared) ship in the
+    # x86-named packages, which an x64 install needs as well.
+    'Windows SDK Desktop Headers x86-x86_en-us.msi',
+    'Windows SDK Desktop Libs x64-x86_en-us.msi',
+    'Windows SDK Desktop Tools x64-x86_en-us.msi',
+    'Windows SDK OnecoreUap Headers x64-x86_en-us.msi',
+    'Windows SDK OnecoreUap Headers x86-x86_en-us.msi',
+    'Windows SDK for Windows Store Apps Headers-x86_en-us.msi',
+    'Windows SDK for Windows Store Apps Headers OnecoreUap-x86_en-us.msi',
+    'Windows SDK for Windows Store Apps Libs-x86_en-us.msi',
+    'Windows SDK for Windows Store Apps Tools-x86_en-us.msi',
+    'Universal CRT Headers Libraries and Sources-x86_en-us.msi',
+)
+
+
+def log(msg):
+    print(f'install_msvc: {msg}', flush=True)
+
+
+def get_json(url):
+    with urllib.request.urlopen(url) as resp:
+        return json.load(resp)
+
+
+def version_key(text):
+    return tuple(int(part) for part in text.split('.'))
+
+
+def load_manifest():
+    channel = get_json(CHANNEL)
+    item = next(entry for entry in channel['channelItems']
+                if entry['id'] == 'Microsoft.VisualStudio.Manifests.VisualStudio')
+    return get_json(item['payloads'][0]['url'])['packages']
+
+
+def pick_versions(packages, msvc_version, sdk_version):
+    """Resolve the MSVC tools version and the SDK package id.
+
+    With pins, the pinned versions must exist in the manifest (the
+    manifest keeps every released toolset of the VS 2022 line, so a pin
+    stays installable); without, the newest of each.
+    """
+    tools = re.compile(r'microsoft\.vc\.([\d.]+)\.tools\.hostx64\.targetx64\.base$')
+    available = sorted({match.group(1) for match in
+                        (tools.match(pkg['id'].lower()) for pkg in packages) if match},
+                       key=version_key)
+    if msvc_version:
+        if msvc_version not in available:
+            sys.exit(f'install_msvc: MSVC {msvc_version} is not in the manifest '
+                     f'(available: {", ".join(available)})')
+        msvc = msvc_version
+    else:
+        msvc = available[-1]
+    sdk_component = re.compile(r'microsoft\.visualstudio\.component\.windows1[01]sdk\.(\d+)$')
+    components = [(int(match.group(1)), pkg) for pkg in packages
+                  for match in [sdk_component.match(pkg['id'].lower())] if match]
+    if sdk_version:
+        # Either the full 10.0.<build>.0 or the bare build number (which is
+        # what versions.txt records).
+        parts = sdk_version.split('.')
+        build = int(parts[2] if len(parts) >= 3 else parts[0])
+        chosen = [pkg for number, pkg in components if number == build]
+        if not chosen:
+            sys.exit(f'install_msvc: Windows SDK {sdk_version} is not in the manifest '
+                     f'(available builds: {sorted(number for number, _ in components)})')
+        sdk_package = next(iter(chosen[0]['dependencies']))
+    else:
+        sdk_package = next(iter(max(components, key=lambda entry: entry[0])[1]['dependencies']))
+    return msvc, sdk_package
+
+
+def msvc_payloads(packages, version):
+    wanted = {f'microsoft.vc.{version}.{suffix}'.lower() for suffix in MSVC_PACKAGES}
+    payloads = []
+    for pkg in packages:
+        if pkg['id'].lower() in wanted and pkg.get('language') in (None, 'neutral', 'en-US'):
+            payloads.extend(pkg.get('payloads', []))
+    found = {pkg['id'].lower() for pkg in packages if pkg['id'].lower() in wanted}
+    if found != wanted:
+        sys.exit(f'install_msvc: missing packages: {sorted(wanted - found)}')
+    return payloads
+
+
+def download(payload, folder):
+    path = folder / Path(payload['fileName'].replace('\\', '/')).name
+    digest = payload['sha256'].lower()
+    if path.exists() and hashlib.sha256(path.read_bytes()).hexdigest() == digest:
+        return path
+    partial = path.with_name(path.name + '.partial')
+    # Retried like the curl downloads (--retry-all-errors): a sandbox's
+    # NAT'd connection drops a TLS handshake now and then, and one failed
+    # payload out of fifty must not end the run.
+    for attempt in range(8):
+        sha = hashlib.sha256()
+        try:
+            with urllib.request.urlopen(payload['url']) as resp, open(partial, 'wb') as fp:
+                while chunk := resp.read(1 << 20):
+                    sha.update(chunk)
+                    fp.write(chunk)
+        except OSError as exc:
+            log(f'retrying {path.name} ({exc})')
+            time.sleep(5)
+            continue
+        if sha.hexdigest() != digest:
+            partial.unlink()
+            msg = f'sha256 mismatch for {payload["fileName"]}'
+            raise RuntimeError(msg)
+        partial.replace(path)
+        return path
+    msg = f'download of {payload["fileName"]} failed after 8 attempts'
+    raise RuntimeError(msg)
+
+
+def download_all(payloads, folder):
+    folder.mkdir(parents=True, exist_ok=True)
+    total = sum(payload.get('size', 0) for payload in payloads)
+    log(f'downloading {len(payloads)} files ({total / 2 ** 20:.0f} MB; cached files are kept)')
+    with concurrent.futures.ThreadPoolExecutor(8) as pool:
+        return list(pool.map(lambda payload: download(payload, folder), payloads))
+
+
+def long_name(name):
+    """The long form of an MSI 'short|long' name."""
+    return name.split('|')[-1]
+
+
+def msi_string(record, field):
+    """A field of an MSI record as a string."""
+    msi = ctypes.windll.msi
+    buffer = ctypes.create_unicode_buffer(256)
+    size = ctypes.wintypes.DWORD(len(buffer))
+    error = msi.MsiRecordGetStringW(record, field, buffer, ctypes.byref(size))
+    while error == 234:  # ERROR_MORE_DATA
+        buffer = ctypes.create_unicode_buffer(size.value + 1)
+        size.value = len(buffer)
+        error = msi.MsiRecordGetStringW(record, field, buffer, ctypes.byref(size))
+    if error != 0:
+        sys.exit(f'install_msvc: MsiRecordGetStringW failed: {error}')
+    return buffer.value
+
+
+def msi_rows(database, query):
+    """All rows of a query against an open MSI database, as string lists."""
+    msi = ctypes.windll.msi
+    view = ctypes.wintypes.HANDLE()
+    if msi.MsiDatabaseOpenViewW(database, query, ctypes.byref(view)) != 0:
+        sys.exit(f'install_msvc: MsiDatabaseOpenViewW failed: {query}')
+    if msi.MsiViewExecute(view, None) != 0:
+        msi.MsiCloseHandle(view)
+        sys.exit(f'install_msvc: MsiViewExecute failed: {query}')
+    rows = []
+    while True:
+        record = ctypes.wintypes.HANDLE()
+        error = msi.MsiViewFetch(view, ctypes.byref(record))
+        if error == 259:  # ERROR_NO_MORE_ITEMS
+            break
+        if error != 0:
+            msi.MsiCloseHandle(view)
+            sys.exit(f'install_msvc: MsiViewFetch failed: {error}')
+        rows.append([msi_string(record, field) for field in
+                     range(1, msi.MsiRecordGetFieldCount(record) + 1)])
+        msi.MsiCloseHandle(record)
+    msi.MsiCloseHandle(view)
+    return rows
+
+
+def msi_file_plan(msi_path, root):
+    """Map each cabinet of an MSI to its [(member name, target path), ...].
+
+    This replicates how an administrative install (msiexec /a) unpacks a
+    package: the directories are resolved through the Directory table
+    relative to TARGETDIR (directory properties set by AppSearch are not
+    part of the admin sequence), and the cabinet members, which are named
+    after the File table keys, are renamed to their FileName column value.
+    """
+    msi = ctypes.windll.msi
+    database = ctypes.wintypes.HANDLE()
+    if msi.MsiOpenDatabaseW(str(msi_path), 0, ctypes.byref(database)) != 0:
+        sys.exit(f'install_msvc: cannot open {msi_path}')
+    media = sorted((int(sequence), cabinet) for sequence, cabinet in
+                   msi_rows(database, 'SELECT `LastSequence`,`Cabinet` FROM `Media`')
+                   if cabinet)
+    files = [row for row in msi_rows(
+        database, 'SELECT `File`,`Component_`,`FileName`,`Sequence` FROM `File`') if row[3]]
+    component_dir = {row[0]: row[1] for row in msi_rows(
+        database, 'SELECT `Component`,`Directory_` FROM `Component`')}
+    parents = {row[0]: (row[1], row[2]) for row in msi_rows(
+        database, 'SELECT `Directory`,`Directory_Parent`,`DefaultDir` FROM `Directory`')}
+    msi.MsiCloseHandle(database)
+
+    def resolve(directory, seen=()):
+        if directory == 'TARGETDIR':
+            return root
+        if directory in seen:
+            sys.exit(f'install_msvc: directory loop at {directory} in {msi_path}')
+        parent, default = parents[directory]
+        base = resolve(parent, seen + (directory,))
+        # An administrative image uses the source part of a
+        # "target:source" default directory.
+        name = default.split(':')[-1]
+        if name in ('', '.'):
+            return base
+        return base / long_name(name)
+
+    plan = {}
+    for file_key, component, file_name, sequence in files:
+        cabinet = next((cab for last, cab in media if last >= int(sequence)), None)
+        if cabinet is None:
+            sys.exit(f'install_msvc: no cabinet covers {file_name} in {msi_path}')
+        target = resolve(component_dir[component]) / long_name(file_name)
+        plan.setdefault(cabinet, []).append((file_key, target))
+    return plan
+
+
+def extract_vsix(path, dest):
+    with zipfile.ZipFile(path) as zf:
+        for info in zf.infolist():
+            name = urllib.parse.unquote(info.filename)
+            if not name.startswith('Contents/') or name.endswith('/'):
+                continue
+            target = dest / name[len('Contents/'):]
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(info) as src, open(target, 'wb') as dst:
+                shutil.copyfileobj(src, dst)
+
+
+def install_sdk(packages, sdk_package, dest, downloads):
+    pkg = next(pkg for pkg in packages if pkg['id'] == sdk_package)
+    by_name = {payload['fileName'].replace('\\', '/').split('/')[-1]: payload
+               for payload in pkg['payloads']}
+    missing = [name for name in SDK_MSIS if name not in by_name]
+    if missing:
+        sys.exit(f'install_msvc: {sdk_package} lacks {missing}')
+    folder = downloads / 'sdk'
+    msis = download_all([by_name[name] for name in SDK_MSIS], folder)
+    cabs = set()
+    for msi in msis:
+        cabs.update(name.decode() for name in re.findall(rb'[0-9a-f]{32}\.cab', msi.read_bytes()))
+    download_all([by_name[name] for name in sorted(cabs) if name in by_name], folder)
+    expand = Path(os.environ['SYSTEMROOT']) / 'System32' / 'expand.exe'
+    for msi in msis:
+        log(f'unpacking {msi.name}')
+        for cabinet, entries in msi_file_plan(msi, dest).items():
+            staging = dest / '_extract' / f'{msi.stem}-{Path(cabinet).stem}'
+            staging.mkdir(parents=True, exist_ok=True)
+            subprocess.run([str(expand), '-F:*', str(folder / cabinet), str(staging)],
+                           check=True, stdout=subprocess.DEVNULL)
+            for member, target in entries:
+                source = staging / member
+                if not source.exists():
+                    sys.exit(f'install_msvc: {cabinet} lacks {member}')
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(source), target)
+            shutil.rmtree(staging)
+    shutil.rmtree(dest / '_extract', ignore_errors=True)
+
+
+def latest_dir(parent, required=None):
+    dirs = [path for path in parent.iterdir()
+            if path.is_dir() and re.fullmatch(r'[\d.]+', path.name)]
+    if required:
+        dirs = [path for path in dirs if (path / required).exists()]
+    if not dirs:
+        sys.exit(f'install_msvc: nothing found in {parent}')
+    return max(dirs, key=lambda path: version_key(path.name))
+
+
+def build_environment(dest):
+    vc = latest_dir(dest / 'VC' / 'Tools' / 'MSVC')
+    kits = dest / 'Windows Kits' / '10'
+    sdkv = latest_dir(kits / 'Include', 'um').name
+    paths = [vc / 'bin' / 'Hostx64' / 'x64', kits / 'bin' / sdkv / 'x64']
+    # Runtime DLLs (CRT) so that dynamically linked programs run during
+    # the build (the wheels bundle their own vcruntime through delvewheel).
+    redist = dest / 'VC' / 'Redist' / 'MSVC'
+    if redist.exists():
+        paths += sorted(path for path in redist.glob('*/x64/*') if path.is_dir())
+    include = [vc / 'include', vc / 'atlmfc' / 'include'] + [
+        kits / 'Include' / sdkv / sub for sub in ('ucrt', 'shared', 'um', 'winrt', 'cppwinrt')]
+    lib = [vc / 'lib' / 'x64', vc / 'atlmfc' / 'lib' / 'x64',
+           kits / 'Lib' / sdkv / 'ucrt' / 'x64', kits / 'Lib' / sdkv / 'um' / 'x64']
+    env = {
+        'INCLUDE': ';'.join(str(path) for path in include),
+        'LIB': ';'.join(str(path) for path in lib),
+        'LIBPATH': ';'.join(str(path) for path in lib[:2]),
+        'VCToolsInstallDir': f'{vc}\\',
+        'VCToolsVersion': vc.name,
+        'WindowsSdkDir': f'{kits}\\',
+        'WindowsSDKVersion': f'{sdkv}\\',
+        'Platform': 'x64',
+        # setuptools then uses this compiler from the environment instead of
+        # looking for a Visual Studio installation.
+        'DISTUTILS_USE_SDK': '1',
+        'MSSdk': '1',
+        'VSCMD_SKIP_SENDTELEMETRY': '1',
+    }
+    return env, [str(path) for path in paths], vc.name, sdkv
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='install MSVC and the Windows SDK without the VS installer')
+    parser.add_argument('--dest', required=True, help='install directory')
+    parser.add_argument('--downloads', required=True,
+                        help='download cache (manifest payloads, kept for later runs)')
+    parser.add_argument('--env-json', required=True,
+                        help='where to write {"env": {...}, "paths": [...], '
+                             '"msvc": ..., "sdk": ...}')
+    parser.add_argument('--msvc-version', default='',
+                        help='MSVC tools version to install (default: newest)')
+    parser.add_argument('--sdk-version', default='',
+                        help='Windows SDK version to install, e.g. 10.0.26100.0 '
+                             '(default: newest)')
+    parser.add_argument('--env-only', action='store_true',
+                        help='only write the environment for an existing --dest')
+    args = parser.parse_args()
+    if sys.platform != 'win32':
+        sys.exit('install_msvc: this installs the Windows compiler and must run on Windows')
+    dest = Path(args.dest)
+    downloads = Path(args.downloads)
+    if not args.env_only:
+        log('reading the Visual Studio manifest')
+        packages = load_manifest()
+        msvc, sdk_package = pick_versions(packages, args.msvc_version, args.sdk_version)
+        log(f'MSVC {msvc} with ATL, and {sdk_package}, into {dest}')
+        log('use is subject to the Visual Studio Build Tools license')
+        if dest.exists():
+            shutil.rmtree(dest)
+        dest.mkdir(parents=True)
+        for vsix in download_all(msvc_payloads(packages, msvc), downloads / 'msvc'):
+            log(f'extracting {vsix.name}')
+            extract_vsix(vsix, dest)
+        install_sdk(packages, sdk_package, dest, downloads)
+        for vctip in dest.rglob('vctip.exe'):
+            vctip.unlink()
+    env, paths, vc_version, sdk_version = build_environment(dest)
+    # The pins are recorded as given so a caller can tell whether an
+    # existing install is the one versions.txt asks for (the manifest's
+    # package version, 14.44.17.14, differs from the toolset's own build
+    # number, 14.44.35207, which is what the install directory is named).
+    with open(args.env_json, 'w') as fp:
+        json.dump({'env': env, 'paths': paths, 'msvc': vc_version, 'sdk': sdk_version,
+                   'pins': {'msvc': args.msvc_version, 'sdk': args.sdk_version}},
+                  fp, indent=2)
+    log(f'MSVC {vc_version} and Windows SDK {sdk_version} at {dest}; '
+        f'environment written to {args.env_json}')
+
+
+if __name__ == '__main__':
+    main()
+'@
+
 # Every tool is pinned through versions.txt and fetched from a URL derived
 # from the pin: the GitHub releases API is deliberately not used (it rate
 # limits unauthenticated callers, and a NAT'd sandbox shares its address),
@@ -449,13 +1300,15 @@ function Ensure-Toolchain {
     Add-ToolPath $nasmDir 'nasm.exe' | Out-Null
 
     # --- MSVC and the Windows SDK, installed without the VS installer and
-    # without elevation by windows\install_msvc.py at the pinned versions.
-    # The manifest payloads live in the cache (so a sandbox run only
-    # extracts); the install itself is sandbox-local.
+    # without elevation by install_msvc.py (embedded above) at the pinned
+    # versions.  The manifest payloads live in the cache (so a sandbox run
+    # only extracts); the install itself is sandbox-local.
     $msvcVersion = V 'msvc'
     $sdkVersion = V 'winsdk'
     $msvcDir = Join-Path $LIW_TOOLS 'msvc'
     $envJson = Join-Path $LIW_TOOLS 'msvc_env.json'
+    $installer = Join-Path $LIW_TOOLS 'install_msvc.py'
+    Write-Embedded $installer $script:InstallMsvcSource
     # The pin is the manifest's package version (14.44.17.14); the
     # installer records the pins it was given next to the toolset build
     # number it found (14.44.35207), and an install is reused only when its
@@ -470,7 +1323,7 @@ function Ensure-Toolchain {
     if (-not $installed) {
         Log "installing MSVC $msvcVersion and Windows SDK $sdkVersion (cached payloads are reused)"
         Run-Logged $script:PatchPython @(
-            '-I', (Join-Path $RepoDir 'windows\install_msvc.py'),
+            '-I', $installer,
             '--dest', $msvcDir,
             '--downloads', (Join-Path $CacheDir 'downloads\vs'),
             '--env-json', $envJson,
@@ -568,18 +1421,6 @@ function Ensure-Clang {
     $out = Capture-Native (Join-Path $script:ClangBin 'clang-cl.exe') @('--version')
     if ($out -notmatch [regex]::Escape($version)) { Die "clang-cl does not report version ${version}: $out" }
     Log "clang-cl $version at $script:ClangBin"
-}
-
-# Output of a native command as one string, without stderr redirection
-# turning into a terminating error.
-function Capture-Native([string]$Exe, [string[]]$CmdArgs) {
-    $prev = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try {
-        return (& $Exe @CmdArgs 2>&1 | Out-String)
-    } finally {
-        $ErrorActionPreference = $prev
-    }
 }
 
 # Build and install a meson project into the private prefix with the
@@ -1025,13 +1866,123 @@ function Build-Cairo {
     Done-Stamp 'cairo'
 }
 
+# A cmake build for jxrlib (JPEG XR; the 4creators fork the linux and
+# macos builds use), written into the source tree as CMakeLists.txt.
+# jxrlib's own build is a GNU Makefile (the linux build runs it; macos
+# patches it), and the Visual Studio project files it ships predate the
+# toolset in use; this builds the same two shared libraries from the same
+# source lists as the Makefile (SRC_SYS/SRC_DEC/SRC_ENC -> jpegxr,
+# SRC_GLUE -> jxrglue), with the Makefile's defines, installs the headers
+# in the Makefile's layout, and writes the same libjxr.pc, so openslide's
+# zeiss-czi-jxr patch finds the library through pkg-config exactly as on
+# linux.
+#
+# The sources carry no export declarations; WINDOWS_EXPORT_ALL_SYMBOLS
+# gives the DLLs the export table the ELF/Mach-O builds have implicitly.
+$script:JxrlibCMakeLists = @'
+cmake_minimum_required(VERSION 3.16)
+project(jxrlib C)
+
+set(JXR_VERSION 1.1)
+add_compile_definitions(__ANSI__ DISABLE_PERF_MEASUREMENT _CRT_SECURE_NO_WARNINGS)
+# image/sys/ansi.h sizes its pointer-width integers by __LP64__, which
+# MSVC never defines; without it the 64-bit build fails its own
+# compile-time assertion (strcodec.h: sizeof(UINTPTR_T) == sizeof(void*)).
+# Consumers compile the same headers, so the define goes into libjxr.pc
+# as well.
+set(JXR_EXTRA_CFLAGS "")
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+  add_compile_definitions(__LP64__=1)
+  set(JXR_EXTRA_CFLAGS " -D__LP64__=1")
+endif()
+# The Makefile compiles with -w; the code is old and noisy.
+if(MSVC)
+  string(APPEND CMAKE_C_FLAGS " /w")
+endif()
+include_directories(common/include image/sys jxrgluelib jxrtestlib)
+
+# JXRMeta.h uses __in_win/__out_win, which it knows only through its own
+# wmsal.h -- and wmspecstring.h skips wmsal.h once MSVC's specstrings.h
+# (via windows.h) has been included, as it is in openslide's sources.
+# Define them from sal.h's __in/__out when they are missing (the header
+# does that already under WIN32, which would also select the non-ANSI
+# platform code).  Patched in the source so the installed header carries
+# it; the file may have either line ending.
+# JXRGlue.h declares the two IID_PKImageWmp* constants as plain extern
+# data.  WINDOWS_EXPORT_ALL_SYMBOLS skips read-only data, so the library
+# build exports them explicitly (JXR_DLL_EXPORT, defined for jxrglue
+# below; the declaration's dllexport carries over to the definition in
+# JXRGlue.c), and a consumer of jxrglue.dll can only link data through a
+# dllimport declaration (MSVC thunks functions, not data), which
+# JXR_DLL_IMPORT adds -- only libjxr.pc's Cflags define that.
+file(READ "${CMAKE_SOURCE_DIR}/jxrgluelib/JXRGlue.h" _jxr_glue)
+string(REPLACE "EXTERN_C const PKIID IID_PKImageWmpEncode;"
+  "#if defined(_WIN32) && defined(JXR_DLL_EXPORT)
+#define JXR_DATA __declspec(dllexport)
+#elif defined(_WIN32) && defined(JXR_DLL_IMPORT)
+#define JXR_DATA __declspec(dllimport)
+#else
+#define JXR_DATA
+#endif
+EXTERN_C JXR_DATA const PKIID IID_PKImageWmpEncode;" _jxr_glue "${_jxr_glue}")
+string(REPLACE "EXTERN_C const PKIID IID_PKImageWmpDecode;"
+  "EXTERN_C JXR_DATA const PKIID IID_PKImageWmpDecode;" _jxr_glue "${_jxr_glue}")
+file(WRITE "${CMAKE_SOURCE_DIR}/jxrgluelib/JXRGlue.h" "${_jxr_glue}")
+
+file(READ "${CMAKE_SOURCE_DIR}/jxrgluelib/JXRMeta.h" _jxr_meta)
+string(REGEX REPLACE "#ifdef WIN32(\r?\n)#define __in_win"
+  "#if defined(WIN32) || !defined(__in_win)\\1#define __in_win" _jxr_meta "${_jxr_meta}")
+file(WRITE "${CMAKE_SOURCE_DIR}/jxrgluelib/JXRMeta.h" "${_jxr_meta}")
+
+set(SRC_SYS adapthuff.c image.c strcodec.c strPredQuant.c strTransform.c perfTimerANSI.c)
+list(TRANSFORM SRC_SYS PREPEND image/sys/)
+set(SRC_DEC decode.c postprocess.c segdec.c strdec.c strInvTransform.c strPredQuantDec.c JXRTranscode.c)
+list(TRANSFORM SRC_DEC PREPEND image/decode/)
+set(SRC_ENC encode.c segenc.c strenc.c strFwdTransform.c strPredQuantEnc.c)
+list(TRANSFORM SRC_ENC PREPEND image/encode/)
+set(SRC_GLUE JXRGlue.c JXRMeta.c JXRGluePFC.c JXRGlueJxr.c)
+list(TRANSFORM SRC_GLUE PREPEND jxrgluelib/)
+
+add_library(jpegxr SHARED ${SRC_SYS} ${SRC_DEC} ${SRC_ENC})
+set_target_properties(jpegxr PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+add_library(jxrglue SHARED ${SRC_GLUE})
+set_target_properties(jxrglue PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+target_compile_definitions(jxrglue PRIVATE JXR_DLL_EXPORT)
+target_link_libraries(jxrglue PRIVATE jpegxr)
+
+install(TARGETS jpegxr jxrglue
+  RUNTIME DESTINATION bin LIBRARY DESTINATION lib ARCHIVE DESTINATION lib)
+install(DIRECTORY common/include/ DESTINATION include/libjxr/common FILES_MATCHING PATTERN "*.h")
+install(DIRECTORY image/x86/ DESTINATION include/libjxr/image/x86 FILES_MATCHING PATTERN "*.h")
+install(DIRECTORY image/sys/ image/encode/ image/decode/ DESTINATION include/libjxr/image FILES_MATCHING PATTERN "*.h")
+install(DIRECTORY jxrgluelib/ DESTINATION include/libjxr/glue FILES_MATCHING PATTERN "*.h")
+install(DIRECTORY jxrtestlib/ DESTINATION include/libjxr/test FILES_MATCHING PATTERN "*.h")
+
+# The Makefile's libjxr.pc (its template uses python %-formatting).
+file(WRITE "${CMAKE_BINARY_DIR}/libjxr.pc"
+"prefix=${CMAKE_INSTALL_PREFIX}
+exec_prefix=\${prefix}
+libdir=\${exec_prefix}/lib
+includedir=\${prefix}/include
+
+Name: libjxr
+Description: A library for reading JPEG XR images.
+
+Version: ${JXR_VERSION}
+Libs: -L\${libdir} -ljpegxr -ljxrglue
+Libs.private: -lm
+Cflags: -I\${includedir}/libjxr/common -I\${includedir}/libjxr/image/x86 -I\${includedir}/libjxr/image -I\${includedir}/libjxr/glue -I\${includedir}/libjxr/test -D__ANSI__ -DDISABLE_PERF_MEASUREMENT -DJXR_DLL_IMPORT${JXR_EXTRA_CFLAGS}
+")
+install(FILES "${CMAKE_BINARY_DIR}/libjxr.pc" DESTINATION lib/pkgconfig)
+'@
+
 # jxrlib (JPEG XR, optional in openslide through the zeiss-czi-jxr patch):
-# built with windows\jxrlib.cmake (see that file).
+# built with the CMakeLists.txt above.
 function Build-Jxrlib {
     if (Skip-If-Done 'jxrlib') { return }
     Log '=== jxrlib'
     $src = Git-Clone 'https://github.com/4creators/jxrlib.git' "v$(V jxrlib)" (Join-Path $LIW_SRC 'jxrlib')
-    Copy-Item (Join-Path $RepoDir 'windows\jxrlib.cmake') (Join-Path $src 'CMakeLists.txt') -Force
+    Write-Embedded (Join-Path $src 'CMakeLists.txt') $script:JxrlibCMakeLists
     Cmake-Build $src
     Assert-Files (Join-Path $LIW_PREFIX 'bin') @('jpegxr.dll', 'jxrglue.dll') 'jxrlib'
     Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('libjxr.pc') 'jxrlib'
@@ -1123,7 +2074,7 @@ open(path, "w").write(s)
 
 # Expose each tool in <package>/bin as a console script that runs the
 # launcher of the same name (after the repair, <package>/bin/<tool>.exe is
-# windows\launcher.c, which finds the real tool in <dist>.libs).
+# the launcher, which finds the real tool in <dist>.libs).
 $script:ToolWrapper = @'
 import os
 import subprocess
@@ -1193,8 +2144,8 @@ function Build-Pylibtiff {
     # Windows has no os.execv replacement semantics to rely on, so the
     # wrapper runs the tool as a child and exits with its code (the
     # macos/linux wrappers use os.execv).  After the repair,
-    # libtiff/bin/<tool>.exe is the launcher (windows\launcher.c), which
-    # finds the real tool and its DLLs in pylibtiff.libs itself.
+    # libtiff/bin/<tool>.exe is the launcher, which finds the real tool
+    # and its DLLs in pylibtiff.libs itself.
     $wrapper = @'
 import os
 import subprocess
@@ -1706,12 +2657,30 @@ open(path, "w").write(s)
 # Main.
 # --------------------------------------------------------------------------
 
+# -DevSetup, after the toolchain: the extras development needs that the
+# build does not (requests and packaging for check_versions.py), into the
+# checkout's own python (--user: the agent sandbox's tools tree is not
+# writable).
+function Install-DevExtras {
+    if (-not $script:CheckoutPython) {
+        Log 'dev setup: no python on PATH; check_versions.py will need requests and packaging'
+        return
+    }
+    Log "dev setup: installing requests and packaging for check_versions.py into $script:CheckoutPython"
+    Run-Logged $script:CheckoutPython @('-m', 'pip', 'install', '--quiet', '--user',
+        'requests', 'packaging') 'pip install of requests/packaging'
+    Log 'dev setup: done; build with: powershell -File windows\build_wheels.ps1 -Packages <pkg> -Pythons <ver>'
+}
+
 function Main {
     Log "=== build_wheels.ps1 started $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
     Log "mode: $(if ($script:DevMode) { 'dev (' + $RepoDir + ')' } else { 'build sandbox' })"
     Log "parameters from: $($script:ArgsSource)"
     Log "pythons: $($script:Pythons -join ' ')"
     Log "packages: $($script:Packages -join ' ')"
+    if ($DevSetup -and -not $script:DevMode) {
+        Die '-DevSetup is for a checkout; the build sandbox sets up its own toolchain on every run'
+    }
 
     # Pythons first: V() runs getver.py with the patch python, and the
     # toolchain pins come from versions.txt.
@@ -1722,6 +2691,7 @@ function Main {
 
     if ($script:Command -eq 'cache') {
         Log '=== cache warm-up complete (toolchain and pythons installed)'
+        if ($DevSetup) { Install-DevExtras }
         return
     }
     if ($script:Packages.Count -eq 0) {

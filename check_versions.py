@@ -432,7 +432,7 @@ Packages = {
     #     're': r'MrSID_DSDK-([0-9]+\.[0-9]+(|\.[0-9]+(|\.[0-9]+)))-rhel[0-9]+.x86-64.gcc[0-9]+\.(tar\.gz|zip)$',  # noqa
     # },
     # windows.  The MSVC toolset and Windows SDK versions in the current VS
-    # 2022 manifest; windows/install_msvc.py installs them by version.
+    # 2022 manifest; windows/build_wheels.ps1 installs them by version.
     'msvc': {
         'json': 'https://aka.ms/vs/17/release/channel',
         'keys': lambda data: vsManifestIds('https://aka.ms/vs/17/release/channel'),

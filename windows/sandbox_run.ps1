@@ -1,8 +1,42 @@
-# sandbox_common.ps1 - host-side functions shared by sandbox_build.ps1 and
-# test_via_sandbox.ps1: the host sanity checks, the sandbox launch (both
-# backends), the log streaming, the wait for the exit marker, and the
-# stop.  Dot-sourced by those scripts (which set $script:Tool to their own
-# name for messages); nothing here runs on its own.
+# sandbox_run.ps1 - the HOST side of the Windows wheel pipeline: run on the
+# host (outside any Windows Sandbox) to build the wheels in a fresh
+# sandbox, to test them in another, or to pre-warm the download cache.
+# The counterpart of build.sh + test_via_docker.py and of
+# macos/tart_build.sh + macos/test_via_tart.sh; sandbox_build.bat and
+# test_via_sandbox.bat are its two entry points:
+#
+#   sandbox_run.ps1 build [-Packages ...] [-Pythons ...]
+#       A complete, isolated build: a fresh Windows Sandbox (its installed
+#       software is empty by construction) with the repository mapped
+#       read-only plus the download cache, the wheel output folder and a
+#       per-run exchange folder read-write, running windows\build_wheels.ps1
+#       inside.  The host streams the in-sandbox log, waits for the exit
+#       marker, validates that every requested package produced a wheel
+#       for every requested python, and reports.  Nothing about the build
+#       environment persists between runs; the cache only holds upstream
+#       downloads (toolchains, pythons, source tarballs), never build
+#       outputs.
+#   sandbox_run.ps1 test [-Pythons ...]
+#       A fresh sandbox -- a machine with nothing installed, not even the
+#       VC++ redistributable -- with the repository and the wheels mapped
+#       read-only plus the cache and a separate exchange folder read-write,
+#       running windows\test_wheels.ps1 inside: for every python, install
+#       the wheels by exact version into a clean venv, run the embedded
+#       check_wheels.py (the PE import audit and the loaded-DLL identity
+#       checks), and run the shared test\test_script.sh.  The host streams
+#       the log, prints the report, and exits with the result.
+#   sandbox_run.ps1 cache
+#       build_wheels.ps1 -WarmCache in a throwaway sandbox: the toolchain
+#       downloads, the MSVC/SDK payloads and the pythons into the cache.
+#
+# This is standalone: it manages its own sandbox lifecycle the way `docker
+# build` manages images.  The Windows Sandbox feature must be enabled
+# (Enable-WindowsOptionalFeature -Online -FeatureName
+# Containers-DisposableClientVM, then reboot).  The sandbox is stopped
+# afterwards by the in-sandbox script itself (it shuts the VM down after
+# writing its exit code, on success and failure alike, as on macos) and,
+# with the cli backend, by wsb stop; a failed run's sandbox is left for
+# inspection.  The host never taskkills anything.
 #
 # Backends, as in manthey/utils agent_sandbox.py (the same host runs the
 # agent session this way):
@@ -19,6 +53,40 @@
 #         in-sandbox script runs from the LogonCommand as the elevated
 #         built-in account.  Only one sandbox at a time, and the agent
 #         session is one.
+#
+# Everything lives under the repository, as on linux and macos: the wheels
+# in <repo>\wheels (gitignored, where build.sh and tart_build.sh put
+# theirs), the windows-specific cache and run exchanges under
+# <repo>\windows (cache, run, test_run; gitignored).  The generated sandbox
+# configuration is saved in the run folder (liw_wheels_build.wsb /
+# liw_wheels_test.wsb) for reference.
+
+param(
+    [Parameter(Position = 0)]
+    [ValidateSet('build', 'test', 'cache')]
+    [string]$Command = 'build',
+    # Default package set; keep in sync with build_wheels.ps1's builders.
+    [string[]]$Packages = @('pylibtiff', 'glymur', 'openslide_python'),
+    [string[]]$Pythons = @('3.11', '3.12', '3.13', '3.14', '3.15', '3.14t', '3.15t'),
+    [int]$MemoryMB = 8192,
+    [int]$TimeoutSec = 14400,
+    [string]$RepoDir = '',
+    [string]$CacheDir = '',
+    [string]$WheelsDir = '',
+    [string]$RunDir = ''
+)
+
+$ErrorActionPreference = 'Stop'
+$script:Tool = "sandbox_run $Command"
+# (From the .bat / powershell -File, "-Pythons 3.12,3.13" is one string.)
+$Packages = @($Packages | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
+$Pythons = @($Pythons | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
+$script:Self = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+# --------------------------------------------------------------------------
+# The sandbox: host checks, both backends, log streaming, the wait, the
+# stop.
+# --------------------------------------------------------------------------
 
 function Die([string]$Message) {
     throw "$($script:Tool): $Message"
@@ -407,3 +475,181 @@ function Report-SandboxShutdown {
             'indiscriminate and could hit the agent sandbox')
     }
 }
+
+# --------------------------------------------------------------------------
+# Wheels.
+# --------------------------------------------------------------------------
+
+# The wheel file prefix of a package (as build.sh's copy-out list names
+# them).
+function Wheel-Prefix([string]$Package) {
+    switch ($Package) {
+        'glymur' { return 'Glymur' }
+        'gdal' { return 'GDAL' }
+        default { return $Package }
+    }
+}
+
+# Whether the wheel folder has a wheel of the given prefix that the given
+# python installs (the same tag rules as test_wheels.ps1's Find-Wheel).
+function Wheel-ForPython([string]$Prefix, [string]$Req) {
+    $base = $Req.TrimEnd('t')
+    $num = $base -replace '\.', ''
+    $any = @(Get-ChildItem -Path $WheelsDir -Filter "$Prefix-*py3-none-any.whl" `
+        -ErrorAction SilentlyContinue)
+    if ($any.Count -gt 0) { return $true }
+    $plat = @(Get-ChildItem -Path $WheelsDir -Filter "$Prefix-*py3-none-win_amd64.whl" `
+        -ErrorAction SilentlyContinue)
+    if ($plat.Count -gt 0) { return $true }
+    if ($Req.EndsWith('t')) {
+        $tags = @("cp$num-cp${num}t", "cp$num-abi3.abi3t", "cp$num-abi3t")
+    } else {
+        $tags = @("cp$num-cp$num")
+        foreach ($b in @('310', '311', '312', '313', '314', '315')) {
+            if ([int]$b -le [int]$num) { $tags += "cp$b-abi3" }
+        }
+    }
+    foreach ($tag in $tags) {
+        $found = @(Get-ChildItem -Path $WheelsDir -Filter "$Prefix-*-$tag-win_amd64.whl" `
+            -ErrorAction SilentlyContinue)
+        if ($found.Count -gt 0) { return $true }
+    }
+    return $false
+}
+
+# --------------------------------------------------------------------------
+# Main.
+# --------------------------------------------------------------------------
+
+if (-not $RepoDir) { $RepoDir = Split-Path -Parent $script:Self }
+# (Get-Item: the on-disk spelling, so a lowercase drive letter from the
+# command line does not show up in the paths reported.)
+$RepoDir = (Get-Item $RepoDir).FullName
+# The test's run exchange is separate (test_run) so a test does not
+# disturb the build's log.  The writable folders are mapped at their own
+# guest paths; the repo mapping (read-only) merely also shows them, which
+# is harmless.
+$workDir = Join-Path $RepoDir 'windows'
+if (-not $CacheDir) { $CacheDir = Join-Path $workDir 'cache' }
+if (-not $WheelsDir) { $WheelsDir = Join-Path $RepoDir 'wheels' }
+if (-not $RunDir) {
+    $RunDir = Join-Path $workDir $(if ($Command -eq 'test') { 'test_run' } else { 'run' })
+}
+$repoGuest = 'C:\mnt\repo'
+$inSandbox = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File '
+
+# --- sanity checks -----------------------------------------------------------
+Assert-SandboxHost
+foreach ($dir in @($RepoDir, (Join-Path $RepoDir 'windows'), (Join-Path $RepoDir 'test'))) {
+    if (-not (Test-Path $dir)) { Die "missing directory: $dir" }
+}
+if ($Command -eq 'build' -and $Packages.Count -eq 0) { Die 'no packages requested' }
+if ($Pythons.Count -eq 0) { Die 'no pythons requested' }
+if ($Command -eq 'test') {
+    $wheels = @(Get-ChildItem -Path $WheelsDir -Filter '*.whl' -File -ErrorAction SilentlyContinue)
+    if ($wheels.Count -eq 0) {
+        Die "no wheels in $WheelsDir; run sandbox_build first"
+    }
+    # A build that failed leaves its exit code behind (and no wheels of the
+    # packages it built); refuse rather than test leftovers.
+    $buildExit = Join-Path (Join-Path $workDir 'run') 'exit_code'
+    if ((Test-Path $buildExit) -and ((Get-Content $buildExit -Raw).Trim() -ne '0')) {
+        Die "the last build failed (see $(Join-Path $workDir 'run\build.log')); not testing its leftovers"
+    }
+}
+
+# --- folder setup ------------------------------------------------------------
+New-Item -ItemType Directory -Force -Path $CacheDir, $WheelsDir | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $CacheDir 'downloads') | Out-Null
+if (Test-Path $RunDir) { Remove-Item -Recurse -Force $RunDir }
+New-Item -ItemType Directory -Force -Path $RunDir | Out-Null
+if ($Command -eq 'build') {
+    # The previous wheels of the requested packages go first, as build.sh
+    # removes them before copying the new ones out: a failed build must
+    # not leave old wheels for the test run to pick up.
+    foreach ($pkg in $Packages) {
+        if ($pkg.StartsWith('dep:')) { continue }
+        Remove-Item -Path (Join-Path $WheelsDir "$(Wheel-Prefix $pkg)-*.whl") `
+            -Force -ErrorAction SilentlyContinue
+    }
+}
+# The in-sandbox script reads its parameters from the exchange folder (the
+# LogonCommand cannot take arguments comfortably).
+if ($Command -eq 'test') {
+    $runArgs = @{ pythons = @($Pythons) }
+} else {
+    $runArgs = @{ packages = @($Packages); pythons = @($Pythons); command = $Command }
+}
+$runArgs | ConvertTo-Json | Set-Content -Path (Join-Path $RunDir 'args.json') -Encoding ascii
+
+# --- launch and wait ----------------------------------------------------------
+if ($Command -eq 'test') {
+    Info "wheels under test: $($wheels.Count) in $WheelsDir"
+    $result = Invoke-SandboxRun -RunDir $RunDir `
+        -Command "$inSandbox$repoGuest\windows\test_wheels.ps1" `
+        -LogName 'test.log' -MemoryMB $MemoryMB -TimeoutSec $TimeoutSec `
+        -WsbName 'liw_wheels_test.wsb' -MappedFolders @(
+            @{ Host = $RepoDir; Guest = $repoGuest; ReadOnly = $true },
+            @{ Host = $WheelsDir; Guest = 'C:\mnt\wheels'; ReadOnly = $true },
+            @{ Host = $CacheDir; Guest = 'C:\mnt\cache'; ReadOnly = $false },
+            @{ Host = $RunDir; Guest = 'C:\mnt\run'; ReadOnly = $false })
+} else {
+    $logon = "$inSandbox$repoGuest\windows\build_wheels.ps1"
+    if ($Command -eq 'cache') { $logon = "$logon -WarmCache" }
+    $result = Invoke-SandboxRun -RunDir $RunDir -Command $logon `
+        -LogName 'build.log' -MemoryMB $MemoryMB -TimeoutSec $TimeoutSec `
+        -WsbName 'liw_wheels_build.wsb' -MappedFolders @(
+            @{ Host = $RepoDir; Guest = $repoGuest; ReadOnly = $true },
+            @{ Host = $CacheDir; Guest = 'C:\mnt\cache'; ReadOnly = $false },
+            @{ Host = $WheelsDir; Guest = 'C:\mnt\wheels'; ReadOnly = $false },
+            @{ Host = $RunDir; Guest = 'C:\mnt\run'; ReadOnly = $false })
+}
+
+# --- validate and report ------------------------------------------------------
+if ($Command -eq 'test') {
+    $reportPath = Join-Path $RunDir 'report.txt'
+    if (Test-Path $reportPath) {
+        Write-Host ''
+        Write-Host "--- $reportPath"
+        Get-Content $reportPath | Write-Host
+    } else {
+        Info 'no report.txt was written'
+        if ($result -eq 0) { $result = 1 }
+    }
+    if ($result -eq 0) {
+        Info 'the wheel tests passed'
+    } else {
+        Info "the wheel tests failed with exit code $result"
+    }
+    Info "the full in-sandbox log is $(Join-Path $RunDir 'test.log')"
+} else {
+    # Every requested package must have produced a wheel that every
+    # requested python can install, as tart_build.sh checks on macos (the
+    # counterpart of build.sh copying the expected wheels out of the docker
+    # build): a silently missing wheel would otherwise only surface as
+    # quietly skipped tests.
+    if ($Command -eq 'build' -and $result -eq 0) {
+        $missing = @()
+        foreach ($pkg in $Packages) {
+            if ($pkg.StartsWith('dep:')) { continue }
+            $prefix = Wheel-Prefix $pkg
+            foreach ($req in $Pythons) {
+                if (-not (Wheel-ForPython $prefix $req)) { $missing += "$pkg/$req" }
+            }
+        }
+        if ($missing.Count -gt 0) {
+            Info "missing expected wheels: $($missing -join ' ')"
+            $result = 1
+        } else {
+            Get-ChildItem -Path $WheelsDir -Filter '*.whl' | ForEach-Object { Info "wheel: $($_.Name)" }
+        }
+    }
+    if ($result -eq 0) {
+        Info "the $Command succeeded"
+    } else {
+        Info "the $Command failed with exit code $result"
+    }
+    Info "the full build log is $(Join-Path $RunDir 'build.log')"
+}
+Report-SandboxShutdown
+exit $result
