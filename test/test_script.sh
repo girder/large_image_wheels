@@ -81,10 +81,19 @@ dl() { # dl <url> <outfile>
 # fi
 
 python3 -m venv venv
-. venv/bin/activate
+if [ -d venv/Scripts ]; then
+  # A Windows venv (this script runs under PortableGit's bash there): the
+  # activate script of python < 3.12 leaves a C:\ path in PATH, which msys
+  # bash cannot split, so activate by hand.
+  export VIRTUAL_ENV="$(pwd)/venv"
+  export PATH="$VIRTUAL_ENV/Scripts:$PATH"
+else
+  . venv/bin/activate
+fi
 
 python --version
-pip install --upgrade pip
+# (python -m pip: on Windows, pip.exe cannot replace itself)
+python -m pip install --upgrade pip
 pip install --upgrade setuptools
 pip uninstall -y numpy scipy
 pip cache purge || true
@@ -496,7 +505,8 @@ if $TEST_BIOFORMATS && $TEST_JAVABRIDGE; then
   python -c 'import large_image_source_bioformats;print(large_image_source_bioformats._getBioformatsVersion())'
 fi
 
-if [ "$(arch)" != "aarch64" ] && [ "$(arch)" != "arm64" ]; then
+# The czi file is read through bioformats.
+if $TEST_BIOFORMATS && $TEST_JAVABRIDGE && [ "$(arch)" != "aarch64" ] && [ "$(arch)" != "arm64" ]; then
   echo 'Use large_image to read a czi file'
   python <<EOF
 import large_image, pprint

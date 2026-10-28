@@ -84,22 +84,6 @@ foreach ($dir in @($RunDir, $CacheDir, $WheelsDir)) {
 $LogPath = Join-Path $RunDir 'build.log'
 $ExitCodePath = Join-Path $RunDir 'exit_code'
 
-function Log([string]$Message) {
-    Write-Host $Message
-    Add-Content -Path $LogPath -Value $Message -Encoding utf8
-}
-
-function Die([string]$Message) {
-    Log "error: $Message"
-    throw "build_wheels: $Message"
-}
-
-function Assert-Exit([string]$What) {
-    if ($LASTEXITCODE -ne 0) {
-        Die "$What failed (exit code $LASTEXITCODE)"
-    }
-}
-
 # --------------------------------------------------------------------------
 # Build layout and environment.
 # --------------------------------------------------------------------------
@@ -112,6 +96,8 @@ $LIW_WHEELHOUSE = Join-Path $LIW_BUILD 'wheelhouse'
 $LIW_TOOLS = Join-Path $LIW_BUILD 'tools'
 $LIW_PY = Join-Path $LIW_BUILD 'python'
 $LIW_DL = Join-Path $LIW_BUILD 'dl'
+$LIW_LAUNCHERS = Join-Path $LIW_BUILD 'launchers'
+$LIW_RELOCATE = Join-Path $LIW_BUILD 'relocate'
 $LIW_JOBS = $env:NUMBER_OF_PROCESSORS
 # The prefix with forward slashes, for paths passed to cmake (backslashes
 # are escape characters once a path lands in a generated CMakeLists).
@@ -121,7 +107,7 @@ $env:LIW_PREFIX = $LIW_PREFIX
 
 foreach ($dir in @($LIW_BUILD, $LIW_PREFIX, $LIW_SRC, $LIW_STAMPS,
                    $LIW_PATCHES, $LIW_WHEELHOUSE, $LIW_TOOLS, $LIW_PY,
-                   $LIW_DL)) {
+                   $LIW_DL, $LIW_LAUNCHERS)) {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
 }
 
@@ -186,71 +172,26 @@ Remove-Item -Path $LogPath -Force -ErrorAction SilentlyContinue
 # supply headers, link targets, or DLLs.
 $script:ToolPaths = @()
 
+# Log, Die, Assert-Exit, V, Fetch, Expand-Zip, Get-Json, Run-Logged,
+# Ensure-Pythons, Ensure-PortableGit (shared with test_wheels.ps1).
+. (Join-Path $PSScriptRoot 'liw_common.ps1')
+
 # --------------------------------------------------------------------------
 # Helpers.
 # --------------------------------------------------------------------------
 
 function Skip-If-Done([string]$Name) {
-    if ($env:LIW_FORCE -eq '1') { return $false }
-    return (Test-Path (Join-Path $LIW_STAMPS "$Name.done"))
+    $stamp = Join-Path $LIW_STAMPS "$Name.done"
+    if ($env:LIW_FORCE -ne '1' -and (Test-Path $stamp)) { return $true }
+    # The step is about to run: drop its old stamp now, so a step that
+    # fails part way (or a forced rebuild that fails) can never be skipped
+    # by a stale stamp on the next run.
+    Remove-Item -Path $stamp -Force -ErrorAction SilentlyContinue
+    return $false
 }
 
 function Done-Stamp([string]$Name) {
     New-Item -ItemType File -Force -Path (Join-Path $LIW_STAMPS "$Name.done") | Out-Null
-}
-
-# Version pins come from the shared versions.txt, exactly like the linux
-# build uses through getver.py.  getver.py resolves versions.txt relative
-# to the current directory, so run it from the repository root.
-function V([string]$Name) {
-    if (-not $script:PatchPython) {
-        Die 'V() called before the pythons were installed'
-    }
-    Push-Location $RepoDir
-    # Relaxed ErrorActionPreference: a getver.py failure must be reported by
-    # the check below, not turned into a terminating NativeCommandError by
-    # the stderr redirection.
-    $prev = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try {
-        $out = (& $script:PatchPython (Join-Path $RepoDir 'getver.py') $Name |
-                Out-String).Trim()
-    } finally {
-        Pop-Location
-        $ErrorActionPreference = $prev
-    }
-    if (-not $out) {
-        Die "getver.py returned nothing for $Name (check versions.txt)"
-    }
-    return $out
-}
-
-# Downloads always land in the persistent cache (mapped read-write); the
-# cache holds upstream artifacts only and is never a source of build
-# outputs.  Expansion happens in the sandbox-local C:\liw_build.
-function Fetch([string]$Url, [string]$Name) {
-    $downloads = Join-Path $CacheDir 'downloads'
-    New-Item -ItemType Directory -Force -Path $downloads | Out-Null
-    $dest = Join-Path $downloads $Name
-    if (Test-Path $dest) {
-        Log "cached: $Name"
-        return $dest
-    }
-    Log "downloading $Url"
-    & curl.exe --retry 5 --silent --location --fail $Url -o $dest
-    Assert-Exit "download failed: $Url"
-    return $dest
-}
-
-function Expand-Zip([string]$Zip, [string]$Dest) {
-    # Expand-Archive insists on a .zip extension.
-    $zipPath = $Zip
-    if (-not $zipPath.EndsWith('.zip')) {
-        $zipPath = "$Zip.zip"
-        Copy-Item $Zip $zipPath -Force
-    }
-    if (Test-Path $Dest) { Remove-Item -Recurse -Force $Dest }
-    Expand-Archive -Path $zipPath -DestinationPath $Dest
 }
 
 function Git-Clone([string]$Url, [string]$Tag, [string]$Dest) {
@@ -353,25 +294,66 @@ function Assert-Dependents([string]$Image, [string[]]$Names, [string]$What) {
     }
 }
 
-function Get-Json([string]$Url) {
-    return Invoke-RestMethod -Uri $Url -Headers @{
-        'User-Agent' = 'large_image_wheels'
+# Build the launcher (windows\launcher.c) for a wheel's library directory:
+# the stand-in installed as <package>/bin/<tool>.exe that runs the real
+# tool from <dist>.libs with that directory first on PATH (launcher.c
+# explains why: no rpath on Windows).  Compiled once per library directory
+# name, without the C runtime.
+function Build-Launcher([string]$LibsName) {
+    $exe = Join-Path $LIW_LAUNCHERS "$LibsName.exe"
+    if (Test-Path $exe) { return $exe }
+    $work = Join-Path $LIW_LAUNCHERS "$LibsName.build"
+    New-Item -ItemType Directory -Force -Path $work | Out-Null
+    Push-Location $work
+    try {
+        # kernel32 only, static buffers, no optimizer (it would introduce
+        # memset/memcpy calls), no security cookie.  (Run-Logged: cl prints
+        # the source file name, which would otherwise become part of this
+        # function's return value.)
+        Run-Logged 'cl' @('/nologo', '/Od', '/GS-', '/W4', "/DLIW_LIBS_NAME=$LibsName",
+            '/c', (Join-Path $RepoDir 'windows\launcher.c')) 'launcher compile'
+        Run-Logged 'link' @('/nologo', '/NODEFAULTLIB', '/ENTRY:entry',
+            '/SUBSYSTEM:CONSOLE', "/OUT:$exe", 'launcher.obj', 'kernel32.lib') 'launcher link'
+    } finally {
+        Pop-Location
     }
+    $deps = @(Get-Dependents $exe)
+    if ($deps.Count -ne 1 -or $deps[0] -ne 'KERNEL32.dll') {
+        Die "launcher: unexpected dependencies: $($deps -join ', ')"
+    }
+    return $exe
 }
 
-# Run a native command with its output streamed into the log.  Native
-# stderr must not be redirected while $ErrorActionPreference is Stop (the
-# redirection turns stderr lines into terminating error records in
-# Windows PowerShell 5.1), so it is relaxed for the duration.
-function Run-Logged([string]$Exe, [string[]]$CmdArgs, [string]$What) {
-    $prev = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try {
-        & $Exe @CmdArgs 2>&1 | ForEach-Object { Log "$_" }
-    } finally {
-        $ErrorActionPreference = $prev
+# After delvewheel: move the bundled tools from <package>/bin into the
+# wheel's <dist>.libs directory, next to the (mangled) DLLs they import and
+# the vcruntime140.dll bundled for them, and put the launcher in their
+# place so <package>/bin/<tool> still runs by path (as on linux and
+# macos, where an rpath does this).  The wheel is unpacked and repacked
+# with the wheel tool, which regenerates RECORD.
+function Relocate-Tools([string]$Wheel, [string]$Package, [string]$LibsName) {
+    $pp = $script:PatchPython
+    $launcher = Build-Launcher $LibsName
+    if (Test-Path $LIW_RELOCATE) { Remove-Item -Recurse -Force $LIW_RELOCATE }
+    New-Item -ItemType Directory -Force -Path $LIW_RELOCATE | Out-Null
+    Run-Logged $pp @('-m', 'wheel', 'unpack', '--dest', $LIW_RELOCATE, $Wheel) `
+        "unpack of $Wheel"
+    $root = Get-ChildItem -Path $LIW_RELOCATE -Directory | Select-Object -First 1
+    if (-not $root) { Die "relocate: nothing unpacked from $Wheel" }
+    $bin = Join-Path $root.FullName "$Package\bin"
+    $libs = Join-Path $root.FullName $LibsName
+    if (-not (Test-Path $libs)) { Die "relocate: $Wheel has no $LibsName directory" }
+    $tools = @(Get-ChildItem -Path $bin -Filter '*.exe' -File -ErrorAction SilentlyContinue)
+    if ($tools.Count -eq 0) { Die "relocate: no tools in $Package/bin of $Wheel" }
+    foreach ($tool in $tools) {
+        Move-Item $tool.FullName (Join-Path $libs $tool.Name) -Force
+        Copy-Item $launcher (Join-Path $bin $tool.Name) -Force
     }
-    Assert-Exit "$What failed"
+    Run-Logged $pp @('-m', 'wheel', 'pack', '--dest-dir', (Split-Path -Parent $Wheel),
+        $root.FullName) "repack of $Wheel"
+    if (-not (Test-Path $Wheel)) {
+        Die "relocate: the repacked wheel is not at $Wheel (name changed?)"
+    }
+    Log "relocated $($tools.Count) tools of $(Split-Path -Leaf $Wheel) into $LibsName"
 }
 
 # --------------------------------------------------------------------------
@@ -401,27 +383,8 @@ function Ensure-Toolchain {
     $bin = Join-Path $LIW_TOOLS 'bin'
     New-Item -ItemType Directory -Force -Path $bin | Out-Null
 
-    # --- git (PortableGit; bash comes with it for the shared test script).
-    # The pin is the release tag without its v (2.56.0.windows.4); the
-    # asset is named after the version with the windows build number
-    # appended when it is not the first (PortableGit-2.56.0.4-64-bit.7z.exe,
-    # PortableGit-2.56.0-64-bit.7z.exe for 2.56.0.windows.1).
-    $gitVersion = V 'git-for-windows'
-    $gitDir = Join-Path $LIW_TOOLS 'git'
-    if (-not (Test-Path (Join-Path $gitDir "bin\bash.exe"))) {
-        Log "fetching PortableGit $gitVersion"
-        $tag = "v$gitVersion"
-        $assetVersion = ($gitVersion -replace '\.windows\.1$', '') -replace '\.windows\.', '.'
-        $asset = "PortableGit-$assetVersion-64-bit.7z.exe"
-        $file = Fetch "https://github.com/git-for-windows/git/releases/download/$tag/$asset" $asset
-        if (Test-Path $gitDir) { Remove-Item -Recurse -Force $gitDir }
-        $proc = Start-Process -FilePath $file `
-            -ArgumentList "-o `"$gitDir`" -y" -Wait -PassThru
-        if ($proc.ExitCode -ne 0) { Die 'PortableGit extraction failed' }
-        if (-not (Test-Path (Join-Path $gitDir 'bin\bash.exe'))) {
-            Die 'bash.exe missing after PortableGit extraction'
-        }
-    }
+    # --- git (PortableGit; the test sandbox uses the same package for bash)
+    $gitDir = Ensure-PortableGit
     $script:ToolPaths += (Join-Path $gitDir 'cmd')
     $script:ToolPaths += (Join-Path $gitDir 'bin')
 
@@ -492,66 +455,16 @@ function Ensure-Toolchain {
         }
     }
     $script:MsvcEnvJson = $envJson
-    Log "using MSVC $($info.msvc) and Windows SDK $($info.sdk) at $msvcDir"
-}
-
-function Ensure-Pythons {
-    # python.org builds via their NuGet packages (no installer, no machine
-    # state beyond the expanded directory), one directory per requested
-    # version under C:\liw_build\python.  A trailing t (3.14t) selects the
-    # free-threaded build, which NuGet publishes as a separate
-    # python-freethreaded package with the same version strings.  The
-    # newest patch release of each minor is taken (the linux build likewise
-    # takes whatever patch release the manylinux image ships).
-    $indexes = @{}
-    foreach ($minor in $script:Pythons) {
-        $dest = Join-Path $LIW_PY $minor
-        if (Test-Path (Join-Path $dest 'python.exe')) { continue }
-        $package = if ($minor.EndsWith('t')) { 'python-freethreaded' } else { 'python' }
-        $base = $minor.TrimEnd('t')
-        if (-not $indexes.ContainsKey($package)) {
-            $indexes[$package] = Get-Json "https://api.nuget.org/v3-flatcontainer/$package/index.json"
-        }
-        # Prereleases carry a -rc/-a/-b suffix; exclude them.
-        $candidates = @($indexes[$package].versions |
-            Where-Object { $_ -like "$base.*" -and $_ -notmatch '[a-z-]' })
-        if ($candidates.Count -eq 0) {
-            Die "no stable python $minor ($package) on nuget.org"
-        }
-        $full = $candidates | Sort-Object { [version]$_ } | Select-Object -Last 1
-        Log "installing python $minor ($package $full)"
-        $file = Fetch "https://api.nuget.org/v3-flatcontainer/$package/$full/$package.$full.nupkg" "$package-$full.nupkg"
-        Expand-Zip $file (Join-Path $LIW_DL "$package-$full")
-        if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
-        Move-Item (Join-Path $LIW_DL "$package-$full\tools") $dest
-        if (-not (Test-Path (Join-Path $dest 'python.exe'))) {
-            # The free-threaded package names its interpreter python3.14t.exe.
-            $exe = Get-ChildItem -Path $dest -Filter 'python3*t.exe' -File | Select-Object -First 1
-            if (-not $exe) { Die "no python.exe in the $package $full package" }
-            Copy-Item $exe.FullName (Join-Path $dest 'python.exe')
-        }
-        & (Join-Path $dest 'python.exe') -m ensurepip --upgrade | Out-Null
-        Assert-Exit "ensurepip failed for python $full"
-        & (Join-Path $dest 'python.exe') -m pip install --quiet `
-            --no-warn-script-location --upgrade pip setuptools wheel | Out-Null
-        Assert-Exit "pip bootstrap failed for python $full"
+    # The VC++ redistributable DLLs that match the toolset (vcruntime140,
+    # msvcp140, ...): delvewheel bundles the ones our DLLs import from here.
+    $script:VcRedist = (Get-ChildItem -Path (Join-Path $msvcDir 'VC\Redist\MSVC') `
+        -Recurse -Depth 3 -Directory -Filter 'Microsoft.VC14*.CRT' |
+        Where-Object { $_.FullName -match '\\x64\\' } | Select-Object -First 1).FullName
+    if (-not $script:VcRedist -or
+        -not (Test-Path (Join-Path $script:VcRedist 'vcruntime140.dll'))) {
+        Die "no x64 VC++ redistributable directory under $msvcDir\VC\Redist\MSVC"
     }
-    # The patch python (newest requested stable python) runs getver.py and
-    # install_msvc.py, writes the source patches, and drives delvewheel.
-    $best = $null
-    foreach ($minor in $script:Pythons) {
-        if ($minor.EndsWith('t')) { continue }
-        $candidate = Join-Path $LIW_PY "$minor\python.exe"
-        if (Test-Path $candidate) {
-            if (-not $best -or
-                ([version]($minor) -gt [version]($best))) {
-                $best = $minor
-            }
-        }
-    }
-    if (-not $best) { Die 'no stable python was installed (the patch python must not be free-threaded)' }
-    $script:PatchPython = Join-Path $LIW_PY "$best\python.exe"
-    Log "patch python: $script:PatchPython"
+    Log "using MSVC $($info.msvc) and Windows SDK $($info.sdk) at $msvcDir (redist $script:VcRedist)"
 }
 
 function Set-BuildPath {
@@ -796,11 +709,9 @@ function Build-Pylibtiff {
     # Wrapper module so each bundled tool is exposed as a console script.
     # Windows has no os.execv replacement semantics to rely on, so the
     # wrapper runs the tool as a child and exits with its code (the
-    # macos/linux wrappers use os.execv).  delvewheel rewrites the tools'
-    # import tables to the mangled DLL names in pylibtiff.libs, but a
-    # child process does not inherit os.add_dll_directory, so the wrapper
-    # puts that directory (and the base interpreter's, for the VC runtime
-    # python ships) first on the child's PATH.
+    # macos/linux wrappers use os.execv).  After the repair,
+    # libtiff/bin/<tool>.exe is the launcher (windows\launcher.c), which
+    # finds the real tool and its DLLs in pylibtiff.libs itself.
     $wrapper = @'
 import os
 import subprocess
@@ -809,11 +720,7 @@ import sys
 def program():
     here = os.path.dirname(os.path.abspath(__file__))
     name = os.path.splitext(os.path.basename(sys.argv[0]))[0]
-    path = os.path.join(here, name + '.exe')
-    libs = os.path.join(os.path.dirname(os.path.dirname(here)), 'pylibtiff.libs')
-    env = dict(os.environ)
-    env['PATH'] = os.pathsep.join([libs, sys.base_prefix, env.get('PATH', '')])
-    sys.exit(subprocess.call([path] + sys.argv[1:], env=env))
+    sys.exit(subprocess.call([os.path.join(here, name + '.exe')] + sys.argv[1:]))
 '@
     Set-Content -Path (Join-Path $binDir '__init__.py') -Value $wrapper -Encoding ascii
 
@@ -826,8 +733,8 @@ s = open(path).read()
 s = s.replace(
     "'console_scripts': [",
     "'console_scripts': \n"
-    "        ['%s=libtiff.bin:program' % name for name in os.listdir('libtiff/bin')\n"
-    "         if not name.endswith('.py')] + [")
+    "        ['%s=libtiff.bin:program' % os.path.splitext(name)[0]\n"
+    "         for name in os.listdir('libtiff/bin') if name.endswith('.exe')] + [")
 s = s.replace('name="libtiff.tif_lzw",',
     "name=\"libtiff.tif_lzw\", libraries=['tiff'], "
     "library_dirs=['%s']," % os.path.join(os.environ["LIW_PREFIX"], "lib"))
@@ -956,18 +863,22 @@ open(path, "w").write(s)
     # through it).  The library pylibtiff loads with ctypes is therefore
     # forced in with --include, and --analyze-existing-exes vendors the
     # bundled tools' dependencies and rewrites their import tables to the
-    # mangled names.  Mangling stays on: the Windows loader reuses an
-    # already-loaded module by base name, so unmangled tiff.dll copies in
-    # two wheels would silently share one (the hazard the linux BUILD_ID
-    # salt exists for).
+    # mangled names.  vcruntime140.dll is forced in too (unmangled, as
+    # delvewheel copies it): python ships one for its own extensions, but
+    # the bundled tools run as separate processes in a directory where
+    # nothing else provides it (a fresh Windows has no VC++ redistributable).
+    # Mangling stays on: the Windows loader reuses an already-loaded module
+    # by base name, so unmangled tiff.dll copies in two wheels would
+    # silently share one (the hazard the linux BUILD_ID salt exists for).
     Log 'delvewheel repair of the pylibtiff wheels'
     foreach ($whl in (Get-ChildItem -Path $LIW_WHEELHOUSE `
             -Filter 'pylibtiff-*.whl' -File)) {
         Run-Logged $pp @(
             '-m', 'delvewheel', 'repair', '-w', $WheelsDir,
-            '--add-path', (Join-Path $LIW_PREFIX 'bin'),
-            '--analyze-existing-exes', '--include', 'tiff.dll',
+            '--add-path', "$(Join-Path $LIW_PREFIX 'bin');$script:VcRedist",
+            '--analyze-existing-exes', '--include', 'tiff.dll;vcruntime140.dll',
             $whl.FullName) "delvewheel repair of $($whl.Name)"
+        Relocate-Tools (Join-Path $WheelsDir $whl.Name) 'libtiff' 'pylibtiff.libs'
     }
 
     $expected = $script:Pythons.Count
@@ -984,6 +895,8 @@ open(path, "w").write(s)
             '^pylibtiff\.libs/libwebp-[0-9a-f]+\.dll$',
             '^pylibtiff\.libs/deflate-[0-9a-f]+\.dll$',
             '^pylibtiff\.libs/z-[0-9a-f]+\.dll$',
+            '^pylibtiff\.libs/vcruntime140\.dll$',
+            '^pylibtiff\.libs/tiffinfo\.exe$',
             '^libtiff/bin/tiffinfo\.exe$') 'pylibtiff'
     }
     Done-Stamp 'pylibtiff'
@@ -995,6 +908,7 @@ open(path, "w").write(s)
 
 function Main {
     Log "=== build_wheels.ps1 started $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+    Log "mode: $(if ($script:DevMode) { 'dev (' + $RepoDir + ')' } else { 'build sandbox' })"
     Log "parameters from: $($script:ArgsSource)"
     Log "pythons: $($script:Pythons -join ' ')"
     Log "packages: $($script:Packages -join ' ')"
