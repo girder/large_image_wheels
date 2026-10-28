@@ -292,10 +292,36 @@ def check_glymur(package_dir, libs_dir):
                f'bundled djpeg runs as a console script (exit {code}): {out.strip().splitlines()[:1]}')
 
 
+def check_openslide(package_dir, libs_dir):
+    import openslide
+    from PIL import Image
+
+    hits, bundled, foreign = loaded_from_libs('libopenslide', os.path.basename(libs_dir))
+    report(bool(bundled) and not foreign,
+           f'openslide loads its bundled libopenslide: {hits}')
+    version = openslide.__library_version__
+    report(bool(version) and version.startswith('4.'), f'openslide library version {version}')
+    # The generic reader path (ImageSlide) exercises the library's region
+    # reads without a slide file; the shared suite reads real slides.
+    image = Image.new('RGB', (300, 200), (10, 20, 30))
+    slide = openslide.ImageSlide(image)
+    region = slide.read_region((0, 0), 0, (64, 48))
+    report(region.size == (64, 48) and region.getpixel((1, 1))[:3] == (10, 20, 30),
+           'openslide ImageSlide region read')
+    slide.close()
+    code, out = run_tool('slidetool', ['--version'])
+    report(code == 0 and 'slidetool' in out.lower() or 'openslide' in out.lower(),
+           f'bundled slidetool runs as a console script (exit {code}): {out.strip().splitlines()[:1]}')
+    launcher = os.path.join(package_dir, 'bin', 'slidetool.exe')
+    code, out = run_path(launcher, ['--version'], env=scrubbed_env())
+    report(code == 0, f'bundled slidetool runs by path with a bare PATH (exit {code}): {out.strip().splitlines()[:1]}')
+
+
 # package -> (import name, <dist>.libs directory name, package check)
 PACKAGES = {
     'pylibtiff': ('libtiff', 'pylibtiff.libs', check_pylibtiff),
     'glymur': ('glymur', 'glymur.libs', check_glymur),
+    'openslide_python': ('openslide', 'openslide_python.libs', check_openslide),
 }
 
 

@@ -211,12 +211,28 @@ function Git-Clone([string]$Url, [string]$Tag, [string]$Dest) {
     Die "git clone failed after 10 attempts: $Url ($Tag)"
 }
 
+# PortableGit's (msys) tar, not the system bsdtar: an archive with a
+# symlink (libexpat's README.md -> expat/README.md) makes bsdtar fail,
+# since creating a symlink needs a privilege the sandbox accounts lack.
+# msys tar with MSYS=winsymlinks:lnk writes a .lnk shortcut instead (its
+# default copies the target, which fails when the target comes later in
+# the archive).  It wants POSIX paths and gzip beside it (usr\bin).
 function Fetch-Tarball([string]$Url, [string]$Name, [string]$Dest) {
     $tarball = Fetch $Url $Name
     if (Test-Path $Dest) { Remove-Item -Recurse -Force $Dest }
     New-Item -ItemType Directory -Force -Path $Dest | Out-Null
-    & tar -zxf $tarball -C $Dest --strip-components 1
-    Assert-Exit "tar extraction failed: $Name"
+    $savedPath = $env:PATH
+    $env:PATH = "$(Join-Path $script:GitDir 'usr\bin');$env:PATH"
+    $env:MSYS = 'winsymlinks:lnk'
+    try {
+        & (Join-Path $script:GitDir 'usr\bin\tar.exe') -zxf (To-PosixPath $tarball) `
+            -C (To-PosixPath $Dest) --strip-components 1
+        $code = $LASTEXITCODE
+    } finally {
+        $env:PATH = $savedPath
+        Remove-Item -Path 'env:MSYS' -ErrorAction SilentlyContinue
+    }
+    if ($code -ne 0) { Die "tar extraction failed: $Name (exit code $code)" }
     return $Dest
 }
 
@@ -395,6 +411,7 @@ function Ensure-Toolchain {
 
     # --- git (PortableGit; the test sandbox uses the same package for bash)
     $gitDir = Ensure-PortableGit
+    $script:GitDir = $gitDir
     $script:ToolPaths += (Join-Path $gitDir 'cmd')
     $script:ToolPaths += (Join-Path $gitDir 'bin')
 
@@ -475,6 +492,113 @@ function Ensure-Toolchain {
         Die "no x64 VC++ redistributable directory under $msvcDir\VC\Redist\MSVC"
     }
     Log "using MSVC $($info.msvc) and Windows SDK $($info.sdk) at $msvcDir (redist $script:VcRedist)"
+}
+
+# meson and pkgconf, pinned through versions.txt and installed into the
+# patch python (both are pure build tools; nothing of them reaches a
+# wheel).  pkg-config is how meson projects (glib, cairo, openslide, ...)
+# find our libraries: every cmake and meson install in the prefix leaves a
+# .pc file, and the lookup is scoped to the prefix (PKG_CONFIG_LIBDIR), so
+# nothing else on the machine can satisfy a dependency.  meson maps the
+# .pc files' -l flags to .lib files for MSVC.
+function Ensure-Meson {
+    $pp = $script:PatchPython
+    # (pkgconf-pypi: the pypi wheels trail pkgconf's own releases, which
+    # the linux build's pkgconf pin follows.)
+    & $pp -m pip install --quiet --no-warn-script-location `
+        "meson==$(V meson)" "pkgconf==$(V pkgconf-pypi)" packaging | Out-Null
+    Assert-Exit 'pip install of meson/pkgconf'
+    $scripts = Join-Path (Split-Path -Parent $pp) 'Scripts'
+    foreach ($exe in @('meson.exe', 'pkgconf.exe')) {
+        if (-not (Test-Path (Join-Path $scripts $exe))) { Die "$exe is missing after the pip install" }
+    }
+    $env:PATH = "$scripts;$env:PATH"
+    $env:PKG_CONFIG = Join-Path $scripts 'pkgconf.exe'
+    $env:PKG_CONFIG_PATH = "$LIW_PREFIX\lib\pkgconfig;$LIW_PREFIX\share\pkgconfig"
+    $env:PKG_CONFIG_LIBDIR = $env:PKG_CONFIG_PATH
+    Log "meson $(V meson), pkgconf from $scripts; pkg-config scoped to $LIW_PREFIX"
+}
+
+# A pkg-config file for a library whose cmake build installs none on MSVC
+# (libpng, expat) or that has no build system (sqlite), so meson projects
+# find it like every other library.  Libs/Cflags are pkg-config syntax
+# relative to ${libdir}/${includedir}; meson maps -l to .lib for MSVC.
+function Write-PkgConfig([string]$Name, [string]$Description, [string]$Version,
+                         [string]$Libs, [string]$Cflags = '-I${includedir}',
+                         [string]$IncludeDir = '${prefix}/include', [string]$Requires = '') {
+    $pcDir = Join-Path $LIW_PREFIX 'lib\pkgconfig'
+    New-Item -ItemType Directory -Force -Path $pcDir | Out-Null
+    $lines = @(
+        "prefix=$script:CmakePrefix", 'exec_prefix=${prefix}', 'libdir=${exec_prefix}/lib',
+        "includedir=$IncludeDir", '', "Name: $Name", "Description: $Description",
+        "Version: $Version")
+    if ($Requires) { $lines += "Requires.private: $Requires" }
+    $lines += @("Libs: -L`${libdir} $Libs", "Cflags: $Cflags", '')
+    [System.IO.File]::WriteAllText((Join-Path $pcDir "$Name.pc"), ($lines -join "`n"))
+    Log "wrote $Name.pc"
+}
+
+# clang-cl from the pinned LLVM release, for the one project that needs a
+# GNU C extension MSVC lacks: openslide requires __attribute__((cleanup))
+# (its g_autoptr use).  clang-cl is MSVC-ABI compatible -- it compiles
+# against the same headers and import libraries and links with link.exe --
+# so an openslide built with it is one more MSVC-ABI DLL in the prefix.
+# Only the compiler driver and its resource headers are extracted from the
+# 900 MB release tarball (the download is cached); the rest of LLVM stays
+# out of the build.
+function Ensure-Clang {
+    $version = V 'llvm'
+    $dir = Join-Path $LIW_TOOLS 'llvm'
+    $stamp = Join-Path $dir ".installed-$version"
+    if (-not (Test-Path $stamp)) {
+        Log "fetching LLVM $version (clang-cl)"
+        $name = "clang+llvm-$version-x86_64-pc-windows-msvc.tar.xz"
+        $tarball = Fetch "https://github.com/llvm/llvm-project/releases/download/llvmorg-$version/$name" $name
+        if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        # The system bsdtar reads .tar.xz and takes member patterns; the
+        # archive has one top-level directory.
+        & tar.exe -xf $tarball -C $dir --strip-components 1 `
+            '*/bin/clang-cl.exe' '*/bin/clang.exe' '*/lib/clang/*'
+        Assert-Exit 'LLVM extraction'
+        if (-not (Test-Path (Join-Path $dir 'bin\clang-cl.exe'))) { Die 'clang-cl.exe missing after the LLVM extraction' }
+        New-Item -ItemType File -Force -Path $stamp | Out-Null
+    }
+    $script:ClangBin = Join-Path $dir 'bin'
+    $out = Capture-Native (Join-Path $script:ClangBin 'clang-cl.exe') @('--version')
+    if ($out -notmatch [regex]::Escape($version)) { Die "clang-cl does not report version ${version}: $out" }
+    Log "clang-cl $version at $script:ClangBin"
+}
+
+# Output of a native command as one string, without stderr redirection
+# turning into a terminating error.
+function Capture-Native([string]$Exe, [string[]]$CmdArgs) {
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        return (& $Exe @CmdArgs 2>&1 | Out-String)
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+}
+
+# Build and install a meson project into the private prefix with the
+# Dockerfile's flags (buildtype=release, optimization=3; MSVC: /O2, /MD).
+# meson picks cl from the MSVC environment.  --wrap-mode=nofallback: a
+# dependency that pkg-config cannot satisfy fails the configure step
+# instead of being replaced by the project's own subproject wrap -- cairo
+# built and installed its own libpng over ours that way when our libpng
+# had no .pc file.  The wraps the linux and macos builds also rely on
+# (glib's pcre2/libffi/intl, openslide's libdicom) are forced explicitly
+# with --force-fallback-for by their builders.
+function Meson-Build([string]$Src, [string[]]$MesonArgs = @()) {
+    $build = Join-Path $Src '_build'
+    if (Test-Path $build) { Remove-Item -Recurse -Force $build }
+    Run-Logged 'meson' (@('setup', $build, $Src, "--prefix=$script:CmakePrefix",
+        '--buildtype=release', '-Doptimization=3', '--libdir=lib',
+        '--wrap-mode=nofallback') + $MesonArgs) "meson setup in $Src"
+    Run-Logged 'meson' @('compile', '-C', $build, '-j', "$LIW_JOBS") "meson compile in $Src"
+    Run-Logged 'meson' @('install', '-C', $build, '--no-rebuild') "meson install in $Src"
 }
 
 function Set-BuildPath {
@@ -709,6 +833,11 @@ function Build-Libpng {
         '-DPNG_SHARED=ON', '-DPNG_STATIC=OFF', '-DPNG_TESTS=OFF',
         '-DPNG_TOOLS=OFF')
     Assert-Files (Join-Path $LIW_PREFIX 'bin') @('libpng16.dll') 'libpng'
+    # libpng's cmake installs its pkg-config files only off Windows.
+    foreach ($name in @('libpng16', 'libpng')) {
+        Write-PkgConfig $name 'Loads and saves PNG files' (V libpng) '-lpng16' `
+            '-I${includedir}' '${prefix}/include/libpng16' 'zlib'
+    }
     Done-Stamp 'libpng'
 }
 
@@ -736,6 +865,256 @@ function Build-Openjpeg {
     Log "opj_decompress depends on: $((Get-Dependents $decompress) -join ', ')"
     Assert-Dependents $decompress @('tiff.dll', 'libpng16.dll', 'lcms2.dll') 'openjpeg'
     Done-Stamp 'openjpeg'
+}
+
+# --- the openslide chain (glib, cairo and their dependencies; also used by
+# libvips, gdal and mapnik later) ---
+
+function Build-Libbrotli {
+    if (Skip-If-Done 'libbrotli') { return }
+    Log '=== libbrotli'
+    $src = Git-Clone 'https://github.com/google/brotli.git' "v$(V libbrotli)" `
+        (Join-Path $LIW_SRC 'brotli')
+    Cmake-Build $src @('-DBUILD_TESTING=OFF', '-DBUILD_SHARED_LIBS=ON')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('brotlidec.dll', 'brotlienc.dll') 'libbrotli'
+    Done-Stamp 'libbrotli'
+}
+
+function Build-Libexpat {
+    if (Skip-If-Done 'libexpat') { return }
+    Log '=== libexpat'
+    $src = Fetch-Tarball "https://github.com/libexpat/libexpat/archive/R_$(V libexpat).tar.gz" `
+        'libexpat.tar.gz' (Join-Path $LIW_SRC 'libexpat')
+    Cmake-Build (Join-Path $src 'expat') @(
+        '-DEXPAT_BUILD_EXAMPLES=OFF', '-DEXPAT_BUILD_TESTS=OFF',
+        '-DEXPAT_BUILD_TOOLS=OFF', '-DEXPAT_SHARED_LIBS=ON')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('libexpat.dll') 'libexpat'
+    # expat's cmake installs its pkg-config file only off Windows.
+    if (-not (Test-Path (Join-Path $LIW_PREFIX 'lib\pkgconfig\expat.pc'))) {
+        Write-PkgConfig 'expat' 'expat XML parser' ((V libexpat) -replace '_', '.') '-llibexpat'
+    }
+    Done-Stamp 'libexpat'
+}
+
+# glib builds pcre2 and libffi from its own subproject wraps, statically
+# into its DLLs (the macos build does the same for pcre2); the linux
+# build's util-linux (libmount) and gettext have no Windows counterpart,
+# and nls is off like on macos.
+function Build-Glib {
+    if (Skip-If-Done 'glib') { return }
+    Log '=== glib'
+    $src = Git-Clone 'https://github.com/GNOME/glib.git' "$(V glib)" (Join-Path $LIW_SRC 'glib')
+    Meson-Build $src @(
+        '-Dtests=false', '-Dglib_debug=disabled', '-Dintrospection=disabled',
+        '-Dnls=disabled', '-Dlibmount=disabled', '-Dselinux=disabled',
+        '-Dxattr=false', '-Dman-pages=disabled', '-Ddocumentation=false',
+        '-Dsysprof=disabled',
+        '--force-fallback-for=libpcre2-8,libffi,proxy-libintl')
+    Log "prefix DLLs: $((Get-ChildItem -Path (Join-Path $LIW_PREFIX 'bin') -Filter '*.dll' | ForEach-Object { $_.Name }) -join ', ')"
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @(
+        'glib-2.0*.dll', 'gobject-2.0*.dll', 'gio-2.0*.dll', 'gmodule-2.0*.dll') 'glib'
+    Done-Stamp 'glib'
+}
+
+# sqlite: the amalgamation compiled with cl into sqlite3.dll (the linux
+# and macos builds run its configure --all; the feature defines below are
+# that set).  sqlite installs no pkg-config file on Windows, so one is
+# written for the consumers that look for sqlite3 through pkg-config.
+function Build-Sqlite {
+    if (Skip-If-Done 'sqlite') { return }
+    Log '=== sqlite'
+    $year = V 'sqlite' @('1')
+    $release = V 'sqlite' @('2', '.', '.', '1')
+    $src = Fetch-Tarball "https://sqlite.org/$year/sqlite-autoconf-$release.tar.gz" `
+        'sqlite.tar.gz' (Join-Path $LIW_SRC 'sqlite')
+    Push-Location $src
+    try {
+        Run-Logged 'cl' @('/nologo', '/O2', '/MD', '/DSQLITE_API=__declspec(dllexport)',
+            '/DSQLITE_THREADSAFE=1', '/DSQLITE_ENABLE_FTS3', '/DSQLITE_ENABLE_FTS4',
+            '/DSQLITE_ENABLE_FTS5', '/DSQLITE_ENABLE_RTREE', '/DSQLITE_ENABLE_GEOPOLY',
+            '/DSQLITE_ENABLE_JSON1', '/DSQLITE_ENABLE_COLUMN_METADATA',
+            '/DSQLITE_ENABLE_SESSION', '/DSQLITE_ENABLE_PREUPDATE_HOOK',
+            '/DSQLITE_ENABLE_MATH_FUNCTIONS', '/DSQLITE_ENABLE_DBSTAT_VTAB',
+            '/DSQLITE_ENABLE_STMTVTAB', 'sqlite3.c',
+            '/link', '/DLL', '/OUT:sqlite3.dll', '/IMPLIB:sqlite3.lib') 'sqlite compile'
+    } finally {
+        Pop-Location
+    }
+    Copy-Item (Join-Path $src 'sqlite3.dll') (Join-Path $LIW_PREFIX 'bin') -Force
+    Copy-Item (Join-Path $src 'sqlite3.lib') (Join-Path $LIW_PREFIX 'lib') -Force
+    Copy-Item (Join-Path $src 'sqlite3.h'), (Join-Path $src 'sqlite3ext.h') `
+        (Join-Path $LIW_PREFIX 'include') -Force
+    # 3540100 -> 3.54.1
+    $digits = $release
+    $version = "$([int]$digits.Substring(0, 1)).$([int]$digits.Substring(1, 2)).$([int]$digits.Substring(3, 2))"
+    Write-PkgConfig 'sqlite3' 'SQL database engine' $version '-lsqlite3'
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('sqlite3.dll') 'sqlite'
+    Done-Stamp 'sqlite'
+}
+
+# libxml2 without iconv: Windows has no system iconv (the linux and macos
+# builds use theirs), and libxml2 handles UTF-8/16 and ISO-8859-x itself.
+# Legacy APIs stay on like on linux (rasterlite).
+function Build-Libxml2 {
+    if (Skip-If-Done 'libxml2') { return }
+    Log '=== libxml2'
+    $src = Git-Clone 'https://github.com/GNOME/libxml2.git' "v$(V libxml2)" (Join-Path $LIW_SRC 'libxml2')
+    Cmake-Build $src @(
+        '-DLIBXML2_WITH_TESTS=OFF', '-DLIBXML2_WITH_PYTHON=OFF', '-DLIBXML2_WITH_ICU=OFF',
+        '-DLIBXML2_WITH_ICONV=OFF', '-DLIBXML2_WITH_ISO8859X=ON', '-DLIBXML2_WITH_LEGACY=ON',
+        '-DLIBXML2_WITH_HTTP=ON', '-DLIBXML2_WITH_DEBUG=OFF', '-DLIBXML2_WITH_PROGRAMS=OFF',
+        '-DLIBXML2_WITH_ZLIB=ON', '-DLIBXML2_WITH_LZMA=ON')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('libxml2*.dll') 'libxml2'
+    Done-Stamp 'libxml2'
+}
+
+function Build-Pixman {
+    if (Skip-If-Done 'pixman') { return }
+    Log '=== pixman'
+    $src = Git-Clone 'https://gitlab.freedesktop.org/pixman/pixman.git' "pixman-$(V pixman)" `
+        (Join-Path $LIW_SRC 'pixman')
+    Meson-Build $src @('-Dtests=disabled', '-Ddemos=disabled', '-Dgtk=disabled')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('pixman-1*.dll') 'pixman'
+    Done-Stamp 'pixman'
+}
+
+function Build-Freetype {
+    if (Skip-If-Done 'freetype') { return }
+    Log '=== freetype'
+    $src = Git-Clone 'https://github.com/freetype/freetype.git' "VER-$(V freetype)" `
+        (Join-Path $LIW_SRC 'freetype')
+    # The linux wheel's freetype has zlib, png and brotli (WOFF2); harfbuzz
+    # is off here as there (it would be a circular dependency).
+    Meson-Build $src @('-Dzlib=enabled', '-Dpng=enabled', '-Dbrotli=enabled',
+        '-Dbzip2=disabled', '-Dharfbuzz=disabled', '-Dtests=disabled')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('freetype*.dll') 'freetype'
+    Done-Stamp 'freetype'
+}
+
+function Build-Fontconfig {
+    if (Skip-If-Done 'fontconfig') { return }
+    Log '=== fontconfig'
+    $src = Git-Clone 'https://gitlab.freedesktop.org/fontconfig/fontconfig.git' "$(V fontconfig)" `
+        (Join-Path $LIW_SRC 'fontconfig')
+    # nls and the install-time cache build are off (as on macos: the cache
+    # build floods the log and depends on the build machine's fonts).
+    Meson-Build $src @('-Ddoc=disabled', '-Dtests=disabled', '-Dnls=disabled',
+        '-Dcache-build=disabled', '-Dtools=disabled')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('fontconfig*.dll') 'fontconfig'
+    Done-Stamp 'fontconfig'
+}
+
+function Build-Cairo {
+    if (Skip-If-Done 'cairo') { return }
+    Log '=== cairo'
+    $src = Git-Clone 'https://gitlab.freedesktop.org/cairo/cairo.git' "$(V cairo)" `
+        (Join-Path $LIW_SRC 'cairo')
+    # freetype and fontconfig are required explicitly for parity with the
+    # linux wheel's cairo (as on macos); the win32 backends are extra.
+    Meson-Build $src @('-Dtests=disabled', '-Dfreetype=enabled', '-Dfontconfig=enabled')
+    $cairoDll = Get-ChildItem -Path (Join-Path $LIW_PREFIX 'bin') -Filter 'cairo*.dll' -File |
+        Where-Object { $_.Name -notmatch 'gobject|script' } | Select-Object -First 1
+    if (-not $cairoDll) { Die 'cairo: no cairo DLL in the prefix' }
+    Log "cairo DLL $($cairoDll.Name) depends on: $((Get-Dependents $cairoDll.FullName) -join ', ')"
+    $deps = Get-Dependents $cairoDll.FullName
+    foreach ($stem in @('freetype', 'fontconfig', 'pixman', 'libpng16', 'z.dll')) {
+        if (-not ($deps | Where-Object { $_ -like "$stem*" })) {
+            Die "cairo was not linked against $stem; an optional dependency was missed (check the build order)"
+        }
+    }
+    Done-Stamp 'cairo'
+}
+
+# jxrlib (JPEG XR, optional in openslide through the zeiss-czi-jxr patch):
+# built with windows\jxrlib.cmake (see that file).
+function Build-Jxrlib {
+    if (Skip-If-Done 'jxrlib') { return }
+    Log '=== jxrlib'
+    $src = Git-Clone 'https://github.com/4creators/jxrlib.git' "v$(V jxrlib)" (Join-Path $LIW_SRC 'jxrlib')
+    Copy-Item (Join-Path $RepoDir 'windows\jxrlib.cmake') (Join-Path $src 'CMakeLists.txt') -Force
+    Cmake-Build $src
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('jpegxr.dll', 'jxrglue.dll') 'jxrlib'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('libjxr.pc') 'jxrlib'
+    Done-Stamp 'jxrlib'
+}
+
+# openslide at the pinned commit with the repository's two patches (the
+# same ones the linux and macos builds apply); libdicom comes from
+# openslide's own subproject wrap, statically.
+function Build-Openslide {
+    if (Skip-If-Done 'openslide') { return }
+    Log '=== openslide'
+    $src = Join-Path $LIW_SRC 'openslide'
+    if (Test-Path $src) { Remove-Item -Recurse -Force $src }
+    # A full clone: the pin is a commit, which a shallow clone cannot hold.
+    for ($n = 1; $n -le 10; $n++) {
+        & git clone -q https://github.com/openslide/openslide.git $src
+        if ($LASTEXITCODE -eq 0) { break }
+        Log 'retrying git clone of openslide'
+        Start-Sleep -Seconds 5
+    }
+    if ($LASTEXITCODE -ne 0) { Die 'git clone of openslide failed' }
+    & git -C $src checkout -q "$(V openslide-sha)"
+    Assert-Exit 'git checkout of the openslide commit'
+    & git -C $src config user.email 'wheels@example.com'
+    & git -C $src config user.name 'Wheel Builder'
+    foreach ($patch in @('openslide-iewchen-zeiss-czi-jxr.patch', 'openslide-vendor-mirax.c.patch')) {
+        Run-Logged 'git' @('-C', $src, 'am', (Join-Path $RepoDir $patch)) "git am $patch"
+    }
+    # Windows only: the jxrlib GUIDs the jxr decoder compares against
+    # (DEFINE_GUID in JXRGlue.h) are data symbols of jxrglue.dll, which
+    # MSVC's linker cannot import without dllimport declarations the
+    # jxrlib headers do not have (LNK2019 on IID_PKImageWmpDecode and the
+    # GUID_PKPixelFormat* constants).  INITGUID before the include defines
+    # local copies in this translation unit, the usual Windows idiom.
+    Invoke-Patch $src 'openslide_decode_jxr_initguid' @'
+path = "src/openslide-decode-jxr.c"
+s = open(path).read()
+s = s.replace("#include <JXRGlue.h>",
+    "#ifdef _WIN32\n"
+    "// The jxrlib GUIDs are data symbols of jxrglue.dll; define local copies.\n"
+    "#define INITGUID\n"
+    "#endif\n"
+    "#include <JXRGlue.h>", 1)
+open(path, "w").write(s)
+'@
+    # Compiled with clang-cl (see Ensure-Clang): openslide requires the
+    # GNU C cleanup attribute.  CC is how meson picks the compiler, CC_LD
+    # the linker: meson would otherwise look for lld-link, which is not
+    # extracted; MSVC's link.exe links clang-cl's objects.
+    $savedPath = $env:PATH
+    $env:PATH = "$script:ClangBin;$env:PATH"
+    $env:CC = 'clang-cl'
+    $env:CC_LD = 'link'
+    try {
+        Meson-Build $src @('-Dtest=disabled', '-Ddoc=disabled',
+            '--force-fallback-for=libdicom,uthash')
+    } finally {
+        $env:PATH = $savedPath
+        Remove-Item -Path 'env:CC', 'env:CC_LD' -ErrorAction SilentlyContinue
+    }
+    Log "prefix DLLs: $((Get-ChildItem -Path (Join-Path $LIW_PREFIX 'bin') -Filter '*.dll' | ForEach-Object { $_.Name }) -join ', ')"
+    Log "prefix EXEs: $((Get-ChildItem -Path (Join-Path $LIW_PREFIX 'bin') -Filter '*.exe' | ForEach-Object { $_.Name }) -join ', ')"
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('libopenslide-1.dll', 'slidetool.exe') 'openslide'
+    $dll = Join-Path $LIW_PREFIX 'bin\libopenslide-1.dll'
+    $deps = Get-Dependents $dll
+    Log "libopenslide-1.dll depends on: $($deps -join ', ')"
+    # Feature assertions, as on macos: the hard requirements plus the
+    # optional jxr (the patch) -- a missing one would be silent.
+    foreach ($stem in @('cairo', 'glib-2.0', 'gobject-2.0', 'gio-2.0', 'sqlite3', 'libxml2',
+                        'jxrglue', 'jpegxr', 'libpng16', 'tiff.dll', 'openjp2', 'jpeg62')) {
+        if (-not ($deps | Where-Object { $_ -like "$stem*" })) {
+            Die "openslide was not linked against $stem; a dependency was missed (check the build order)"
+        }
+    }
+    # The extension links the import library as 'openslide'; meson may
+    # name it after the DLL's lib prefix.
+    $lib = Join-Path $LIW_PREFIX 'lib'
+    if ((Test-Path (Join-Path $lib 'libopenslide.lib')) -and -not (Test-Path (Join-Path $lib 'openslide.lib'))) {
+        Copy-Item (Join-Path $lib 'libopenslide.lib') (Join-Path $lib 'openslide.lib')
+    }
+    Assert-Files $lib @('openslide.lib') 'openslide'
+    Done-Stamp 'openslide'
 }
 
 # --------------------------------------------------------------------------
@@ -967,10 +1346,11 @@ open(path, "w").write(s)
     # through it).  The library pylibtiff loads with ctypes is therefore
     # forced in with --include, and --analyze-existing-exes vendors the
     # bundled tools' dependencies and rewrites their import tables to the
-    # mangled names.  vcruntime140.dll is forced in too (unmangled, as
-    # delvewheel copies it): python ships one for its own extensions, but
-    # the bundled tools run as separate processes in a directory where
-    # nothing else provides it (a fresh Windows has no VC++ redistributable).
+    # mangled names.  The VC runtime DLLs (vcruntime140, vcruntime140_1)
+    # are forced in too, unmangled: python ships them for its own
+    # extensions, but the bundled tools run as separate processes in a
+    # directory where nothing else provides them (a fresh Windows has no
+    # VC++ redistributable), and delvewheel leaves them out otherwise.
     # Mangling stays on: the Windows loader reuses an already-loaded module
     # by base name, so unmangled tiff.dll copies in two wheels would
     # silently share one (the hazard the linux BUILD_ID salt exists for).
@@ -980,7 +1360,9 @@ open(path, "w").write(s)
         Run-Logged $pp @(
             '-m', 'delvewheel', 'repair', '-w', $WheelsDir,
             '--add-path', "$(Join-Path $LIW_PREFIX 'bin');$script:VcRedist",
-            '--analyze-existing-exes', '--include', 'tiff.dll;vcruntime140.dll',
+            '--analyze-existing-exes',
+            '--include', 'tiff.dll;vcruntime140.dll;vcruntime140_1.dll',
+            '--no-mangle', 'vcruntime140.dll;vcruntime140_1.dll',
             $whl.FullName) "delvewheel repair of $($whl.Name)"
         Relocate-Tools (Join-Path $WheelsDir $whl.Name) 'libtiff' 'pylibtiff.libs'
     }
@@ -1136,8 +1518,8 @@ open(path, "w").write(s)
         '-m', 'delvewheel', 'repair', '-w', $WheelsDir,
         '--add-path', "$(Join-Path $LIW_PREFIX 'bin');$script:VcRedist",
         '--analyze-existing-exes',
-        '--include', 'openjp2.dll;tiff.dll;vcruntime140.dll',
-        '--no-mangle', 'vcruntime140.dll',
+        '--include', 'openjp2.dll;tiff.dll;vcruntime140.dll;vcruntime140_1.dll',
+        '--no-mangle', 'vcruntime140.dll;vcruntime140_1.dll',
         $tagged) 'delvewheel repair of glymur'
     $out = Join-Path $WheelsDir (Split-Path -Leaf $tagged)
     Relocate-Tools $out 'glymur' 'glymur.libs'
@@ -1157,6 +1539,167 @@ open(path, "w").write(s)
     Move-Item $out $final -Force
     Log "glymur wheel: $final"
     Done-Stamp 'glymur'
+}
+
+# openslide-python from master (the last release tag is stale, as on linux
+# and macos): the _convert extension links libopenslide, slidetool is
+# bundled, and lowlevel.py loads the bundled DLL before anything else --
+# pypi publishes openslide-bin wheels for Windows, and large-image
+# [openslide] installs one, but its library is unpatched upstream (no
+# flattened-MIRAX support).  One abi3 wheel from python 3.11 covers the
+# stable pythons; each free-threaded python gets its own wheel (3.15t's is
+# the cp315-abi3.abi3t one upstream builds), mirroring the linux and macos
+# builds.
+function Build-OpenslidePython {
+    if (Skip-If-Done 'openslide_python') { return }
+    Log '=== openslide_python'
+    $pp = $script:PatchPython
+
+    & $pp -m pip install --quiet --no-warn-script-location -U "delvewheel==$(V delvewheel)" | Out-Null
+    Assert-Exit 'pip install of delvewheel failed'
+
+    $src = Git-Clone 'https://github.com/openslide/openslide-python.git' '' `
+        (Join-Path $LIW_SRC 'openslide-python')
+
+    # Bundle the openslide tools: whatever openslide's own tools directory
+    # built (slidetool in 4.x), taken from the prefix.
+    $binDir = Join-Path $src 'openslide\bin'
+    New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+    foreach ($tool in (Get-ChildItem -Path (Join-Path $LIW_SRC 'openslide\_build\tools') -Filter '*.exe' -File)) {
+        $exe = Join-Path $LIW_PREFIX "bin\$($tool.Name)"
+        if (Test-Path $exe) { Copy-Item $exe $binDir -Force }
+    }
+    if (@(Get-ChildItem $binDir -Filter '*.exe' -File).Count -eq 0) {
+        Die 'openslide_python: no openslide tools found to bundle'
+    }
+    Set-Content -Path (Join-Path $binDir '__init__.py') -Value $script:ToolWrapper -Encoding ascii
+
+    Invoke-Patch $src 'openslide_python_lowlevel' @'
+path = "openslide/lowlevel.py"
+s = open(path).read()
+if "\nimport os\n" not in s:
+    s = s.replace("import platform\n", "import os\nimport platform\n", 1)
+s = s.replace(
+    """def _load_library() -> CDLL:
+    try:
+        import openslide_bin
+
+        return openslide_bin.libopenslide1
+    except (AttributeError, ModuleNotFoundError):
+        pass
+""",
+    """def _load_library() -> CDLL:
+    # A wheel built by the large_image wheels pipeline bundles libopenslide
+    # (delvewheel puts it in openslide_python.libs, name-mangled to
+    # libopenslide-1-<hash>.dll); look there before the openslide-bin
+    # wheel or any copy on PATH.  This must come first: pypi publishes
+    # openslide-bin wheels for Windows and large-image[openslide] installs
+    # one, but its library is unpatched upstream (no flattened-MIRAX
+    # support), so letting it win would silently replace our library.
+    libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(
+        os.path.realpath(__file__))), "openslide_python.libs"))
+    if os.path.exists(libpath):
+        try:
+            lib = [lib for lib in os.listdir(libpath)
+                if lib.startswith('libopenslide')][0]
+            return cdll.LoadLibrary(os.path.join(libpath, lib))
+        except (IndexError, OSError):
+            pass
+
+    try:
+        import openslide_bin
+
+        return openslide_bin.libopenslide1
+    except (AttributeError, ModuleNotFoundError):
+        pass
+""")
+open(path, "w").write(s)
+'@
+    Invoke-Patch $src 'openslide_python_setup' @'
+import os
+path = "setup.py"
+s = open(path).read()
+s = s.replace(
+    "            ['openslide/_convert.c'],",
+    "            ['openslide/_convert.c'],\n"
+    "            libraries=['openslide'],\n"
+    "            library_dirs=['%s'],\n"
+    "            include_dirs=['%s']," % (
+        os.path.join(os.environ["LIW_PREFIX"], "lib"),
+        os.path.join(os.environ["LIW_PREFIX"], "include")))
+open(path, "w").write(s)
+'@
+    Invoke-Patch $src 'openslide_python_version' @'
+import re
+path = "openslide/_version.py"
+s = open(path).read()
+s = re.sub(r"(__version__ = '[^']*)'", r"\1.1'", s)
+open(path, "w").write(s)
+'@
+    Invoke-Patch $src 'openslide_python_pyproject' @'
+import os
+path = "pyproject.toml"
+s = open(path).read()
+s = s.replace('openslide = ["py.typed", "*.pyi"]',
+    'openslide = ["py.typed", "*.pyi", "bin/*"]')
+s += "\n[project.scripts]\n" + "".join(
+    "%s = 'openslide.bin:program'\n" % os.path.splitext(name)[0]
+    for name in os.listdir("openslide/bin") if name.endswith(".exe"))
+open(path, "w").write(s)
+'@
+    Commit-Patches $src "$(V openslide-python).1"
+
+    # One abi3 wheel from the oldest stable python requested (3.11 when it
+    # is), plus every free-threaded python.
+    $stable = @($script:Pythons | Where-Object { -not $_.EndsWith('t') } |
+        Sort-Object { [version]$_ })
+    $kept = @()
+    if ($stable.Count -gt 0) { $kept += $stable[0] }
+    $kept += @($script:Pythons | Where-Object { $_.EndsWith('t') })
+    if ($kept.Count -eq 0) { Die 'no pythons selected for the openslide-python wheels' }
+    Remove-Item -Path (Join-Path $LIW_WHEELHOUSE 'openslide_python-*.whl') -Force -ErrorAction SilentlyContinue
+    foreach ($minor in $kept) {
+        $pybin = Join-Path $LIW_PY $minor
+        Log "openslide_python wheel: python $minor"
+        if (Test-Path (Join-Path $src 'build')) { Remove-Item -Recurse -Force (Join-Path $src 'build') }
+        Run-Logged (Join-Path $pybin 'python.exe') @(
+            '-m', 'pip', 'wheel', '--no-deps', '--progress-bar', 'off',
+            '-w', $LIW_WHEELHOUSE, $src) "openslide_python wheel build for python $minor"
+    }
+
+    Log 'delvewheel repair of the openslide_python wheels'
+    Remove-Item -Path (Join-Path $WheelsDir 'openslide_python-*.whl') -Force -ErrorAction SilentlyContinue
+    foreach ($whl in (Get-ChildItem -Path $LIW_WHEELHOUSE -Filter 'openslide_python-*.whl' -File)) {
+        Run-Logged $pp @(
+            '-m', 'delvewheel', 'repair', '-w', $WheelsDir,
+            '--add-path', "$(Join-Path $LIW_PREFIX 'bin');$script:VcRedist",
+            '--analyze-existing-exes',
+            '--include', 'libopenslide-1.dll;vcruntime140.dll;vcruntime140_1.dll',
+            '--no-mangle', 'vcruntime140.dll;vcruntime140_1.dll',
+            $whl.FullName) "delvewheel repair of $($whl.Name)"
+        $out = Join-Path $WheelsDir $whl.Name
+        Relocate-Tools $out 'openslide' 'openslide_python.libs'
+        Assert-WheelContains $out @(
+            '^openslide_python\.libs/libopenslide-1-[0-9a-f]+\.dll$',
+            '^openslide_python\.libs/cairo-[0-9a-f-]+\.dll$',
+            '^openslide_python\.libs/glib-2\.0-[0-9a-f-]+\.dll$',
+            '^openslide_python\.libs/sqlite3-[0-9a-f]+\.dll$',
+            '^openslide_python\.libs/libxml2-[0-9a-f-]+\.dll$',
+            '^openslide_python\.libs/jxrglue-[0-9a-f]+\.dll$',
+            '^openslide_python\.libs/jpegxr-[0-9a-f]+\.dll$',
+            '^openslide_python\.libs/openjp2-[0-9a-f]+\.dll$',
+            '^openslide_python\.libs/tiff-[0-9a-f]+\.dll$',
+            '^openslide_python\.libs/vcruntime140\.dll$',
+            '^openslide_python\.libs/vcruntime140_1\.dll$',
+            '^openslide_python\.libs/slidetool\.exe$',
+            '^openslide/bin/slidetool\.exe$',
+            '^openslide/_convert.*\.pyd$') 'openslide_python'
+    }
+    $repaired = @(Get-ChildItem -Path $WheelsDir -Filter 'openslide_python-*win_amd64*.whl' -File)
+    if ($repaired.Count -lt $kept.Count) {
+        Die "openslide_python: only $($repaired.Count) wheels, expected $($kept.Count)"
+    }
+    Done-Stamp 'openslide_python'
 }
 
 # --------------------------------------------------------------------------
@@ -1211,6 +1754,33 @@ function Main {
                 Build-Libpng
                 Build-Openjpeg
                 Build-Glymur
+            }
+            'openslide_python' {
+                Ensure-Meson
+                Ensure-Clang
+                Build-Zlib
+                Build-Zstd
+                Build-Jbigkit
+                Build-Libwebp
+                Build-Libjpeg-Turbo
+                Build-Libdeflate
+                Build-Xz
+                Build-Libtiff
+                Build-Lcms2
+                Build-Libpng
+                Build-Openjpeg
+                Build-Libbrotli
+                Build-Libexpat
+                Build-Glib
+                Build-Sqlite
+                Build-Libxml2
+                Build-Pixman
+                Build-Freetype
+                Build-Fontconfig
+                Build-Cairo
+                Build-Jxrlib
+                Build-Openslide
+                Build-OpenslidePython
             }
             default {
                 Die "no builder for package $pkg"
