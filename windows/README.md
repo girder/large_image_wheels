@@ -65,15 +65,16 @@ safety boundary: a manthey/utils `agent_sandbox.py` sandbox, where the
 agent is the non-administrator user `agent` with sshd listening for
 the host), and a second, fresh sandbox does the build (the library
 isolation boundary).  Because Windows Sandbox cannot be nested, the
-agent cannot start the build sandbox itself; a human starts it from the
-host.  The checked-in `windows\build.wsb` is data, not code: four folder
-mappings and one LogonCommand line, meant to be read once by a human,
-adjusted for host paths, and then opened directly.  The human's entire
-host workflow is reading the build log and the exit-code file, which
-needs only their own commands.  `sandbox_build.ps1` is an optional
-convenience launcher, not a requirement; treat it as frozen
-infrastructure -- audited once, changed only with care, since running it
-executes it on the host.
+agent cannot start the build or test sandbox itself; a human starts
+them from the host with `windows\sandbox_build.bat &&
+windows\test_via_sandbox.bat`.  Those launchers (and the
+`sandbox_common.ps1` they share) are the only agent-authored code that
+runs on the host; treat them as frozen infrastructure -- audited once,
+changed only with care.  The checked-in `windows\build.wsb` and
+`windows\test.wsb` are the same two runs as data, not code: folder
+mappings and one LogonCommand line each, for a workflow where nothing
+agent-authored runs on the host (read once, adjust the host paths, open
+the file, read the log and the exit-code file).
 
 What the agent sandbox CAN do is compile: `build_wheels.ps1` has a dev
 mode (any checkout without the `C:\mnt\repo` mapping) that installs the
@@ -139,42 +140,131 @@ python.org pythons are 64-bit only).
 
 All packages are in scope, in this order (matching the macos branch):
 pylibtiff (first; the pilot for the whole pipeline), Glymur,
-openslide_python, pyvips, GDAL, mapnik, and javabridge/bioformats.
-pylibmc goes last deliberately: it is the least important wheel, and
-libmemcached has no MSVC support story, so it will need real patching
-work.  javabridge needs a JVM strategy on Windows; the linux build's
-java packaging is the reference, and a portable JDK zip staged in the
-cache is the likely starting point.
+openslide_python, pyvips, GDAL, mapnik, javabridge/bioformats, and
+pylibmc.  Decisions confirmed with the maintainer:
+
+- GDAL is built here, not taken from pypi (pypi has no GDAL wheels; the
+  pypi mapnik wheels carry only a small GDAL subset, so our mapnik build
+  is the better one too).
+- pyproj is not built (as on linux and macos).
+- pylibmc is built: libmemcached talks to a memcached service that need
+  not be on the same machine, so the wheel is as useful on Windows as
+  elsewhere.  It goes last only because libmemcached has no MSVC support
+  story and will need real patching work.
+- javabridge needs a JVM strategy on Windows; the linux build's java
+  packaging is the reference, and a portable JDK zip staged in the cache
+  is the likely starting point.
+- The test suite is the shared `test/test_script.sh`, run on Windows under
+  PortableGit's bash; it is adapted where Windows needs it rather than
+  forked, so that every platform tests the same things.
+
+### Bundled command line tools
+
+The linux and macos wheels ship their tools (`tiffinfo`, `gdalinfo`,
+`vips`, ...) as `<package>/bin/<tool>` with an rpath to the wheel's
+library directory, and expose each as a console script through a
+wrapper module.  Windows has no rpath: an .exe finds its DLLs in its own
+directory, the system directories, and PATH, while delvewheel keeps the
+bundled (name-mangled) DLLs in the wheel's top-level `<dist>.libs`.  A
+fresh Windows also has no `vcruntime140.dll` (python ships one for its
+own extensions, in python's directory, which is not on a tool's search
+path).  The layout is therefore:
+
+- the real tools live in `<dist>.libs`, next to their DLLs, together with
+  an unmangled `vcruntime140.dll` that delvewheel is told to bundle
+  (`--include`; delvewheel otherwise leaves it out for cpython wheels);
+- `<package>/bin/<tool>.exe` is the **launcher** (`windows/launcher.c`,
+  5 KB, kernel32 only, no C runtime): it locates `<dist>.libs` relative
+  to itself, puts it first on PATH, runs the real tool with the unchanged
+  command line and the inherited console, and exits with its status.
+  `build_wheels.ps1` compiles it once per library directory name
+  (`Build-Launcher`) and `Relocate-Tools` rewrites the repaired wheel
+  (unpack, move, repack with the `wheel` tool, which regenerates RECORD);
+- the console-script wrapper (`<package>/bin/__init__.py`) just runs the
+  launcher.
+
+So `<package>/bin/<tool>` works by path from bash (PortableGit's bash
+resolves an extensionless path to the `.exe`), from the console script,
+and from a bare PATH, exactly as the shared test script expects; nothing
+is duplicated.
 
 ## Files
 
-- `build.wsb` -- the sandbox configuration, checked in as data: the four
-  mapped folders (repo read-only at `C:\mnt\repo`; cache, wheels, and the
-  per-run exchange at `C:\mnt\cache`, `C:\mnt\wheels`, `C:\mnt\run`
-  read-write, all from a `liw_wheels` sibling of the repository) and the
-  LogonCommand that runs `windows\build_wheels.ps1`.  The `HostFolder`
-  paths are host-specific; adjust them once, then open the file to start
-  a build.  Only one sandbox may run at a time.
-- `sandbox_build.ps1` -- optional host-side convenience launcher
-  (agent-authored; audit before trusting).  It performs the same checks
-  and uses the same folder layout as `build.wsb`, generates an equivalent
-  `.wsb`, starts the sandbox, streams the in-sandbox build log, waits for
-  the exit marker, validates that every requested package produced a
-  wheel for every requested python, and reports.  Commands:
-  - `sandbox_build.ps1` -- full build (default; `pylibtiff` only so far).
-  - `sandbox_build.ps1 -Command cache` -- pre-warm the download cache in
-    a throwaway sandbox (toolchain downloads, the MSVC/SDK payloads, and
-    the pythons; a later build run then only extracts).
-- `build_wheels.ps1` -- the in-sandbox monolithic build, the counterpart
-  of the monolithic Dockerfile (and of `macos/build_wheels.sh`).  Run by
-  the `.wsb` LogonCommand in the build sandbox; in any other checkout it
-  runs in dev mode (see Usage).  Parameters: `-Packages`, `-Pythons`
-  (a trailing `t` selects the free-threaded NuGet python), `-WarmCache`
-  (toolchain and pythons only); without parameters it reads
-  `C:\mnt\run\args.json` when the launcher wrote one and uses built-in
-  defaults otherwise (the source is logged).  It writes its log to
-  `<run>\build.log` and its exit code to `<run>\exit_code`, clearing
+Host side (run on the host, outside any sandbox):
+
+- `sandbox_build.bat` / `test_via_sandbox.bat` -- the two entry points,
+  run from a command prompt with no options, the counterparts of
+  `build.sh && test_via_docker.py` and `macos/tart_build.sh &&
+  macos/test_via_tart.sh`:
+  ```
+  windows\sandbox_build.bat && windows\test_via_sandbox.bat
+  ```
+  Each is one line that runs the `.ps1` of the same name and returns its
+  exit code; options are passed through.
+- `sandbox_build.ps1` -- the build launcher (agent-authored; audit before
+  trusting).  It checks the host, generates a `.wsb` with the folder
+  layout below, starts the sandbox, streams the in-sandbox build log,
+  waits for the exit marker, validates that every requested package
+  produced a wheel for every requested python, and reports.
+  `-Packages`, `-Pythons`, `-MemoryMB`, `-TimeoutSec`; `-Command cache`
+  pre-warms the download cache in a throwaway sandbox (toolchain
+  downloads, the MSVC/SDK payloads, and the pythons).
+- `test_via_sandbox.ps1` -- the test launcher: a fresh sandbox with the
+  repository and the wheels mapped read-only, running `test_wheels.ps1`;
+  it streams the log, prints `report.txt`, and exits with the result.
+  `-Pythons`, `-MemoryMB`, `-TimeoutSec`.
+- `sandbox_common.ps1` -- what the two launchers share: the host sanity
+  checks (not inside a sandbox, feature installed, no sandbox running),
+  the `.wsb` generation, the launch, the log streaming, the wait.
+- `build.wsb` / `test.wsb` -- the same two sandbox configurations checked
+  in as data, for the human-only workflow without the launchers: the
+  mapped folders (repo read-only at `C:\mnt\repo`; cache at
+  `C:\mnt\cache`; wheels at `C:\mnt\wheels`, read-write for the build and
+  read-only for the test; the per-run exchange at `C:\mnt\run`, from
+  `liw_wheels\run` for the build and `liw_wheels\test_run` for the test;
+  all under a `liw_wheels` sibling of the repository) and the
+  LogonCommand.  The `HostFolder` paths are host-specific; adjust them
+  once, then open the file.  Only one sandbox may run at a time.
+
+In-sandbox side (run by the LogonCommand; dev mode in any checkout):
+
+- `build_wheels.ps1` -- the monolithic build, the counterpart of the
+  monolithic Dockerfile (and of `macos/build_wheels.sh`).  Parameters:
+  `-Packages`, `-Pythons` (a trailing `t` selects the free-threaded NuGet
+  python), `-WarmCache` (toolchain and pythons only); without parameters
+  it reads `C:\mnt\run\args.json` when the launcher wrote one and uses
+  built-in defaults otherwise (the source is logged).  It writes its log
+  to `<run>\build.log` and its exit code to `<run>\exit_code`, clearing
   both at startup, so a persistent run folder works across runs.
+- `test_wheels.ps1` -- the in-sandbox test, the counterpart of the in-VM
+  part of `macos/test_via_tart.sh`.  For every python: install the
+  wheels by exact version into a clean venv (a pypi fallback would show
+  as a version mismatch), run `check_wheels.py` there with a scrubbed
+  PATH, run the shared `test/test_script.sh` under PortableGit's bash
+  with a scrubbed PATH and the python under test, and run
+  `check_wheels.py` in the venv the suite created.  Every check is one
+  `OK:`/`FAIL:` line in `<run>\report.txt`; the log is `<run>\test.log`.
+- `liw_common.ps1` -- what the two in-sandbox scripts share: logging,
+  `versions.txt` lookups, cached downloads, the NuGet python and
+  PortableGit installs.
+- `check_wheels.py` -- the windows-specific per-package isolation checks
+  (the counterpart of the macos harness's otool audit and per-package
+  checks), run with a python that has the wheels installed and a
+  scrubbed PATH: a PE import audit of every `.pyd`/`.dll`/`.exe` our
+  wheel provides (each import must be in the wheel, python's DLL, an API
+  set, or in System32 -- the tools nobody runs are checked too), the
+  loaded library is the bundled `<dist>.libs` copy (through the
+  process's module list), the bundled tools run through their wrappers
+  and by path with nothing but the system directories on PATH, and the
+  asserted codecs work.  By hand in dev mode:
+  ```
+  C:\liw_build\python\3.13\python.exe -m venv %TEMP%\v313
+  set PATH=C:\Windows\System32;C:\Windows;%TEMP%\v313\Scripts
+  pip install numpy C:\liw_build\wheels\pylibtiff-*cp313*.whl
+  python -I windows\check_wheels.py pylibtiff
+  ```
+- `launcher.c` -- the stand-in for the bundled tools (see the section
+  above); compiled by `build_wheels.ps1`.
 - `install_msvc.py` -- the no-installer MSVC + Windows SDK install (see
   the toolchain section); run by `build_wheels.ps1` with the patch
   python, never by hand in the normal flow.
@@ -182,74 +272,67 @@ cache is the likely starting point.
   sandbox reset: `build_wheels.ps1 -WarmCache` in dev mode (the pinned
   toolchain and pythons under `C:\liw_build`) plus the extras the build
   itself does not need (`requests`/`packaging` for `check_versions.py`).
-- `check_wheels.py` -- the windows-specific per-package isolation
-  checks, run with a python that has the wheels installed and a scrubbed
-  PATH (the counterpart of the macos harness's per-package checks):
-  the loaded library is the bundled `<dist>.libs` copy (verified through
-  the process's module list), the bundled tools run through their
-  wrappers, and the asserted codecs work.  In dev mode:
-  ```
-  C:\liw_build\python\3.13\python.exe -m venv %TEMP%\v313
-  set PATH=C:\Windows\System32;C:\Windows;%TEMP%\v313\Scripts
-  pip install numpy C:\liw_build\wheels\pylibtiff-*cp313*.whl
-  python -I windows\check_wheels.py pylibtiff
-  ```
 - `macos/README.md` -- the macos branch's notes; its process lessons
   (verify edits before committing, stage work behind checkpoint runs,
   assert every optional dependency, full fresh builds for verification)
   apply here unchanged.
 
+Shared with the other platforms: `test/test_script.sh` runs on Windows
+under PortableGit's bash.  Its Windows accommodations are inline and
+small (a venv's `Scripts` directory instead of `bin`; python < 3.12's
+`activate` leaves a `C:\` path in PATH that msys cannot split, so the
+venv is activated by hand there).  The harness supplies `python3` (the
+NuGet pythons have no `python3.exe`) through a one-line shim directory
+named by `LIW_PYTHON_BIN_DIR`, the same variable the macos harness uses.
+
 ## Usage
 
-The human-only host workflow (no agent-authored code runs on the host);
-Windows 10/11 with the Windows Sandbox feature enabled:
+On the host (Windows 10/11 with the Windows Sandbox feature enabled),
+from a command prompt in the repository, with no agent sandbox running:
 
 ```
-# once: create the three writable folders the .wsb maps (the paths must
-# match build.wsb; a liw_wheels sibling of the repository by convention)
-mkdir C:\misc\liw_wheels\cache C:\misc\liw_wheels\run C:\misc\liw_wheels\wheels
+windows\sandbox_build.bat && windows\test_via_sandbox.bat
+```
 
-# once: check the four HostFolder paths in windows\build.wsb
+That is the whole workflow: the build in one fresh sandbox (wheels land
+in `..\liw_wheels\wheels`, the log in `..\liw_wheels\run\build.log`),
+then the tests in another (the report in `..\liw_wheels\test_run\
+report.txt`, the log in `test.log` beside it).  Each sandbox shuts
+itself down at the end of its run, success or failure, as on macos: the
+log is already out (streamed to the console and saved in the run
+folder), so there is no virtue in keeping it alive -- and it holds the
+single-instance slot.  If a guest-initiated shutdown is ever refused (a
+first-run property to verify), close the window by hand; never taskkill,
+which is indiscriminate and could hit the agent sandbox.
 
-# every build: start the sandbox and watch the log with your own console
+Options when needed (the `.bat` files pass them through):
+
+```
+powershell -File windows\sandbox_build.ps1 -Command cache     # pre-warm the download cache
+powershell -File windows\sandbox_build.ps1 -Packages pylibtiff
+powershell -File windows\sandbox_build.ps1 -Pythons 3.12,3.13 -MemoryMB 8192
+powershell -File windows\test_via_sandbox.ps1 -Pythons 3.13
+```
+
+The same two runs without the launchers (no agent-authored code on the
+host; the `.wsb` files are data): create the writable folders, check the
+`HostFolder` paths once, open the `.wsb`, and watch the log:
+
+```
+mkdir C:\misc\liw_wheels\cache C:\misc\liw_wheels\run C:\misc\liw_wheels\test_run C:\misc\liw_wheels\wheels
 start windows\build.wsb
 powershell -Command "Get-Content C:\misc\liw_wheels\run\build.log -Wait"
-
-# when C:\misc\liw_wheels\run\exit_code appears (0 or 1), the sandbox
-# shuts itself down shortly after; the wheels are in
-# C:\misc\liw_wheels\wheels
+# when C:\misc\liw_wheels\run\exit_code appears (0 or 1), the wheels are in
+# C:\misc\liw_wheels\wheels and the sandbox shuts down shortly after; then
+start windows\test.wsb
+powershell -Command "Get-Content C:\misc\liw_wheels\test_run\test.log -Wait"
+# the result is C:\misc\liw_wheels\test_run\report.txt and exit_code
 ```
 
 Remember that only one sandbox instance may run at a time -- the agent
-session is itself a sandbox, so it must be closed before a build run --
-that closing the watching console does not stop the build, and that a
-run interrupted at the host leaves its sandbox running until it is
-closed.
-
-The convenience launcher automates the same steps (it is agent-authored
-code, so audit it before trusting it):
-
-```
-# pre-warm the download cache (optional; happens on demand otherwise)
-powershell -File windows\sandbox_build.ps1 -Command cache
-
-# full isolated build (sandbox, toolchain, build, wheels in liw_wheels\wheels)
-powershell -File windows\sandbox_build.ps1
-
-# build a single package
-powershell -File windows\sandbox_build.ps1 -Packages pylibtiff
-
-# choose pythons and memory
-powershell -File windows\sandbox_build.ps1 -Pythons 3.12,3.13 -MemoryMB 8192
-```
-
-The sandbox shuts itself down at the end of every run, success or
-failure, as on macos: the log is already out (streamed to the watching
-console and saved in the run folder), so there is no virtue in keeping
-the build environment alive -- and it holds the single-instance slot.
-If a guest-initiated shutdown is ever refused (a first-run property to
-verify), close the window by hand; never taskkill, which is
-indiscriminate and could hit the agent sandbox.
+session is itself a sandbox, so it must be closed before a run -- that
+closing the watching console does not stop a run, and that a run
+interrupted at the host leaves its sandbox running until it is closed.
 
 ### Dev mode (the agent sandbox, or any checkout)
 
@@ -260,14 +343,23 @@ powershell -File windows\dev_setup.ps1
 # build one package for one python; log in C:\liw_build\run\build.log,
 # wheels in C:\liw_build\wheels
 powershell -File windows\build_wheels.ps1 -Packages pylibtiff -Pythons 3.13
+
+# test the wheels in C:\liw_build\wheels; report in
+# C:\liw_build\test_run\report.txt, log in test.log beside it, venvs under
+# C:\liw_build\test
+powershell -File windows\test_wheels.ps1 -Pythons 3.13
 ```
 
-Dev mode differs from the build sandbox only in where the four folders
-are (`C:\liw_build\{run,cache,wheels}` and the checkout instead of the
-`C:\mnt` mappings) and in not shutting the machine down at the end.
-Stamps under `C:\liw_build\stamps` skip finished steps on reruns
+Dev mode differs from the sandboxes only in where the folders are
+(`C:\liw_build\{run,cache,wheels,test_run}` and the checkout instead of
+the `C:\mnt` mappings; the test reuses the build's pythons and
+PortableGit) and in not shutting the machine down at the end.  Stamps
+under `C:\liw_build\stamps` skip finished build steps on reruns
 (`LIW_FORCE=1` ignores them); dev builds are for shaking out problems,
-and nothing built in dev mode is ever used as a result.
+and nothing built in dev mode is ever used as a result.  The isolation a
+dev test proves is weaker than the sandbox's: the agent sandbox has its
+own tools installed, so only the scrubbed PATH keeps them out, whereas
+the test sandbox has nothing.
 
 ## Iteration protocol
 
@@ -284,10 +376,11 @@ for the single-instance limit:
    `git fetch ssh://agent@<sandbox-ip>/C:/Users/agent/large_image_wheels windows`
    followed by `git merge --ff-only FETCH_HEAD` on the `windows` branch.
 3. The human ends the agent sandbox (only one Windows Sandbox instance
-   is allowed, and the agent session is one), then runs the build by
-   opening `windows\build.wsb`, and runs the tests.
+   is allowed, and the agent session is one), then runs
+   `windows\sandbox_build.bat && windows\test_via_sandbox.bat`.
 4. The human restarts the agent session and copies the build log
-   (`liw_wheels\run\build.log`) and the test report into it
+   (`liw_wheels\run\build.log`), the test report and log
+   (`liw_wheels\test_run\report.txt`, `test.log`) into it
    (`agent_sandbox.py cp <file> in:<path>`, or `scp` to the sandbox).
 5. The agent diagnoses from the log, fixes, commits; repeat until the
    build passes, then the same loop with test failure logs until the
@@ -323,60 +416,71 @@ If you are a fresh agent instance resuming this work:
 1. Read this file top to bottom.
 2. Read `git log --oneline -20` on the windows branch to see what changed
    since the state the status section describes.
-3. Get the latest build log from the human (it lives at
-   `liw_wheels\run\build.log` on the host; the transfer is a copy into
-   one of the agent sandbox's mapped folders).  Errors are logged as
+3. Get the latest build log and test report from the human (they live
+   at `liw_wheels\run\build.log` and `liw_wheels\test_run\report.txt`
+   plus `test.log` on the host; the transfer is a copy into one of the
+   agent sandbox's mapped folders).  Build errors are logged as
    `error: ...` with the failing script line, and the failing step is
-   named in the preceding `=== <step>` line.
+   named in the preceding `=== <step>` line; test failures are the
+   `FAIL:` lines of the report, with the detail (pip output, the shared
+   suite's output, check_wheels.py's lines) in `test.log` under the
+   `=== python <version>` heading.
 4. Diagnose against the log, fix, commit, and hand the commit back for
    the next transfer.
 
 ## Status
 
-Work in progress (2026-10-27).  No build sandbox has run yet (the early
-host attempts were blocked by the single-instance rule while the agent
-session was running; see the hard-won list).  The pipeline has been
-exercised in dev mode inside the agent sandbox:
+Work in progress (2026-10-28).  No build or test sandbox has run on a
+host yet (the early host attempts were blocked by the single-instance
+rule while the agent session was running; see the hard-won list).  The
+pipeline has been exercised in dev mode inside the agent sandbox:
 
 - `dev_setup.ps1` / `build_wheels.ps1 -WarmCache` installs the pinned
   toolchain (PortableGit 2.56.0.windows.4, cmake 4.4.4, ninja 1.13.2,
   nasm 3.02, MSVC 14.44.17.14 = toolset 14.44.35207, Windows SDK
-  10.0.26100.0, python 3.13 from NuGet) without administrator rights.
+  10.0.26100.0, the NuGet pythons) without administrator rights.
 - `build_wheels.ps1 -Packages pylibtiff` builds the whole libtiff chain
   (zlib, zstd, jbigkit, libwebp, libjpeg-turbo, libdeflate, xz, libtiff
   with every feature asserted through tiffconf.h and the DLL import
   table) and pylibtiff wheels for all seven pythons (3.11-3.15, 3.14t,
   3.15t -- the free-threaded ones from NuGet's `python-freethreaded`),
-  each repaired by delvewheel to eight bundled, name-mangled DLLs.
-  Installed into a clean venv with a scrubbed PATH, `check_wheels.py`
-  confirms (on 3.11, 3.13, and 3.14t) the loaded libtiff is the bundled
-  copy, the lzw round trip, the bundled `tiffinfo` through its
-  console-script wrapper, and zstd/webp/jpeg/deflate writes.  The
+  each repaired by delvewheel to eight bundled, name-mangled DLLs plus
+  `vcruntime140.dll`, with the libtiff tools in `pylibtiff.libs` and the
+  launcher in `libtiff/bin` (see "Bundled command line tools").
+- `test_wheels.ps1` in dev mode passes every check for all seven
+  pythons against those wheels (2026-10-28): the exact-version install,
+  `check_wheels.py` (import audit, bundled DLL identity, tools by
+  wrapper and by path with a bare PATH, codec writes), the shared
+  `test/test_script.sh`, and `check_wheels.py` in the suite's venv.  The
   free-threaded import carries the GIL re-enable `RuntimeWarning` the
   linux and macos wheels also show.
 
-Next step: the first host verification run (transfer the tip, end the
-agent session, open `windows\build.wsb` or run `sandbox_build.ps1`,
-watch `liw_wheels\run\build.log`); then the shared `test/test_script.sh`
-in a test sandbox (`test_via_sandbox.ps1`, not written yet -- the macos
-`test_via_tart.sh` is the model).  Only after pylibtiff is verified end
-to end does Glymur start.
+Next step: the first host run, `windows\sandbox_build.bat &&
+windows\test_via_sandbox.bat` (transfer the tip, end the agent session,
+run, send back `liw_wheels\run\build.log`, `liw_wheels\test_run\
+report.txt` and `test.log`).  Only after pylibtiff is verified end to
+end does Glymur start.
 
 Known gaps, in rough order:
 
-- No sandbox test harness yet (`check_wheels.py` is the per-package
-  isolation check; the shared functional suite still has to be driven
-  under PortableGit's bash with a scrubbed PATH in a fresh sandbox).
 - Wheel timestamp reproducibility (linux uses strip-nondeterminism +
   advzip; macos accepts delocate's output): not yet implemented; the
   macos `normalize_zips.py` approach is the candidate.
 - The guest-initiated shutdown (`shutdown /s /t 5` issued by the
-  in-sandbox script after the exit code) is desk-checked only; if a
+  in-sandbox scripts after the exit code) is desk-checked only; if a
   sandbox does not close itself when the run ends, close the window by
   hand and record the finding here.
-- `sandbox_build.ps1` has not run on a host since the toolchain change
-  (it is unchanged in what it does: start the sandbox, stream the log,
-  validate the wheels per python and package).
+- The host launchers have not run on a host since the toolchain change
+  (what they do is unchanged: start the sandbox, stream the log, wait,
+  validate the wheels / print the report).
+- The C++ packages to come (pyvips, GDAL, mapnik) will import
+  `msvcp140.dll` (delvewheel bundles it from the redist directory that
+  `--add-path` names) and `vcruntime140_1.dll` (which delvewheel leaves
+  out like `vcruntime140.dll`; add it to `--include` when the import
+  audit reports it).
+- `test/test_script.sh` still writes `/tmp/outfloat.tiff` in its
+  GDAL+pyvips section; python on Windows reads that as `C:\tmp\...`.
+  Adjust when that section is reached.
 - `check_versions.py` runs the `git` entries through `timeout`, which is
   Windows' timeout.exe here; run it on linux (its normal home), or check
   the windows entries by name (`delvewheel`, `git-for-windows`, `msvc`,
@@ -410,10 +514,47 @@ Known gaps, in rough order:
   unrepaired wheel is a silent isolation failure, not an error.
 - Bundled .exe tools resolve their (mangled) DLL imports through the
   normal search order -- the exe's directory, then PATH -- and a child
-  process does not inherit `os.add_dll_directory`.  The console-script
-  wrapper prepends `<dist>.libs` and `sys.base_prefix` (for the
-  `vcruntime140.dll` that python ships and delvewheel deliberately does
-  not bundle) to the child's PATH.
+  process does not inherit `os.add_dll_directory`; a fresh Windows has
+  no `vcruntime140.dll` outside python's own directory, and delvewheel
+  leaves that DLL out for cpython wheels unless `--include`d (it then
+  copies it unmangled, which is what the tools need).  Hence the layout
+  in "Bundled command line tools": real tools and `vcruntime140.dll` in
+  `<dist>.libs`, the launcher in `<package>/bin`.  A tool that fails to
+  load a DLL exits with `STATUS_DLL_NOT_FOUND`, which bash reports as
+  status 127 with no message -- indistinguishable from "command not
+  found" until the DLL is put on PATH.
+- PortableGit's bash resolves an extensionless path (`.../bin/tiffinfo`)
+  to the `.exe`, so the shared test script's direct tool invocations
+  work unchanged.  Its `/etc/profile` sets `MSYSTEM=UCRT64` and puts
+  `/ucrt64/bin` (PortableGit's own DLL collection) on PATH; harmless
+  for mangled names, but the sandbox PATH is scrubbed to
+  `usr\bin` + System32 before bash starts and nothing else is on it.
+- A PowerShell function returns every object its commands emit: `& cl`
+  printing the source file name made `Build-Launcher` return an array
+  (the first `Relocate-Tools` copied `launcher.c` as the tool).  Native
+  commands inside functions go through `Run-Logged` or `| Out-Null`.
+- Line endings: a Windows checkout with `core.autocrlf=true` (the agent
+  sandbox's setting, probably the host's too) has `test/test_script.sh`
+  with CRLF endings, which bash rejects (`$'\r': command not found`);
+  `test_wheels.ps1` runs an LF copy from the test root instead of the
+  mapped file.  The in-sandbox `.ps1` files are read by PowerShell and
+  the `.bat` files by cmd, which accept either.
+- The shared script's `pip install --upgrade pip` fails on Windows for
+  pythons whose venv pip is older than pypi's (`pip.exe` cannot replace
+  itself: "To modify pip, please run python -m pip"); the script uses
+  `python -m pip` now, which is the same thing everywhere else.  The
+  `sample.czi` read is gated on bioformats/javabridge: it was gated on
+  the architecture only, which never mattered with every wheel present.
+- Console-script names come from the files in `<package>/bin`, which
+  carry `.exe` on Windows: naming an entry point `tiffinfo.exe` makes
+  pip generate `tiffinfo.exe.exe`, which CreateProcess still finds for
+  `tiffinfo.exe` (so a python-side check passed) while bash's PATH
+  lookup for `tiffinfo` does not.  The setup.py patch strips the
+  extension, and `check_wheels.py` insists on the exact file name.
+- Build stamps: a step's stamp is removed the moment the step starts
+  (`Skip-If-Done`), because a forced rebuild that failed in pylibtiff
+  left the previous run's stamp behind and the next run skipped the
+  step entirely.
 - PowerShell: at the top level of a script the parameters are
   script-scope variables, so `$script:Pythons = <default>` silently
   overwrote `-Pythons`; parameter values are copied aside first.
