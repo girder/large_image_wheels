@@ -82,7 +82,7 @@ $ReportPath = Join-Path $RunDir 'report.txt'
 
 # Parameter values first (at the top level of a script the parameters are
 # script-scope variables, which the defaults below would overwrite).
-$paramPythons = @($Pythons)
+$paramPythons = @($Pythons | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 $script:Pythons = @('3.11', '3.12', '3.13', '3.14', '3.15', '3.14t', '3.15t')
 $script:ArgsSource = 'defaults'
 $argsFile = Join-Path $RunDir 'args.json'

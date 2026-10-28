@@ -129,8 +129,10 @@ foreach ($name in @(
 # At the top level of a script the parameters ARE script-scope variables,
 # so the defaults below would overwrite -Pythons/-Packages; keep the
 # parameter values first.
-$paramPythons = @($Pythons)
-$paramPackages = @($Packages)
+# (Split on commas: from powershell -File, "-Pythons 3.12,3.13" arrives
+# as one string.)
+$paramPythons = @($Pythons | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
+$paramPackages = @($Packages | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 # The same set as macos: the stable pythons plus the free-threaded ones
 # that NuGet publishes (python-freethreaded 3.14 and 3.15).
 $script:Pythons = @('3.11', '3.12', '3.13', '3.14', '3.15', '3.14t', '3.15t')
@@ -227,11 +229,19 @@ function Cmake-Build([string]$Src, [string[]]$CmakeArgs = @()) {
     # (Quoted: PowerShell does not expand a variable inside a bare
     # -DNAME=$var token, which configured zlib into a literal
     # "$LIW_PREFIX" directory on the first dev run.)
+    # CMAKE_DISABLE_FIND_PACKAGE_Tiff: CMake's FindTIFF first tries the
+    # tiff-config.cmake our libtiff installs, and takes the import library
+    # from its IMPORTED_IMPLIB / _RELEASE / _DEBUG properties only; a
+    # MinSizeRel libtiff exports _MINSIZEREL, so the module fell back to
+    # the DLL's location and openjpeg's tools were handed tiff.dll to link
+    # (LNK1107).  With the config lookup disabled the module finds tiff.lib
+    # like any other library.
     & cmake -S $Src -B $build -G Ninja `
         '-DCMAKE_BUILD_TYPE=MinSizeRel' `
         "-DCMAKE_PREFIX_PATH=$script:CmakePrefix" `
         "-DCMAKE_INSTALL_PREFIX=$script:CmakePrefix" `
         '-DCMAKE_INSTALL_LIBDIR=lib' `
+        '-DCMAKE_DISABLE_FIND_PACKAGE_Tiff=ON' `
         @CmakeArgs
     Assert-Exit "cmake configure failed in $Src"
     & cmake --build $build --parallel $LIW_JOBS
@@ -673,9 +683,103 @@ function Build-Libtiff {
     Done-Stamp 'libtiff'
 }
 
+# lcms2 (openjpeg's opj tools link it).  The linux build uses autotools;
+# lcms2 ships a cmake build since 2.17 that produces the same DLL.  The
+# tools (jpgicc, tificc) are not bundled by any wheel, so they are off.
+function Build-Lcms2 {
+    if (Skip-If-Done 'lcms2') { return }
+    Log '=== lcms2'
+    $src = Git-Clone 'https://github.com/mm2/Little-CMS.git' "lcms$(V lcms2)" `
+        (Join-Path $LIW_SRC 'lcms2')
+    Cmake-Build $src @(
+        '-DLCMS2_BUILD_SHARED=ON', '-DLCMS2_BUILD_STATIC=OFF',
+        '-DLCMS2_BUILD_TOOLS=OFF', '-DLCMS2_BUILD_TESTS=OFF',
+        '-DLCMS2_BUILD_JPGICC=OFF', '-DLCMS2_BUILD_TIFICC=OFF',
+        '-DLCMS2_BUILD_TIFDIFF=OFF')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('lcms2.dll') 'lcms2'
+    Done-Stamp 'lcms2'
+}
+
+function Build-Libpng {
+    if (Skip-If-Done 'libpng') { return }
+    Log '=== libpng'
+    $src = Git-Clone 'https://github.com/glennrp/libpng.git' "v$(V libpng)" `
+        (Join-Path $LIW_SRC 'libpng')
+    Cmake-Build $src @(
+        '-DPNG_SHARED=ON', '-DPNG_STATIC=OFF', '-DPNG_TESTS=OFF',
+        '-DPNG_TOOLS=OFF')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('libpng16.dll') 'libpng'
+    Done-Stamp 'libpng'
+}
+
+# openjpeg is needed by glymur (its opj_* tools are bundled into the wheel)
+# and later by gdal/openslide/mapnik.  The linux Dockerfile builds it twice
+# (before and after libtiff); building it once after zlib, libpng, lcms2,
+# and libtiff gives the same final state (as the macos build does).  2.5.x
+# names its options BUILD_SHARED_LIBS/BUILD_STATIC_LIBS; BUILD_THIRDPARTY
+# stays off so the tools link our libraries, not vendored copies.
+function Build-Openjpeg {
+    if (Skip-If-Done 'openjpeg') { return }
+    Log '=== openjpeg'
+    $src = Fetch-Tarball `
+        "https://github.com/uclouvain/openjpeg/archive/v$(V openjpeg).tar.gz" `
+        'openjpeg.tar.gz' (Join-Path $LIW_SRC 'openjpeg')
+    Cmake-Build $src @(
+        '-DBUILD_SHARED_LIBS=ON', '-DBUILD_STATIC_LIBS=OFF', '-DBUILD_CODEC=ON',
+        '-DBUILD_THIRDPARTY=OFF', '-DBUILD_TESTING=OFF', '-DBUILD_DOC=OFF')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @(
+        'openjp2.dll', 'opj_compress.exe', 'opj_decompress.exe', 'opj_dump.exe') 'openjpeg'
+    # Feature assertions: the linux wheels' opj tools link lcms2, libpng,
+    # and libtiff; a missing optional dependency at configure time would
+    # silently reduce the tools' feature set.
+    $decompress = Join-Path $LIW_PREFIX 'bin\opj_decompress.exe'
+    Log "opj_decompress depends on: $((Get-Dependents $decompress) -join ', ')"
+    Assert-Dependents $decompress @('tiff.dll', 'libpng16.dll', 'lcms2.dll') 'openjpeg'
+    Done-Stamp 'openjpeg'
+}
+
 # --------------------------------------------------------------------------
 # Packages.
 # --------------------------------------------------------------------------
+
+# Expose each tool in <package>/bin as a console script that runs the
+# launcher of the same name (after the repair, <package>/bin/<tool>.exe is
+# windows\launcher.c, which finds the real tool in <dist>.libs).
+$script:ToolWrapper = @'
+import os
+import subprocess
+import sys
+
+def program():
+    here = os.path.dirname(os.path.abspath(__file__))
+    name = os.path.splitext(os.path.basename(sys.argv[0]))[0]
+    sys.exit(subprocess.call([os.path.join(here, name + '.exe')] + sys.argv[1:]))
+'@
+
+# Run a python patch script (written to the patches directory) from the
+# source tree.
+function Invoke-Patch([string]$Src, [string]$Name, [string]$Code) {
+    $path = Join-Path $LIW_PATCHES "$Name.py"
+    Set-Content -Path $path -Value $Code -Encoding ascii
+    Push-Location $Src
+    try {
+        & $script:PatchPython $path
+        Assert-Exit "the $Name patch"
+    } finally {
+        Pop-Location
+    }
+}
+
+function Commit-Patches([string]$Src, [string]$Tag) {
+    & git -C $Src config user.email 'wheels@example.com'
+    & git -C $Src config user.name 'Wheel Builder'
+    & git -C $Src add -A
+    Assert-Exit "git add in $Src"
+    & git -C $Src commit -q -m 'patch for wheel building'
+    Assert-Exit "git commit in $Src"
+    & git -C $Src tag $Tag
+    Assert-Exit "git tag in $Src"
+}
 
 function Build-Pylibtiff {
     if (Skip-If-Done 'pylibtiff') { return }
@@ -902,6 +1006,159 @@ open(path, "w").write(s)
     Done-Stamp 'pylibtiff'
 }
 
+# Glymur is pure python plus the bundled openjp2 library (loaded with
+# ctypes) and the openjpeg/libjpeg command line tools.  One wheel serves
+# every python: pip tags it py3-none-any, and it is retagged
+# py3-none-win_amd64 (the wheel tool rewrites the filename and the WHEEL
+# metadata) before delvewheel bundles the DLLs, as the macos build retags
+# to macosx before delocate.  The patches are the macos ones with the
+# Windows library directory (Glymur.libs, mangled names without a lib
+# prefix) and .exe tool names.
+function Build-Glymur {
+    if (Skip-If-Done 'glymur') { return }
+    Log '=== glymur'
+    $pp = $script:PatchPython
+
+    & $pp -m pip install --quiet --no-warn-script-location -U `
+        "delvewheel==$(V delvewheel)" | Out-Null
+    Assert-Exit 'pip install of delvewheel failed'
+
+    $src = Git-Clone 'https://github.com/quintusdias/glymur.git' "v$(V glymur)" `
+        (Join-Path $LIW_SRC 'glymur')
+
+    # Bundle the openjpeg and libjpeg tools, like the linux build does.
+    $binDir = Join-Path $src 'glymur\bin'
+    New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+    foreach ($tool in (Get-ChildItem -Path (Join-Path $LIW_PREFIX 'bin') -Filter 'opj_*.exe' -File)) {
+        Copy-Item $tool.FullName $binDir -Force
+    }
+    foreach ($name in @('jpegtran', 'cjpeg', 'djpeg', 'rdjpgcom', 'wrjpgcom')) {
+        $exe = Join-Path $LIW_PREFIX "bin\$name.exe"
+        if (Test-Path $exe) { Copy-Item $exe $binDir -Force }
+    }
+    if (@(Get-ChildItem $binDir -Filter '*.exe' -File).Count -lt 4) {
+        Die 'glymur: the openjpeg/libjpeg tools to bundle are missing'
+    }
+    Set-Content -Path (Join-Path $binDir '__init__.py') -Value $script:ToolWrapper -Encoding ascii
+
+    # config.py: find the bundled openjp2 (and tiff) DLL in the wheel's
+    # library directory (glymur.libs here, after the lowercase dist-info
+    # setuptools writes; Glymur.libs on linux).  delvewheel mangles names
+    # to <stem>-<hash>.dll, so match by prefix; the linux patch's "lib" +
+    # libname does not apply (openjp2.dll).
+    Invoke-Patch $src 'glymur_config' @'
+path = "glymur/config.py"
+s = open(path).read()
+s = s.replace("    path = find_library(libname)",
+"""    path = find_library(libname)
+    libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(
+        os.path.realpath(__file__))), "glymur.libs"))
+    if not os.path.exists(libpath):
+        libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(
+            os.path.realpath(__file__))), "Glymur.libs"))
+    if os.path.exists(libpath):
+        libs = os.listdir(libpath)
+        try:
+            pospath = os.path.join(libpath, [lib for lib in libs if
+                lib.lower().startswith(libname.lower() + "-") or
+                lib.lower() == libname.lower() + ".dll"][0])
+            if os.path.exists(pospath):
+                path = pospath
+        except Exception:
+            pass""")
+open(path, "w").write(s)
+'@
+    # pyproject.toml: expose the bundled tools as console scripts (names
+    # without .exe), include them and the test data as package data, allow
+    # python 3.10, declare packaging (glymur 0.14.8 imports it without
+    # declaring it), and add the local build suffix to the version
+    # (Glymur-0.14.8.1, matching the linux and macos wheels).
+    Invoke-Patch $src 'glymur_pyproject' @'
+import os
+import re
+path = "pyproject.toml"
+s = open(path).read()
+s = s.replace("jpeg2jp2 = 'glymur.command_line:jpeg2jp2'",
+    "jpeg2jp2 = 'glymur.command_line:jpeg2jp2'" +
+    "".join(["\n%s = 'glymur.bin:program'" % os.path.splitext(name)[0]
+        for name in os.listdir("glymur/bin") if name.endswith(".exe")]))
+s = s.replace("dependencies = [\n    'numpy',",
+    "dependencies = [\n    'packaging',\n    'numpy',")
+s = s.replace("requires-python = '>=3.11'", "requires-python = '>=3.10'")
+s += """
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+glymur = [
+    "data/*.jp2",
+    "data/*.jpx",
+    "data/*.j2k",
+    "bin/*",
+]
+"""
+s = re.sub(r"(version = ')(\d+\.\d+\.\d+)((?:post\d+)?)(')", r"\1\2.1\3\4", s)
+open(path, "w").write(s)
+'@
+    Commit-Patches $src "$(V glymur).1"
+
+    Log 'glymur wheel (pure python; one wheel for every python)'
+    if (Test-Path (Join-Path $src 'build')) { Remove-Item -Recurse -Force (Join-Path $src 'build') }
+    Remove-Item -Path (Join-Path $LIW_WHEELHOUSE 'glymur-*.whl'), `
+        (Join-Path $LIW_WHEELHOUSE 'Glymur-*.whl') -Force -ErrorAction SilentlyContinue
+    Run-Logged $pp @('-m', 'pip', 'wheel', '--no-deps', '--progress-bar', 'off',
+        '-w', $LIW_WHEELHOUSE, $src) 'glymur wheel build'
+    # setuptools writes the wheel and its dist-info in lowercase (glymur);
+    # delvewheel and the wheel tool locate the dist-info through the file
+    # name, so the repair and the relocation run under that name (library
+    # directory glymur.libs) and only the finished wheel is renamed to the
+    # distribution's Glymur-, as the linux and macos builds name theirs
+    # (the shared test script looks for Glymur*.whl).  With the first
+    # attempt's capitalized name delvewheel took the lowercase dist-info
+    # for a package and left RECORD unreadable.
+    $whl = Get-ChildItem -Path $LIW_WHEELHOUSE -Filter 'glymur-*-py3-none-any.whl' -File |
+        Select-Object -First 1
+    if (-not $whl) { Die 'glymur: no py3-none-any wheel was built' }
+    Run-Logged $pp @('-m', 'wheel', 'tags', '--platform-tag', 'win_amd64', '--remove', $whl.FullName) `
+        'glymur wheel retag'
+    $tagged = Join-Path $LIW_WHEELHOUSE ($whl.Name -replace '-any\.whl$', '-win_amd64.whl')
+    if (-not (Test-Path $tagged)) { Die "glymur: the retagged wheel is not at $tagged" }
+
+    # openjp2.dll is loaded with ctypes (no import table leads to it);
+    # tiff.dll likewise for glymur's tiff2jp2; the tools bring the rest.
+    # With the none ABI tag delvewheel does not know the python's VC
+    # runtime, so vcruntime140.dll is a plain dependency: bundled, and
+    # kept unmangled like in the pylibtiff wheel.
+    Log 'delvewheel repair of the glymur wheel'
+    Remove-Item -Path (Join-Path $WheelsDir 'glymur-*.whl'), (Join-Path $WheelsDir 'Glymur-*.whl') `
+        -Force -ErrorAction SilentlyContinue
+    Run-Logged $pp @(
+        '-m', 'delvewheel', 'repair', '-w', $WheelsDir,
+        '--add-path', "$(Join-Path $LIW_PREFIX 'bin');$script:VcRedist",
+        '--analyze-existing-exes',
+        '--include', 'openjp2.dll;tiff.dll;vcruntime140.dll',
+        '--no-mangle', 'vcruntime140.dll',
+        $tagged) 'delvewheel repair of glymur'
+    $out = Join-Path $WheelsDir (Split-Path -Leaf $tagged)
+    Relocate-Tools $out 'glymur' 'glymur.libs'
+    Assert-WheelContains $out @(
+        '^glymur\.libs/openjp2-[0-9a-f]+\.dll$',
+        '^glymur\.libs/tiff-[0-9a-f]+\.dll$',
+        '^glymur\.libs/libpng16-[0-9a-f]+\.dll$',
+        '^glymur\.libs/lcms2-[0-9a-f]+\.dll$',
+        '^glymur\.libs/jpeg62-[0-9a-f]+\.dll$',
+        '^glymur\.libs/vcruntime140\.dll$',
+        '^glymur\.libs/opj_dump\.exe$',
+        '^glymur\.libs/opj_decompress\.exe$',
+        '^glymur\.libs/djpeg\.exe$',
+        '^glymur/bin/opj_dump\.exe$',
+        '^glymur/data/nemo\.jp2$') 'glymur'
+    $final = Join-Path $WheelsDir ((Split-Path -Leaf $out) -replace '^glymur-', 'Glymur-')
+    Move-Item $out $final -Force
+    Log "glymur wheel: $final"
+    Done-Stamp 'glymur'
+}
+
 # --------------------------------------------------------------------------
 # Main.
 # --------------------------------------------------------------------------
@@ -940,6 +1197,20 @@ function Main {
                 Build-Xz
                 Build-Libtiff
                 Build-Pylibtiff
+            }
+            'glymur' {
+                Build-Zlib
+                Build-Zstd
+                Build-Jbigkit
+                Build-Libwebp
+                Build-Libjpeg-Turbo
+                Build-Libdeflate
+                Build-Xz
+                Build-Libtiff
+                Build-Lcms2
+                Build-Libpng
+                Build-Openjpeg
+                Build-Glymur
             }
             default {
                 Die "no builder for package $pkg"

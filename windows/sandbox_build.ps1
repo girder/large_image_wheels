@@ -31,7 +31,7 @@ param(
     [ValidateSet('build', 'cache')]
     [string]$Command = 'build',
     # Default package set; keep in sync with build_wheels.ps1's builders.
-    [string[]]$Packages = @('pylibtiff'),
+    [string[]]$Packages = @('pylibtiff', 'glymur'),
     [string[]]$Pythons = @('3.11', '3.12', '3.13', '3.14', '3.15', '3.14t', '3.15t'),
     [int]$MemoryMB = 8192,
     [int]$TimeoutSec = 14400,
@@ -43,6 +43,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $script:Tool = 'sandbox_build'
+# (From the .bat / powershell -File, "-Pythons 3.12,3.13" is one string.)
+$Packages = @($Packages | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
+$Pythons = @($Pythons | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 $script:Self = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $script:Self 'sandbox_common.ps1')
 
