@@ -484,14 +484,15 @@ Known gaps, in rough order:
   sandbox installed the toolchain, built the chain and all seven
   pylibtiff wheels, exit code 0.  The host test run got through python
   3.11's install and `check_wheels.py` (all ok, 47 files audited) and
-  then stopped without an exit code where the shared suite starts; the
-  launcher's own console output is the missing evidence (it either
-  declared the run dead -- `wsb exec` returning early, or a `wsb list`
-  hiccup -- and stopped the sandbox, which the launcher no longer does:
-  it now trusts only the exit marker, tolerates `wsb exec` returning,
-  requires three missed `wsb list` polls, gives up only after 30 silent
-  minutes or the timeout, and leaves a failed sandbox running for
-  inspection).  `test_wheels.ps1` now logs a line before starting bash.
+  then stopped without an exit code where the shared suite starts: the
+  launcher's log streaming hit a sharing violation opening `test.log`
+  through the mapped folder (the sandbox's `Add-Content` held it), the
+  exception reached the cleanup, and the cleanup stopped the sandbox.
+  The streaming now retries on the next poll instead, the launcher
+  trusts only the exit marker, tolerates `wsb exec` returning, requires
+  three missed `wsb list` polls, gives up only after 30 silent minutes
+  or the timeout, and leaves a failed sandbox running for inspection.
+  The test launcher has yet to pass on a host.
 - The C++ packages to come (pyvips, GDAL, mapnik) will import
   `msvcp140.dll` (delvewheel bundles it from the redist directory that
   `--add-path` names) and `vcruntime140_1.dll` (which delvewheel leaves
@@ -519,6 +520,11 @@ Known gaps, in rough order:
   one.  agent_sandbox.py allows a minute; the launcher now allows 90
   seconds, and on a 24H2 host it uses the `wsb` CLI instead, which
   reports the sandbox id synchronously.
+- Reading a log through a mapped folder while the sandbox appends to it
+  fails intermittently with "being used by another process", even with
+  `FileShare.ReadWrite` on the host side.  Anything in the host loop
+  that touches the run folder must tolerate a failed read and retry on
+  the next poll; an uncaught exception there is what stops a run.
 - Downloads: curl's `--retry` does not retry TLS connection errors
   (exit 35), which the host's sandbox hit on the seventh download in a
   row; `--retry-all-errors` does.  Downloads land under a temporary name
