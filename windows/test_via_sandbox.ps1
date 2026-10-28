@@ -18,10 +18,9 @@
 #   test_via_sandbox.ps1                       test every wheel for every python
 #   test_via_sandbox.ps1 -Pythons 3.12,3.13    test a subset of pythons
 #
-# The same host conditions as sandbox_build.ps1 apply (the feature must be
-# enabled, and only one sandbox may run at a time -- the agent session is
-# one).  The sandbox is closed by the in-sandbox script itself after it
-# writes the exit code; the host never taskkills anything.
+# The same host conditions and backends as sandbox_build.ps1 apply (see
+# sandbox_common.ps1).  The sandbox is stopped afterwards by the in-sandbox
+# script itself and by wsb stop; the host never taskkills anything.
 
 param(
     [string[]]$Pythons = @('3.11', '3.12', '3.13', '3.14', '3.15', '3.14t', '3.15t'),
@@ -56,6 +55,12 @@ $wheels = @(Get-ChildItem -Path $WheelsDir -Filter '*.whl' -File -ErrorAction Si
 if ($wheels.Count -eq 0) {
     Die "no wheels in $WheelsDir; run sandbox_build first"
 }
+# A build that failed leaves its exit code behind (and no wheels of the
+# packages it built); refuse rather than test leftovers.
+$buildExit = Join-Path (Join-Path $workDir 'run') 'exit_code'
+if ((Test-Path $buildExit) -and ((Get-Content $buildExit -Raw).Trim() -ne '0')) {
+    Die "the last build failed (see $(Join-Path $workDir 'run\build.log')); not testing its leftovers"
+}
 if ($Pythons.Count -eq 0) { Die 'no pythons requested' }
 
 # --- folder setup ------------------------------------------------------------
@@ -70,7 +75,7 @@ $repoGuest = 'C:\mnt\repo'
 $logon = ('powershell.exe -NoProfile -ExecutionPolicy Bypass -File ' +
           "$repoGuest\windows\test_wheels.ps1")
 Info "wheels under test: $($wheels.Count) in $WheelsDir"
-$result = Invoke-SandboxRun -RunDir $RunDir -LogonCommand $logon `
+$result = Invoke-SandboxRun -RunDir $RunDir -Command $logon `
     -LogName 'test.log' -MemoryMB $MemoryMB -TimeoutSec $TimeoutSec `
     -WsbName 'liw_wheels_test.wsb' -MappedFolders @(
         @{ Host = $RepoDir; Guest = $repoGuest; ReadOnly = $true },
