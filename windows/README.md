@@ -480,9 +480,13 @@ Known gaps, in rough order:
   in-sandbox scripts after the exit code) is desk-checked only; if a
   sandbox does not close itself when the run ends, close the window by
   hand and record the finding here.
-- The host launchers have not run on a host since the toolchain change
-  (what they do is unchanged: start the sandbox, stream the log, wait,
-  validate the wheels / print the report).
+- The host launchers' cli backend is proven only as far as the first
+  host run got (2026-10-28): `wsb start` gave an id, `wsb exec` ran
+  `build_wheels.ps1` as SYSTEM, the log and exit code came back through
+  the run folder.  The run died in the python downloads (curl exit 35,
+  a TLS connection error, on the seventh download in a row; retries now
+  cover every error).  Not yet seen on a host: the toolchain install,
+  the build itself, `wsb stop`, and the test launcher.
 - The C++ packages to come (pyvips, GDAL, mapnik) will import
   `msvcp140.dll` (delvewheel bundles it from the redist directory that
   `--add-path` names) and `vcruntime140_1.dll` (which delvewheel leaves
@@ -510,6 +514,12 @@ Known gaps, in rough order:
   one.  agent_sandbox.py allows a minute; the launcher now allows 90
   seconds, and on a 24H2 host it uses the `wsb` CLI instead, which
   reports the sandbox id synchronously.
+- Downloads: curl's `--retry` does not retry TLS connection errors
+  (exit 35), which the host's sandbox hit on the seventh download in a
+  row; `--retry-all-errors` does.  Downloads land under a temporary name
+  and are renamed on success, so a failed download is never mistaken for
+  a cached file (and an archive that does not expand is removed from the
+  cache).
 - The first host run put its outputs in a `liw_wheels` *sibling* of the
   repository (reported with the drive letter in the case the command
   line used), which was not where anyone looked for them.  Outputs now
