@@ -7,11 +7,18 @@ the functional suite and runs separately).
 For each package that is installed, this verifies the isolation
 properties the pipeline exists for:
 
+- every executable file our wheel provides (.pyd, .dll, .exe in the
+  package and in its <dist>.libs directory) imports only DLLs that are in
+  the wheel, python's own DLL, Windows API sets, or DLLs present in the
+  system directory -- the counterpart of the macos otool audit, read from
+  the PE import tables, so even a tool nobody runs is checked;
 - the library the package loads is the copy bundled in the wheel's
   <dist>.libs directory (resolved through the running process's module
-  list, not through what the package claims), and
+  list, not through what the package claims);
 - the bundled command line tools run through their console-script
-  wrappers and find their bundled DLLs.
+  wrappers, and run by path (<package>/bin/<tool>.exe, the launcher) with
+  nothing but the system directories on PATH -- so neither python's
+  directory nor anything else installed supplies a DLL to them.
 
 Usage: python check_wheels.py [package ...]   (default: every known
 package that is importable).  Exit status is nonzero on any failure; every
@@ -21,16 +28,23 @@ The caller is responsible for the environment: run it with a scrubbed
 PATH (system directories plus the venv only) so a stray directory on PATH
 cannot shadow a bundled DLL -- there is no rpath on Windows, and a
 same-named DLL earlier on PATH is the one way a system library could win.
+The system-directory allowance in the import audit is what the machine
+running the check has in System32; in a fresh Windows Sandbox that is the
+baseline every Windows has.
 """
 
 import ctypes
 import ctypes.wintypes
 import os
+import re
+import struct
 import subprocess
 import sys
 import tempfile
 
 failures = 0
+
+SYSTEM_DIRS = [os.path.join(os.environ.get('SystemRoot', r'C:\Windows'), 'System32')]
 
 
 def report(ok, message):
@@ -87,17 +101,124 @@ def loaded_from_libs(stem, libs_dir_name):
     return hits, bundled
 
 
-def run_tool(name, args):
+def pe_imports(path):
+    """The DLL names in a PE file's import directory (None if the file is
+    not a PE image).  Delay-load imports are not included: delvewheel
+    leaves msvcp140's delay-load of concrt140 alone on purpose."""
+    with open(path, 'rb') as fptr:
+        data = fptr.read()
+    if data[:2] != b'MZ':
+        return None
+    pe = struct.unpack_from('<I', data, 0x3c)[0]
+    if data[pe:pe + 4] != b'PE\0\0':
+        return None
+    coff = pe + 4
+    nsections, opt_size = struct.unpack_from('<H', data, coff + 2)[0], \
+        struct.unpack_from('<H', data, coff + 16)[0]
+    opt = coff + 20
+    magic = struct.unpack_from('<H', data, opt)[0]
+    if magic == 0x20b:
+        datadir = opt + 112
+    elif magic == 0x10b:
+        datadir = opt + 96
+    else:
+        raise ValueError('unknown optional header magic 0x%x' % magic)
+    import_rva = struct.unpack_from('<I', data, datadir + 8)[0]
+    sections = []
+    table = opt + opt_size
+    for index in range(nsections):
+        vsize, vaddr, rawsize, rawptr = struct.unpack_from('<IIII', data, table + 40 * index + 8)
+        sections.append((vaddr, max(vsize, rawsize), rawptr))
+
+    def offset(rva):
+        for vaddr, size, raw in sections:
+            if vaddr <= rva < vaddr + size:
+                return rva - vaddr + raw
+        raise ValueError('rva 0x%x is in no section' % rva)
+
+    names = []
+    if import_rva:
+        pos = offset(import_rva)
+        while True:
+            descriptor = struct.unpack_from('<IIIII', data, pos)
+            if not any(descriptor):
+                break
+            start = offset(descriptor[3])
+            names.append(data[start:data.index(b'\0', start)].decode('ascii', 'replace'))
+            pos += 20
+    return names
+
+
+def audit_imports(roots, libs_dir):
+    """Every PE file under the given roots may import only: a file in its
+    own directory, a file in libs_dir, python's own DLL, a Windows API set,
+    or a DLL in the system directory.  Anything else would resolve through
+    PATH at best -- a system or third-party library winning the load -- and
+    fail at worst."""
+    bad = 0
+    files = 0
+    for root in roots:
+        for dirpath, _, filenames in os.walk(root):
+            for filename in filenames:
+                if not filename.lower().endswith(('.pyd', '.dll', '.exe')):
+                    continue
+                path = os.path.join(dirpath, filename)
+                try:
+                    imports = pe_imports(path)
+                except Exception as exc:
+                    report(False, f'cannot read the imports of {path}: {exc}')
+                    bad += 1
+                    continue
+                if imports is None:
+                    continue
+                files += 1
+                for name in imports:
+                    low = name.lower()
+                    if low.startswith(('api-ms-win-', 'ext-ms-')):
+                        continue
+                    if re.match(r'python3\d*t?\.dll$', low):
+                        continue
+                    if os.path.exists(os.path.join(dirpath, name)):
+                        continue
+                    if os.path.exists(os.path.join(libs_dir, name)):
+                        continue
+                    if any(os.path.exists(os.path.join(sysdir, name)) for sysdir in SYSTEM_DIRS):
+                        continue
+                    report(False, f'FORBIDDEN import: {path} -> {name}')
+                    bad += 1
+    report(bad == 0 and files > 0,
+           f'import audit of {files} PE files under {", ".join(roots)}')
+
+
+def scrubbed_env():
+    """An environment whose PATH holds only the system directories: a tool
+    run with it can find DLLs only beside itself (or where the launcher
+    puts them)."""
+    env = dict(os.environ)
+    env['PATH'] = os.pathsep.join([SYSTEM_DIRS[0], os.path.dirname(SYSTEM_DIRS[0])])
+    return env
+
+
+def run_tool(name, args, env=None):
+    """Run the console script <name> of the venv.  The file must exist
+    under exactly that name: CreateProcess would also find a misnamed
+    <name>.exe.exe (which a console script named "<tool>.exe" produces)."""
     exe = os.path.join(os.path.dirname(sys.executable), name + '.exe')
-    proc = subprocess.run([exe] + args, capture_output=True, text=True)
+    if not os.path.exists(exe):
+        return 127, f'no console script {exe}'
+    proc = subprocess.run([exe] + args, capture_output=True, text=True, env=env)
     return proc.returncode, proc.stdout + proc.stderr
 
 
-def check_pylibtiff():
-    import libtiff  # noqa: F401
+def run_path(exe, args, env=None):
+    proc = subprocess.run([exe] + args, capture_output=True, text=True, env=env)
+    return proc.returncode, proc.stdout + proc.stderr
+
+
+def check_pylibtiff(package_dir, libs_dir):
     from libtiff import TIFF
 
-    hits, bundled = loaded_from_libs('tiff', 'pylibtiff.libs')
+    hits, bundled = loaded_from_libs('tiff', os.path.basename(libs_dir))
     report(bool(bundled) and len(hits) == len(bundled),
            f'pylibtiff loads its bundled libtiff: {hits}')
     with tempfile.TemporaryDirectory() as tmp:
@@ -113,7 +234,14 @@ def check_pylibtiff():
         report(numpy.array_equal(data, back), 'pylibtiff lzw round trip')
         code, out = run_tool('tiffinfo', [path])
         report(code == 0 and 'Image Width: 64' in out,
-               f'bundled tiffinfo runs (exit {code}): {out.strip().splitlines()[:1]}')
+               f'bundled tiffinfo runs as a console script (exit {code}): {out.strip().splitlines()[:1]}')
+        # By path, with only the system directories on PATH: the launcher
+        # in libtiff/bin must find the real tool and every DLL it needs
+        # (libtiff's and the VC runtime) in pylibtiff.libs by itself.
+        launcher = os.path.join(package_dir, 'bin', 'tiffinfo.exe')
+        code, out = run_path(launcher, [path], env=scrubbed_env())
+        report(code == 0 and 'Image Width: 64' in out,
+               f'bundled tiffinfo runs by path with a bare PATH (exit {code}): {out.strip().splitlines()[:1]}')
         # Compression support that the feature assertions promised (webp
         # only encodes RGB/RGBA).
         rgb = numpy.dstack([data.astype(numpy.uint8)] * 3)
@@ -127,19 +255,44 @@ def check_pylibtiff():
                 report(False, f'pylibtiff writes {compression}: {exc}')
 
 
-CHECKS = {
-    'pylibtiff': check_pylibtiff,
+# package -> (import name, <dist>.libs directory name, package check)
+PACKAGES = {
+    'pylibtiff': ('libtiff', 'pylibtiff.libs', check_pylibtiff),
 }
 
 
+def check_package(name):
+    module_name, libs_name, check = PACKAGES[name]
+    try:
+        module = __import__(module_name)
+    except ImportError as exc:
+        report(False, f'{name}: import {module_name} failed: {exc}')
+        return
+    package_dir = os.path.dirname(os.path.abspath(module.__file__))
+    libs_dir = os.path.join(os.path.dirname(package_dir), libs_name)
+    report(os.path.isdir(libs_dir), f'{name}: bundled library directory {libs_dir}')
+    audit_imports([package_dir, libs_dir], libs_dir)
+    check(package_dir, libs_dir)
+
+
 def main():
-    wanted = sys.argv[1:] or list(CHECKS)
+    wanted = sys.argv[1:]
+    if not wanted:
+        # Every known package that is installed.
+        for name, (module_name, _, _) in PACKAGES.items():
+            try:
+                __import__(module_name)
+            except ImportError:
+                continue
+            wanted.append(name)
+        if not wanted:
+            report(False, 'no known package is installed')
     for name in wanted:
-        if name not in CHECKS:
+        if name not in PACKAGES:
             report(False, f'no checks for {name}')
             continue
         try:
-            CHECKS[name]()
+            check_package(name)
         except Exception as exc:
             report(False, f'{name}: {type(exc).__name__}: {exc}')
     print(f'{failures} failure(s)', flush=True)
