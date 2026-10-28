@@ -32,18 +32,19 @@ function Assert-Exit([string]$What) {
 # Version pins come from the shared versions.txt, exactly like the linux
 # build uses through getver.py.  getver.py resolves versions.txt relative
 # to the current directory, so run it from the repository root.
-function V([string]$Name) {
+function V([string]$Name, [string[]]$Extra = @()) {
     if (-not $script:PatchPython) {
         Die 'V() called before the pythons were installed'
     }
     Push-Location $RepoDir
     # Relaxed ErrorActionPreference: a getver.py failure must be reported by
     # the check below, not turned into a terminating NativeCommandError by
-    # the stderr redirection.
+    # the stderr redirection.  Extra arguments are getver.py's component
+    # selection (e.g. sqlite's year and release number).
     $prev = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $out = (& $script:PatchPython (Join-Path $RepoDir 'getver.py') $Name |
+        $out = (& $script:PatchPython (Join-Path $RepoDir 'getver.py') $Name @Extra |
                 Out-String).Trim()
     } finally {
         Pop-Location

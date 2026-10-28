@@ -121,6 +121,25 @@ Costs and mitigations of the MSVC choice:
 - NASM (libjpeg-turbo/libwebp SIMD) and perl (openssl/curl TLS, later
   GDAL work; PortableGit ships one) must be provided separately; both
   are portable and live in the cache.
+- openslide requires the GNU C `cleanup` attribute (its `g_autoptr`
+  use), which MSVC lacks, so it alone is compiled with **clang-cl** from
+  the pinned LLVM release (`llvm` in `versions.txt`; only `clang-cl.exe`,
+  `clang.exe` and the resource headers are extracted from the 900 MB
+  tarball, which the cache keeps).  clang-cl is MSVC-ABI compatible: it
+  compiles against the same headers and import libraries and links with
+  `link.exe`, so the resulting DLL is like every other one in the
+  prefix.  The VS manifest's own LLVM component would be the same clang
+  at 2.1 GB.
+- meson projects (glib, pixman, freetype, fontconfig, cairo, openslide,
+  later libvips and more) are built with meson and pkgconf from pypi,
+  pinned through `versions.txt` and installed into the patch python
+  (`Ensure-Meson`).  pkg-config is scoped to the private prefix
+  (`PKG_CONFIG_LIBDIR`), so a dependency is satisfied only by a library
+  we built; every cmake and meson install leaves a `.pc` file there, and
+  meson maps their `-l` flags to `.lib` files for MSVC.  Projects' own
+  subproject wraps are allowed (`--wrap-mode=default`): glib builds
+  pcre2, libffi and proxy-libintl into its DLLs, openslide builds
+  libdicom into its own, exactly as the linux and macos builds let them.
 
 ### Architectures
 
@@ -186,7 +205,11 @@ path).  The layout is therefore:
 So `<package>/bin/<tool>` works by path from bash (PortableGit's bash
 resolves an extensionless path to the `.exe`), from the console script,
 and from a bare PATH, exactly as the shared test script expects; nothing
-is duplicated.
+is duplicated.  The VC runtime DLLs that delvewheel leaves out for
+cpython wheels (`vcruntime140`, `vcruntime140_1`) are forced in,
+unmangled, for the same reason: python ships them beside `python.exe`,
+which is not on a tool's search path, and a fresh Windows has no VC++
+redistributable.
 
 ## Files
 
@@ -272,6 +295,11 @@ In-sandbox side (run by the LogonCommand; dev mode in any checkout):
   ```
 - `launcher.c` -- the stand-in for the bundled tools (see the section
   above); compiled by `build_wheels.ps1`.
+- `jxrlib.cmake` -- a cmake build for jxrlib (JPEG XR), whose own build
+  is a GNU Makefile; copied into the source tree as `CMakeLists.txt`.
+  Same source lists, defines, header layout and `libjxr.pc` as the
+  Makefile, so openslide's zeiss-czi-jxr patch finds it through
+  pkg-config as on linux.
 - `install_msvc.py` -- the no-installer MSVC + Windows SDK install (see
   the toolchain section); run by `build_wheels.ps1` with the patch
   python, never by hand in the normal flow.
@@ -465,15 +493,22 @@ pipeline has been exercised in dev mode inside the agent sandbox:
   `test/test_script.sh`, and `check_wheels.py` in the suite's venv).
   The free-threaded import carries the GIL re-enable `RuntimeWarning`
   the linux and macos wheels also show.
-- Glymur is the wheel in progress: lcms2, libpng and openjpeg build
-  stages, the glymur build (one py3-none-win_amd64 wheel with the
-  bundled openjp2 and the opj/jpeg tools), and its `check_wheels.py`
-  checks are written; see the git log for the state of the dev runs and
-  the host verification.
+- **Glymur is verified end to end on the host (2026-10-28)** the same
+  way: lcms2, libpng and openjpeg, one py3-none-win_amd64 wheel with the
+  bundled openjp2 and the opj/jpeg tools.
+- openslide_python builds and passes every dev-mode check for all
+  seven pythons (2026-10-28): meson/pkgconf and clang-cl as build
+  tools, the glib and cairo chains (libbrotli, libexpat, glib, sqlite,
+  libxml2, pixman, freetype, fontconfig, cairo), jxrlib through
+  `jxrlib.cmake`, openslide with the repository's two patches and
+  libdicom from its wrap, and the openslide-python wheels (abi3 from the
+  oldest stable python plus the free-threaded ones) with slidetool and
+  the three legacy tools bundled -- 31 DLLs in the wheel.  Not yet
+  verified on the host.
 
-Next step: finish Glymur (dev build and test, then the host run of
-`windows\sandbox_build.bat && windows\test_via_sandbox.bat`, which
-builds pylibtiff and glymur by default), then openslide_python.
+Next step: finish openslide_python (dev build and test, then the host
+run of `windows\sandbox_build.bat && windows\test_via_sandbox.bat`,
+which builds the three packages by default), then pyvips.
 
 Known gaps, in rough order:
 
@@ -511,10 +546,15 @@ Known gaps, in rough order:
   and rename the finished wheel to `Glymur-` last, which is all the
   linux build's rename does too.
 - The C++ packages to come (pyvips, GDAL, mapnik) will import
-  `msvcp140.dll` (delvewheel bundles it from the redist directory that
-  `--add-path` names) and `vcruntime140_1.dll` (which delvewheel leaves
-  out like `vcruntime140.dll`; add it to `--include` when the import
-  audit reports it).
+  `msvcp140.dll`, which delvewheel bundles from the redist directory
+  that `--add-path` names (mangled, which is fine for a DLL only other
+  DLLs import).  Both `vcruntime140.dll` and `vcruntime140_1.dll` are
+  already forced into every wheel (cairo was the first to import the
+  `_1`; the import audit caught it).
+- libxml2 is built without iconv (Windows has no system iconv; linux
+  and macos use theirs).  libxml2 handles UTF-8/16 and ISO-8859-x on its
+  own; if a later consumer needs other encodings through libxml2, build
+  libiconv (`versions.txt` has a pin) and turn `LIBXML2_WITH_ICONV` on.
 - `test/test_script.sh` still writes `/tmp/outfloat.tiff` in its
   GDAL+pyvips section; python on Windows reads that as `C:\tmp\...`.
   Adjust when that section is reached.
@@ -580,6 +620,50 @@ Known gaps, in rough order:
   hazard the linux BUILD_ID salt exists for, solved here by delvewheel's
   default.  Code that looks bundled libraries up by name must match the
   mangled prefix (`startswith("tiff")`).
+- The system `tar` (bsdtar) fails on an archive that contains a symlink
+  (libexpat's `README.md -> expat/README.md`): creating a symlink needs
+  a privilege the sandbox accounts lack, and the extraction ends with
+  "Error exit delayed from previous errors".  Tarballs are extracted
+  with PortableGit's msys tar instead, with `MSYS=winsymlinks:lnk` so a
+  symlink becomes a `.lnk` shortcut (msys's default copies the target,
+  which fails when the target comes later in the archive); it wants
+  POSIX paths (`/c/...`; a Windows path makes it try to reach a host
+  named `C`) and gzip beside it on PATH (`usr\bin`).
+- libpng's and expat's cmake builds install no pkg-config file on
+  Windows, so `dependency('libpng')` in cairo found nothing and meson
+  silently built cairo's own libpng subproject, whose `png16-16.dll`
+  and `libpng.pc` (1.6.47) were then installed over ours (1.6.59) --
+  the cairo link assertion caught it.  `Write-PkgConfig` now writes the
+  missing `.pc` files, and every meson build runs with
+  `--wrap-mode=nofallback`: a dependency pkg-config cannot satisfy fails
+  the configure step; only the wraps the linux and macos builds also
+  rely on are forced (`--force-fallback-for`: glib's pcre2, libffi and
+  proxy-libintl; openslide's libdicom and uthash).  glib's libffi and
+  intl wraps build DLLs (`ffi-8.dll`, `intl-8.dll`), pcre2 a static
+  library; all of them land in the prefix and get bundled like ours.
+- jxrlib under MSVC/clang-cl (`jxrlib.cmake`): its ANSI header sizes
+  the pointer-width integers by `__LP64__`, which MSVC never defines
+  (define it for 64-bit builds, in the `.pc` Cflags too, since
+  consumers compile the same headers); `JXRMeta.h` knows
+  `__in_win`/`__out_win` only through its own `wmsal.h`, which
+  `wmspecstring.h` skips once MSVC's `specstrings.h` has been included
+  (openslide includes `windows.h` first), so the header is patched to
+  define them from `__in`/`__out` when missing; and the constants a
+  consumer compares against are *data* exports of `jxrglue.dll`, which
+  MSVC cannot import without `dllimport` declarations (it thunks
+  functions, not data) -- the `DEFINE_GUID` ones get local copies in
+  openslide's jxr decoder through `INITGUID` (the usual Windows idiom; a
+  Windows-only source patch in `build_wheels.ps1`), and the plain
+  `extern const PKIID` ones are exported explicitly (cmake's
+  `WINDOWS_EXPORT_ALL_SYMBOLS` skips read-only data) and get a
+  `dllimport` declaration in the installed `JXRGlue.h` that only
+  `libjxr.pc`'s `-DJXR_DLL_IMPORT` enables.
+- meson with clang-cl guesses `lld-link` as the linker and dies with a
+  bare `FileNotFoundError` when it is absent; `CC_LD=link` selects
+  MSVC's linker.
+- The pypi `pkgconf` wheels trail pkgconf's own releases (the linux
+  build's `pkgconf` pin is an upstream tag); the Windows build pins the
+  pypi version separately as `pkgconf-pypi` in `versions.txt`.
 - Two wheels that bundle the same library get the same mangled file
   name (the hash is of the content), and when each loads its own copy
   by full path the process holds two modules of that name (the loader

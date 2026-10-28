@@ -386,6 +386,12 @@ Packages = {
         'git': 'https://github.com/nih-at/libzip.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
+    # The windows build's clang-cl (openslide needs the GNU cleanup
+    # attribute, which MSVC lacks), from the LLVM release tarballs.
+    'llvm': {
+        'git': 'https://github.com/llvm/llvm-project.git',
+        're': r'llvmorg-([0-9]+\.[0-9]+\.[0-9]+)$',
+    },
     'lz4': {
         'git': 'https://github.com/lz4/lz4.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
@@ -534,6 +540,11 @@ Packages = {
     'pkgconf': {
         'git': 'https://github.com/pkgconf/pkgconf.git',
         're': r'pkgconf-([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
+    # The windows build takes pkgconf from pypi's wheels, whose releases
+    # trail the upstream tags.
+    'pkgconf-pypi': {
+        'pypi': 'pkgconf',
     },
     'poppler': {
         'git': 'https://gitlab.freedesktop.org/poppler/poppler.git',
