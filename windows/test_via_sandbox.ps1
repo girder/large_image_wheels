@@ -34,6 +34,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $script:Tool = 'test_via_sandbox'
+# (From the .bat / powershell -File, "-Pythons 3.12,3.13" is one string.)
+$Pythons = @($Pythons | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 $script:Self = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $script:Self 'sandbox_common.ps1')
 
