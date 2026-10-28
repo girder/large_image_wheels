@@ -493,12 +493,16 @@ sandbox before every host run:
 - The windows directory was then consolidated to six files (2026-10-28;
   see "Files"): the per-component files, the shared-function files and
   the checked-in `.wsb` data files were folded into the three scripts.
-  The embedded sources are byte-for-byte the former files; the first
-  host run after the consolidation is the one that proves it.
+  The embedded sources are byte-for-byte the former files.  The first
+  host run on them (2026-10-28) got through pylibtiff and Glymur and
+  failed in glib's pcre2 wrap download with a certificate error that
+  had nothing to do with the consolidation (see the hard-won list:
+  python's TLS trust in a fresh sandbox); `SSL_CERT_FILE` now points at
+  PortableGit's CA bundle.
 
 Next step: the host run of `windows\sandbox_build.bat &&
-windows\test_via_sandbox.bat` on the consolidated scripts (the three
-packages by default), then pyvips.
+windows\test_via_sandbox.bat` (the three packages by default) to
+confirm the consolidated scripts and the TLS fix together, then pyvips.
 
 Known gaps, in rough order:
 
@@ -581,6 +585,20 @@ Known gaps, in rough order:
   `FileShare.ReadWrite` on the host side.  Anything in the host loop
   that touches the run folder must tolerate a failed read and retry on
   the next poll; an uncaught exception there is what stops a run.
+- **A fresh sandbox's certificate store has about sixteen roots**, and
+  github.com's is not one of them.  Windows fetches a missing root on
+  demand, but only for Schannel clients (curl.exe, Invoke-WebRequest);
+  python verifies with OpenSSL against the store as it is, so meson's
+  wrap downloads (glib's pcre2, libffi, proxy-libintl; openslide's
+  libdicom) and `install_msvc.py` depend on which roots the store
+  happens to hold.  The first host runs passed because a curl download
+  from github.com (cmake, ninja, the LLVM tarball) had installed the
+  root before meson ran; the first run with every download cached
+  failed glib's pcre2 wrap with `CERTIFICATE_VERIFY_FAILED`.
+  `Ensure-Toolchain` now points `SSL_CERT_FILE` at PortableGit's
+  `ca-bundle.crt` (the curl bundle git itself uses, pinned with git),
+  which OpenSSL loads in addition to the store.  Any new download path
+  that is not curl.exe must verify against that bundle or Schannel.
 - Downloads: curl's `--retry` does not retry TLS connection errors
   (exit 35), which the host's sandbox hit on the seventh download in a
   row; `--retry-all-errors` does.  Downloads land under a temporary name
