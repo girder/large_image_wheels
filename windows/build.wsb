@@ -13,17 +13,17 @@
       <ReadOnly>true</ReadOnly>
     </MappedFolder>
     <MappedFolder>
-      <HostFolder>C:\misc\liw_wheels\cache</HostFolder>
+      <HostFolder>C:\misc\large_image_wheels\windows\cache</HostFolder>
       <SandboxFolder>C:\mnt\cache</SandboxFolder>
       <ReadOnly>false</ReadOnly>
     </MappedFolder>
     <MappedFolder>
-      <HostFolder>C:\misc\liw_wheels\wheels</HostFolder>
+      <HostFolder>C:\misc\large_image_wheels\wheels</HostFolder>
       <SandboxFolder>C:\mnt\wheels</SandboxFolder>
       <ReadOnly>false</ReadOnly>
     </MappedFolder>
     <MappedFolder>
-      <HostFolder>C:\misc\liw_wheels\run</HostFolder>
+      <HostFolder>C:\misc\large_image_wheels\windows\run</HostFolder>
       <SandboxFolder>C:\mnt\run</SandboxFolder>
       <ReadOnly>false</ReadOnly>
     </MappedFolder>

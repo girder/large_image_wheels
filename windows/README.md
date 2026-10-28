@@ -23,7 +23,7 @@ keeps exactly that shape:
   wheels out through a read-write mapped folder.  The sandbox is destroyed
   afterwards; nothing about the build environment persists between runs.
 - **The only persistent host-side artifact is a download cache**
-  (`liw_wheels\cache`, a sibling of the repository, mapped read-write).
+  (`<repo>\windows\cache`, gitignored, mapped read-write).
   It holds the toolchain downloads (PortableGit, cmake, ninja, nasm, the
   python.org NuGet packages, the MSVC/Windows SDK payloads from the
   Visual Studio manifest) and source tarballs, so a run does not
@@ -225,10 +225,11 @@ Host side (run on the host, outside any sandbox):
 - `build.wsb` / `test.wsb` -- the same two sandbox configurations checked
   in as data, for the human-only workflow without the launchers: the
   mapped folders (repo read-only at `C:\mnt\repo`; cache at
-  `C:\mnt\cache`; wheels at `C:\mnt\wheels`, read-write for the build and
-  read-only for the test; the per-run exchange at `C:\mnt\run`, from
-  `liw_wheels\run` for the build and `liw_wheels\test_run` for the test;
-  all under a `liw_wheels` sibling of the repository) and the
+  `C:\mnt\cache` from `<repo>\windows\cache`; wheels at `C:\mnt\wheels`
+  from `<repo>\wheels` -- where build.sh and tart_build.sh put theirs --
+  read-write for the build and read-only for the test; the per-run
+  exchange at `C:\mnt\run`, from `<repo>\windows\run` for the build and
+  `<repo>\windows\test_run` for the test; all gitignored) and the
   LogonCommand.  The `HostFolder` paths are host-specific; adjust them
   once, then open the file.  Only one sandbox may run at a time.
 
@@ -303,9 +304,9 @@ windows\sandbox_build.bat && windows\test_via_sandbox.bat
 ```
 
 That is the whole workflow: the build in one fresh sandbox (wheels land
-in `..\liw_wheels\wheels`, the log in `..\liw_wheels\run\build.log`),
-then the tests in another (the report in `..\liw_wheels\test_run\
-report.txt`, the log in `test.log` beside it).  Each sandbox shuts
+in `wheels\`, the log in `windows\run\build.log`), then the tests in
+another (the report in `windows\test_run\report.txt`, the log in
+`test.log` beside it); all paths relative to the repository.  Each sandbox shuts
 itself down at the end of its run, success or failure, as on macos: the
 log is already out (streamed to the console and saved in the run
 folder), so there is no virtue in keeping it alive -- and it holds the
@@ -327,14 +328,14 @@ host; the `.wsb` files are data): create the writable folders, check the
 `HostFolder` paths once, open the `.wsb`, and watch the log:
 
 ```
-mkdir C:\misc\liw_wheels\cache C:\misc\liw_wheels\run C:\misc\liw_wheels\test_run C:\misc\liw_wheels\wheels
+mkdir wheels windows\cache windows\run windows\test_run
 start windows\build.wsb
-powershell -Command "Get-Content C:\misc\liw_wheels\run\build.log -Wait"
-# when C:\misc\liw_wheels\run\exit_code appears (0 or 1), the wheels are in
-# C:\misc\liw_wheels\wheels and the sandbox shuts down shortly after; then
+powershell -Command "Get-Content windows\run\build.log -Wait"
+# when windows\run\exit_code appears (0 or 1), the wheels are in wheels\
+# and the sandbox shuts down shortly after; then
 start windows\test.wsb
-powershell -Command "Get-Content C:\misc\liw_wheels\test_run\test.log -Wait"
-# the result is C:\misc\liw_wheels\test_run\report.txt and exit_code
+powershell -Command "Get-Content windows\test_run\test.log -Wait"
+# the result is windows\test_run\report.txt and exit_code
 ```
 
 Remember that only one sandbox instance may run at a time -- the agent
@@ -388,8 +389,8 @@ for the single-instance limit:
    a Windows build that allows one sandbox, the agent session has to be
    ended first).
 4. The human restarts the agent session and copies the build log
-   (`liw_wheels\run\build.log`), the test report and log
-   (`liw_wheels\test_run\report.txt`, `test.log`) into it
+   (`windows\run\build.log`), the test report and log
+   (`windows\test_run\report.txt`, `test.log`) into it
    (`agent_sandbox.py cp <file> in:<path>`, or `scp` to the sandbox).
 5. The agent diagnoses from the log, fixes, commits; repeat until the
    build passes, then the same loop with test failure logs until the
@@ -426,7 +427,7 @@ If you are a fresh agent instance resuming this work:
 2. Read `git log --oneline -20` on the windows branch to see what changed
    since the state the status section describes.
 3. Get the latest build log and test report from the human (they live
-   at `liw_wheels\run\build.log` and `liw_wheels\test_run\report.txt`
+   at `windows\run\build.log` and `windows\test_run\report.txt`
    plus `test.log` on the host; the transfer is a copy into one of the
    agent sandbox's mapped folders).  Build errors are logged as
    `error: ...` with the failing script line, and the failing step is
@@ -466,7 +467,7 @@ pipeline has been exercised in dev mode inside the agent sandbox:
 
 Next step: the first host run, `windows\sandbox_build.bat &&
 windows\test_via_sandbox.bat` (transfer the tip, end the agent session,
-run, send back `liw_wheels\run\build.log`, `liw_wheels\test_run\
+run, send back `windows\run\build.log`, `windows\test_run\
 report.txt` and `test.log`).  Only after pylibtiff is verified end to
 end does Glymur start.
 
@@ -509,6 +510,13 @@ Known gaps, in rough order:
   one.  agent_sandbox.py allows a minute; the launcher now allows 90
   seconds, and on a 24H2 host it uses the `wsb` CLI instead, which
   reports the sandbox id synchronously.
+- The first host run put its outputs in a `liw_wheels` *sibling* of the
+  repository (reported with the drive letter in the case the command
+  line used), which was not where anyone looked for them.  Outputs now
+  live under the repository like on linux and macos: the wheels in
+  `wheels\`, the windows-specific cache and run exchanges in
+  `windows\{cache,run,test_run}` (all gitignored), and the launchers
+  take the repository path's on-disk spelling (`Get-Item`).
 - `a.bat && b.bat` at an interactive prompt runs `b.bat` even when
   `a.bat` ended with `exit /b 1` (reproduced with cmd reading its
   commands from a file; `cmd /c` does not show it).  Ending the batch
