@@ -67,8 +67,20 @@ function Fetch([string]$Url, [string]$Name) {
         return $dest
     }
     Log "downloading $Url"
-    & curl.exe --retry 5 --silent --location --fail $Url -o $dest
-    Assert-Exit "download failed: $Url"
+    # --retry-all-errors: by itself --retry covers only timeouts and some
+    # server errors; the first host run died on a TLS connection error
+    # (curl exit 35) on the seventh download in a row.  The file is
+    # downloaded under a temporary name so a failed or interrupted
+    # download never looks like a cached file.
+    $part = "$dest.part"
+    Remove-Item -Path $part -Force -ErrorAction SilentlyContinue
+    & curl.exe --retry 8 --retry-delay 5 --retry-all-errors --silent --show-error `
+        --location --fail $Url -o $part
+    if ($LASTEXITCODE -ne 0) {
+        Remove-Item -Path $part -Force -ErrorAction SilentlyContinue
+        Die "download failed (curl exit code $LASTEXITCODE): $Url"
+    }
+    Move-Item -Path $part -Destination $dest -Force
     return $dest
 }
 
@@ -139,7 +151,9 @@ function Ensure-Pythons {
         }
         $full = $candidates | Sort-Object { [version]$_ } | Select-Object -Last 1
         Log "installing python $minor ($package $full)"
-        $file = Fetch "https://api.nuget.org/v3-flatcontainer/$package/$full/$package.$full.nupkg" "$package-$full.nupkg"
+        # (Cached as .zip: a .nupkg is a zip, and Expand-Archive insists on
+        # the extension; the cache need not hold every package twice.)
+        $file = Fetch "https://api.nuget.org/v3-flatcontainer/$package/$full/$package.$full.nupkg" "$package-$full.nupkg.zip"
         Expand-Zip $file (Join-Path $LIW_DL "$package-$full")
         if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
         Move-Item (Join-Path $LIW_DL "$package-$full\tools") $dest
