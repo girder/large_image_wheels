@@ -605,7 +605,9 @@ Known gaps, in rough order:
   master has (the linux link tolerates the undefined symbol; MSVC's does
   not); no PCRE2 (the linux base image's would give sqlite a REGEXP
   function; see the glib pcre2 leak below); the MrSID SDK is Extensis'
-  win64 vc17 build of the pinned version, not the rhel one.  Everything
+  win64 vc17 build, its version pinned in `build_wheels.ps1`
+  (`$script:MrsidVersion`) the way the Dockerfile pins its rhel tarball,
+  since no listing exists for `check_versions.py` to track.  Everything
   else GDAL's cmake can detect is required to resolve from the prefix
   and checked on `gdal.dll`'s import table.
 - `check_versions.py` runs on Windows as anywhere else (`uv run
