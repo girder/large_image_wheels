@@ -2447,16 +2447,18 @@ build_libgeos() {
     done_stamp libgeos
 }
 
-# Used by libspatialite.
+# Used by libspatialite.  Master at the commit versions.txt's librttopo-sha
+# names (like the linux build): libspatialite's trunk calls rtt_tpsnap,
+# which no librttopo release has.
 build_librttopo() {
     skip_if_done librttopo && return 0
     step "librttopo"
     cd "$LIW_SRC"
     rm -rf rttopo
-    git_retry https://gitlab.com/rttopo/rttopo.git \
-        "librttopo-$(v librttopo)" rttopo
+    git_retry https://gitlab.com/rttopo/rttopo.git "" rttopo
     (
         cd rttopo || exit 1
+        git checkout -q "$(v librttopo-sha)" || exit 1
         ./autogen.sh || exit 1
         ./configure --prefix="$LIW_PREFIX" --disable-static || exit 1
         make -j "$LIW_JOBS" || exit 1
@@ -3102,15 +3104,15 @@ build_gdal() {
     step "gdal (long)"
     cd "$LIW_SRC"
     rm -rf gdal
-    git clone --depth=1000 --single-branch -c advice.detachedHead=false \
-        https://github.com/OSGeo/gdal.git gdal || die "git clone failed: gdal"
+    if true; then
+        git clone --depth=1 --single-branch -b v"$(v gdal)" -c advice.detachedHead=false https://github.com/OSGeo/gdal.git || die "git clone failed: gdal"
+    else
+        git clone --depth=1000 --single-branch -c advice.detachedHead=false https://github.com/OSGeo/gdal.git gdal || die "git clone failed: gdal"
+        git -C gdal checkout "$(v gdal-sha)" || exit 1
+        git -C gdal gc --prune=all || exit 1
+    fi
     (
         cd gdal || exit 1
-        # For versioned gdal
-        git checkout -q v"$(v gdal)" || exit 1
-        # For latest gdal
-        # git checkout -q "$(v gdal-sha)" || exit 1
-        git gc --prune=all || exit 1
         # use .2 as a suffix (three spots), like the linux build
         sed -i '' 's/define GDAL_VERSION_BUILD    0/define GDAL_VERSION_BUILD    2/g' \
             gcore/gdal_version.h.in || exit 1
@@ -3308,8 +3310,9 @@ import sys
 def program():
     environ = os.environ.copy()
     localpath = os.path.dirname(os.path.abspath( __file__ ))
-    environ.setdefault("PROJ_DATA", os.path.join(localpath, "proj"))
-    environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal"))
+    # The data directories are copied beside bin, not into it
+    environ.setdefault("PROJ_DATA", os.path.join(os.path.dirname(localpath), "proj"))
+    environ.setdefault("GDAL_DATA", os.path.join(os.path.dirname(localpath), "gdal"))
     caPath = "/etc/ssl/certs/ca-certificates.crt"
     if not os.path.exists(caPath):
         caPath = "/etc/ssl/cert.pem"
@@ -3336,12 +3339,12 @@ data = re.sub(
     data)
 data = data.replace(
     "scripts/*.py'),",
-"""scripts/*.py'), 
+"""scripts/*.py'),
     package_data={'osgeo': ['proj/*', 'gdal/*', 'bin/*']},""")
 data = data.replace("console_scripts = []", """console_scripts = ['%s=osgeo.bin:program' % name for name in os.listdir('osgeo/bin') if not name.endswith('.py')]""")
 if "console_scripts" not in data: data = data.replace(
     "scripts/*.py'),",
-"""scripts/*.py'), 
+"""scripts/*.py'),
     entry_points={'console_scripts': ['%s=osgeo.bin:program' % name for name in os.listdir('osgeo/bin') if not name.endswith('.py')]}""")
 data = data.replace("    python_requires='>=3.6.0',", "")
 open(path, "w").write(data)
@@ -3356,42 +3359,42 @@ EOF
 path = "osgeo/__init__.py"
 s = open(path).read().replace(
     "osgeo package.",
-"""osgeo package. 
+"""osgeo package.
 
-import os 
-import re 
-from . import osr 
-from . import gdal 
+import os
+import re
+from . import osr
+from . import gdal
 
-_localpath = os.path.dirname(os.path.abspath( __file__ )) 
-# os.environ.setdefault("PROJ_DATA", os.path.join(_localpath, "proj")) 
-osr.SetPROJSearchPaths([os.path.join(_localpath, "proj")]) 
-# os.environ.setdefault("GDAL_DATA", os.path.join(_localpath, "gdal")) 
-gdal.SetConfigOption("GDAL_DATA", os.path.join(_localpath, "gdal")) 
-os.environ.setdefault("CPL_LOG", os.devnull) 
-_caPath = "/etc/ssl/certs/ca-certificates.crt" 
-if not os.path.exists(_caPath): 
-    _caPath = "/etc/ssl/cert.pem" 
-if os.path.exists(_caPath): 
-    os.environ.setdefault("CURL_CA_BUNDLE", _caPath) 
+_localpath = os.path.dirname(os.path.abspath( __file__ ))
+# os.environ.setdefault("PROJ_DATA", os.path.join(_localpath, "proj"))
+osr.SetPROJSearchPaths([os.path.join(_localpath, "proj")])
+# os.environ.setdefault("GDAL_DATA", os.path.join(_localpath, "gdal"))
+gdal.SetConfigOption("GDAL_DATA", os.path.join(_localpath, "gdal"))
+os.environ.setdefault("CPL_LOG", os.devnull)
+_caPath = "/etc/ssl/certs/ca-certificates.crt"
+if not os.path.exists(_caPath):
+    _caPath = "/etc/ssl/cert.pem"
+if os.path.exists(_caPath):
+    os.environ.setdefault("CURL_CA_BUNDLE", _caPath)
 
-_libsdir = os.path.join(_localpath, ".dylibs") 
-if not os.path.exists(_libsdir): 
-    _libsdir = os.path.join(os.path.dirname(_localpath), "GDAL.libs") 
-_libs = {} 
-if os.path.exists(_libsdir): 
-    _libs = { 
-        re.split(r"-|\.", name)[0]: os.path.join(_libsdir, name) 
-        for name in os.listdir(_libsdir) 
-    } 
-GDAL_LIBRARY_PATH = _libs.get("libgdal", "") 
-GEOS_LIBRARY_PATH = _libs.get("libgeos_c", "") 
-import ctypes.util 
+_libsdir = os.path.join(_localpath, ".dylibs")
+if not os.path.exists(_libsdir):
+    _libsdir = os.path.join(os.path.dirname(_localpath), "GDAL.libs")
+_libs = {}
+if os.path.exists(_libsdir):
+    _libs = {
+        re.split(r"-|\.", name)[0]: os.path.join(_libsdir, name)
+        for name in os.listdir(_libsdir)
+    }
+GDAL_LIBRARY_PATH = _libs.get("libgdal", "")
+GEOS_LIBRARY_PATH = _libs.get("libgeos_c", "")
+import ctypes.util
 
-try: 
-    ctypes.CDLL(ctypes.util.find_library("stdc++"), mode=ctypes.RTLD_GLOBAL) 
-except Exception: 
-    pass 
+try:
+    ctypes.CDLL(ctypes.util.find_library("stdc++"), mode=ctypes.RTLD_GLOBAL)
+except Exception:
+    pass
 """)
 open(path, "w").write(s)
 EOF
@@ -3801,8 +3804,9 @@ import sys
 def program():
     environ = os.environ.copy()
     localpath = os.path.dirname(os.path.abspath( __file__ ))
-    environ.setdefault("PROJ_DATA", os.path.join(localpath, "proj"))
-    environ.setdefault("GDAL_DATA", os.path.join(localpath, "gdal"))
+    # The data directories are copied beside bin, not into it
+    environ.setdefault("PROJ_DATA", os.path.join(os.path.dirname(localpath), "proj"))
+    environ.setdefault("GDAL_DATA", os.path.join(os.path.dirname(localpath), "gdal"))
     caPath = "/etc/ssl/certs/ca-certificates.crt"
     if not os.path.exists(caPath):
         caPath = "/etc/ssl/cert.pem"
