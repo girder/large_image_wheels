@@ -500,9 +500,23 @@ sandbox before every host run:
   python's TLS trust in a fresh sandbox); `SSL_CERT_FILE` now points at
   PortableGit's CA bundle.
 
+- The consolidation and the TLS fix were verified together on the host
+  (2026-10-28).
+- **pyvips builds and passes every dev-mode check for python 3.13
+  (2026-10-28)**: the whole libvips tree (lz4, nifti, fftw3, highway,
+  openexr, libjxl, libimagequant and librsvg through a pinned rust
+  toolchain, libexif through an embedded cmake file, libarchive, LibRaw
+  through its nmake makefile, harfbuzz, pango, libde265, libheif, curl
+  on Schannel, poppler, cfitsio, hdf5, matio) and libvips with every
+  loader the linux wheel has except magick (see the deviations in the
+  hard-won list), then one API-mode cffi wheel per python with the four
+  vips tools bundled -- 73 DLLs in the wheel.  The wheel step was also
+  rehearsed for all seven pythons (the free-threaded ones included).
+  Not yet verified on the host.
+
 Next step: the host run of `windows\sandbox_build.bat &&
-windows\test_via_sandbox.bat` (the three packages by default) to
-confirm the consolidated scripts and the TLS fix together, then pyvips.
+windows\test_via_sandbox.bat` (now four packages by default), then
+GDAL.
 
 Known gaps, in rough order:
 
@@ -539,12 +553,35 @@ Known gaps, in rough order:
   directory `glymur.libs`; the config patch looks for both spellings)
   and rename the finished wheel to `Glymur-` last, which is all the
   linux build's rename does too.
-- The C++ packages to come (pyvips, GDAL, mapnik) will import
+- The C++ packages (pyvips, and GDAL and mapnik to come) import
   `msvcp140.dll`, which delvewheel bundles from the redist directory
   that `--add-path` names (mangled, which is fine for a DLL only other
   DLLs import).  Both `vcruntime140.dll` and `vcruntime140_1.dll` are
-  already forced into every wheel (cairo was the first to import the
-  `_1`; the import audit caught it).
+  forced into every wheel (cairo was the first to import the `_1`; the
+  import audit caught it).
+- **pyvips deviations from the linux wheel**, each marked in
+  `build_wheels.ps1` where it happens: no ImageMagick (at the pinned
+  version its only build systems are autotools and the VisualMagick
+  MSBuild projects, and MSBuild is not part of the installer-free
+  toolchain), so libvips is built with `-Dmagick=disabled` and the wheel
+  bundles no `magick` tool -- the shared suite never uses either, and a
+  cmake build of ImageMagick written by hand is the way to close the gap
+  if it matters; no libzip (only ImageMagick used it); curl on Schannel
+  with no OpenSSL in the tree; hdf5 without MPI (no OpenMPI on Windows)
+  and without its tools; poppler without its C++ wrapper (the one part
+  that hard-requires iconv) and with fontconfig font lookup forced (its
+  Windows default is win32); libjxl without its tools; libarchive
+  without bzip2; orc absent as on macos.  Everything else the linux
+  wheel's libvips links is required explicitly at configure time
+  (`-D<loader>=enabled`) and checked on the DLL's import table.
+- `check_versions.py` on Windows: `timeout` resolves to Windows'
+  timeout.exe no matter what PATH says (CreateProcess searches System32
+  before PATH, and PowerShell's `Push-Location` does not move the
+  process's working directory for children).  Run it through a few
+  lines of python that patch `subprocess.check_output` to drop the
+  `timeout 15` prefix and pass `timeout=15` instead, then
+  `runpy.run_path` the script; that is how the `rust` and `cargo-c`
+  pins were taken.
 - libxml2 is built without iconv (Windows has no system iconv; linux
   and macos use theirs).  libxml2 handles UTF-8/16 and ISO-8859-x on its
   own; if a later consumer needs other encodings through libxml2, build
@@ -808,3 +845,69 @@ Known gaps, in rough order:
   one way a system library could shadow a bundled one.
 - C++ ABI is not mixable across compilers on Windows: every library and
   every extension in a wheel must be built by the same MSVC toolset.
+- **rust** (librsvg, libimagequant) is installed from the pinned
+  release's standalone `rustc`, `cargo` and `rust-std` tarballs merged
+  into one directory (what rustup's install does; rustup itself is
+  unpinned), and cargo-c is the prebuilt MSVC binary of its pinned
+  release; both pins come from `check_versions.py` (`rust`, `cargo-c`).
+  rustc links with the MSVC `link.exe` from PATH and takes pkg-config's
+  `-l` names literally: `-lpng16` means `png16.lib`, where meson would
+  also accept `libpng16.lib`, so the libpng and libxml2 builders install
+  both spellings of their import libraries (rsvg-convert failed on
+  `png16.lib` and `xml2.lib` first).  cargo-c names its MSVC import
+  library `<name>.dll.lib`, so `imagequant.lib` is a copy; curl's cmake
+  names its `libcurl_imp.lib` unless `IMPORT_LIB_SUFFIX` is emptied, and
+  `curl.lib` is a copy for the .pc's `-lcurl`.
+- librsvg's meson build wraps the rust static library in a DLL with
+  `link_whole`; under MSVC that is `/WHOLEARCHIVE`, which forces in every
+  member of the archive, including the raw-dylib import stubs the
+  windows crates embed -- two crates carry kernel32's, so link.exe dies
+  with LNK2005 on `__IMPORT_DESCRIPTOR_kernel32`.  The exports come from
+  a generated `.def`, and a `.def` makes the linker pull each exported
+  symbol's object by itself, so the Windows patch changes that one
+  `link_whole` to `link_with` and the DLL is the same.
+- `PKG_CONFIG` must be the pkgconf binary the pypi package embeds
+  (`pkgconf\.bin\pkgconf.exe`), spelled with forward slashes.  The
+  `Scripts\pkgconf.exe` launcher runs `python -m pkgconf`, which fails
+  inside pip's build isolation (no pkgconf module there), so pyvips's
+  pkg-config probe for vips came back empty and its setup.py silently
+  fell back to an ABI-mode pure-python wheel (that fallback is now
+  patched out: API mode or a failed build).  The `pkgconfig` python
+  package then splits its command with shlex in POSIX mode, which eats
+  backslashes.
+- cmake builds its try_run probes in the Debug configuration unless
+  `CMAKE_TRY_COMPILE_CONFIGURATION` says otherwise, and Debug means the
+  debug CRT (`-MDd`), whose DLLs no redistributable ships: the probes
+  compile and then fail to run.  Every project's probes had been doing
+  that silently; hdf5's `InitOnceExecuteOnce` probe was the first whose
+  failure was fatal ("thread-safe option requires Win32 threads").
+  `Cmake-Build` sets the configuration to MinSizeRel for all of them.
+- hdf5's config-mode zlib find (`COMPONENTS static shared`) finds our
+  `ZLIBConfig.cmake` and then dies on the static component a shared-only
+  zlib never installed; `-DZLIB_PACKAGE_NAME=<nothing matches>` makes
+  it fall through to the module find and the preset
+  `ZLIB_LIBRARY`/`ZLIB_INCLUDE_DIR`.  poppler rejects MinSizeRel
+  (Release, as on linux), runs `glib-mkenums` (a python script from
+  glib's install) through `GLIB2_MKENUMS_PYTHON`, which must name the
+  patch python, and only its C++ wrapper needs iconv.  libvips's fuzz
+  targets (test executables, built unconditionally) do not compile
+  under MSVC and are dropped by the Windows patch; libvips asks for
+  `libraw_r`, and LibRaw's `Makefile.msvc` DLL (built without
+  `LIBRAW_NOTHREADS`) is that flavor, so both .pc names describe it.
+  libexif builds from an embedded cmake file (its own build is
+  autotools; MSVC lacks `ssize_t`, which the generated config.h
+  supplies); LibRaw builds through its own `Makefile.msvc`, which
+  installs nothing.
+- DLL names in the libvips tree, as the builds produce them: `vips-42.dll`
+  (+ `vips-cpp-42.dll`; import library `vips.lib`), `rsvg-2-2.dll`,
+  `heif.dll`, `libde265.dll`, `jxl.dll`, `imagequant.dll`, `exif.dll`,
+  `archive.dll`, `libraw.dll`, `libmatio.dll`, `hdf5.dll`, `cfitsio.dll`,
+  `fftw3.dll`, `hwy.dll`, `OpenEXR-3_5.dll`, `niftiio.dll` + `znz.dll`,
+  `poppler.dll` + `poppler-glib.dll`, `libcurl.dll`, `harfbuzz.dll`
+  (15.x also installs -subset, -cairo, -gobject, -gpu, -raster and
+  -vector DLLs), `pango-1.0-0.dll` + `pangocairo`/`pangoft2`/`pangowin32`,
+  `fribidi-0.dll` (pango's wrap), `lz4.dll`.  The pyvips wheel bundles
+  73 of them plus `msvcp140.dll`.
+- `Cmake-Build` runs cmake through `Run-Logged` so its stderr ("Could
+  NOT find ...", configure errors) reaches the log; it did not at
+  first, and poppler's first failure was invisible from the log.

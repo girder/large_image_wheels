@@ -506,18 +506,23 @@ function Cmake-Build([string]$Src, [string[]]$CmakeArgs = @()) {
     # the DLL's location and openjpeg's tools were handed tiff.dll to link
     # (LNK1107).  With the config lookup disabled the module finds tiff.lib
     # like any other library.
-    & cmake -S $Src -B $build -G Ninja `
-        '-DCMAKE_BUILD_TYPE=MinSizeRel' `
-        "-DCMAKE_PREFIX_PATH=$script:CmakePrefix" `
-        "-DCMAKE_INSTALL_PREFIX=$script:CmakePrefix" `
-        '-DCMAKE_INSTALL_LIBDIR=lib' `
-        '-DCMAKE_DISABLE_FIND_PACKAGE_Tiff=ON' `
-        @CmakeArgs
-    Assert-Exit "cmake configure failed in $Src"
-    & cmake --build $build --parallel $LIW_JOBS
-    Assert-Exit "cmake build failed in $Src"
-    & cmake --install $build
-    Assert-Exit "cmake install failed in $Src"
+    # (Run-Logged: cmake's "Could NOT find" diagnostics go to stderr, which
+    # must reach the log for a host run to be diagnosable.)
+    # CMAKE_TRY_COMPILE_CONFIGURATION: cmake builds try_run probes as
+    # Debug by default, against the debug CRT (-MDd), whose DLLs no
+    # redistributable ships and this installer-free toolchain lacks -- the
+    # probes compile and then fail to run (hdf5's InitOnceExecuteOnce
+    # probe was the first whose failure was fatal).  The release
+    # configuration's runtime is on PATH (the redist directory).
+    Run-Logged 'cmake' (@('-S', $Src, '-B', $build, '-G', 'Ninja',
+        '-DCMAKE_BUILD_TYPE=MinSizeRel',
+        '-DCMAKE_TRY_COMPILE_CONFIGURATION=MinSizeRel',
+        "-DCMAKE_PREFIX_PATH=$script:CmakePrefix",
+        "-DCMAKE_INSTALL_PREFIX=$script:CmakePrefix",
+        '-DCMAKE_INSTALL_LIBDIR=lib',
+        '-DCMAKE_DISABLE_FIND_PACKAGE_Tiff=ON') + $CmakeArgs) "cmake configure in $Src"
+    Run-Logged 'cmake' @('--build', $build, '--parallel', "$LIW_JOBS") "cmake build in $Src"
+    Run-Logged 'cmake' @('--install', $build) "cmake install in $Src"
 }
 
 function Assert-Files([string]$Dir, [string[]]$Patterns, [string]$What) {
@@ -570,6 +575,21 @@ function Assert-Dependents([string]$Image, [string[]]$Names, [string]$What) {
         if (@($dependents) -notcontains $name) {
             Die ("${What}: $Image does not depend on $name (found: " +
                 "$($dependents -join ', '))")
+        }
+    }
+}
+
+# Like Assert-Dependents, by name prefix: the meson-built DLLs carry
+# versions in their names (freetype-6.dll, pango-1.0-0.dll), which the
+# consumer's import table records as such.
+function Assert-DependentStems([string]$Image, [string[]]$Stems, [string]$What) {
+    $dependents = @(Get-Dependents $Image)
+    Log "$(Split-Path -Leaf $Image) depends on: $($dependents -join ', ')"
+    foreach ($stem in $Stems) {
+        if (-not ($dependents | Where-Object { $_ -like "$stem*" })) {
+            Die ("${What}: $Image does not depend on $stem* (found: " +
+                "$($dependents -join ', ')); an optional dependency was missed " +
+                '(check the build order)')
         }
     }
 }
@@ -1373,6 +1393,8 @@ function Ensure-Toolchain {
 # nothing else on the machine can satisfy a dependency.  meson maps the
 # .pc files' -l flags to .lib files for MSVC.
 function Ensure-Meson {
+    if ($script:MesonReady) { return }
+    $script:MesonReady = $true
     $pp = $script:PatchPython
     # (pkgconf-pypi: the pypi wheels trail pkgconf's own releases, which
     # the linux build's pkgconf pin follows.)
@@ -1384,10 +1406,20 @@ function Ensure-Meson {
         if (-not (Test-Path (Join-Path $scripts $exe))) { Die "$exe is missing after the pip install" }
     }
     $env:PATH = "$scripts;$env:PATH"
-    $env:PKG_CONFIG = Join-Path $scripts 'pkgconf.exe'
+    # PKG_CONFIG is the real pkgconf binary the pypi package embeds
+    # (pkgconf\.bin\pkgconf.exe), not the Scripts\pkgconf.exe launcher,
+    # which runs `python -m pkgconf` with the launching python's module
+    # path: inside pip's build isolation that import fails (no pkgconf
+    # module there), and pyvips's pkg-config probe for vips came back
+    # empty.  A plain executable serves meson, cmake and pip alike.
+    $embedded = (Capture-Native $pp @('-c', 'import pkgconf; print(pkgconf.get_executable())')).Trim()
+    if (-not $embedded -or -not (Test-Path $embedded)) { Die "the pkgconf package reports no embedded binary ($embedded)" }
+    # (Forward slashes: the pkgconfig python package splits its command
+    # line with shlex in POSIX mode, which eats backslashes.)
+    $env:PKG_CONFIG = $embedded -replace '\\', '/'
     $env:PKG_CONFIG_PATH = "$LIW_PREFIX\lib\pkgconfig;$LIW_PREFIX\share\pkgconfig"
     $env:PKG_CONFIG_LIBDIR = $env:PKG_CONFIG_PATH
-    Log "meson $(V meson), pkgconf from $scripts; pkg-config scoped to $LIW_PREFIX"
+    Log "meson $(V meson) from $scripts, pkgconf $env:PKG_CONFIG; pkg-config scoped to $LIW_PREFIX"
 }
 
 # A pkg-config file for a library whose cmake build installs none on MSVC
@@ -1439,6 +1471,56 @@ function Ensure-Clang {
     $out = Capture-Native (Join-Path $script:ClangBin 'clang-cl.exe') @('--version')
     if ($out -notmatch [regex]::Escape($version)) { Die "clang-cl does not report version ${version}: $out" }
     Log "clang-cl $version at $script:ClangBin"
+}
+
+# The rust toolchain, for the two rust libraries in the libvips tree
+# (libimagequant, librsvg).  The linux and macos builds take rustup's
+# current stable; here the pinned release's standalone component
+# tarballs (rustc, cargo, rust-std for the MSVC target; each is
+# <tarball>/<component>/{bin,lib,...}) are merged into one directory,
+# which is all rustup's install does, and cargo-c -- the cargo cinstall
+# both libraries build through -- is the prebuilt MSVC binary of its
+# pinned release (linux and macos `cargo install` it).  rustc links with
+# the MSVC link.exe that Enter-Msvc put on PATH; the crates.io cache lives
+# under the build directory.  Like meson, rust is a build tool only: the
+# wheels carry the DLLs it produces, audited like every other one.
+function Ensure-Rust {
+    $version = V 'rust'
+    $cargoc = V 'cargo-c'
+    $dir = Join-Path $LIW_TOOLS 'rust'
+    $stamp = Join-Path $dir ".installed-$version-$cargoc"
+    if (-not (Test-Path $stamp)) {
+        Log "installing rust $version and cargo-c $cargoc"
+        if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        foreach ($component in @('rustc', 'cargo', 'rust-std')) {
+            $name = "$component-$version-x86_64-pc-windows-msvc.tar.xz"
+            $tarball = Fetch "https://static.rust-lang.org/dist/$name" $name
+            # (The system bsdtar reads .tar.xz; two leading components are
+            # the tarball's and the component's directories.)
+            & tar.exe -xf $tarball -C $dir --strip-components 2 --exclude 'manifest.in'
+            Assert-Exit "extraction of $name"
+        }
+        $zip = Fetch "https://github.com/lu-zero/cargo-c/releases/download/v$cargoc/cargo-c-windows-msvc.zip" `
+            "cargo-c-$cargoc-windows-msvc.zip"
+        Expand-Zip $zip (Join-Path $LIW_DL 'cargo-c')
+        Copy-Item (Join-Path $LIW_DL 'cargo-c\*.exe') (Join-Path $dir 'bin') -Force
+        foreach ($exe in @('rustc.exe', 'cargo.exe', 'cargo-cinstall.exe', 'cargo-cbuild.exe')) {
+            if (-not (Test-Path (Join-Path $dir "bin\$exe"))) { Die "$exe missing after the rust install" }
+        }
+        if (-not (Test-Path (Join-Path $dir 'lib\rustlib\x86_64-pc-windows-msvc\lib'))) {
+            Die 'the rust standard library is missing after the rust install'
+        }
+        New-Item -ItemType File -Force -Path $stamp | Out-Null
+    }
+    $script:RustBin = Join-Path $dir 'bin'
+    if (($env:PATH -split ';') -notcontains $script:RustBin) {
+        $env:PATH = "$script:RustBin;$env:PATH"
+    }
+    $env:CARGO_HOME = Join-Path $LIW_BUILD 'cargo'
+    $out = Capture-Native (Join-Path $script:RustBin 'rustc.exe') @('--version')
+    if ($out -notmatch [regex]::Escape($version)) { Die "rustc does not report version ${version}: $out" }
+    Log "rust $version and cargo-c $cargoc at $script:RustBin (CARGO_HOME $env:CARGO_HOME)"
 }
 
 # Build and install a meson project into the private prefix with the
@@ -1697,6 +1779,11 @@ function Build-Libpng {
         Write-PkgConfig $name 'Loads and saves PNG files' (V libpng) '-lpng16' `
             '-I${includedir}' '${prefix}/include/libpng16' 'zlib'
     }
+    # The .pc's -lpng16 names png16.lib under MSVC; cmake installed
+    # libpng16.lib.  meson looks for both spellings, rustc (librsvg's
+    # rsvg-convert, through the system-deps crate) only for the literal
+    # one, so the second name is provided.
+    Copy-Item (Join-Path $LIW_PREFIX 'lib\libpng16.lib') (Join-Path $LIW_PREFIX 'lib\png16.lib') -Force
     Done-Stamp 'libpng'
 }
 
@@ -1824,6 +1911,9 @@ function Build-Libxml2 {
         '-DLIBXML2_WITH_HTTP=ON', '-DLIBXML2_WITH_DEBUG=OFF', '-DLIBXML2_WITH_PROGRAMS=OFF',
         '-DLIBXML2_WITH_ZLIB=ON', '-DLIBXML2_WITH_LZMA=ON')
     Assert-Files (Join-Path $LIW_PREFIX 'bin') @('libxml2*.dll') 'libxml2'
+    # libxml-2.0.pc says -lxml2; the import library installs as libxml2.lib.
+    # rustc takes the .pc's spelling literally (see Build-Libpng).
+    Copy-Item (Join-Path $LIW_PREFIX 'lib\libxml2.lib') (Join-Path $LIW_PREFIX 'lib\xml2.lib') -Force
     Done-Stamp 'libxml2'
 }
 
@@ -2013,6 +2103,7 @@ function Build-Jxrlib {
 function Build-Openslide {
     if (Skip-If-Done 'openslide') { return }
     Log '=== openslide'
+    Ensure-Clang
     $src = Join-Path $LIW_SRC 'openslide'
     if (Test-Path $src) { Remove-Item -Recurse -Force $src }
     # A full clone: the pin is a commit, which a shallow clone cannot hold.
@@ -2084,6 +2175,590 @@ open(path, "w").write(s)
     }
     Assert-Files $lib @('openslide.lib') 'openslide'
     Done-Stamp 'openslide'
+}
+
+# --- the libvips tree (lz4 through matio, then libvips itself): the
+# counterpart of the Dockerfile's VIPS section and of the two pyvips
+# stages of macos/build_wheels.sh.  Windows deviations, each called out
+# where it happens: no ImageMagick (at this version its only build systems
+# are autotools and the VisualMagick/MSBuild projects, and MSBuild is not
+# part of the installer-free toolchain), so libvips's magick loader and
+# the bundled magick tool are absent; no libzip (only ImageMagick used
+# it); curl on Schannel instead of OpenSSL; hdf5 without MPI; orc absent
+# as on macos (libvips uses highway; orc is only its fallback). ---
+
+function Build-Lz4 {
+    if (Skip-If-Done 'lz4') { return }
+    Log '=== lz4'
+    $src = Git-Clone 'https://github.com/lz4/lz4.git' "v$(V lz4)" (Join-Path $LIW_SRC 'lz4')
+    Cmake-Build (Join-Path $src 'build\cmake') @(
+        '-DBUILD_SHARED_LIBS=ON', '-DBUILD_STATIC_LIBS=OFF',
+        '-DLZ4_BUILD_CLI=OFF', '-DLZ4_BUILD_LEGACY_LZ4C=OFF')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('lz4.dll') 'lz4'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('liblz4.pc') 'lz4'
+    Done-Stamp 'lz4'
+}
+
+# nifti installs only a cmake config package; libvips's meson.build spells
+# out the niftiio.pc it would rather find, so that file is written here
+# (which also makes -Dnifti-prefix-dir moot).
+function Build-Nifti {
+    if (Skip-If-Done 'nifti') { return }
+    Log '=== nifti'
+    $src = Git-Clone 'https://github.com/NIFTI-Imaging/nifti_clib.git' "v$(V nifti)" (Join-Path $LIW_SRC 'nifti')
+    Cmake-Build $src @('-DBUILD_SHARED_LIBS=ON', '-DNIFTI_BUILD_TESTING=OFF',
+        '-DNIFTI_BUILD_APPLICATIONS=OFF', '-DNIFTI_INSTALL_NO_DOCS=ON',
+        '-DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=ON')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('niftiio.dll', 'znz.dll') 'nifti'
+    Write-PkgConfig 'niftiio' 'Core i/o routines for reading and writing nifti-1 format files' `
+        (V nifti) '-lniftiio -lznz' '-I${includedir}' '${prefix}/include/nifti'
+    Done-Stamp 'nifti'
+}
+
+# The Dockerfile's x86_64 branch adds -mavx2 -mfma; fftw's cmake derives
+# the MSVC /arch switches from the ENABLE_* options itself.
+# WITH_COMBINED_THREADS: one fftw3.dll with the threads API inside (the
+# separate fftw3_threads library is a unix convention).
+function Build-Fftw3 {
+    if (Skip-If-Done 'fftw3') { return }
+    Log '=== fftw3'
+    $src = Fetch-Tarball "https://fftw.org/pub/fftw/fftw-$(V fftw3).tar.gz" 'fftw3.tar.gz' (Join-Path $LIW_SRC 'fftw3')
+    Cmake-Build $src @('-DBUILD_SHARED_LIBS=ON', '-DBUILD_TESTS=OFF',
+        '-DENABLE_AVX=ON', '-DENABLE_AVX2=ON', '-DENABLE_SSE=ON', '-DENABLE_SSE2=ON',
+        '-DENABLE_THREADS=ON', '-DWITH_COMBINED_THREADS=ON',
+        '-DCMAKE_POLICY_VERSION_MINIMUM=3.5')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('fftw3.dll') 'fftw3'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('fftw3.pc') 'fftw3'
+    Done-Stamp 'fftw3'
+}
+
+function Build-Libhwy {
+    if (Skip-If-Done 'libhwy') { return }
+    Log '=== libhwy'
+    $src = Git-Clone 'https://github.com/google/highway.git' "$(V libhwy)" (Join-Path $LIW_SRC 'highway')
+    Cmake-Build $src @('-DBUILD_TESTING=OFF', '-DHWY_ENABLE_EXAMPLES=OFF', '-DHWY_ENABLE_TESTS=OFF',
+        '-DBUILD_SHARED_LIBS=ON', '-DCMAKE_CXX_FLAGS=/DVQSORT_SECURE_SEED=0')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('hwy.dll') 'libhwy'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('libhwy.pc') 'libhwy'
+    Done-Stamp 'libhwy'
+}
+
+# openexr before jpeg-xl, as on linux (libjxl's OpenEXR support is an auto
+# feature).  Imath is fetched by openexr's cmake at configure time (the
+# linux build's plain clone does not recurse either), at OPENEXR_IMATH_TAG.
+function Build-Openexr {
+    if (Skip-If-Done 'openexr') { return }
+    Log '=== openexr'
+    $src = Git-Clone 'https://github.com/AcademySoftwareFoundation/openexr.git' "v$(V openexr)" (Join-Path $LIW_SRC 'openexr')
+    Cmake-Build $src @('-DBUILD_TESTING=OFF', '-DOPENEXR_BUILD_EXAMPLES=OFF',
+        '-DOPENEXR_IMATH_TAG=v3.2.1', '-DOPENEXR_INSTALL_PKG_CONFIG=ON')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('OpenEXR-*.dll', 'Imath-*.dll') 'openexr'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('OpenEXR.pc') 'openexr'
+    Done-Stamp 'openexr'
+}
+
+# libjxl's third_party libraries are git submodules (--recurse-submodules,
+# like the Dockerfile; Git-Clone has no provision for it).  Highway is
+# embedded statically from the vendored copy, as on linux and macos;
+# brotli is forced to the prefix's (libjxl would otherwise build and
+# install the vendored brotli over ours).  No tools: nothing bundles cjxl.
+function Build-Jpeg-Xl {
+    if (Skip-If-Done 'jpeg-xl') { return }
+    Log '=== jpeg-xl (libjxl)'
+    $src = Join-Path $LIW_SRC 'libjxl'
+    for ($n = 1; $n -le 10; $n++) {
+        if (Test-Path $src) { Remove-Item -Recurse -Force $src }
+        & git clone --depth=1 --single-branch -b "v$(V jpeg-xl)" -c advice.detachedHead=false `
+            --recurse-submodules --shallow-submodules -j $LIW_JOBS https://github.com/libjxl/libjxl.git $src
+        if ($LASTEXITCODE -eq 0) { break }
+        Log 'retrying git clone of libjxl'
+        Start-Sleep -Seconds 5
+    }
+    if ($LASTEXITCODE -ne 0) { Die 'git clone of libjxl failed' }
+    # Without the .git entries libjxl's version detection uses its fallback
+    # version instead of a git describe of the shallow clone (the
+    # Dockerfile does the same).
+    foreach ($entry in @(Get-ChildItem -Path $src -Recurse -Force -Filter '.git')) {
+        Remove-Item -Recurse -Force $entry.FullName -ErrorAction SilentlyContinue
+    }
+    # (-fpermissive is gcc-only.)
+    Cmake-Build $src @('-DBUILD_TESTING=OFF', '-DBUILD_SHARED_LIBS=ON',
+        '-DJPEGXL_ENABLE_EXAMPLES=OFF', '-DJPEGXL_ENABLE_MANPAGES=OFF',
+        '-DJPEGXL_ENABLE_BENCHMARK=OFF', '-DJPEGXL_ENABLE_TOOLS=OFF',
+        '-DJPEGXL_ENABLE_DOXYGEN=OFF', '-DJPEGXL_ENABLE_JNI=OFF',
+        '-DJPEGXL_ENABLE_SJPEG=OFF', '-DJPEGXL_ENABLE_FUZZERS=OFF',
+        '-DJPEGXL_FORCE_SYSTEM_BROTLI=ON',
+        '-DHWY_ENABLE_INSTALL=OFF', '-DHWY_ENABLE_TESTS=OFF',
+        '-DCMAKE_POLICY_VERSION_MINIMUM=3.5')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('jxl.dll', 'jxl_threads.dll') 'jpeg-xl'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('libjxl.pc') 'jpeg-xl'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\jxl.dll') @('brotlidec', 'brotlienc') 'jpeg-xl'
+    Done-Stamp 'jpeg-xl'
+}
+
+# libimagequant 4.x is a rust crate with a C API built through cargo-c
+# (cargo cinstall, as on linux and macos).  --library-type cdylib: by
+# default the DLL and a static library both install, and under MSVC
+# pkg-config's -limagequant would then resolve to the static
+# imagequant.lib, whose rust runtime dependencies nothing hands the
+# linker.
+function Build-Libimagequant {
+    if (Skip-If-Done 'libimagequant') { return }
+    Log '=== libimagequant'
+    Ensure-Rust
+    $src = Git-Clone 'https://github.com/ImageOptim/libimagequant.git' "$(V libimagequant)" (Join-Path $LIW_SRC 'libimagequant')
+    Push-Location (Join-Path $src 'imagequant-sys')
+    try {
+        Run-Logged 'cargo' @('cinstall', '--release', '--library-type', 'cdylib',
+            '--prefix', $script:CmakePrefix, '--libdir', "$script:CmakePrefix/lib") 'cargo cinstall of libimagequant'
+    } finally {
+        Pop-Location
+    }
+    # cargo-c names the MSVC import library after the DLL
+    # (imagequant.dll.lib); pkg-config's -limagequant needs imagequant.lib.
+    $lib = Join-Path $LIW_PREFIX 'lib'
+    Log "libimagequant installed: $((Get-ChildItem $lib -Filter '*imagequant*' | ForEach-Object { $_.Name }) -join ', ')"
+    if ((Test-Path (Join-Path $lib 'imagequant.dll.lib')) -and -not (Test-Path (Join-Path $lib 'imagequant.lib'))) {
+        Copy-Item (Join-Path $lib 'imagequant.dll.lib') (Join-Path $lib 'imagequant.lib')
+    }
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('imagequant.dll') 'libimagequant'
+    Assert-Files $lib @('imagequant.lib') 'libimagequant'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('imagequant.pc') 'libimagequant'
+    Done-Stamp 'libimagequant'
+}
+
+# A cmake build for libexif, whose own build is autotools (its README-Win32
+# suggests "hack yourself a build system somehow").  The same sources as
+# libexif/Makefile.am (the apple makernote is left out there too), the
+# API exported from libexif.sym as the autotools build exports it,
+# configure's two generated headers (config.h without NLS, as on macos;
+# localtime_s is MSVC's; _stdint.h, which exif-utils.h includes), the
+# installed header set, and libexif.pc.  LIBEXIF_VERSION is passed in.
+$script:LibexifCMakeLists = @'
+cmake_minimum_required(VERSION 3.16)
+project(libexif C)
+if(NOT LIBEXIF_VERSION)
+  message(FATAL_ERROR "pass -DLIBEXIF_VERSION=<version>")
+endif()
+set(SRC
+  libexif/exif-byte-order.c libexif/exif-content.c libexif/exif-data.c
+  libexif/exif-entry.c libexif/exif-format.c libexif/exif-ifd.c
+  libexif/exif-loader.c libexif/exif-log.c libexif/exif-mem.c
+  libexif/exif-mnote-data.c libexif/exif-tag.c libexif/exif-utils.c
+  libexif/exif-gps-ifd.c
+  libexif/canon/exif-mnote-data-canon.c libexif/canon/mnote-canon-entry.c
+  libexif/canon/mnote-canon-tag.c
+  libexif/fuji/exif-mnote-data-fuji.c libexif/fuji/mnote-fuji-entry.c
+  libexif/fuji/mnote-fuji-tag.c
+  libexif/olympus/exif-mnote-data-olympus.c libexif/olympus/mnote-olympus-entry.c
+  libexif/olympus/mnote-olympus-tag.c
+  libexif/pentax/exif-mnote-data-pentax.c libexif/pentax/mnote-pentax-entry.c
+  libexif/pentax/mnote-pentax-tag.c)
+set(GEN ${CMAKE_BINARY_DIR}/generated)
+file(WRITE ${GEN}/config.h
+"#define HAVE_LOCALTIME_S 1
+#define GETTEXT_PACKAGE \"libexif-12\"
+#define PACKAGE_VERSION \"${LIBEXIF_VERSION}\"
+/* exif-loader.c uses ssize_t, which MSVC does not have. */
+#include <BaseTsd.h>
+typedef SSIZE_T ssize_t;
+")
+file(WRITE ${GEN}/libexif/_stdint.h "#include <stdint.h>\n")
+file(STRINGS ${CMAKE_SOURCE_DIR}/libexif/libexif.sym SYMS)
+set(DEF "EXPORTS\n")
+foreach(sym ${SYMS})
+  string(APPEND DEF "${sym}\n")
+endforeach()
+file(WRITE ${GEN}/libexif.def "${DEF}")
+add_library(exif SHARED ${SRC} ${GEN}/libexif.def)
+target_include_directories(exif PRIVATE ${CMAKE_SOURCE_DIR} ${GEN})
+target_compile_definitions(exif PRIVATE _CRT_SECURE_NO_WARNINGS)
+install(TARGETS exif
+  RUNTIME DESTINATION bin LIBRARY DESTINATION lib ARCHIVE DESTINATION lib)
+install(FILES
+  libexif/exif-byte-order.h libexif/exif-content.h libexif/exif-data.h
+  libexif/exif-data-type.h libexif/exif-entry.h libexif/exif-format.h
+  libexif/exif-ifd.h libexif/exif-loader.h libexif/exif-log.h
+  libexif/exif-mem.h libexif/exif-mnote-data.h libexif/exif-tag.h
+  libexif/exif-utils.h ${GEN}/libexif/_stdint.h
+  DESTINATION include/libexif)
+file(WRITE ${CMAKE_BINARY_DIR}/libexif.pc
+"prefix=${CMAKE_INSTALL_PREFIX}
+exec_prefix=\${prefix}
+libdir=\${exec_prefix}/lib
+includedir=\${prefix}/include
+
+Name: libexif
+Description: EXIF tag parsing library
+Version: ${LIBEXIF_VERSION}
+Libs: -L\${libdir} -lexif
+Cflags: -I\${includedir}
+")
+install(FILES ${CMAKE_BINARY_DIR}/libexif.pc DESTINATION lib/pkgconfig)
+'@
+
+function Build-Libexif {
+    if (Skip-If-Done 'libexif') { return }
+    Log '=== libexif'
+    $src = Git-Clone 'https://github.com/libexif/libexif.git' "v$(V libexif)" (Join-Path $LIW_SRC 'libexif')
+    Write-Embedded (Join-Path $src 'CMakeLists.txt') $script:LibexifCMakeLists
+    Cmake-Build $src @("-DLIBEXIF_VERSION=$(V libexif)")
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('exif.dll') 'libexif'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('libexif.pc') 'libexif'
+    Done-Stamp 'libexif'
+}
+
+# libarchive: zlib, zstd, lzma and lz4 from the prefix (the formats the
+# linux wheel's libarchive carries through them are asserted).  No bzip2
+# (the linux base image has one and macos uses the system's; nothing in
+# this prefix provides it), no OpenSSL (Windows' CNG supplies the hashes),
+# no tools (bsdtar and friends are not bundled).
+function Build-Libarchive {
+    if (Skip-If-Done 'libarchive') { return }
+    Log '=== libarchive'
+    $src = Git-Clone 'https://github.com/libarchive/libarchive.git' "v$(V libarchive)" (Join-Path $LIW_SRC 'libarchive')
+    Cmake-Build $src @('-DBUILD_TESTING=OFF', '-DENABLE_TEST=OFF', '-DBUILD_SHARED_LIBS=ON',
+        '-DENABLE_TAR=OFF', '-DENABLE_CPIO=OFF', '-DENABLE_CAT=OFF', '-DENABLE_UNZIP=OFF',
+        '-DENABLE_BZip2=OFF', '-DENABLE_OPENSSL=OFF', '-DENABLE_LIBB2=OFF', '-DENABLE_LZO=OFF',
+        '-DENABLE_ICONV=OFF', '-DENABLE_CNG=ON',
+        '-DCMAKE_POLICY_VERSION_MINIMUM=3.5')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('archive.dll') 'libarchive'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('libarchive.pc') 'libarchive'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\archive.dll') @('z.dll', 'zstd', 'liblzma', 'lz4') 'libarchive'
+    Done-Stamp 'libarchive'
+}
+
+# LibRaw's own tree has no cmake build (README.cmake points at a separate
+# repository) but ships Makefile.msvc, which builds libraw.dll with
+# cl /MD; lcms2 and libjpeg (DNG) are handed to it through the macros its
+# commented-out examples show, which is the set the linux configure
+# auto-detects.  The makefile installs nothing, so the DLL, the import
+# library, the headers and a libraw.pc are placed by hand.
+function Build-Libraw {
+    if (Skip-If-Done 'libraw') { return }
+    Log '=== libraw'
+    $src = Git-Clone 'https://github.com/LibRaw/LibRaw.git' "$(V libraw)" (Join-Path $LIW_SRC 'LibRaw')
+    foreach ($lib in @('lcms2.lib', 'jpeg.lib')) {
+        if (-not (Test-Path (Join-Path $LIW_PREFIX "lib\$lib"))) { Die "libraw: $lib is not in the prefix" }
+    }
+    Push-Location $src
+    try {
+        Run-Logged 'nmake' @('/nologo', '/f', 'Makefile.msvc',
+            "LCMS_DEF=/DUSE_LCMS2 /DCMS_DLL /I$LIW_PREFIX\include",
+            "LCMS_LIB=$LIW_PREFIX\lib\lcms2.lib",
+            "JPEG_DEF=/DUSE_JPEG /I$LIW_PREFIX\include",
+            "JPEG_LIB=$LIW_PREFIX\lib\jpeg.lib",
+            'bin\libraw.dll') 'nmake of libraw'
+    } finally {
+        Pop-Location
+    }
+    Copy-Item (Join-Path $src 'bin\libraw.dll') (Join-Path $LIW_PREFIX 'bin') -Force
+    Copy-Item (Join-Path $src 'lib\libraw.lib') (Join-Path $LIW_PREFIX 'lib') -Force
+    $inc = Join-Path $LIW_PREFIX 'include\libraw'
+    New-Item -ItemType Directory -Force -Path $inc | Out-Null
+    Copy-Item (Join-Path $src 'libraw\*.h') $inc -Force
+    # (-llibraw: the import library is libraw.lib; the linux .pc says -lraw.)
+    # libvips asks for libraw_r, the thread-safe flavor; the MSVC makefile
+    # compiles without LIBRAW_NOTHREADS, so the one DLL is that flavor and
+    # both names describe it.
+    Write-PkgConfig 'libraw' 'Raw image decoder library' (V libraw) '-llibraw'
+    Write-PkgConfig 'libraw_r' 'Raw image decoder library (thread-safe)' (V libraw) '-llibraw'
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('libraw.dll') 'libraw'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\libraw.dll') @('lcms2', 'jpeg62') 'libraw'
+    Done-Stamp 'libraw'
+}
+
+# glib and freetype are required explicitly so a lookup failure is a
+# configure error rather than a silently smaller harfbuzz (the linux
+# build's auto features light up the same way).  The Windows shapers
+# (gdi, directwrite, uniscribe) are system libraries.
+function Build-Harfbuzz {
+    if (Skip-If-Done 'harfbuzz') { return }
+    Log '=== harfbuzz'
+    $src = Git-Clone 'https://github.com/harfbuzz/harfbuzz.git' "$(V harfbuzz)" (Join-Path $LIW_SRC 'harfbuzz')
+    Meson-Build $src @('-Dtests=disabled', '-Ddocs=disabled', '-Dintrospection=disabled',
+        '-Dglib=enabled', '-Dfreetype=enabled', '-Dcairo=enabled')
+    # (harfbuzz.dll itself; 15.x also installs harfbuzz-subset, -cairo,
+    # -gobject, -gpu, -raster and -vector DLLs beside it.)
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('harfbuzz.dll') 'harfbuzz'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\harfbuzz.dll') @('freetype', 'glib-2.0') 'harfbuzz'
+    Done-Stamp 'harfbuzz'
+}
+
+# fribidi comes from pango's own wrap (nothing in the prefix provides it;
+# the macos build forces the same wrap).  fontconfig, freetype and cairo
+# are required explicitly: pangoft2 and pangocairo are what librsvg and
+# libvips consume (pango's Windows build would otherwise lean on its
+# win32 backend).
+function Build-Pango {
+    if (Skip-If-Done 'pango') { return }
+    Log '=== pango'
+    $src = Git-Clone 'https://github.com/GNOME/pango.git' "$(V pango)" (Join-Path $LIW_SRC 'pango')
+    Meson-Build $src @('-Dintrospection=disabled', '-Dfontconfig=enabled', '-Dfreetype=enabled',
+        '-Dcairo=enabled', '-Dbuild-testsuite=false', '-Dbuild-examples=false',
+        '--force-fallback-for=fribidi')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('pango-1.0*.dll', 'pangocairo-1.0*.dll', 'pangoft2-1.0*.dll') 'pango'
+    $ft2 = Get-ChildItem (Join-Path $LIW_PREFIX 'bin') -Filter 'pangoft2-1.0*.dll' | Select-Object -First 1
+    Assert-DependentStems $ft2.FullName @('freetype', 'fontconfig', 'harfbuzz') 'pango'
+    $pc = Get-ChildItem (Join-Path $LIW_PREFIX 'bin') -Filter 'pangocairo-1.0*.dll' | Select-Object -First 1
+    Assert-DependentStems $pc.FullName @('cairo') 'pango'
+    Done-Stamp 'pango'
+}
+
+# librsvg is rust with a meson build around cargo (and cargo-c for the C
+# library).  gdk-pixbuf is built in neither pipeline, so its auto feature
+# is disabled rather than left to pull the wrap (as on macos).  The
+# Dockerfile's LDFLAGS and makedef.py changes are linux/ELF specifics.
+function Build-Librsvg {
+    if (Skip-If-Done 'librsvg') { return }
+    Log '=== librsvg'
+    Ensure-Rust
+    $src = Git-Clone 'https://github.com/GNOME/librsvg.git' "$(V librsvg)" (Join-Path $LIW_SRC 'librsvg')
+    # Make the output library much smaller (the Dockerfile's addition).
+    Add-Content -Path (Join-Path $src 'Cargo.toml') -Value "`n[profile.release]`nlto = true`n" -Encoding ascii
+    # Windows only: meson wraps the rust static library in a DLL with
+    # link_whole, and under MSVC /WHOLEARCHIVE forces in every member of
+    # that library -- including the raw-dylib import stubs the windows
+    # crates embed, of which two crates carry kernel32's, so link.exe
+    # fails with LNK2005 on __IMPORT_DESCRIPTOR_kernel32.  The exports
+    # come from a generated .def (vs_module_defs), and a .def makes the
+    # linker pull each exported symbol's object by itself, so plain
+    # link_with gives the same DLL without the forced members.
+    Invoke-Patch $src 'librsvg_link_with' @'
+path = "rsvg/meson.build"
+s = open(path).read()
+old = "link_whole: librsvg_c_lib,"
+# The first occurrence is the installed shared library's; the second is
+# the introspection build's (disabled here).
+assert s.index(old) < s.index("vs_module_defs: librsvg_def,"), "librsvg's shared_library block changed"
+s = s.replace(old, "link_with: librsvg_c_lib,", 1)
+open(path, "w").write(s)
+'@
+    Meson-Build $src @('-Dintrospection=disabled', '-Ddocs=disabled', '-Dtests=false',
+        '-Dpixbuf=disabled', '-Dpixbuf-loader=disabled', '-Dvala=disabled')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('rsvg-2*.dll') 'librsvg'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('librsvg-2.0.pc') 'librsvg'
+    $dll = Get-ChildItem (Join-Path $LIW_PREFIX 'bin') -Filter 'rsvg-2*.dll' | Select-Object -First 1
+    Assert-DependentStems $dll.FullName @('cairo', 'pango', 'glib-2.0', 'libxml2') 'librsvg'
+    Done-Stamp 'librsvg'
+}
+
+# (The Dockerfile's -pthread flags are gcc's; BUILD_SHARED/BUILD_STATIC are
+# not options at this version, as the macos build found.)  No dec265/
+# enc265 tools: nothing bundles them.
+function Build-Libde265 {
+    if (Skip-If-Done 'libde265') { return }
+    Log '=== libde265'
+    $src = Git-Clone 'https://github.com/strukturag/libde265.git' "v$(V libde265)" (Join-Path $LIW_SRC 'libde265')
+    Cmake-Build $src @('-DBUILD_SHARED_LIBS=ON', '-DENABLE_SDL=OFF',
+        '-DENABLE_DECODER=OFF', '-DENABLE_ENCODER=OFF',
+        '-DCMAKE_POLICY_VERSION_MINIMUM=3.5')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('*de265*.dll') 'libde265'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('libde265.pc') 'libde265'
+    Done-Stamp 'libde265'
+}
+
+# libde265 is the HEVC decoder the linux wheel carries (asserted); the
+# other codecs are absent there too.  Codecs are built in, not as plugins
+# (nothing would bundle plugin DLLs).
+function Build-Libheif {
+    if (Skip-If-Done 'libheif') { return }
+    Log '=== libheif'
+    $src = Git-Clone 'https://github.com/strukturag/libheif.git' "v$(V libheif)" (Join-Path $LIW_SRC 'libheif')
+    Cmake-Build $src @('-DBUILD_TESTING=OFF', '-DWITH_EXAMPLES=OFF', '-DBUILD_SHARED_LIBS=ON',
+        '-DWITH_LIBDE265=ON', '-DWITH_LIBDE265_PLUGIN=OFF', '-DENABLE_PLUGIN_LOADING=OFF',
+        '-DWITH_X265=OFF', '-DWITH_AOM_DECODER=OFF', '-DWITH_AOM_ENCODER=OFF', '-DWITH_DAV1D=OFF',
+        '-DWITH_RAV1E=OFF', '-DWITH_SvtEnc=OFF', '-DWITH_GDK_PIXBUF=OFF')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('heif.dll') 'libheif'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('libheif.pc') 'libheif'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\heif.dll') @('libde265') 'libheif'
+    Done-Stamp 'libheif'
+}
+
+# curl, for libcurl.pc (poppler-glib.pc's "Requires.private: libcurl" must
+# resolve, or meson drops poppler-glib and with it libvips's pdf loader;
+# the macos build found this) and later for GDAL.  TLS is Windows' own
+# Schannel, so no OpenSSL is built: the linux and macos builds use
+# OpenSSL, but the machine's TLS stack and certificate store are what a
+# Windows user expects, and it keeps one large library out of the tree.
+function Build-Curl {
+    if (Skip-If-Done 'curl') { return }
+    Log '=== curl'
+    $ver = V 'curl'
+    # (The release tarball, as on linux: the tag carries underscores, the
+    # tarball dots.)
+    $src = Fetch-Tarball "https://github.com/curl/curl/releases/download/curl-$ver/curl-$($ver -replace '_', '.').tar.gz" `
+        'curl.tar.gz' (Join-Path $LIW_SRC 'curl')
+    Cmake-Build $src @('-DBUILD_SHARED_LIBS=ON', '-DBUILD_STATIC_LIBS=OFF', '-DBUILD_TESTING=OFF',
+        '-DBUILD_CURL_EXE=OFF', '-DCURL_USE_SCHANNEL=ON', '-DCURL_USE_LIBPSL=OFF', '-DUSE_LIBIDN2=OFF',
+        '-DCURL_USE_LIBSSH2=OFF', '-DCURL_ZLIB=ON', '-DCURL_ZSTD=ON', '-DCURL_BROTLI=ON',
+        '-DBUILD_LIBCURL_DOCS=OFF', '-DBUILD_MISC_DOCS=OFF', '-DENABLE_CURL_MANUAL=OFF',
+        '-DIMPORT_LIB_SUFFIX=')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('libcurl.dll') 'curl'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('libcurl.pc') 'curl'
+    # The .pc's -lcurl resolves to curl.lib under MSVC; the import library
+    # installs as libcurl.lib.
+    $lib = Join-Path $LIW_PREFIX 'lib'
+    if ((Test-Path (Join-Path $lib 'libcurl.lib')) -and -not (Test-Path (Join-Path $lib 'curl.lib'))) {
+        Copy-Item (Join-Path $lib 'libcurl.lib') (Join-Path $lib 'curl.lib')
+    }
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\libcurl.dll') @('z.dll', 'zstd', 'brotlidec') 'curl'
+    Done-Stamp 'curl'
+}
+
+# FONT_CONFIGURATION=fontconfig: poppler's Windows default is its win32
+# font lookup; the linux and macos wheels' poppler uses fontconfig, which
+# the prefix has.  Boost, NSS, GPGME and Qt off as on linux and macos.
+function Build-Poppler {
+    if (Skip-If-Done 'poppler') { return }
+    Log '=== poppler'
+    $src = Git-Clone 'https://gitlab.freedesktop.org/poppler/poppler.git' "poppler-$(V poppler)" (Join-Path $LIW_SRC 'poppler')
+    # (Release, as on linux: poppler rejects MinSizeRel; the later -D wins.)
+    # ENABLE_CPP=OFF: poppler-cpp, the C++ wrapper, is the one part that
+    # hard-requires iconv, which a Windows prefix has no provider of
+    # (versions.txt pins a libiconv for the day something that matters
+    # needs it); libvips uses poppler-glib, and the linux wheel bundles no
+    # poppler-cpp consumer either.
+    # GLIB2_MKENUMS_PYTHON: glib-mkenums is a python script (glib's own
+    # install), which poppler runs through this interpreter; nothing on
+    # the scrubbed PATH answers to python3.
+    Cmake-Build $src @('-DCMAKE_BUILD_TYPE=Release', '-DENABLE_UNSTABLE_API_ABI_HEADERS=ON', '-DBUILD_SHARED_LIBS=ON',
+        '-DENABLE_CPP=OFF', "-DGLIB2_MKENUMS_PYTHON=$($script:PatchPython -replace '\\', '/')",
+        '-DBUILD_CPP_TESTS=OFF', '-DBUILD_GTK_TESTS=OFF', '-DBUILD_MANUAL_TESTS=OFF',
+        '-DBUILD_QT5_TESTS=OFF', '-DBUILD_QT6_TESTS=OFF',
+        '-DENABLE_NSS3=OFF', '-DENABLE_GPGME=OFF', '-DENABLE_QT5=OFF', '-DENABLE_QT6=OFF', '-DENABLE_BOOST=OFF',
+        '-DENABLE_GLIB=ON', '-DENABLE_LIBCURL=ON', '-DENABLE_LCMS=ON', '-DENABLE_LIBTIFF=ON',
+        '-DENABLE_LIBOPENJPEG=openjpeg2', '-DENABLE_DCTDECODER=libjpeg',
+        '-DFONT_CONFIGURATION=fontconfig', '-DRUN_GPERF_IF_PRESENT=OFF')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('poppler.dll', 'poppler-glib.dll') 'poppler'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('poppler-glib.pc') 'poppler'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\poppler.dll') @(
+        'freetype', 'jpeg62', 'libpng16', 'openjp2', 'libcurl', 'fontconfig', 'lcms2', 'tiff') 'poppler'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\poppler-glib.dll') @('cairo') 'poppler'
+    Done-Stamp 'poppler'
+}
+
+function Build-Fitsio {
+    if (Skip-If-Done 'fitsio') { return }
+    Log '=== cfitsio'
+    $src = Git-Clone 'https://github.com/HEASARC/cfitsio.git' "cfitsio-$(V fitsio)" (Join-Path $LIW_SRC 'cfitsio')
+    Cmake-Build $src @('-DBUILD_SHARED_LIBS=ON', '-DTESTS=OFF', '-DUTILS=OFF',
+        '-DCMAKE_POLICY_VERSION_MINIMUM=3.5')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('cfitsio.dll') 'cfitsio'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('cfitsio.pc') 'cfitsio'
+    Done-Stamp 'fitsio'
+}
+
+# hdf5 without MPI: there is no OpenMPI on Windows (MS-MPI needs an
+# installer), and parallel hdf5 only matters for the parallel netcdf of
+# the GDAL tree.  The threadsafe + C++ combination needs ALLOW_UNSUPPORTED
+# as on linux; the tools are off (not bundled; the linux build deletes its
+# test binaries for size too).  ZLIB_LIBRARY/ZLIB_INCLUDE_DIR are preset
+# for the reason the macos build records: hdf5's config-mode zlib find
+# yields imported targets but not the module variables its filter code
+# consumes.
+function Build-Hdf5 {
+    if (Skip-If-Done 'hdf5') { return }
+    Log '=== hdf5'
+    $zlib = Join-Path $LIW_PREFIX 'lib\z.lib'
+    if (-not (Test-Path $zlib)) { Die "hdf5: zlib's import library is not at $zlib" }
+    $src = Git-Clone 'https://github.com/HDFGroup/hdf5.git' "hdf5-$(V hdf5)" (Join-Path $LIW_SRC 'hdf5')
+    Cmake-Build $src @('-DDEFAULT_API_VERSION=v18', '-DHDF5_BUILD_EXAMPLES=OFF', '-DHDF5_BUILD_FORTRAN=OFF',
+        '-DHDF5_ENABLE_PARALLEL=OFF', '-DHDF5_ENABLE_Z_LIB_SUPPORT=ON', '-DHDF5_BUILD_GENERATORS=ON',
+        '-DHDF5_BUILD_CPP_LIB=ON', '-DHDF5_DISABLE_COMPILER_WARNINGS=ON', '-DBUILD_TESTING=OFF',
+        '-DHDF5_BUILD_DOC=OFF', '-DALLOW_UNSUPPORTED=ON', '-DHDF5_ENABLE_THREADSAFE=ON',
+        '-DHDF5_BUILD_TOOLS=OFF', '-DBUILD_SHARED_LIBS=ON', '-DBUILD_STATIC_LIBS=OFF',
+        # The config-mode find (NAMES ${ZLIB_PACKAGE_NAME}, COMPONENTS
+        # static shared) finds our ZLIBConfig.cmake and then dies on the
+        # static component this shared-only zlib never installed; a
+        # package name nothing matches makes it fall through to the
+        # module find and the presets below.
+        '-DZLIB_PACKAGE_NAME=zlib-no-config',
+        "-DZLIB_LIBRARY=$script:CmakePrefix/lib/z.lib", "-DZLIB_LIBRARIES=$script:CmakePrefix/lib/z.lib",
+        "-DZLIB_INCLUDE_DIR=$script:CmakePrefix/include")
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('hdf5.dll', 'hdf5_cpp.dll', 'hdf5_hl.dll') 'hdf5'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\hdf5.dll') @('z.dll') 'hdf5'
+    Done-Stamp 'hdf5'
+}
+
+# matio's own matio.pc carries neither the version nor the right libdir
+# (the Dockerfile overwrites it too), so one is written; the import
+# library's name follows the DLL's (libmatio.lib on Windows), so the -l
+# flag is taken from what was installed.
+function Build-Matio {
+    if (Skip-If-Done 'matio') { return }
+    Log '=== matio'
+    $src = Git-Clone 'https://github.com/tbeu/matio.git' "v$(V matio)" (Join-Path $LIW_SRC 'matio')
+    Cmake-Build $src @('-DMATIO_SHARED=ON', '-DMATIO_WITH_HDF5=ON', '-DMATIO_WITH_ZLIB=ON',
+        '-DMATIO_MAT73=ON', '-DMATIO_USE_CONAN=OFF')
+    $dll = Get-ChildItem (Join-Path $LIW_PREFIX 'bin') -Filter '*matio*.dll' | Select-Object -First 1
+    if (-not $dll) { Die 'matio: no matio DLL in the prefix' }
+    $implib = Get-ChildItem (Join-Path $LIW_PREFIX 'lib') -Filter '*matio*.lib' | Select-Object -First 1
+    if (-not $implib) { Die 'matio: no import library in the prefix' }
+    Write-PkgConfig 'matio' 'matio library' (V matio) "-l$($implib.BaseName)"
+    Assert-DependentStems $dll.FullName @('hdf5') 'matio'
+    Done-Stamp 'matio'
+}
+
+# libvips: a meson build with every loader compiled in (-Dmodules=disabled,
+# like the Dockerfile).  Every loader the linux wheel carries is required
+# explicitly, so a dependency pkg-config cannot satisfy fails the
+# configure step instead of silently shrinking the feature set, and the
+# DLL's import table is checked afterwards all the same.  Windows
+# deviations: no magick loader (ImageMagick, see the tree's header) and
+# orc absent as on macos.
+function Build-Libvips {
+    if (Skip-If-Done 'libvips') { return }
+    Log '=== libvips'
+    $src = Git-Clone 'https://github.com/libvips/libvips.git' "v$(V libvips)" (Join-Path $LIW_SRC 'libvips')
+    # The Dockerfile's seds: VIPS_TMPDIR for the temp directory, no
+    # target_clones (MSVC has no such attribute; kept for parity), and the
+    # tiff2vips warnings silenced.
+    Invoke-Patch $src 'libvips_seds' @'
+path = "libvips/iofuncs/util.c"
+s = open(path).read()
+s = s.replace('tmpd;', 'tmpd;if ((tmpd=g_getenv("VIPS_TMPDIR"))) return(tmpd);')
+open(path, "w").write(s)
+path = "meson.build"
+s = open(path).read()
+s = s.replace("cfg_var.set('HAVE_TARGET_CLONES',", "# cfg_var.set('HAVE_TARGET_CLONES',")
+open(path, "w").write(s)
+path = "libvips/foreign/tiff2vips.c"
+s = open(path).read()
+s = s.replace('g_logv("tiff2vips", G_LOG_LEVEL_WARNING, fmt, ap);',
+              '//g_logv("tiff2vips", G_LOG_LEVEL_WARNING, fmt, ap);')
+s = s.replace('g_logv(G_LOG_DOMAIN, G_LOG_LEVEL_WARNING, fmt, ap);',
+              '//g_logv(G_LOG_DOMAIN, G_LOG_LEVEL_WARNING, fmt, ap);')
+open(path, "w").write(s)
+# Windows only: the fuzz targets (test executables, built unconditionally
+# with a standalone main) do not compile under MSVC; nothing ships them.
+path = "meson.build"
+s = open(path).read()
+assert "subdir('fuzz')" in s
+s = s.replace("subdir('fuzz')", "# subdir('fuzz')  # not under MSVC (wheel build)")
+open(path, "w").write(s)
+'@
+    Meson-Build $src @('-Dmodules=disabled', '-Dexamples=false', '-Dintrospection=disabled', '-Dvapi=false',
+        '-Dmagick=disabled', '-Dorc=disabled', '-Dcgif=disabled', '-Dspng=disabled', '-Dpdfium=disabled',
+        '-Dquantizr=disabled', '-Duhdr=disabled',
+        '-Dcfitsio=enabled', '-Dexif=enabled', '-Dfftw=enabled', '-Dfontconfig=enabled', '-Darchive=enabled',
+        '-Dheif=enabled', '-Dimagequant=enabled', '-Djpeg=enabled', '-Djpeg-xl=enabled', '-Dlcms=enabled',
+        '-Dmatio=enabled', '-Dnifti=enabled', '-Dopenexr=enabled', '-Dopenjpeg=enabled', '-Dopenslide=enabled',
+        '-Dhighway=enabled', '-Dpangocairo=enabled', '-Dpng=enabled', '-Dpoppler=enabled', '-Draw=enabled',
+        '-Drsvg=enabled', '-Dtiff=enabled', '-Dwebp=enabled', '-Dzlib=enabled',
+        "-Dnifti-prefix-dir=$script:CmakePrefix")
+    Log "prefix DLLs: $((Get-ChildItem -Path (Join-Path $LIW_PREFIX 'bin') -Filter '*.dll' | ForEach-Object { $_.Name }) -join ', ')"
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('*vips-42*.dll', 'vips.exe', 'vipsheader.exe', 'vipsthumbnail.exe', 'vipsedit.exe') 'libvips'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib') @('vips.lib') 'libvips'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('vips.pc') 'libvips'
+    $dll = Get-ChildItem (Join-Path $LIW_PREFIX 'bin') -Filter '*vips-42*.dll' |
+        Where-Object { $_.Name -notmatch 'cpp' } | Select-Object -First 1
+    $script:VipsDll = $dll.Name
+    Assert-DependentStems $dll.FullName @(
+        'cfitsio', 'exif', 'fftw3', 'archive', 'heif', 'imagequant', 'jpeg62', 'jxl', 'lcms2', 'libmatio',
+        'niftiio', 'OpenEXR', 'openjp2', 'libopenslide', 'hwy', 'pangocairo', 'libpng16', 'poppler-glib',
+        'libraw', 'rsvg-2', 'tiff', 'libwebp', 'z.dll', 'glib-2.0', 'gobject-2.0') 'libvips'
+    Done-Stamp 'libvips'
 }
 
 # --------------------------------------------------------------------------
@@ -2671,6 +3346,157 @@ open(path, "w").write(s)
     Done-Stamp 'openslide_python'
 }
 
+# The pyvips wheel bundles libvips and its whole dependency tree plus the
+# vips tools in pyvips/bin, like the linux and macos wheels (minus magick,
+# see the libvips tree's header).  The cffi extension is API mode, so
+# there is one wheel per python; it is compiled against the prefix's
+# libvips through pkg-config (the pkgconfig python package honors
+# PKG_CONFIG and PKG_CONFIG_LIBDIR), and delvewheel follows its import
+# of the vips DLL into the whole tree.
+function Build-Pyvips {
+    if (Skip-If-Done 'pyvips') { return }
+    Log '=== pyvips'
+    $pp = $script:PatchPython
+
+    & $pp -m pip install --quiet --no-warn-script-location -U "delvewheel==$(V delvewheel)" | Out-Null
+    Assert-Exit 'pip install of delvewheel failed'
+
+    $src = Git-Clone 'https://github.com/libvips/pyvips.git' "v$(V pyvips)" (Join-Path $LIW_SRC 'pyvips')
+
+    # The vips tools from the prefix (meson installs what the linux build
+    # copies out of its tools directory; vipsprofile is a python script
+    # and is not a tool here).
+    $binDir = Join-Path $src 'pyvips\bin'
+    New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+    foreach ($tool in @('vips', 'vipsedit', 'vipsheader', 'vipsthumbnail')) {
+        $exe = Join-Path $LIW_PREFIX "bin\$tool.exe"
+        if (-not (Test-Path $exe)) { Die "pyvips: no $tool.exe in the prefix to bundle" }
+        Copy-Item $exe $binDir -Force
+    }
+    Set-Content -Path (Join-Path $binDir '__init__.py') -Value $script:ToolWrapper -Encoding ascii
+
+    # Preload the bundled libvips before the extension is imported, as the
+    # linux and macos wheels do (delvewheel's own patch puts pyvips.libs on
+    # the DLL search path first; this is belt and braces, and it is what
+    # the ABI-mode fallback would need).  vips-42-<hash>.dll sorts before
+    # vips-cpp-42-<hash>.dll.
+    Invoke-Patch $src 'pyvips_init' @'
+path = "pyvips/__init__.py"
+s = open(path).read().replace(
+"""    import _libvips""",
+"""    import ctypes
+    import os
+    libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(
+        os.path.realpath(__file__))), 'pyvips.libs'))
+    if os.path.exists(libpath):
+        libs = sorted(os.listdir(libpath))
+        libvipspath = [lib for lib in libs
+                       if lib.startswith('vips-') or lib.startswith('libvips-')]
+        if libvipspath:
+            ctypes.cdll.LoadLibrary(os.path.join(libpath, libvipspath[0]))
+    from . import _libvips""")
+open(path, "w").write(s)
+'@
+    # Name the cffi extension pyvips._libvips so the patched import
+    # resolves to it.
+    Invoke-Patch $src 'pyvips_build' @'
+path = "pyvips/pyvips_build.py"
+s = open(path).read().replace(
+"""ffibuilder.set_source("_libvips",""",
+"""ffibuilder.set_source("pyvips._libvips",""")
+open(path, "w").write(s)
+'@
+    # The combined version (package version + bundled libvips version),
+    # matching the linux wheel versioning.
+    Invoke-Patch $src 'pyvips_version' @"
+import re
+path = "pyvips/version.py"
+s = open(path).read()
+s = re.sub(r'__version__ = "(.+?)"',
+           lambda match: '__version__ = "%s.$(V libvips)"' % match.group(1), s)
+open(path, "w").write(s)
+"@
+    # setup.py falls back to an ABI-mode (pure python, no bundled libvips)
+    # wheel when the cffi extension fails to build, silently -- the wheel
+    # would then install and import while using whatever libvips it finds
+    # at run time, which is the isolation failure this pipeline exists to
+    # prevent.  API mode or nothing.
+    Invoke-Patch $src 'pyvips_setup' @'
+path = "setup.py"
+s = open(path).read()
+old = """try:
+    setup(cffi_modules=['pyvips/pyvips_build.py:ffibuilder'])
+except Exception as e:
+    print(f'Falling back to ABI mode. Details: {e}')
+    setup()
+"""
+assert old in s, "pyvips's setup.py fallback changed"
+s = s.replace(old, "setup(cffi_modules=['pyvips/pyvips_build.py:ffibuilder'])\n")
+open(path, "w").write(s)
+'@
+    # Expose the bundled tools as console scripts (named without .exe: a
+    # script named vips.exe would be installed as vips.exe.exe) and include
+    # them as package data.  (The linux build also patches setup.py for
+    # package data, which is a no-op on pyvips 3.2.0.)
+    Invoke-Patch $src 'pyvips_pyproject' @'
+import os
+path = "pyproject.toml"
+s = open(path).read()
+s = s.replace("include-package-data = false", "include-package-data = true")
+s += "\n[tool.setuptools.package-data]\npyvips = [\"bin/*\"]\n\n[project.scripts]\n"
+for name in sorted(os.listdir("pyvips/bin")):
+    if name.endswith(".exe"):
+        s += "%s = 'pyvips.bin:program'\n" % os.path.splitext(name)[0]
+open(path, "w").write(s)
+'@
+    Commit-Patches $src "$(V pyvips).$(V libvips)"
+
+    Remove-Item -Path (Join-Path $LIW_WHEELHOUSE 'pyvips-*.whl') -Force -ErrorAction SilentlyContinue
+    foreach ($minor in $script:Pythons) {
+        $pybin = Join-Path $LIW_PY $minor
+        Log "pyvips wheel: python $minor"
+        if (Test-Path (Join-Path $src 'build')) { Remove-Item -Recurse -Force (Join-Path $src 'build') }
+        Run-Logged (Join-Path $pybin 'python.exe') @(
+            '-m', 'pip', 'wheel', '--no-deps', '--progress-bar', 'off',
+            '-w', $LIW_WHEELHOUSE, $src) "pyvips wheel build for python $minor"
+    }
+
+    Log 'delvewheel repair of the pyvips wheels'
+    Remove-Item -Path (Join-Path $WheelsDir 'pyvips-*.whl') -Force -ErrorAction SilentlyContinue
+    foreach ($whl in (Get-ChildItem -Path $LIW_WHEELHOUSE -Filter 'pyvips-*.whl' -File)) {
+        Run-Logged $pp @(
+            '-m', 'delvewheel', 'repair', '-w', $WheelsDir,
+            '--add-path', "$(Join-Path $LIW_PREFIX 'bin');$script:VcRedist",
+            '--analyze-existing-exes',
+            '--include', "$script:VipsDll;vcruntime140.dll;vcruntime140_1.dll",
+            '--no-mangle', 'vcruntime140.dll;vcruntime140_1.dll',
+            $whl.FullName) "delvewheel repair of $($whl.Name)"
+        $out = Join-Path $WheelsDir $whl.Name
+        Relocate-Tools $out 'pyvips' 'pyvips.libs'
+        Assert-WheelContains $out @(
+            '^pyvips\.libs/(lib)?vips-42[0-9a-f-]*\.dll$',
+            '^pyvips\.libs/poppler-glib-[0-9a-f]+\.dll$',
+            '^pyvips\.libs/rsvg-2[0-9a-f.-]*\.dll$',
+            '^pyvips\.libs/heif-[0-9a-f]+\.dll$',
+            '^pyvips\.libs/jxl-[0-9a-f]+\.dll$',
+            '^pyvips\.libs/imagequant-[0-9a-f]+\.dll$',
+            '^pyvips\.libs/libopenslide-1-[0-9a-f]+\.dll$',
+            '^pyvips\.libs/pangocairo-1\.0-[0-9a-f-]+\.dll$',
+            '^pyvips\.libs/tiff-[0-9a-f]+\.dll$',
+            '^pyvips\.libs/msvcp140-[0-9a-f]+\.dll$',
+            '^pyvips\.libs/vcruntime140\.dll$',
+            '^pyvips\.libs/vcruntime140_1\.dll$',
+            '^pyvips\.libs/vips\.exe$',
+            '^pyvips/bin/vips\.exe$',
+            '^pyvips/_libvips.*\.pyd$') 'pyvips'
+    }
+    $repaired = @(Get-ChildItem -Path $WheelsDir -Filter 'pyvips-*win_amd64*.whl' -File)
+    if ($repaired.Count -lt $script:Pythons.Count) {
+        Die "pyvips: only $($repaired.Count) wheels, expected $($script:Pythons.Count)"
+    }
+    Done-Stamp 'pyvips'
+}
+
 # --------------------------------------------------------------------------
 # Main.
 # --------------------------------------------------------------------------
@@ -2770,8 +3596,68 @@ function Main {
                 Build-Openslide
                 Build-OpenslidePython
             }
+            'pyvips' {
+                Ensure-Meson
+                Build-Zlib
+                Build-Zstd
+                Build-Jbigkit
+                Build-Libwebp
+                Build-Libjpeg-Turbo
+                Build-Libdeflate
+                Build-Xz
+                Build-Libtiff
+                Build-Lcms2
+                Build-Libpng
+                Build-Openjpeg
+                Build-Libbrotli
+                Build-Libexpat
+                Build-Glib
+                Build-Sqlite
+                Build-Libxml2
+                Build-Pixman
+                Build-Freetype
+                Build-Fontconfig
+                Build-Cairo
+                Build-Jxrlib
+                Build-Openslide
+                Build-Lz4
+                Build-Nifti
+                Build-Fftw3
+                Build-Libhwy
+                Build-Openexr
+                Build-Jpeg-Xl
+                Build-Libimagequant
+                Build-Libexif
+                Build-Libarchive
+                Build-Libraw
+                Build-Harfbuzz
+                Build-Pango
+                Build-Librsvg
+                Build-Libde265
+                Build-Libheif
+                Build-Curl
+                Build-Poppler
+                Build-Fitsio
+                Build-Hdf5
+                Build-Matio
+                Build-Libvips
+                Build-Pyvips
+            }
             default {
-                Die "no builder for package $pkg"
+                if ($pkg.StartsWith('dep:')) {
+                    # One library on its own, for staged verification (the
+                    # macos build offers the same); its dependencies must
+                    # already be in the prefix, so list them first:
+                    # -Packages dep:zlib,dep:zstd,...  The wheel validation
+                    # of sandbox_run.ps1 skips dep: entries.
+                    $builder = Get-Command "Build-$($pkg.Substring(4))" -CommandType Function `
+                        -ErrorAction SilentlyContinue
+                    if (-not $builder) { Die "no builder for $pkg" }
+                    Ensure-Meson
+                    & $builder
+                } else {
+                    Die "no builder for package $pkg"
+                }
             }
         }
     }
