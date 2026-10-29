@@ -38,7 +38,8 @@ keeps exactly that shape:
   (repo read-only; cache, wheels, run read-write).
 - **Everything is pinned through `versions.txt`**, including the Windows
   toolchain (`msvc`, `winsdk`, `git-for-windows`, `cmake`, `ninja`,
-  `nasm`, `delvewheel`; tracked by `check_versions.py` like the macos-only
+  `nasm`, `delvewheel`, `llvm`, `rust`, `cargo-c`, `swig`, `fossil`,
+  `strawberry-perl`, `winflexbison`; tracked by `check_versions.py` like the macos-only
   `bison`/`swig`/`zulu8` entries).  Nothing is fetched as "latest", and
   the GitHub releases API is not used (it rate-limits unauthenticated
   callers, and a NAT'd sandbox shares its address with everything else on
@@ -517,11 +518,23 @@ sandbox before every host run:
   against the prefix (see the hard-won entry), libvips with
   `-Dmagick=enabled`, `magick` bundled beside the vips tools -- 75 DLLs
   in the wheel.  Dev-mode checks for python 3.13 pass, with the new
-  magickload/magicksave round trip and the `magick` tool checks.  Not
-  yet verified on the host.
+  magickload/magicksave round trip and the `magick` tool checks.
+  Verified on the host (2026-10-29).
+- **GDAL builds and passes every dev-mode check for python 3.13
+  (2026-10-29)**: the whole GDAL tree (giflib, OpenSSL, json-c, lerc,
+  win-iconv, geos, proj, libgeotiff, minizip, the four gaia-gis
+  libraries through embedded cmake files, fyba, hdf4, hdf5, netcdf, the
+  MySQL and PostgreSQL clients, libgta, xerces-c, blosc, highfive,
+  kealib, libOpenDRIVE, libavif, the MrSID SDK) and GDAL at the master
+  commit, with every driver the linux wheel has: the shared suite's
+  known-formats check passes, plus the Windows extras (ODBC,
+  MSSQLSpatial, PGeo).  One wheel per python with the gdal, proj and
+  libgeotiff tools bundled (77 DLLs, 42 tools, 45 MB).  Not yet
+  verified on the host.
 
 Next step: the host run of `windows\sandbox_build.bat &&
-windows\test_via_sandbox.bat` (four packages by default), then GDAL.
+windows\test_via_sandbox.bat` (five packages by default; the gdal chain
+is the long one), then mapnik.
 
 Known gaps, in rough order:
 
@@ -576,6 +589,25 @@ Known gaps, in rough order:
   libjxl without its tools; orc absent as on macos.  Everything the
   linux wheel's libvips links is required explicitly at configure time
   (`-D<loader>=enabled`) and checked on the DLL's import table.
+- **GDAL deviations from the linux wheel**, each marked in
+  `build_wheels.ps1` where it happens: no OpenMPI and no parallel-netcdf
+  (hdf5 and netcdf are serial); no armadillo (its LAPACK needs a Fortran
+  compiler; GDAL's TPS transformer falls back to its own solver);
+  xerces-c on its Windows transcoder and libxml2 without iconv, while
+  win-iconv (the Windows iconv over the system code pages) serves
+  freexl, libspatialite and GDAL's `CPLRecode`; libpq without ICU and
+  readline (as on macos) and without lz4/zstd (as the bare linux
+  configure); MySQL without `REPRODUCIBLE_BUILD` (on Windows it wraps
+  the compiler in a perl launcher); libgeotiff from its cmake build
+  (the autotools one's reason, rasterlite2's configure, does not apply);
+  rttopo at a pinned master commit (`librttopo-sha`) rather than the
+  1.1.0 tag, because spatialite's trunk calls `rtt_tpsnap`, which only
+  master has (the linux link tolerates the undefined symbol; MSVC's does
+  not); no PCRE2 (the linux base image's would give sqlite a REGEXP
+  function; see the glib pcre2 leak below); the MrSID SDK is Extensis'
+  win64 vc17 build of the pinned version, not the rhel one.  Everything
+  else GDAL's cmake can detect is required to resolve from the prefix
+  and checked on `gdal.dll`'s import table.
 - `check_versions.py` runs on Windows as anywhere else (`uv run
   check_versions.py <names>`: it carries PEP 723 metadata; or a python
   with `requests` and `packaging`).  It used to prefix its `git
@@ -968,3 +1000,92 @@ Known gaps, in rough order:
 - `Cmake-Build` runs cmake through `Run-Logged` so its stderr ("Could
   NOT find ...", configure errors) reaches the log; it did not at
   first, and poppler's first failure was invisible from the log.
+- **The GDAL tree** (`Build-Giflib` through `Build-GdalPython`).  The
+  Windows-only build tools, all pinned through `check_versions.py` and
+  never bundled: swigwin (`swig`), fossil's prebuilt w64 binary
+  (`fossil`; the gaia-gis sources are fossil repositories, cloned with
+  `--admin-user root`, and fossil reports progress on stderr, so it runs
+  through `Run-Logged`), Strawberry Perl's portable zip
+  (`strawberry-perl`, the tag's digit string: OpenSSL's `Configure` and
+  PostgreSQL's meson are perl, and both refuse PortableGit's msys perl;
+  only its `perl/` tree is extracted), and winflexbison (`winflexbison`,
+  for PostgreSQL; mysql's client-only build turned out not to need
+  bison).  The source toggle: `$script:GdalFromRelease` is the
+  Dockerfile's `if false` (release tag `gdal` vs. master at `gdal-sha`),
+  and master is fetched by sha (GitHub serves it; no 1000-deep clone)
+  with `core.longpaths` on, since the autotest tree exceeds 260
+  characters.  Per library: OpenSSL (`VC-WIN64A`, nmake, single
+  threaded, zlib through `--with-zlib-lib`) installs no `.pc` files on
+  Windows, and the ones written here must name both libraries in
+  `Libs:` (`Write-PkgConfig`'s Requires is the private kind, and
+  PostgreSQL's meson link check found nothing to link).  GEOS installs
+  only its cmake config on Windows; a `geos.pc` is written for rttopo
+  and spatialite.  PROJ's `proj.pc` says `-lproj_9` (the DLL's stem,
+  `proj_9.dll`) while the import library is `proj.lib`; a copy under
+  the `.pc`'s spelling.  libgeotiff names its import library
+  `geotiff_i.lib` (GDAL's FindGeoTIFF knows), copied to `geotiff.lib`
+  for rasterlite2; its cmake links jpeg/zlib into the utilities only.
+  minizip-ng has no export decorations: `CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS`,
+  or the DLL exports nothing and no import library appears.  rttopo
+  likewise (and with `/OPT:REF` an export-less DLL loses its whole
+  body, which showed as "does not depend on geos_c"); its configure
+  outputs (`rttopo_config.h` with `RTGEOM_GEOS_VERSION`,
+  `RTGEOM_DEBUG_LEVEL`, and `librttopo_geom.h` from its `.in`) are
+  written by the embedded cmake file.  freexl, rttopo and spatialite
+  take their source lists from their `makefile.vc` (`gaia.cmake`'s
+  parser), and spatialite's list predates two of its libraries
+  (`sqlite_bulk_rtree`, `connection_cache`; `src/Makefile.am`'s LIBADD
+  is the reference).  rasterlite2 has no MSVC makefile: its sources
+  come from `src/Makefile.am` (the tree also holds `rl2legend.c`, which
+  refers to undeclared types), its config.h and rl2config.h are
+  generated, `unistd.h` is shimmed (one unguarded include), `strcasecmp`
+  is mapped to `_stricmp`, and its Visual Studio directory-scan branch
+  in `rl2import.c` (which nobody compiles) lacks a closing brace at the
+  pinned commit -- patched.  fyba's cmake files predate
+  `cmake_minimum_required` (prepended) and add no Windows flags
+  (`WIN32` is what its ifdefs test; given through `CMAKE_CXX_FLAGS`);
+  its targets are `fyba`, `gm`, `ut`, copied to the `fygm`/`fyut` names
+  GDAL's FindFYBA wants.  mysql's full install dies on its Debuginfo
+  component (no `.pdb` in a MinSizeRel build): only the Development and
+  SharedLibraries components are installed; `libmysql.dll` lands in
+  `lib` (copied to `bin`) and the import library is copied over the
+  static `mysqlclient.lib` the Development component installs, which
+  GDAL's FindMySQL (`NAMES mysqlclient` first) would otherwise link.
+  libOpenDRIVE replaces `CMAKE_CXX_FLAGS` for MSVC in its own
+  CMakeLists (patched there: `_USE_MATH_DEFINES` for `M_PI`).  glib's
+  pcre2 wrap installs `pcre2.h`, static archives and `.pc` files into
+  the prefix although glib embeds it statically; GDAL found them and
+  its sqlite REGEXP code failed to link (the header declares dllimport
+  without `PCRE2_STATIC`), so `Build-Glib` removes the leak.  curl in the
+  gdal chain needs brotli first (it is `CURL_BROTLI=ON`), poppler needs
+  harfbuzz: both are ordered accordingly.  The bundled `gdal-config` is
+  the configured sh script, kept as a data file; the Windows wrapper
+  (`osgeo/bin/__init__.py`) answers its options from the script's
+  variables, runs the real tools as children (`os.execve` returns the
+  console early on Windows), and points `GDAL_DATA`/`PROJ_DATA` at
+  `osgeo/gdal` and `osgeo/proj` (the linux wrapper's `localpath/proj`
+  resolves to `osgeo/bin/proj`, which does not exist; possibly a latent
+  linux bug).  The osgeo patch finds `gdal.dll`/`geos_c.dll` in
+  `gdal.libs` under their Windows names (the wheel is repaired and
+  relocated under pip's lowercase name and renamed to `GDAL-` last, the
+  Glymur lesson; the library directory therefore differs from linux's
+  `GDAL.libs`, which the patch keeps as a fallback).  The osgeo patch also
+  registers an atexit hook that restores GDAL's built-in error handler:
+  on Windows `gdal.dll` tears itself down at DLL unload, after the
+  interpreter is gone, and the shared suite runs with `CPL_DEBUG=ON`, so
+  that teardown reports through the handler installed last -- django's
+  ctypes callback, a dead pointer by then; the suite's django section
+  printed its results and then died with an access violation (exit 139
+  under bash) until the hook was added.  A fresh prefix needs its
+  `bin`/`lib` directories before `Build-Sqlite` copies into them (a
+  `Copy-Item` to a missing directory writes a file of that name, and
+  every cmake install after it then fails on "not a directory").
+- DLL names in the GDAL tree, as the builds produce them: `gdal.dll`
+  (import library `gdal.lib`), `geos.dll` + `geos_c.dll`, `proj_9.dll`,
+  `geotiff.dll`, `gif.dll`, `json-c.dll`, `Lerc.dll`, `iconv.dll`,
+  `minizip.dll`, `freexl.dll`, `librttopo.dll`, `spatialite.dll`,
+  `rasterlite2.dll`, `netcdf.dll`, `hdf5.dll` (+ `_cpp`, `_hl`),
+  `libmysql.dll`, `libpq.dll`, `libcrypto-3-x64.dll` + `libssl-3-x64.dll`,
+  `gta.dll`, `xerces-c_3_3.dll`, `blosc.dll`, `libkea.dll`, `avif.dll`,
+  `lti_dsdk_9.5.dll` (MrSID), `vcomp140.dll` (OpenMP); hdf4, fyba and
+  libOpenDRIVE are static and absorbed into `gdal.dll`.
