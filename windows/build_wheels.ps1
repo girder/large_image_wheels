@@ -493,7 +493,7 @@ function Fetch-Tarball([string]$Url, [string]$Name, [string]$Dest) {
 # Build and install a cmake project into the private prefix with Ninja and
 # the MSVC toolset (entered through the VS Dev Shell; INCLUDE/LIB point at
 # the MSVC and Windows SDK directories, with the private prefix first).
-function Cmake-Build([string]$Src, [string[]]$CmakeArgs = @()) {
+function Cmake-Build([string]$Src, [string[]]$CmakeArgs = @(), [switch]$NoInstall) {
     $build = Join-Path $Src '_build'
     if (Test-Path $build) { Remove-Item -Recurse -Force $build }
     # (Quoted: PowerShell does not expand a variable inside a bare
@@ -522,7 +522,9 @@ function Cmake-Build([string]$Src, [string[]]$CmakeArgs = @()) {
         '-DCMAKE_INSTALL_LIBDIR=lib',
         '-DCMAKE_DISABLE_FIND_PACKAGE_Tiff=ON') + $CmakeArgs) "cmake configure in $Src"
     Run-Logged 'cmake' @('--build', $build, '--parallel', "$LIW_JOBS") "cmake build in $Src"
-    Run-Logged 'cmake' @('--install', $build) "cmake install in $Src"
+    if (-not $NoInstall) {
+        Run-Logged 'cmake' @('--install', $build) "cmake install in $Src"
+    }
 }
 
 function Assert-Files([string]$Dir, [string[]]$Patterns, [string]$What) {
@@ -1936,6 +1938,16 @@ function Build-Glib {
         '-Dxattr=false', '-Dman-pages=disabled', '-Ddocumentation=false',
         '-Dsysprof=disabled',
         '--force-fallback-for=libpcre2-8,libffi,proxy-libintl')
+    # The pcre2 wrap is glib's private static copy, but its install step
+    # also drops pcre2.h, static archives and .pc files into the prefix,
+    # which a later consumer then finds (GDAL's sqlite REGEXP support
+    # did, and failed to link: the header declares dllimport without
+    # PCRE2_STATIC).  Nothing else may link it, so the leak is removed.
+    foreach ($leak in @('bin\pcre2grep.exe', 'bin\pcre2test.exe', 'include\pcre2.h', 'include\pcre2posix.h')) {
+        Remove-Item -Path (Join-Path $LIW_PREFIX $leak) -Force -ErrorAction SilentlyContinue
+    }
+    Get-ChildItem -Path (Join-Path $LIW_PREFIX 'lib') -Filter 'libpcre2-*' -File | Remove-Item -Force
+    Get-ChildItem -Path (Join-Path $LIW_PREFIX 'lib\pkgconfig') -Filter 'libpcre2-*.pc' -File | Remove-Item -Force
     Log "prefix DLLs: $((Get-ChildItem -Path (Join-Path $LIW_PREFIX 'bin') -Filter '*.dll' | ForEach-Object { $_.Name }) -join ', ')"
     Assert-Files (Join-Path $LIW_PREFIX 'bin') @(
         'glib-2.0*.dll', 'gobject-2.0*.dll', 'gio-2.0*.dll', 'gmodule-2.0*.dll') 'glib'
@@ -1966,7 +1978,22 @@ function Build-Sqlite {
     } finally {
         Pop-Location
     }
+    # The shell too (PROJ's cmake runs sqlite3.exe to generate proj.db;
+    # the linux autoconf build installs it alongside).
+    Push-Location $src
+    try {
+        Run-Logged 'cl' @('/nologo', '/O2', '/MD', 'shell.c', 'sqlite3.lib',
+            '/Fe:sqlite3.exe') 'sqlite shell compile'
+    } finally {
+        Pop-Location
+    }
+    # (The directories first: on a fresh prefix a Copy-Item to a missing
+    # "lib" writes a file of that name.)
+    foreach ($sub in @('bin', 'lib', 'include')) {
+        New-Item -ItemType Directory -Force -Path (Join-Path $LIW_PREFIX $sub) | Out-Null
+    }
     Copy-Item (Join-Path $src 'sqlite3.dll') (Join-Path $LIW_PREFIX 'bin') -Force
+    Copy-Item (Join-Path $src 'sqlite3.exe') (Join-Path $LIW_PREFIX 'bin') -Force
     Copy-Item (Join-Path $src 'sqlite3.lib') (Join-Path $LIW_PREFIX 'lib') -Force
     Copy-Item (Join-Path $src 'sqlite3.h'), (Join-Path $src 'sqlite3ext.h') `
         (Join-Path $LIW_PREFIX 'include') -Force
@@ -3114,6 +3141,1300 @@ open(path, "w").write(s)
 # Packages.
 # --------------------------------------------------------------------------
 
+# --- the GDAL tree (giflib through libavif, then GDAL itself): the
+# counterpart of the Dockerfile's sections from giflib to libavif and of
+# the gdal case of macos/build_wheels.sh.  Windows deviations, each called
+# out where it happens: no OpenMPI/parallel-netcdf (hdf5 and netcdf are
+# serial), no armadillo (no Fortran for its LAPACK), xerces-c on the
+# Windows transcoder, xerces/libxml2 without iconv while win-iconv serves
+# the gaia-gis libraries and GDAL's CPLRecode, libpq without ICU and
+# readline (as on macos), MySQL's client only; the Windows-only build
+# tools are swigwin, fossil's prebuilt binary, Strawberry Perl (OpenSSL's
+# Configure and PostgreSQL's meson are perl) and winflexbison (mysql,
+# postgresql). ---
+
+# Build tools, pinned through versions.txt like meson, rust and clang-cl;
+# none of them reaches a wheel.
+function Ensure-Swig {
+    $version = V 'swig'
+    $dir = Join-Path $LIW_TOOLS 'swig'
+    $stamp = Join-Path $dir ".installed-$version"
+    if (-not (Test-Path $stamp)) {
+        Log "installing swig $version (swigwin)"
+        $zip = Fetch "https://downloads.sourceforge.net/project/swig/swigwin/swigwin-$version/swigwin-$version.zip" `
+            "swigwin-$version.zip"
+        Expand-Zip $zip (Join-Path $LIW_DL 'swigwin')
+        if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
+        $inner = Get-ChildItem (Join-Path $LIW_DL 'swigwin') -Directory | Select-Object -First 1
+        if (-not $inner) { Die 'the swigwin zip has no top-level directory' }
+        Move-Item $inner.FullName $dir
+        if (-not (Test-Path (Join-Path $dir 'swig.exe'))) { Die 'swig.exe missing after the swigwin extraction' }
+        New-Item -ItemType File -Force -Path $stamp | Out-Null
+    }
+    $script:SwigExe = Join-Path $dir 'swig.exe'
+    $out = Capture-Native $script:SwigExe @('-version')
+    if ($out -notmatch [regex]::Escape($version)) { Die "swig does not report version ${version}: $out" }
+    Log "swig $version at $script:SwigExe"
+}
+
+# fossil, for the gaia-gis repositories (freexl, libspatialite,
+# librasterlite2); the prebuilt Windows binary of the pinned release.
+function Ensure-Fossil {
+    $version = V 'fossil'
+    $dir = Join-Path $LIW_TOOLS 'fossil'
+    $stamp = Join-Path $dir ".installed-$version"
+    if (-not (Test-Path $stamp)) {
+        Log "installing fossil $version"
+        $zip = Fetch "https://fossil-scm.org/home/uv/fossil-w64-$version.zip" "fossil-w64-$version.zip"
+        Expand-Zip $zip $dir
+        if (-not (Test-Path (Join-Path $dir 'fossil.exe'))) { Die 'fossil.exe missing after the extraction' }
+        New-Item -ItemType File -Force -Path $stamp | Out-Null
+    }
+    $script:FossilExe = Join-Path $dir 'fossil.exe'
+    $out = Capture-Native $script:FossilExe @('version')
+    if ($out -notmatch [regex]::Escape($version)) { Die "fossil does not report version ${version}: $out" }
+    Log "fossil $version at $script:FossilExe"
+}
+
+# Strawberry Perl's portable distribution: OpenSSL's Configure and
+# PostgreSQL's meson build are perl, and both refuse PortableGit's msys
+# perl (POSIX paths).  Only its perl/ tree is extracted (the zip also
+# carries a mingw toolchain, which must not be on anyone's PATH).  The
+# pin is the release tag's digit string (5.42.3.1 is tagged
+# SP_54231_64bit); the dots are restored here.
+function Ensure-Perl {
+    $digits = V 'strawberry-perl'
+    if ($digits -notmatch '^(\d)(\d\d)(\d)(\d)$') { Die "strawberry-perl pin '$digits' is not a 5-digit tag" }
+    $version = "$($Matches[1]).$($Matches[2]).$($Matches[3]).$($Matches[4])"
+    $dir = Join-Path $LIW_TOOLS 'perl'
+    $stamp = Join-Path $dir ".installed-$version"
+    if (-not (Test-Path $stamp)) {
+        Log "installing Strawberry Perl $version (portable)"
+        $zip = Fetch "https://github.com/StrawberryPerl/Perl-Dist-Strawberry/releases/download/SP_$($digits)_64bit/strawberry-perl-$version-64bit-portable.zip" `
+            "strawberry-perl-$version-64bit-portable.zip"
+        if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        # (The system bsdtar reads zip archives and takes member patterns.)
+        & tar.exe -xf $zip -C $dir 'perl/*'
+        Assert-Exit 'Strawberry Perl extraction'
+        if (-not (Test-Path (Join-Path $dir 'perl\bin\perl.exe'))) { Die 'perl.exe missing after the Strawberry Perl extraction' }
+        New-Item -ItemType File -Force -Path $stamp | Out-Null
+    }
+    $script:PerlBin = Join-Path $dir 'perl\bin'
+    # (perl reports the three-part version; the fourth digit is the
+    # distribution's.)
+    $perlVersion = $version.Substring(0, $version.LastIndexOf('.'))
+    $out = Capture-Native (Join-Path $script:PerlBin 'perl.exe') @('-e', 'print $^V')
+    if ($out -notmatch [regex]::Escape("v$perlVersion")) { Die "perl does not report version ${perlVersion}: $out" }
+    Log "perl $version at $script:PerlBin"
+}
+
+# bison and flex for mysql and postgresql, as the winflexbison binaries.
+function Ensure-WinFlexBison {
+    $version = V 'winflexbison'
+    $dir = Join-Path $LIW_TOOLS 'winflexbison'
+    $stamp = Join-Path $dir ".installed-$version"
+    if (-not (Test-Path $stamp)) {
+        Log "installing winflexbison $version"
+        $zip = Fetch "https://github.com/lexxmark/winflexbison/releases/download/v$version/win_flex_bison-$version.zip" `
+            "win_flex_bison-$version.zip"
+        Expand-Zip $zip $dir
+        foreach ($exe in @('win_bison.exe', 'win_flex.exe')) {
+            if (-not (Test-Path (Join-Path $dir $exe))) { Die "$exe missing after the winflexbison extraction" }
+        }
+        New-Item -ItemType File -Force -Path $stamp | Out-Null
+    }
+    $script:WinFlexBisonDir = $dir
+    Log "winflexbison $version at $dir"
+}
+
+# giflib has only a Makefile (the Dockerfile seds its doc target out);
+# the library is eight C files, built here through an embedded cmake file
+# with every symbol exported (gif_lib.h has no export decorations).
+$script:GiflibCMakeLists = @'
+cmake_minimum_required(VERSION 3.16)
+project(giflib C)
+add_library(gif SHARED dgif_lib.c egif_lib.c gifalloc.c gif_err.c gif_font.c
+  gif_hash.c openbsd-reallocarray.c quantize.c)
+set_target_properties(gif PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+target_compile_definitions(gif PRIVATE _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_DEPRECATE)
+install(TARGETS gif RUNTIME DESTINATION bin LIBRARY DESTINATION lib ARCHIVE DESTINATION lib)
+install(FILES gif_lib.h DESTINATION include)
+'@
+
+function Build-Giflib {
+    if (Skip-If-Done 'giflib') { return }
+    Log '=== giflib'
+    $src = Fetch-Tarball "https://sourceforge.net/projects/giflib/files/giflib-6.x/giflib-$(V giflib).tar.gz/download" `
+        'giflib.tar.gz' (Join-Path $LIW_SRC 'giflib')
+    Write-Embedded (Join-Path $src 'CMakeLists.txt') $script:GiflibCMakeLists
+    Cmake-Build $src
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('gif.dll') 'giflib'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib') @('gif.lib') 'giflib'
+    Done-Stamp 'giflib'
+}
+
+# OpenSSL, pinned at the 3.6.2 tag like the linux and macos builds (the
+# Dockerfile ignores versions.txt's 4.x: "openldap doesn't handle version
+# 4.x yet").  mysql requires it, libpq and GDAL link it (CPL's crypto);
+# curl stays on Schannel (see Build-Curl).  Its Configure is perl
+# (Strawberry's; see Ensure-Perl), the assembler is the pinned nasm, and
+# nmake builds it single-threaded.  install_sw: no docs, as on linux.
+function Build-Openssl {
+    if (Skip-If-Done 'openssl') { return }
+    Log '=== openssl (pinned 3.6.2; versions.txt''s 4.x is deliberately ignored, like the linux build)'
+    Ensure-Perl
+    $src = Git-Clone 'https://github.com/openssl/openssl.git' 'openssl-3.6.2' (Join-Path $LIW_SRC 'openssl')
+    $savedPath = $env:PATH
+    $env:PATH = "$script:PerlBin;$env:PATH"
+    Push-Location $src
+    try {
+        Run-Logged 'perl' @('Configure', 'VC-WIN64A', "--prefix=$LIW_PREFIX", "--openssldir=$LIW_PREFIX\ssl",
+            'shared', 'zlib', "--with-zlib-include=$LIW_PREFIX\include", "--with-zlib-lib=$LIW_PREFIX\lib\z.lib",
+            'no-tests') 'openssl Configure'
+        Run-Logged 'nmake' @('/nologo') 'nmake of openssl'
+        Run-Logged 'nmake' @('/nologo', 'install_sw') 'nmake install_sw of openssl'
+    } finally {
+        Pop-Location
+        $env:PATH = $savedPath
+    }
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('libcrypto-3-x64.dll', 'libssl-3-x64.dll', 'openssl.exe') 'openssl'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib') @('libcrypto.lib', 'libssl.lib') 'openssl'
+    # The Windows install writes no pkg-config files; postgresql's meson
+    # looks for them (cmake consumers use FindOpenSSL).
+    # (Each names its libraries in Libs: Write-PkgConfig's Requires is the
+    # private kind, which a dynamic link does not follow.)
+    Write-PkgConfig 'libcrypto' 'OpenSSL cryptography library' '3.6.2' '-llibcrypto'
+    Write-PkgConfig 'libssl' 'Secure Sockets Layer and cryptography libraries' '3.6.2' '-llibssl -llibcrypto'
+    Write-PkgConfig 'openssl' 'Secure Sockets Layer and cryptography libraries and tools' '3.6.2' '-llibssl -llibcrypto'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\libcrypto-3-x64.dll') @('z.dll') 'openssl'
+    Done-Stamp 'openssl'
+}
+
+function Build-Json-C {
+    if (Skip-If-Done 'json-c') { return }
+    Log '=== json-c'
+    $src = Git-Clone 'https://github.com/json-c/json-c.git' "json-c-$(V json-c)" (Join-Path $LIW_SRC 'json-c')
+    Cmake-Build $src @('-DBUILD_TESTING=OFF', '-DBUILD_STATIC_LIBS=OFF', '-DCMAKE_POLICY_VERSION_MINIMUM=3.5')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('json-c.dll') 'json-c'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('json-c.pc') 'json-c'
+    Done-Stamp 'json-c'
+}
+
+function Build-Lerc {
+    if (Skip-If-Done 'lerc') { return }
+    Log '=== lerc'
+    $src = Git-Clone 'https://github.com/Esri/lerc.git' "v$(V lerc)" (Join-Path $LIW_SRC 'lerc')
+    Cmake-Build $src @('-DBUILD_SHARED_LIBS=ON')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('Lerc.dll') 'lerc'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib') @('Lerc.lib') 'lerc'
+    Done-Stamp 'lerc'
+}
+
+# win-iconv: the iconv API over Windows' own code pages (the linux build
+# has glibc's iconv, macos the system's).  freexl and libspatialite link
+# it (their MSVC makefiles say so), and GDAL's CPLRecode uses it.
+function Build-Win-Iconv {
+    if (Skip-If-Done 'win-iconv') { return }
+    Log '=== win-iconv'
+    $src = Git-Clone 'https://github.com/win-iconv/win-iconv.git' "v$(V win-iconv)" (Join-Path $LIW_SRC 'win-iconv')
+    Cmake-Build $src @('-DBUILD_SHARED=ON', '-DBUILD_STATIC=OFF', '-DBUILD_EXECUTABLE=OFF', '-DBUILD_TEST=OFF',
+        '-DCMAKE_POLICY_VERSION_MINIMUM=3.5')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('iconv.dll') 'win-iconv'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib') @('iconv.lib') 'win-iconv'
+    Assert-Files (Join-Path $LIW_PREFIX 'include') @('iconv.h') 'win-iconv'
+    # GDAL's FindIconv also requires a charset library (GNU libiconv's
+    # libcharset) whenever iconv is not the C library's; win-iconv has no
+    # such library, so the name resolves to the same import library.
+    Copy-Item (Join-Path $LIW_PREFIX 'lib\iconv.lib') (Join-Path $LIW_PREFIX 'lib\charset.lib') -Force
+    Done-Stamp 'win-iconv'
+}
+
+function Build-Libgeos {
+    if (Skip-If-Done 'libgeos') { return }
+    Log '=== libgeos'
+    $src = Git-Clone 'https://github.com/libgeos/geos.git' "$(V libgeos)" (Join-Path $LIW_SRC 'geos')
+    Cmake-Build $src @('-DGEOS_BUILD_DEVELOPER=NO', '-DBUILD_TESTING=OFF', '-DBUILD_SHARED_LIBS=ON')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('geos.dll', 'geos_c.dll') 'libgeos'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib') @('geos_c.lib') 'libgeos'
+    # geos installs its cmake config only on Windows (geos.pc comes from
+    # its geos-config script elsewhere); librttopo and libspatialite look
+    # it up through pkg-config.
+    if (-not (Test-Path (Join-Path $LIW_PREFIX 'lib\pkgconfig\geos.pc'))) {
+        Write-PkgConfig 'geos' 'Geometry Engine - Open Source (C API)' (V libgeos) '-lgeos_c'
+    }
+    Done-Stamp 'libgeos'
+}
+
+# PROJ from its cmake build, like the linux build; the sqlite3 shell from
+# Build-Sqlite generates proj.db.  The tools (proj, cs2cs, ...) are
+# bundled by the GDAL wheel.
+function Build-Proj4 {
+    if (Skip-If-Done 'proj4') { return }
+    Log '=== proj4'
+    $src = Git-Clone 'https://github.com/OSGeo/proj.4.git' "$(V proj4)" (Join-Path $LIW_SRC 'proj4')
+    Cmake-Build $src @('-DBUILD_TESTING=OFF', '-DBUILD_SHARED_LIBS=ON', '-DBUILD_APPS=ON')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('proj*.dll', 'proj.exe', 'cs2cs.exe', 'projinfo.exe') 'proj4'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib') @('proj.lib') 'proj4'
+    Assert-Files (Join-Path $LIW_PREFIX 'share\proj') @('proj.db') 'proj4'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('proj.pc') 'proj4'
+    # proj.pc says -lproj_9 (the DLL's name, proj_9.dll) while the import
+    # library installs as proj.lib; the pkg-config consumers (spatialite,
+    # rasterlite2) need the .pc's spelling.
+    $pc = Get-Content (Join-Path $LIW_PREFIX 'lib\pkgconfig\proj.pc') -Raw
+    if ($pc -match '(?m)^Libs:.*-l(proj\S*)') {
+        $spelling = Join-Path $LIW_PREFIX "lib\$($Matches[1]).lib"
+        if (-not (Test-Path $spelling)) { Copy-Item (Join-Path $LIW_PREFIX 'lib\proj.lib') $spelling }
+    }
+    $dll = (Get-ChildItem (Join-Path $LIW_PREFIX 'bin') -Filter 'proj*.dll' | Select-Object -First 1).FullName
+    Assert-DependentStems $dll @('tiff', 'sqlite3', 'libcurl') 'proj4'
+    Done-Stamp 'proj4'
+}
+
+# libgeotiff from its cmake build (the linux build's autotools reason --
+# librasterlite2's configure not finding a cmake-built libgeotiff -- does
+# not apply: librasterlite2 is built from an embedded cmake file here).
+# The utilities (listgeo and friends) are bundled by the GDAL wheel.
+function Build-Libgeotiff {
+    if (Skip-If-Done 'libgeotiff') { return }
+    Log '=== libgeotiff'
+    $src = Git-Clone 'https://github.com/OSGeo/libgeotiff.git' "$(V libgeotiff)" (Join-Path $LIW_SRC 'libgeotiff')
+    Cmake-Build (Join-Path $src 'libgeotiff') @('-DWITH_JPEG=ON', '-DWITH_ZLIB=ON', '-DWITH_UTILITIES=ON',
+        '-DBUILD_SHARED_LIBS=ON')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('geotiff.dll', 'listgeo.exe', 'geotifcp.exe') 'libgeotiff'
+    # The import library installs as geotiff_i.lib (GDAL's FindGeoTIFF
+    # knows that name); rasterlite2's lookup and pkg-config consumers
+    # want geotiff.lib.
+    Assert-Files (Join-Path $LIW_PREFIX 'lib') @('geotiff_i.lib') 'libgeotiff'
+    Copy-Item (Join-Path $LIW_PREFIX 'lib\geotiff_i.lib') (Join-Path $LIW_PREFIX 'lib\geotiff.lib') -Force
+    Assert-Files (Join-Path $LIW_PREFIX 'include') @('geotiff.h') 'libgeotiff'
+    # (The autotools library links jpeg and zlib too; the cmake one links
+    # them into the utilities only, libtiff carrying both for the library.)
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\geotiff.dll') @('proj', 'tiff') 'libgeotiff'
+    Done-Stamp 'libgeotiff'
+}
+
+# minizip-ng, for freexl (its MSVC makefile links it) and libOpenDRIVE;
+# MZ_OPENSSL mirrors the linux build.  MZ_FETCH_LIBS (on by default on
+# Windows) is off so the prefix's zlib, bzip2, lzma and zstd are used.
+function Build-Minizip {
+    if (Skip-If-Done 'minizip') { return }
+    Log '=== minizip'
+    $src = Git-Clone 'https://github.com/zlib-ng/minizip-ng.git' "$(V minizip)" (Join-Path $LIW_SRC 'minizip')
+    # (Export-all: the sources carry no dllexport decorations, so an MSVC
+    # DLL build would otherwise export nothing and install no import
+    # library.)
+    Cmake-Build $src @('-DBUILD_SHARED_LIBS=ON', '-DMZ_OPENSSL=ON', '-DMZ_FETCH_LIBS=OFF', '-DMZ_BUILD_TESTS=OFF',
+        '-DMZ_BUILD_UNIT_TESTS=OFF', '-DMZ_ZLIB=ON', '-DMZ_BZIP2=ON', '-DMZ_LZMA=ON', '-DMZ_ZSTD=ON',
+        '-DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=ON')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('minizip.dll') 'minizip'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib') @('minizip.lib') 'minizip'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('minizip.pc') 'minizip'
+    Done-Stamp 'minizip'
+}
+
+function Build-Libgta {
+    if (Skip-If-Done 'libgta') { return }
+    Log '=== libgta'
+    $src = Git-Clone 'https://github.com/marlam/gta-mirror.git' "libgta-$(V libgta)" (Join-Path $LIW_SRC 'gta-mirror')
+    Cmake-Build (Join-Path $src 'libgta') @('-DGTA_BUILD_DOCUMENTATION=OFF', '-DGTA_BUILD_STATIC_LIB=OFF')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('*gta*.dll') 'libgta'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('gta.pc') 'libgta'
+    Done-Stamp 'libgta'
+}
+
+# xerces-c on its Windows transcoder (the linux build passes
+# -Dtranscoder=iconv, glibc's; win-iconv is not the GNU iconv its
+# transcoder expects).
+function Build-Xerces-C {
+    if (Skip-If-Done 'xerces-c') { return }
+    Log '=== xerces-c'
+    $src = Git-Clone 'https://github.com/apache/xerces-c.git' "v$(V xerces-c)" (Join-Path $LIW_SRC 'xerces-c')
+    Cmake-Build $src @('-Dtranscoder=windows', '-DBUILD_SHARED_LIBS=ON')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('xerces-c*.dll') 'xerces-c'
+    Done-Stamp 'xerces-c'
+}
+
+function Build-Blosc {
+    if (Skip-If-Done 'blosc') { return }
+    Log '=== blosc'
+    $src = Git-Clone 'https://github.com/Blosc/c-blosc.git' "v$(V blosc)" (Join-Path $LIW_SRC 'c-blosc')
+    Cmake-Build $src @('-DBUILD_SHARED=ON', '-DBUILD_STATIC=OFF', '-DBUILD_BENCHMARKS=OFF', '-DBUILD_FUZZERS=OFF',
+        '-DBUILD_TESTS=OFF', '-DPREFER_EXTERNAL_LZ4=ON', '-DPREFER_EXTERNAL_ZLIB=ON', '-DPREFER_EXTERNAL_ZSTD=ON',
+        '-DDEACTIVATE_SNAPPY=OFF', '-DCMAKE_POLICY_VERSION_MINIMUM=3.5')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('blosc.dll') 'blosc'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\blosc.dll') @('lz4', 'zstd', 'z.dll') 'blosc'
+    Done-Stamp 'blosc'
+}
+
+# highfive (header-only; kealib's).  Its submodules carry its third-party
+# headers, so the clone recurses (an inline retry loop, like libjxl's).
+function Build-Highfive {
+    if (Skip-If-Done 'highfive') { return }
+    Log '=== highfive'
+    $src = Join-Path $LIW_SRC 'highfive'
+    for ($n = 1; $n -le 10; $n++) {
+        if (Test-Path $src) { Remove-Item -Recurse -Force $src }
+        & git clone --depth=1 --single-branch -b "v$(V highfive)" -c advice.detachedHead=false `
+            --recurse-submodules --shallow-submodules -j $LIW_JOBS https://github.com/highfive-devs/highfive.git $src
+        if ($LASTEXITCODE -eq 0) { break }
+        Log 'retrying git clone: highfive'
+        Start-Sleep -Seconds 5
+    }
+    if (-not (Test-Path (Join-Path $src 'CMakeLists.txt'))) { Die 'git clone failed after 10 attempts: highfive' }
+    Cmake-Build $src @('-DHIGHFIVE_UNIT_TESTS=OFF', '-DHIGHFIVE_BUILD_DOCS=OFF', '-DHIGHFIVE_EXAMPLES=OFF',
+        '-DHIGHFIVE_USE_BOOST=OFF')
+    if (-not (Test-Path (Join-Path $LIW_PREFIX 'include\highfive'))) { Die 'highfive did not install its headers' }
+    Done-Stamp 'highfive'
+}
+
+# kealib (the KEA driver); needs hdf5's C++ library (HDF5_BUILD_CPP_LIB).
+function Build-Kealib {
+    if (Skip-If-Done 'kealib') { return }
+    Log '=== kealib'
+    $src = Git-Clone 'https://github.com/ubarsc/kealib.git' "kealib-$(V kealib)" (Join-Path $LIW_SRC 'kealib')
+    Cmake-Build $src @('-DBUILD_SHARED_LIBS=ON', '-DLIBKEA_WITH_GDAL=OFF')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('*kea*.dll') 'kealib'
+    $dll = (Get-ChildItem (Join-Path $LIW_PREFIX 'bin') -Filter '*kea*.dll' | Select-Object -First 1).FullName
+    Assert-DependentStems $dll @('hdf5') 'kealib'
+    Done-Stamp 'kealib'
+}
+
+# hdf4 (the HDF4 driver), static like the linux build (its default), so
+# GDAL absorbs it.  The zlib and jpeg finds get the hdf5 treatment: the
+# config-mode find (COMPONENTS static shared) is steered past our
+# shared-only packages and the module variables are preset.
+function Build-Hdf4 {
+    if (Skip-If-Done 'hdf4') { return }
+    Log '=== hdf4'
+    $src = Git-Clone 'https://github.com/HDFGroup/hdf4.git' "hdf-$(V hdf4)" (Join-Path $LIW_SRC 'hdf4')
+    Cmake-Build $src @('-DHDF4_BUILD_FORTRAN=OFF', '-DHDF4_ENABLE_NETCDF=OFF', '-DHDF4_ENABLE_Z_LIB_SUPPORT=ON',
+        '-DHDF4_ENABLE_JPEG_SUPPORT=ON', '-DHDF4_DISABLE_COMPILER_WARNINGS=ON', '-DBUILD_TESTING=OFF',
+        '-DHDF4_BUILD_TOOLS=OFF', '-DHDF4_BUILD_UTILS=OFF', '-DHDF4_BUILD_EXAMPLES=OFF',
+        '-DZLIB_PACKAGE_NAME=zlib-no-config', '-DJPEG_PACKAGE_NAME=jpeg-no-config',
+        "-DZLIB_LIBRARY=$script:CmakePrefix/lib/z.lib", "-DZLIB_LIBRARIES=$script:CmakePrefix/lib/z.lib",
+        "-DZLIB_INCLUDE_DIR=$script:CmakePrefix/include",
+        "-DJPEG_LIBRARY=$script:CmakePrefix/lib/jpeg.lib", "-DJPEG_LIBRARIES=$script:CmakePrefix/lib/jpeg.lib",
+        "-DJPEG_INCLUDE_DIR=$script:CmakePrefix/include")
+    Assert-Files (Join-Path $LIW_PREFIX 'lib') @('*hdf*.lib', '*mfhdf*.lib') 'hdf4'
+    Assert-Files (Join-Path $LIW_PREFIX 'include') @('hdf.h', 'mfhdf.h') 'hdf4'
+    Done-Stamp 'hdf4'
+}
+
+# netcdf (the netCDF driver), serial: no OpenMPI on Windows, so no
+# parallel hdf5 and no parallel-netcdf (the one deviation from the linux
+# final state; HDF4 in netcdf is inert there too).  DAP, byte-range and
+# NCZarr on, as on linux; no utilities, tests, examples or plugins.
+function Build-Netcdf {
+    if (Skip-If-Done 'netcdf') { return }
+    Log '=== netcdf'
+    $src = Git-Clone 'https://github.com/Unidata/netcdf-c' "v$(V netcdf)" (Join-Path $LIW_SRC 'netcdf-c')
+    # The linux seds: strlen used as a variable name.
+    Invoke-Patch $src 'netcdf_zutil' @'
+path = "libnczarr/zutil.c"
+s = open(path).read()
+s = s.replace("int strlen,", "int strlenn,").replace("format,strlen)", "format,strlenn)")
+open(path, "w").write(s)
+'@
+    Cmake-Build $src @('-DBUILD_SHARED_LIBS=ON', '-DNETCDF_ENABLE_TESTS=OFF', '-DNETCDF_ENABLE_EXAMPLES=OFF',
+        '-DNETCDF_BUILD_UTILITIES=OFF', '-DNETCDF_ENABLE_DAP=ON', '-DNETCDF_ENABLE_BYTERANGE=ON',
+        '-DNETCDF_ENABLE_HDF5=ON', '-DNETCDF_ENABLE_NCZARR=ON', '-DNETCDF_ENABLE_HDF4=OFF',
+        '-DNETCDF_ENABLE_PNETCDF=OFF', '-DNETCDF_ENABLE_PARALLEL4=OFF', '-DNETCDF_ENABLE_PLUGINS=OFF',
+        '-DNETCDF_ENABLE_FILTER_TESTING=OFF', '-DNETCDF_ENABLE_UNIT_TESTS=OFF', '-DNETCDF_ENABLE_DAP_REMOTE_TESTS=OFF')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('netcdf.dll') 'netcdf'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('netcdf.pc') 'netcdf'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\netcdf.dll') @('hdf5', 'libcurl') 'netcdf'
+    Done-Stamp 'netcdf'
+}
+
+# libOpenDRIVE (the XODR driver), at the same 0.6.0-gdal tag both other
+# builds pin ("version 0.6.1-gdal requires external pugixml and some
+# other work"; versions.txt tracks the newer tag).  A static library GDAL
+# absorbs, as on linux.
+function Build-Libopendrive {
+    if (Skip-If-Done 'libopendrive') { return }
+    Log '=== libopendrive (pinned 0.6.0-gdal, like the linux and macos builds)'
+    $src = Git-Clone 'https://github.com/DLR-TS/libOpenDRIVE.git' '0.6.0-gdal' (Join-Path $LIW_SRC 'libOpenDRIVE')
+    # Windows only: its CMakeLists replaces CMAKE_CXX_FLAGS for MSVC, so
+    # the M_PI define (_USE_MATH_DEFINES) goes into that line (and /Wall
+    # becomes /W1: the former floods the log with STL warnings).
+    Invoke-Patch $src 'libopendrive_msvc_flags' @'
+path = "CMakeLists.txt"
+s = open(path).read()
+old = 'set(CMAKE_CXX_FLAGS "/EHsc /Wall")'
+assert old in s, "libOpenDRIVE's MSVC flags line changed"
+s = s.replace(old, 'set(CMAKE_CXX_FLAGS "/EHsc /W1 /D_USE_MATH_DEFINES")')
+open(path, "w").write(s)
+'@
+    Cmake-Build $src @('-DCMAKE_POSITION_INDEPENDENT_CODE=ON')
+    Assert-Files (Join-Path $LIW_PREFIX 'lib') @('OpenDrive.lib') 'libopendrive'
+    Done-Stamp 'libopendrive'
+}
+
+# libavif (the AVIF driver), with its local libyuv (the googlesource URL
+# the Dockerfile seds away serves a captcha) and, like the linux build, no
+# AV1 codec library.
+function Build-Libavif {
+    if (Skip-If-Done 'libavif') { return }
+    Log '=== libavif'
+    $src = Git-Clone 'https://github.com/AOMediaCodec/libavif.git' "v$(V libavif)" (Join-Path $LIW_SRC 'libavif')
+    Invoke-Patch $src 'libavif_libyuv' @'
+path = "cmake/Modules/LocalLibyuv.cmake"
+s = open(path).read()
+assert "https://chromium.googlesource.com/libyuv/libyuv" in s
+s = s.replace("https://chromium.googlesource.com/libyuv/libyuv", "https://github.com/lemenkov/libyuv")
+open(path, "w").write(s)
+'@
+    Cmake-Build $src @('-DBUILD_SHARED_LIBS=ON', '-DCMAKE_POSITION_INDEPENDENT_CODE=ON', '-DAVIF_LIBYUV=LOCAL',
+        '-DAVIF_BUILD_APPS=OFF', '-DAVIF_BUILD_TESTS=OFF', '-DAVIF_BUILD_EXAMPLES=OFF')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('avif.dll') 'libavif'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('libavif.pc') 'libavif'
+    Done-Stamp 'libavif'
+}
+
+# fyba (the SOSI driver), from its own cmake files -- static libraries,
+# which GDAL absorbs (the linux build's autotools makes shared ones).
+# The code is Windows-born (stdafx.h, WIN32 ifdefs); its cmake files only
+# add flags for UNIX, so the Windows ones go in through CMAKE_CXX_FLAGS.
+# GDAL's FindFYBA wants fyba, fygm and fyut; the cmake targets are fyba,
+# gm and ut, so two copies are made.  The FYLU.cpp patch (stdafx.h after
+# <locale>) mirrors the linux build.  Master tip, like both other builds.
+function Build-Fyba {
+    if (Skip-If-Done 'fyba') { return }
+    Log '=== fyba'
+    $src = Git-Clone 'https://github.com/kartverket/fyba.git' '' (Join-Path $LIW_SRC 'fyba')
+    Invoke-Patch $src 'fyba_fylu' @'
+path = "src/FYBA/FYLU.cpp"
+data = open(path, "rb").read()
+data = data.replace(b"#include \"stdafx.h\"", b"")
+data = data.replace(b"#include <locale>", b"#include <locale>\n#include \"stdafx.h\"")
+open(path, "wb").write(data)
+# Windows only: the cmake files predate cmake_minimum_required, which
+# cmake 4 refuses to configure without.
+path = "CMakeLists.txt"
+s = open(path).read()
+if "cmake_minimum_required" not in s:
+    open(path, "w").write("cmake_minimum_required(VERSION 3.16)\n" + s)
+'@
+    Cmake-Build $src @('-DCMAKE_CXX_FLAGS=/DWIN32 /D_CRT_SECURE_NO_WARNINGS /D_CRT_NONSTDC_NO_DEPRECATE /EHsc /W1')
+    $lib = Join-Path $LIW_PREFIX 'lib'
+    Assert-Files $lib @('fyba.lib', 'gm.lib', 'ut.lib') 'fyba'
+    Copy-Item (Join-Path $lib 'gm.lib') (Join-Path $lib 'fygm.lib') -Force
+    Copy-Item (Join-Path $lib 'ut.lib') (Join-Path $lib 'fyut.lib') -Force
+    Assert-Files (Join-Path $LIW_PREFIX 'include\fyba') @('fyba.h', 'fygm.h', 'fyut.h') 'fyba'
+    Done-Stamp 'fyba'
+}
+
+# The gaia-gis libraries (freexl, librttopo, libspatialite, librasterlite2)
+# are autotools projects whose Windows support is a hand-maintained
+# makefile.vc (freexl, rttopo, spatialite; OSGeo4W paths and library
+# names hard-coded into it) or nothing (rasterlite2).  Each is built here
+# through an embedded cmake file that takes the source list from the
+# makefile.vc where there is one, the MSVC config headers the projects
+# ship (config-msvc.h, gaiaconfig-msvc.h), and the prefix's libraries
+# through pkg-config.  The sources come from the gaia-gis fossil
+# repositories, as on linux and macos.
+function Fossil-Clone([string]$Url, [string]$Dest, [string]$Checkout = '') {
+    Ensure-Fossil
+    if (Test-Path $Dest) { Remove-Item -Recurse -Force $Dest }
+    $repo = "$Dest.fossil"
+    Remove-Item -Path $repo -Force -ErrorAction SilentlyContinue
+    # (--admin-user root: the clone seeds the repository's user table from
+    # --admin-user, or $USER when absent, and user_select() dies on a
+    # global --user the repository does not have -- the macos finding.)
+    # (Run-Logged: fossil reports its progress on stderr, which a bare call
+    # turns into a terminating error under Windows PowerShell.)
+    $code = 1
+    for ($n = 1; $n -le 5; $n++) {
+        $code = Run-Logged $script:FossilExe @('--user=root', 'clone', '--admin-user', 'root', $Url, $repo) `
+            "fossil clone of $Url" -NoDie
+        if ($code -eq 0) { break }
+        Remove-Item -Path $repo -Force -ErrorAction SilentlyContinue
+        Log "retrying fossil clone: $Url"
+        Start-Sleep -Seconds 5
+    }
+    if ($code -ne 0 -or -not (Test-Path $repo)) { Die "fossil clone failed after 5 attempts: $Url" }
+    New-Item -ItemType Directory -Force -Path $Dest | Out-Null
+    Push-Location $Dest
+    try {
+        Run-Logged $script:FossilExe @('open', $repo) "fossil open of $repo"
+        if ($Checkout) {
+            Run-Logged $script:FossilExe @('checkout', '-f', $Checkout) "fossil checkout of $Checkout"
+        }
+    } finally {
+        Pop-Location
+    }
+    return $Dest
+}
+
+# The source list of a gaia-gis makefile.vc (LIBOBJ = a\b.obj \ ...), as
+# C paths; shared by the spatialite and rttopo cmake files.
+$script:GaiaCMakeSources = @'
+function(gaia_sources_from_makefile out)
+  file(READ ${CMAKE_SOURCE_DIR}/makefile.vc MK)
+  string(REPLACE "\\\n" " " MK "${MK}")
+  string(REGEX MATCH "LIBOBJ[ \t]*=[ \t]*([^\n]*)" _m "${MK}")
+  string(REGEX REPLACE "[ \t]+" ";" OBJS "${CMAKE_MATCH_1}")
+  set(SRC "")
+  foreach(o ${OBJS})
+    if(o MATCHES "\\.obj$")
+      string(REGEX REPLACE "\\.obj$" ".c" c "${o}")
+      string(REPLACE "\\" "/" c "${c}")
+      list(APPEND SRC ${CMAKE_SOURCE_DIR}/${c})
+    endif()
+  endforeach()
+  list(LENGTH SRC n)
+  if(n LESS 1)
+    message(FATAL_ERROR "no LIBOBJ sources found in makefile.vc")
+  endif()
+  set(${out} ${SRC} PARENT_SCOPE)
+endfunction()
+function(gaia_pc name description version libs requires)
+  file(WRITE ${CMAKE_BINARY_DIR}/${name}.pc
+"prefix=${CMAKE_INSTALL_PREFIX}
+exec_prefix=\${prefix}
+libdir=\${exec_prefix}/lib
+includedir=\${prefix}/include
+
+Name: ${name}
+Description: ${description}
+Version: ${version}
+Requires: ${requires}
+Libs: -L\${libdir} ${libs}
+Cflags: -I\${includedir}
+")
+  install(FILES ${CMAKE_BINARY_DIR}/${name}.pc DESTINATION lib/pkgconfig)
+endfunction()
+'@
+
+$script:FreexlCMakeLists = @'
+cmake_minimum_required(VERSION 3.16)
+project(freexl C)
+include(gaia.cmake)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(DEPS REQUIRED IMPORTED_TARGET expat minizip zlib)
+find_library(ICONV_LIBRARY NAMES iconv REQUIRED)
+file(STRINGS ${CMAKE_SOURCE_DIR}/config-msvc.h VERSION_LINE REGEX "^#define VERSION ")
+string(REGEX MATCH "\"([^\"]+)\"" _ "${VERSION_LINE}")
+set(VERSION "${CMAKE_MATCH_1}")
+add_library(freexl SHARED src/freexl.c src/freexl_xlsx.c src/freexl_ods.c)
+target_include_directories(freexl PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/headers)
+target_compile_definitions(freexl PRIVATE DLL_EXPORT _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_DEPRECATE)
+target_link_libraries(freexl PRIVATE PkgConfig::DEPS ${ICONV_LIBRARY})
+install(TARGETS freexl RUNTIME DESTINATION bin ARCHIVE DESTINATION lib)
+install(FILES headers/freexl.h DESTINATION include)
+gaia_pc(freexl "a library for direct reading of Excel files" "${VERSION}" "-lfreexl" "")
+'@
+
+# Used by GDAL's XLS driver.  The fossil trunk tip, like both other builds.
+function Build-Freexl {
+    if (Skip-If-Done 'freexl') { return }
+    Log '=== freexl'
+    $src = Fossil-Clone 'https://www.gaia-gis.it/fossil/freexl' (Join-Path $LIW_SRC 'freexl')
+    Write-Embedded (Join-Path $src 'gaia.cmake') $script:GaiaCMakeSources
+    Write-Embedded (Join-Path $src 'CMakeLists.txt') $script:FreexlCMakeLists
+    Cmake-Build $src
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('freexl.dll') 'freexl'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('freexl.pc') 'freexl'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\freexl.dll') @('iconv', 'libexpat', 'minizip') 'freexl'
+    Done-Stamp 'freexl'
+}
+
+$script:RttopoCMakeLists = @'
+cmake_minimum_required(VERSION 3.16)
+project(librttopo C)
+include(gaia.cmake)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GEOS REQUIRED IMPORTED_TARGET geos)
+file(READ ${CMAKE_SOURCE_DIR}/configure.ac AC)
+string(REGEX MATCH "AC_INIT\\(librttopo, ([0-9.]+)," _ "${AC}")
+set(VERSION "${CMAKE_MATCH_1}")
+# What configure generates: rttopo_config.h (the GEOS version as
+# major+minor, e.g. 315) and librttopo_geom.h from its .in.
+string(REGEX MATCH "^([0-9]+)\\.([0-9]+)" _ "${GEOS_VERSION}")
+set(GEN ${CMAKE_BINARY_DIR}/generated)
+file(WRITE ${GEN}/rttopo_config.h
+"#define LIBRTGEOM_VERSION \"${VERSION}\"
+#define RTGEOM_GEOS_VERSION ${CMAKE_MATCH_1}${CMAKE_MATCH_2}
+#define RTGEOM_DEBUG_LEVEL 0
+#define NDEBUG 1
+#define HAVE_ISFINITE 1
+")
+set(SRID_MAX 999999)
+set(SRID_USR_MAX 998999)
+configure_file(${CMAKE_SOURCE_DIR}/headers/librttopo_geom.h.in ${GEN}/librttopo_geom.h @ONLY)
+gaia_sources_from_makefile(SRC)
+add_library(librttopo SHARED ${SRC})
+# (No export decorations anywhere in rttopo; without this the DLL would
+# export nothing and the linker would drop its whole body.)
+set_target_properties(librttopo PROPERTIES PREFIX "" WINDOWS_EXPORT_ALL_SYMBOLS ON)
+target_include_directories(librttopo PRIVATE ${GEN} ${CMAKE_SOURCE_DIR}/headers ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR})
+target_compile_definitions(librttopo PRIVATE DLL_EXPORT _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_DEPRECATE _USE_MATH_DEFINES)
+target_link_libraries(librttopo PRIVATE PkgConfig::GEOS)
+install(TARGETS librttopo RUNTIME DESTINATION bin ARCHIVE DESTINATION lib)
+file(GLOB HEADERS ${CMAKE_SOURCE_DIR}/headers/*.h)
+install(FILES ${HEADERS} ${GEN}/librttopo_geom.h DESTINATION include)
+gaia_pc(rttopo "RT Topology Library" "${VERSION}" "-llibrttopo" "geos")
+'@
+
+# Used by libspatialite.  Master at the commit versions.txt's librttopo-sha
+# names, not the librttopo release tag the other builds use: spatialite's
+# trunk calls rtt_tpsnap, which exists only after the 1.1.0 tag.  The
+# linux link tolerates the undefined symbol in a shared library (and
+# would fail at the first call), MSVC's link does not.
+function Build-Librttopo {
+    if (Skip-If-Done 'librttopo') { return }
+    Log '=== librttopo'
+    $src = Git-Clone 'https://gitlab.com/rttopo/rttopo.git' '' (Join-Path $LIW_SRC 'rttopo')
+    & git -C $src fetch -q --depth=1000 origin
+    & git -C $src checkout -q "$(V librttopo-sha)"
+    Assert-Exit "git checkout of rttopo $(V librttopo-sha)"
+    Write-Embedded (Join-Path $src 'gaia.cmake') $script:GaiaCMakeSources
+    Write-Embedded (Join-Path $src 'CMakeLists.txt') $script:RttopoCMakeLists
+    Cmake-Build $src
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('librttopo.dll') 'librttopo'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('rttopo.pc') 'librttopo'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\librttopo.dll') @('geos_c') 'librttopo'
+    Done-Stamp 'librttopo'
+}
+
+$script:SpatialiteCMakeLists = @'
+cmake_minimum_required(VERSION 3.16)
+project(spatialite C)
+include(gaia.cmake)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(DEPS REQUIRED IMPORTED_TARGET proj geos freexl sqlite3 zlib libxml-2.0 rttopo)
+find_library(ICONV_LIBRARY NAMES iconv REQUIRED)
+file(STRINGS ${CMAKE_SOURCE_DIR}/src/headers/spatialite/gaiaconfig-msvc.h VERSION_LINE REGEX "^#define SPATIALITE_VERSION ")
+string(REGEX MATCH "\"([^\"]+)\"" _ "${VERSION_LINE}")
+set(VERSION "${CMAKE_MATCH_1}")
+gaia_sources_from_makefile(SRC)
+# Two libraries the makefile.vc predates (src/Makefile.am's LIBADD has
+# both): the bulk R*Tree loader and the connection cache.
+list(APPEND SRC
+  ${CMAKE_SOURCE_DIR}/src/sqlite_bulk_rtree/sqlite_rtree_bulk_load.c
+  ${CMAKE_SOURCE_DIR}/src/sqlite_bulk_rtree/RTreeBulkLoad.c
+  ${CMAKE_SOURCE_DIR}/src/connection_cache/alloc_cache.c
+  ${CMAKE_SOURCE_DIR}/src/connection_cache/gg_sequence.c)
+add_library(spatialite SHARED ${SRC})
+target_include_directories(spatialite PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/src/headers ${CMAKE_SOURCE_DIR}/src/topology)
+target_compile_definitions(spatialite PRIVATE DLL_EXPORT YY_NO_UNISTD_H _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_DEPRECATE _USE_MATH_DEFINES)
+target_link_libraries(spatialite PRIVATE PkgConfig::DEPS ${ICONV_LIBRARY})
+install(TARGETS spatialite RUNTIME DESTINATION bin ARCHIVE DESTINATION lib)
+install(FILES src/headers/spatialite.h DESTINATION include)
+file(GLOB HEADERS ${CMAKE_SOURCE_DIR}/src/headers/spatialite/*.h)
+install(FILES ${HEADERS} DESTINATION include/spatialite)
+gaia_pc(spatialite "Spatial SQL on top of SQLite" "${VERSION}" "-lspatialite" "sqlite3")
+'@
+
+# Used by GDAL and mapnik.  The fossil trunk tip (like the linux build;
+# its fossil checkout pin is commented out there too).
+function Build-Libspatialite {
+    if (Skip-If-Done 'libspatialite') { return }
+    Log '=== libspatialite'
+    $src = Fossil-Clone 'https://www.gaia-gis.it/fossil/libspatialite' (Join-Path $LIW_SRC 'libspatialite')
+    Write-Embedded (Join-Path $src 'gaia.cmake') $script:GaiaCMakeSources
+    Write-Embedded (Join-Path $src 'CMakeLists.txt') $script:SpatialiteCMakeLists
+    Cmake-Build $src
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('spatialite.dll') 'libspatialite'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('spatialite.pc') 'libspatialite'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\spatialite.dll') @('geos_c', 'proj', 'freexl', 'librttopo', 'libxml2', 'sqlite3') 'libspatialite'
+    Done-Stamp 'libspatialite'
+}
+
+$script:Rasterlite2CMakeLists = @'
+cmake_minimum_required(VERSION 3.16)
+project(rasterlite2 C)
+include(gaia.cmake)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(DEPS REQUIRED IMPORTED_TARGET sqlite3 spatialite libpng libjpeg libtiff-4 libwebp
+  libopenjp2 liblzma liblz4 libzstd libcurl libxml-2.0 freetype2 fontconfig cairo zlib)
+find_library(GIF_LIBRARY NAMES gif REQUIRED)
+find_library(GEOTIFF_LIBRARY NAMES geotiff REQUIRED)
+file(READ ${CMAKE_SOURCE_DIR}/configure.ac AC)
+string(REGEX MATCH "AC_INIT\\(librasterlite2, ([^,]+)," _ "${AC}")
+set(VERSION "${CMAKE_MATCH_1}")
+set(GEN ${CMAKE_BINARY_DIR}/generated)
+# config.h as configure would write it for this prefix (no leptonica, no
+# fcgi: those are the tools' dependencies, not the library's), and
+# rl2config.h from its template with every codec on.
+file(WRITE ${GEN}/config.h
+"#define VERSION \"${VERSION}\"
+#define PACKAGE_VERSION \"${VERSION}\"
+#define PACKAGE_NAME \"librasterlite2\"
+#define PACKAGE_STRING \"librasterlite2 ${VERSION}\"
+#define HAVE_FLOAT_H 1
+#define HAVE_GIF_LIB_H 1
+#define HAVE_INTTYPES_H 1
+#define HAVE_JERROR_H 1
+#define HAVE_JPEGLIB_H 1
+#define HAVE_LIBGEOTIFF 1
+#define HAVE_LIBGIF 1
+#define HAVE_LIBJPEG 1
+#define HAVE_LIBTIFF 1
+#define HAVE_MATH_H 1
+#define HAVE_MEMORY_H 1
+#define HAVE_PNG_H 1
+#define HAVE_SQLITE3EXT_H 1
+#define HAVE_SQLITE3_H 1
+#define HAVE_SQRT 1
+#define HAVE_STDINT_H 1
+#define HAVE_STDIO_H 1
+#define HAVE_STDLIB_H 1
+#define HAVE_STRERROR 1
+#define HAVE_STRFTIME 1
+#define HAVE_STRING_H 1
+#define HAVE_STRSTR 1
+#define HAVE_SYS_STAT_H 1
+#define HAVE_SYS_TYPES_H 1
+#define HAVE_ZLIB_H 1
+#define STDC_HEADERS 1
+#define OMIT_LEPTONICA 1
+")
+file(READ ${CMAKE_SOURCE_DIR}/headers/rasterlite2/rl2config.h.in RL2CFG)
+string(REPLACE "#undef RL2_VERSION" "#define RL2_VERSION \"${VERSION}\"" RL2CFG "${RL2CFG}")
+string(REPLACE "#undef RL2_TARGET_CPU" "#define RL2_TARGET_CPU \"x86_64-pc-windows\"" RL2CFG "${RL2CFG}")
+string(REGEX REPLACE "#undef (OMIT_[A-Z0-9]+)" "/* #undef \\1 */" RL2CFG "${RL2CFG}")
+file(WRITE ${GEN}/rasterlite2/rl2config.h "${RL2CFG}")
+# rl2import.c includes <unistd.h> outside its _WIN32 guards; everything it
+# takes from there is in io.h/direct.h, which it includes as well.
+file(WRITE ${GEN}/unistd.h "#include <io.h>\n#include <direct.h>\n")
+# The sources as src/Makefile.am lists them (the tree also holds files
+# the library does not compile: rl2legend.c refers to types no header
+# declares at this commit).
+file(READ ${CMAKE_SOURCE_DIR}/src/Makefile.am AM)
+string(REPLACE "\\\n" " " AM "${AM}")
+string(REGEX MATCH "librasterlite2_la_SOURCES[ \t]*=[ \t]*([^\n]*)" _ "${AM}")
+string(REGEX REPLACE "[ \t]+" ";" NAMES "${CMAKE_MATCH_1}")
+set(SRC "")
+foreach(n ${NAMES})
+  if(n MATCHES "\\.c$")
+    list(APPEND SRC ${CMAKE_SOURCE_DIR}/src/${n})
+  endif()
+endforeach()
+list(LENGTH SRC n)
+if(n LESS 1)
+  message(FATAL_ERROR "no librasterlite2_la_SOURCES found in src/Makefile.am")
+endif()
+add_library(rasterlite2 SHARED ${SRC})
+target_include_directories(rasterlite2 PRIVATE ${GEN} ${CMAKE_SOURCE_DIR}/headers ${CMAKE_SOURCE_DIR})
+target_compile_definitions(rasterlite2 PRIVATE DLL_EXPORT _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_DEPRECATE _USE_MATH_DEFINES
+  strcasecmp=_stricmp strncasecmp=_strnicmp)
+target_link_libraries(rasterlite2 PRIVATE PkgConfig::DEPS ${GIF_LIBRARY} ${GEOTIFF_LIBRARY} ws2_32)
+install(TARGETS rasterlite2 RUNTIME DESTINATION bin ARCHIVE DESTINATION lib)
+file(GLOB HEADERS ${CMAKE_SOURCE_DIR}/headers/rasterlite2/*.h)
+list(FILTER HEADERS EXCLUDE REGEX "rl2config\\.h$")
+install(FILES ${HEADERS} ${GEN}/rasterlite2/rl2config.h DESTINATION include/rasterlite2)
+gaia_pc(rasterlite2 "a library supporting Rasters on DBMS" "${VERSION}" "-lrasterlite2" "spatialite")
+'@
+
+# Used by GDAL and mapnik (raster coverage via SpatiaLite); the fossil
+# checkout pin mirrors the linux build's.  The time.h include is the macos
+# finding (rasterlite2_private.h uses time_t without including it).
+function Build-Librasterlite2 {
+    if (Skip-If-Done 'librasterlite2') { return }
+    Log '=== librasterlite2'
+    $src = Fossil-Clone 'https://www.gaia-gis.it/fossil/librasterlite2' (Join-Path $LIW_SRC 'librasterlite2') '9dd8217cb9'
+    Invoke-Patch $src 'rasterlite2_time' @'
+path = "headers/rasterlite2_private.h"
+s = open(path).read()
+assert '#include "config.h"' in s
+s = s.replace('#include "config.h"', '#include "config.h"\n#include <time.h>', 1)
+open(path, "w").write(s)
+# Windows only: the Visual Studio branch of do_import_dir (the _findfirst
+# directory scan nobody else compiles) never closes its outer else block
+# at this commit, so every function after it fails to parse.
+path = "src/rl2import.c"
+s = open(path).read()
+old = "\t  sqlite3_free (search);\n\t  return cnt;\n#else\n"
+assert s.count(old) == 1, "rl2import.c's _findfirst branch changed"
+s = s.replace(old, "      }\n    sqlite3_free (search);\n    return cnt;\n#else\n")
+open(path, "w").write(s)
+'@
+    Write-Embedded (Join-Path $src 'gaia.cmake') $script:GaiaCMakeSources
+    Write-Embedded (Join-Path $src 'CMakeLists.txt') $script:Rasterlite2CMakeLists
+    Cmake-Build $src
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('rasterlite2.dll') 'librasterlite2'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('rasterlite2.pc') 'librasterlite2'
+    # (No spatialite import: rasterlite2 uses its headers over SQLite's
+    # extension API and links nothing of it.)
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\rasterlite2.dll') @(
+        'sqlite3', 'geotiff', 'tiff', 'libpng16', 'jpeg62', 'gif', 'libwebp', 'openjp2', 'cairo', 'libcurl') 'librasterlite2'
+    Done-Stamp 'librasterlite2'
+}
+
+# The MySQL client library for GDAL's MySQL driver.  Mirrors the
+# Dockerfile (the ndb CMakeLists.txt stub, WITHOUT_SERVER, bundled zlib);
+# WITH_SSL names the prefix's OpenSSL (the linux build's "system"
+# OpenSSL is the base image's).  Not REPRODUCIBLE_BUILD: on Windows it
+# wraps every compiler call in a perl script as the launcher, which
+# CreateProcess cannot run.  The DLL is libmysql.dll (installed into lib,
+# like mysql does on Windows), copied beside the other DLLs; the import
+# library gets the mysqlclient.lib name GDAL's FindMySQL looks for.
+function Build-Mysql {
+    if (Skip-If-Done 'mysql') { return }
+    Log '=== mysql (long)'
+    $src = Fetch-Tarball "https://cdn.mysql.com/Downloads/MySQL-$(V mysql @('2'))/mysql-$(V mysql).tar.gz" `
+        'mysql.tar.gz' (Join-Path $LIW_SRC 'mysql')
+    Remove-Item -Recurse -Force (Join-Path $src 'mysql-test') -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Force -Path (Join-Path $src 'storage\ndb') | Out-Null
+    Set-Content -Path (Join-Path $src 'storage\ndb\CMakeLists.txt') -Value '' -Encoding ascii
+    Cmake-Build $src @('-DBUILD_CONFIG=mysql_release', '-DBUILD_SHARED_LIBS=ON', '-DWITH_ZLIB=bundled',
+        "-DWITH_SSL=$script:CmakePrefix", '-DWITH_UNIT_TESTS=OFF', '-DWITHOUT_SERVER=ON',
+        '-DINSTALL_MYSQLTESTDIR=', '-DWITH_AUTHENTICATION_WEBAUTHN=OFF') -NoInstall
+    # The full install dies on its Debuginfo component (no .pdb in a
+    # MinSizeRel build); the headers and the shared library are the two
+    # components GDAL needs.
+    foreach ($component in @('Development', 'SharedLibraries')) {
+        Run-Logged 'cmake' @('--install', (Join-Path $src '_build'), '--component', $component) "cmake install of mysql's $component"
+    }
+    # mysql installs both the DLL and its import library into lib; the DLL
+    # goes beside the others, and the import library takes the
+    # mysqlclient.lib name as well -- over the static mysqlclient.lib the
+    # Development component installs, which GDAL's FindMySQL (NAMES
+    # mysqlclient first) would otherwise link.
+    $lib = Join-Path $LIW_PREFIX 'lib'
+    Assert-Files $lib @('libmysql.dll', 'libmysql.lib') 'mysql'
+    Copy-Item (Join-Path $lib 'libmysql.dll') (Join-Path $LIW_PREFIX 'bin') -Force
+    Copy-Item (Join-Path $lib 'libmysql.lib') (Join-Path $lib 'mysqlclient.lib') -Force
+    Assert-Files (Join-Path $LIW_PREFIX 'include') @('mysql.h') 'mysql'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\libmysql.dll') @('libssl', 'libcrypto') 'mysql'
+    Done-Stamp 'mysql'
+}
+
+# The postgresql client library for GDAL's PG/PGDump/PostGISRaster
+# drivers, from PostgreSQL's meson build (its Windows build system).  As
+# on macos: without ICU and readline (neither is in the prefix) and with
+# OpenSSL; the whole tree is built and installed as on linux (libpq is
+# what GDAL links; the server headers are what cmake's FindPostgreSQL
+# requires).  perl, bison and flex are the Windows-only tools.
+function Build-Postgresql {
+    if (Skip-If-Done 'postgresql') { return }
+    Log '=== postgresql'
+    Ensure-Meson
+    Ensure-Perl
+    Ensure-WinFlexBison
+    $src = Fetch-Tarball "https://ftp.postgresql.org/pub/source/v$(V postgresql)/postgresql-$(V postgresql).tar.gz" `
+        'postgresql.tar.gz' (Join-Path $LIW_SRC 'postgresql')
+    $savedPath = $env:PATH
+    $env:PATH = "$script:PerlBin;$script:WinFlexBisonDir;$env:PATH"
+    try {
+        Meson-Build $src @('-Dssl=openssl', '-Dicu=disabled', '-Dreadline=disabled', '-Dzlib=enabled',
+            '-Dnls=disabled', '-Dplperl=disabled', '-Dplpython=disabled', '-Dpltcl=disabled',
+            '-Dlibxml=disabled', '-Dlibxslt=disabled', '-Dlz4=disabled', '-Dzstd=disabled', '-Ddocs=disabled')
+    } finally {
+        $env:PATH = $savedPath
+    }
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('libpq.dll') 'postgresql'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib') @('libpq.lib') 'postgresql'
+    Assert-Files (Join-Path $LIW_PREFIX 'include') @('libpq-fe.h') 'postgresql'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\libpq.dll') @('libssl', 'libcrypto') 'postgresql'
+    Done-Stamp 'postgresql'
+}
+
+# The MrSID decoding SDK (the MrSID driver), Extensis' Windows x64 build
+# of the version versions.txt pins (the linux build takes its rhel
+# tarball, pinned there for compiler reasons; the SDK has no listing
+# check_versions.py could track).  The DLLs go beside the prefix's so the
+# wheel repair bundles them; the import library and headers are handed to
+# GDAL's cmake explicitly (no stamp: the paths are needed on every run).
+function Get-Mrsid {
+    $version = V 'mrsid'
+    $dir = Join-Path $LIW_SRC 'mrsid'
+    $marker = Join-Path $dir ".extracted-$version"
+    if (-not (Test-Path $marker)) {
+        Log "=== mrsid $version"
+        $zip = Fetch "https://bin.extensis.com/download/developer/MrSID_DSDK-$version-win64-vc17.zip" `
+            "MrSID_DSDK-$version-win64-vc17.zip"
+        Expand-Zip $zip $dir
+        New-Item -ItemType File -Force -Path $marker | Out-Null
+    }
+    $lib = Get-ChildItem $dir -Recurse -Filter 'lti_dsdk*.lib' | Where-Object { $_.FullName -match 'Raster_DSDK' } |
+        Select-Object -First 1
+    if (-not $lib) { Die "mrsid: no lti_dsdk*.lib under $dir\*\Raster_DSDK" }
+    $sdk = Split-Path -Parent (Split-Path -Parent $lib.FullName)
+    $include = Join-Path $sdk 'include'
+    if (-not (Test-Path (Join-Path $include 'lt_base.h'))) { Die "mrsid: lt_base.h is not in $include" }
+    Get-ChildItem (Split-Path -Parent $lib.FullName) -Filter '*.dll' | ForEach-Object {
+        Copy-Item $_.FullName (Join-Path $LIW_PREFIX 'bin') -Force
+    }
+    $script:MrsidLibrary = $lib.FullName
+    $script:MrsidInclude = $include
+    Log "mrsid $version at $sdk"
+}
+
+# GDAL itself.  The Dockerfile has two branches, toggled by hand: the
+# release tag versions.txt's gdal names, or master at the commit
+# versions.txt's gdal-sha names (the nightly builds follow master so they
+# keep working; a release pin is for publication).  $script:GdalFromRelease
+# is that toggle, with the Dockerfile's current setting (master).  Both
+# other builds clone master 1000 deep and check the commit out; here the
+# commit is fetched directly (GitHub serves a fetch by sha), with
+# core.longpaths on, since the autotest tree has paths over 260
+# characters.  The .2 local build suffix (three places), the setup.py
+# version check, and the explicit cmake options mirror the Dockerfile.
+# Windows deviations, all marked: no armadillo; no USER_DEFS (gcc's
+# -Werror set; the MSVC build must not turn warnings into errors); the
+# MrSID SDK is Extensis' win64 build.
+$script:GdalFromRelease = $false
+
+function Build-Gdal {
+    if (Skip-If-Done 'gdal') { return }
+    Log '=== gdal (long)'
+    Ensure-Swig
+    $pp = $script:PatchPython
+    $src = Join-Path $LIW_SRC 'gdal'
+    if (Test-Path $src) { Remove-Item -Recurse -Force $src }
+    if ($script:GdalFromRelease) {
+        Log "gdal source: release tag v$(V gdal)"
+        for ($n = 1; $n -le 10; $n++) {
+            & git -c core.longpaths=true clone --depth=1 --single-branch -b "v$(V gdal)" `
+                -c advice.detachedHead=false https://github.com/OSGeo/gdal.git $src
+            if ($LASTEXITCODE -eq 0) { break }
+            if (Test-Path $src) { Remove-Item -Recurse -Force $src }
+            Log 'retrying git clone: gdal'
+            Start-Sleep -Seconds 5
+        }
+    } else {
+        $sha = V 'gdal-sha'
+        Log "gdal source: master at $sha"
+        New-Item -ItemType Directory -Force -Path $src | Out-Null
+        & git -C $src init -q
+        Assert-Exit 'git init for gdal'
+        & git -C $src remote add origin https://github.com/OSGeo/gdal.git
+        Assert-Exit 'git remote add for gdal'
+        for ($n = 1; $n -le 10; $n++) {
+            & git -C $src -c core.longpaths=true fetch --depth=1 origin $sha
+            if ($LASTEXITCODE -eq 0) { break }
+            Log "retrying git fetch: gdal $sha"
+            Start-Sleep -Seconds 5
+        }
+        & git -C $src -c core.longpaths=true checkout -q -f FETCH_HEAD
+        Assert-Exit "git checkout of gdal $sha"
+    }
+    if (-not (Test-Path (Join-Path $src 'CMakeLists.txt'))) { Die 'the gdal checkout has no CMakeLists.txt' }
+    Invoke-Patch $src 'gdal_version' @'
+import re
+path = "gcore/gdal_version.h.in"
+s = open(path).read()
+assert "define GDAL_VERSION_BUILD    0" in s
+s = s.replace("define GDAL_VERSION_BUILD    0", "define GDAL_VERSION_BUILD    2").replace("dev", ".2dev")
+open(path, "w").write(s)
+path = "VERSION"
+s = open(path).read()
+s = re.sub(r"([0-9])(\r?\n?)$", r"\1.2\2", s)
+open(path, "w").write(s)
+path = "swig/python/setup.py.in"
+s = open(path).read()
+assert "if library_version_num < gdal_python_version" in s
+s = s.replace("if library_version_num < gdal_python_version", "if False")
+open(path, "w").write(s)
+'@
+    # numpy in the configuring python: the bindings' _gdal_array extension
+    # is generated only when cmake finds it (the Dockerfile pip-installs
+    # numpy before cmake for the same reason).
+    & $pp -m pip install --quiet --no-warn-script-location numpy | Out-Null
+    Assert-Exit 'pip install of numpy'
+    Get-Mrsid
+    # GDAL's FindOpenEXR looks for OpenEXR, OpenEXRUtil, Imath and Iex by
+    # their bare names; OpenEXR 3's import libraries carry version
+    # suffixes (OpenEXR-3_5.lib, Imath-3_2.lib), so the four are handed
+    # over explicitly (the EXR driver silently disappears otherwise).
+    $lib = Join-Path $LIW_PREFIX 'lib'
+    $exr = @{}
+    foreach ($pair in @(@('OpenEXR_LIBRARY', 'OpenEXR-*.lib'), @('OpenEXR_UTIL_LIBRARY', 'OpenEXRUtil-*.lib'),
+                        @('OpenEXR_HALF_LIBRARY', 'Imath-*.lib'), @('OpenEXR_IEX_LIBRARY', 'Iex-*.lib'))) {
+        $found = Get-ChildItem $lib -Filter $pair[1] -File | Where-Object { $_.Name -notmatch '^OpenEXR(Core|Util)' -or $pair[1] -match 'Util' } |
+            Select-Object -First 1
+        if (-not $found) { Die "gdal: no $($pair[1]) in $lib (openexr missing?)" }
+        $exr[$pair[0]] = $found.FullName -replace '\\', '/'
+    }
+    # (GIT_LFS_SKIP_SMUDGE: PublicDecompWT's repository LFS-marks its test
+    # data, which the build never reads; harmless when git-lfs is absent.)
+    $env:GIT_LFS_SKIP_SMUDGE = '1'
+    try {
+        Cmake-Build $src @('-DGDAL_USE_LERC=ON', '-DENABLE_DEFLATE64=OFF', '-DGDAL_USE_PUBLICDECOMPWT=ON',
+            '-DGDAL_USE_ARMADILLO=OFF', '-DBUILD_TESTING=OFF', '-DBUILD_JAVA_BINDINGS=OFF',
+            '-DBUILD_CSHARP_BINDINGS=OFF', '-DBUILD_PYTHON_BINDINGS=ON',
+            "-DPython_EXECUTABLE=$($pp -replace '\\', '/')",
+            "-DSWIG_EXECUTABLE=$($script:SwigExe -replace '\\', '/')",
+            "-DMRSID_LIBRARY=$($script:MrsidLibrary -replace '\\', '/')",
+            "-DMRSID_INCLUDE_DIR=$($script:MrsidInclude -replace '\\', '/')",
+            "-DOpenEXR_LIBRARY=$($exr['OpenEXR_LIBRARY'])",
+            "-DOpenEXR_UTIL_LIBRARY=$($exr['OpenEXR_UTIL_LIBRARY'])",
+            "-DOpenEXR_HALF_LIBRARY=$($exr['OpenEXR_HALF_LIBRARY'])",
+            "-DOpenEXR_IEX_LIBRARY=$($exr['OpenEXR_IEX_LIBRARY'])",
+            # (The raw-library find skips the cmake targets' consumer
+            # defines: without IMATH_DLL, Imath's half.h references its
+            # conversion table without dllimport and the link fails.
+            # The first four flags are cmake's own MSVC defaults, which a
+            # CMAKE_CXX_FLAGS on the command line replaces -- fyba's
+            # headers test WIN32.)
+            '-DCMAKE_CXX_FLAGS=/DWIN32 /D_WINDOWS /GR /EHsc /DIMATH_DLL /DOPENEXR_DLL')
+    } finally {
+        Remove-Item -Path 'env:GIT_LFS_SKIP_SMUDGE' -ErrorAction SilentlyContinue
+    }
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('gdal.dll', 'gdalinfo.exe', 'ogrinfo.exe', 'gdal.exe') 'gdal'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib') @('gdal.lib') 'gdal'
+    if (-not (Test-Path (Join-Path $LIW_PREFIX 'share\gdal'))) { Die 'gdal did not install its data files' }
+    if (-not (Test-Path (Join-Path $src '_build\apps\gdal-config'))) { Die 'gdal did not generate apps/gdal-config' }
+    if (-not (Test-Path (Join-Path $src '_build\swig\python\setup.py'))) { Die 'gdal did not configure its python bindings (swig or python missing?)' }
+    # The macos build's assertion list, by DLL stem: every optional
+    # library the linux wheel links must have resolved from the prefix.
+    # Static ones (hdf4, fyba, libOpenDRIVE) are absorbed and have no
+    # import; librttopo reaches libgdal through spatialite only.
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\gdal.dll') @(
+        'geos_c', 'proj', 'libcurl', 'tiff', 'libpng16', 'jpeg62', 'openjp2', 'libwebp', 'heif', 'avif', 'jxl',
+        'poppler', 'cfitsio', 'hdf5', 'netcdf', 'libmysql', 'libpq', 'freexl', 'spatialite', 'rasterlite2',
+        'geotiff', 'xerces-c', 'libexpat', 'libxml2', 'json-c', 'gta', 'libkea', 'blosc', 'archive', 'gif',
+        'deflate', 'zstd', 'liblzma', 'z.dll', 'sqlite3', 'libcrypto', 'libssl', 'OpenEXR', 'Lerc', 'lti_dsdk',
+        'iconv', 'vcomp140') 'gdal'
+    Done-Stamp 'gdal'
+}
+
+# The GDAL python wheel: libgdal and its whole dependency tree, the proj
+# and gdal data files, and the gdal, proj and libgeotiff command line
+# tools, like the linux wheel.  Two Windows differences in the bundled
+# python: the tool wrapper runs the real tool as a child (os.execve on
+# Windows returns the console before the child is done), and answers
+# gdal-config itself from the configured script's variables (it is a sh
+# script, and Windows has no sh); and the osgeo patch finds the bundled
+# DLLs by their Windows names (gdal.dll, geos_c.dll) under GDAL.libs.
+$script:GdalBinWrapper = @'
+import os
+import subprocess
+import sys
+
+
+def _config(path, args):
+    # gdal-config is a sh script; answer each option from its variables.
+    values = {}
+    for line in open(path):
+        if line.startswith("CONFIG_") and "=" in line:
+            key, _, value = line.rstrip("\r\n").partition("=")
+            values[key] = value.strip('"')
+    options = {
+        "--libs": "CONFIG_LIBS", "--dep-libs": "CONFIG_DEP_LIBS", "--cflags": "CONFIG_CFLAGS",
+        "--datadir": "CONFIG_DATA", "--prefix": "CONFIG_PREFIX", "--version": "CONFIG_VERSION",
+        "--gnm-enabled": "CONFIG_GNM_ENABLED", "--formats": "CONFIG_FORMATS",
+        "--plugindir": "CONFIG_PLUGINDIR",
+    }
+    if len(args) != 1 or (args[0] not in options and args[0] != "--ogr-enabled"):
+        sys.stderr.write("Usage: gdal-config [%s]\n" % "|".join(["--ogr-enabled"] + sorted(options)))
+        return 1
+    print("yes" if args[0] == "--ogr-enabled" else values.get(options[args[0]], ""))
+    return 0
+
+
+def program():
+    environ = os.environ.copy()
+    localpath = os.path.dirname(os.path.abspath(__file__))
+    datapath = os.path.dirname(localpath)
+    environ.setdefault("PROJ_DATA", os.path.join(datapath, "proj"))
+    environ.setdefault("GDAL_DATA", os.path.join(datapath, "gdal"))
+    name = os.path.splitext(os.path.basename(sys.argv[0]))[0]
+    if name == "gdal-config":
+        sys.exit(_config(os.path.join(localpath, "gdal-config"), sys.argv[1:]))
+    sys.exit(subprocess.call([os.path.join(localpath, name + ".exe")] + sys.argv[1:], env=environ))
+'@
+
+function Build-GdalPython {
+    if (Skip-If-Done 'gdal_python') { return }
+    Log '=== gdal python'
+    $pp = $script:PatchPython
+    & $pp -m pip install --quiet --no-warn-script-location -U "delvewheel==$(V delvewheel)" | Out-Null
+    Assert-Exit 'pip install of delvewheel failed'
+    if (-not $script:VcOpenMP -or -not (Test-Path (Join-Path $script:VcOpenMP 'vcomp140.dll'))) {
+        Die 'gdal python: no OpenMP redistributable directory next to the CRT one (vcomp140.dll)'
+    }
+    Get-Mrsid
+    $gdalSrc = Join-Path $LIW_SRC 'gdal'
+    $src = Join-Path $gdalSrc '_build\swig\python'
+    if (-not (Test-Path (Join-Path $src 'setup.py'))) { Die 'the gdal python bindings were not configured under _build/swig/python' }
+
+    # The proj and gdal data files, and the tools: every gdal app that was
+    # installed, gdal-config (the configured sh script, read by the
+    # wrapper), libgeotiff's and proj's tools.
+    foreach ($data in @('proj', 'gdal')) {
+        $dest = Join-Path $src "osgeo\$data"
+        if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
+        Copy-Item (Join-Path $LIW_PREFIX "share\$data") $dest -Recurse
+    }
+    $binDir = Join-Path $src 'osgeo\bin'
+    if (Test-Path $binDir) { Remove-Item -Recurse -Force $binDir }
+    New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+    $prefixBin = Join-Path $LIW_PREFIX 'bin'
+    foreach ($appsDir in @((Join-Path $gdalSrc '_build\apps'), (Join-Path $LIW_SRC 'libgeotiff\libgeotiff\_build\bin'),
+                           (Join-Path $LIW_SRC 'proj4\_build\bin'))) {
+        if (-not (Test-Path $appsDir)) { Die "gdal python: no tools directory $appsDir" }
+        foreach ($exe in (Get-ChildItem $appsDir -Filter '*.exe' -File)) {
+            if (Test-Path (Join-Path $prefixBin $exe.Name)) {
+                Copy-Item (Join-Path $prefixBin $exe.Name) $binDir -Force
+            }
+        }
+    }
+    Copy-Item (Join-Path $gdalSrc '_build\apps\gdal-config') (Join-Path $binDir 'gdal-config') -Force
+    foreach ($tool in @('gdalinfo.exe', 'ogrinfo.exe', 'gdal.exe', 'listgeo.exe', 'proj.exe', 'cs2cs.exe')) {
+        if (-not (Test-Path (Join-Path $binDir $tool))) { Die "gdal python: $tool was not bundled" }
+    }
+    Set-Content -Path (Join-Path $binDir '__init__.py') -Value $script:GdalBinWrapper -Encoding ascii
+
+    # setup.py: the bundled tools as console scripts (named without .exe,
+    # like the pyvips ones), the data and tools as package data, the
+    # version from gdal-config's variables (the linux patch runs
+    # gdal-config; here the wrapper reads the same file), and the
+    # python_requires line the linux patch drops.
+    Invoke-Patch $src 'gdal_setup' @'
+import os
+import re
+path = "setup.py"
+data = open(path).read()
+if "osgeo.bin:program" in data:
+    raise SystemExit(0)  # already patched (the source tree persists between runs)
+config = open("../../apps/gdal-config").read()
+version = re.search(r'CONFIG_VERSION="([^"]+)"', config).group(1).split(".dev")[0].split("dev")[0]
+data = re.sub(r"gdal_version = '\d+.\d+.\d+(dev|)'", "gdal_version = '" + version + "'", data)
+data = data.replace(
+    "scripts/*.py'),",
+    """scripts/*.py'),
+    package_data={'osgeo': ['proj/*', 'gdal/*', 'bin/*']},""")
+scripts = "['%s=osgeo.bin:program' % os.path.splitext(name)[0] for name in os.listdir('osgeo/bin') if not name.endswith('.py')]"
+data = data.replace("console_scripts = []", "console_scripts = " + scripts)
+if "console_scripts" not in data:
+    data = data.replace(
+        "scripts/*.py'),",
+        """scripts/*.py'),
+    entry_points={'console_scripts': """ + scripts + "},")
+data = data.replace("    python_requires='>=3.6.0',", "")
+open(path, "w").write(data)
+'@
+    # osgeo/__init__.py: the bundled data paths, GDAL_LIBRARY_PATH and
+    # GEOS_LIBRARY_PATH from the bundled DLLs (delvewheel's gdal.libs,
+    # with the Windows DLL names; the linux GDAL.libs and names stay as
+    # fallbacks), and the linux patch's CPL_LOG default.  No
+    # CURL_CA_BUNDLE: curl is on Schannel here and uses the Windows
+    # certificate store.
+    # (From the source tree's copy each time: the configured one persists
+    # between runs, already patched.)
+    Copy-Item (Join-Path $gdalSrc 'swig\python\osgeo\__init__.py') (Join-Path $src 'osgeo\__init__.py') -Force
+    Invoke-Patch $src 'gdal_init' @'
+path = "osgeo/__init__.py"
+s = open(path).read()
+assert "osgeo package." in s
+s = s.replace(
+    "osgeo package.",
+"""osgeo package.
+
+import os
+import re
+from . import osr
+from . import gdal
+
+_localpath = os.path.dirname(os.path.abspath(__file__))
+osr.SetPROJSearchPaths([os.path.join(_localpath, "proj")])
+gdal.SetConfigOption("GDAL_DATA", os.path.join(_localpath, "gdal"))
+os.environ.setdefault("CPL_LOG", os.devnull)
+
+_libsdir = os.path.join(os.path.dirname(_localpath), "gdal.libs")
+if not os.path.exists(_libsdir):
+    _libsdir = os.path.join(os.path.dirname(_localpath), "GDAL.libs")
+_libs = {}
+if os.path.exists(_libsdir):
+    # (DLLs only: the bundled tools live here too, and gdal.exe would
+    # otherwise take the "gdal" key from gdal-<hash>.dll.)
+    _libs = {
+        re.split(r"-|\\.", name)[0]: os.path.join(_libsdir, name)
+        for name in os.listdir(_libsdir) if name.lower().endswith(".dll")
+    }
+GDAL_LIBRARY_PATH = _libs.get("libgdal") or _libs.get("gdal", "")
+GEOS_LIBRARY_PATH = _libs.get("libgeos_c") or _libs.get("geos_c", "")
+
+# On Windows gdal.dll tears itself down when it is unloaded, after the
+# interpreter is gone, and with CPL_DEBUG set it reports through whatever
+# error handler is installed; a Python callback (django's) is a dead
+# pointer by then and the process dies on exit.  Restore the built-in
+# handler first.
+import atexit
+atexit.register(gdal.SetErrorHandler, "CPLDefaultErrorHandler")
+""")
+open(path, "w").write(s)
+'@
+    foreach ($check in @(@('osgeo\__init__.py', 'GDAL_LIBRARY_PATH'), @('setup.py', 'osgeo.bin:program'),
+                         @('setup.py', "package_data={'osgeo'"))) {
+        if (-not (Select-String -Path (Join-Path $src $check[0]) -Pattern ([regex]::Escape($check[1])) -Quiet)) {
+            Die "gdal python: the $($check[0]) patch did not apply ($($check[1]) missing)"
+        }
+    }
+    # Python ports of two C utilities into scripts, as the linux build
+    # bundles them.
+    New-Item -ItemType Directory -Force -Path (Join-Path $src 'scripts') | Out-Null
+    Copy-Item (Join-Path $src 'gdal-utils\osgeo_utils\samples\gdalinfo.py') (Join-Path $src 'scripts\gdalinfo.py') -Force
+    Copy-Item (Join-Path $src 'gdal-utils\osgeo_utils\samples\ogrinfo.py') (Join-Path $src 'scripts\ogrinfo.py') -Force
+
+    # One wheel per python; pip's isolated build environment installs
+    # numpy from the bindings' pyproject build requires, so _gdal_array
+    # is built for every python; the extensions link the build tree's
+    # gdal.lib (setup.py is configured with its directory).
+    Remove-Item -Path (Join-Path $LIW_WHEELHOUSE 'gdal-*.whl'), (Join-Path $LIW_WHEELHOUSE 'GDAL-*.whl') -Force -ErrorAction SilentlyContinue
+    foreach ($minor in $script:Pythons) {
+        $pybin = Join-Path $LIW_PY $minor
+        Log "gdal wheel: python $minor"
+        if (Test-Path (Join-Path $src 'build')) { Remove-Item -Recurse -Force (Join-Path $src 'build') }
+        Run-Logged (Join-Path $pybin 'python.exe') @(
+            '-m', 'pip', 'wheel', '--no-deps', '--progress-bar', 'off',
+            '-w', $LIW_WHEELHOUSE, $src) "gdal wheel build for python $minor"
+    }
+    # The repair and the relocation run under the lowercase name pip wrote
+    # (the Glymur lesson: delvewheel finds the dist-info through the
+    # wheel's file name, and setuptools writes it in lowercase), so the
+    # library directory is gdal.libs; the finished wheel is renamed to
+    # GDAL- last, as the linux build's rename does.
+    Log 'delvewheel repair of the gdal wheels'
+    Remove-Item -Path (Join-Path $WheelsDir 'gdal-*.whl'), (Join-Path $WheelsDir 'GDAL-*.whl') -Force -ErrorAction SilentlyContinue
+    foreach ($whl in (Get-ChildItem -Path $LIW_WHEELHOUSE -Filter 'gdal-*.whl' -File)) {
+        Run-Logged $pp @(
+            '-m', 'delvewheel', 'repair', '-w', $WheelsDir,
+            '--add-path', "$prefixBin;$script:VcRedist;$script:VcOpenMP",
+            '--analyze-existing-exes',
+            '--include', 'vcruntime140.dll;vcruntime140_1.dll',
+            '--exclude', 'gdiplus.dll',
+            '--no-mangle', 'vcruntime140.dll;vcruntime140_1.dll',
+            $whl.FullName) "delvewheel repair of $($whl.Name)"
+        $out = Join-Path $WheelsDir $whl.Name
+        Relocate-Tools $out 'osgeo' 'gdal.libs'
+        Assert-WheelContains $out @(
+            '^gdal\.libs/gdal-[0-9a-f]+\.dll$',
+            '^gdal\.libs/geos_c-[0-9a-f]+\.dll$',
+            '^gdal\.libs/proj[0-9_]*-[0-9a-f]+\.dll$',
+            '^gdal\.libs/spatialite-[0-9a-f]+\.dll$',
+            '^gdal\.libs/netcdf-[0-9a-f]+\.dll$',
+            '^gdal\.libs/hdf5-[0-9a-f]+\.dll$',
+            '^gdal\.libs/libmysql-[0-9a-f]+\.dll$',
+            '^gdal\.libs/libpq-[0-9a-f]+\.dll$',
+            '^gdal\.libs/poppler-[0-9a-f]+\.dll$',
+            '^gdal\.libs/lti_dsdk[^/]*\.dll$',
+            '^gdal\.libs/OpenEXR-[0-9a-f_-]+\.dll$',
+            '^gdal\.libs/vcomp140-[0-9a-f]+\.dll$',
+            '^gdal\.libs/msvcp140-[0-9a-f]+\.dll$',
+            '^gdal\.libs/vcruntime140\.dll$',
+            '^gdal\.libs/gdalinfo\.exe$',
+            '^gdal\.libs/listgeo\.exe$',
+            '^gdal\.libs/proj\.exe$',
+            '^osgeo/bin/gdalinfo\.exe$',
+            '^osgeo/bin/gdal-config$',
+            '^osgeo/proj/proj\.db$',
+            '^osgeo/gdal/gdalvrt\.xsd$',
+            '^osgeo/_gdal_array.*\.pyd$',
+            '^osgeo/_gdal.*\.pyd$') 'gdal'
+        Move-Item $out (Join-Path $WheelsDir ($whl.Name -replace '^gdal-', 'GDAL-')) -Force
+    }
+    $repaired = @(Get-ChildItem -Path $WheelsDir -Filter 'GDAL-*win_amd64*.whl' -File)
+    if ($repaired.Count -lt $script:Pythons.Count) {
+        Die "gdal: only $($repaired.Count) wheels, expected $($script:Pythons.Count)"
+    }
+    Done-Stamp 'gdal_python'
+}
+
 # Expose each tool in <package>/bin as a console script that runs the
 # launcher of the same name (after the repair, <package>/bin/<tool>.exe is
 # the launcher, which finds the real tool in <dist>.libs).
@@ -4010,6 +5331,75 @@ function Main {
                 Build-Imagemagick
                 Build-Libvips
                 Build-Pyvips
+            }
+            'gdal' {
+                # The macos gdal case's order (the Dockerfile's final state
+                # for everything GDAL's cmake can detect), minus the MPI
+                # stack, plus the Windows-only tools and win-iconv; the
+                # glib/cairo chain and harfbuzz are here because poppler
+                # (built with its glib wrapper, shared with the pyvips
+                # tree) needs them and librasterlite2 needs cairo.
+                Ensure-Meson
+                Build-Zlib
+                Build-Bzip2
+                Build-Zstd
+                Build-Jbigkit
+                Build-Libwebp
+                Build-Libjpeg-Turbo
+                Build-Libdeflate
+                Build-Xz
+                Build-Libtiff
+                Build-Giflib
+                Build-Openssl
+                Build-Libbrotli
+                Build-Curl
+                Build-Json-C
+                Build-Lerc
+                Build-Lcms2
+                Build-Libpng
+                Build-Openjpeg
+                Build-Libhwy
+                Build-Jpeg-Xl
+                Build-Libexpat
+                Build-Sqlite
+                Build-Libxml2
+                Build-Lz4
+                Build-Libarchive
+                Build-Win-Iconv
+                Build-Proj4
+                Build-Pixman
+                Build-Freetype
+                Build-Fontconfig
+                Build-Glib
+                Build-Cairo
+                Build-Minizip
+                Build-Freexl
+                Build-Libgeos
+                Build-Librttopo
+                Build-Libspatialite
+                Build-Libgeotiff
+                Build-Librasterlite2
+                Build-Fyba
+                Build-Hdf4
+                Build-Hdf5
+                Build-Netcdf
+                Build-Mysql
+                Build-Postgresql
+                Build-Libgta
+                Build-Xerces-C
+                Build-Blosc
+                Build-Highfive
+                Build-Kealib
+                Build-Libde265
+                Build-Libheif
+                Build-Harfbuzz
+                Build-Poppler
+                Build-Fitsio
+                Build-Openexr
+                Build-Libopendrive
+                Build-Libavif
+                Build-Gdal
+                Build-GdalPython
             }
             default {
                 if ($pkg.StartsWith('dep:')) {

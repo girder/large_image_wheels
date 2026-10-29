@@ -363,6 +363,12 @@ Packages = {
         'git': 'https://github.com/GNOME/librsvg.git',
         're': r'/([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$',
     },
+    # windows.  libspatialite's trunk calls rtt_tpsnap, which no rttopo
+    # release has; the linux link tolerates the undefined symbol, MSVC's
+    # does not, so the windows build takes rttopo's master at this commit.
+    'librttopo-sha': {
+        'gitsha': 'https://gitlab.com/rttopo/rttopo.git',
+    },
     'librttopo': {
         # 'git': 'https://git.osgeo.org/gitea/rttopo/librttopo.git',
         'git': 'https://gitlab.com/rttopo/rttopo.git',
@@ -653,6 +659,15 @@ Packages = {
             r'([0-9]{4})\/sqlite-autoconf-([0-9]+).tar.(gz|xz)', data).groups()[:2])],
     },
     # macos
+    # windows.  Strawberry Perl's portable zip, for the builds whose own
+    # build systems are perl scripts there (OpenSSL's Configure,
+    # PostgreSQL's meson); the tag carries the version without its dots
+    # (SP_54231_64bit is 5.42.3.1), and windows/build_wheels.ps1 restores
+    # them.
+    'strawberry-perl': {
+        'git': 'https://github.com/StrawberryPerl/Perl-Dist-Strawberry.git',
+        're': r'SP_([0-9]+)_64bit$',
+    },
     'swig': {
         'git': 'https://github.com/swig/swig.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
@@ -678,6 +693,18 @@ Packages = {
     },
     'xerces-c': {
         'git': 'https://github.com/apache/xerces-c.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
+    # windows.  The iconv the gaia-gis libraries and GDAL link there (the
+    # linux build has glibc's, macos the system's).
+    'win-iconv': {
+        'git': 'https://github.com/win-iconv/win-iconv.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
+    # windows.  bison and flex for mysql's and postgresql's builds (the
+    # linux base image and macos have them).
+    'winflexbison': {
+        'git': 'https://github.com/lexxmark/winflexbison.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'xz': {
