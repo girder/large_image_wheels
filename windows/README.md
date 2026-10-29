@@ -508,15 +508,20 @@ sandbox before every host run:
   toolchain, libexif through an embedded cmake file, libarchive, LibRaw
   through its nmake makefile, harfbuzz, pango, libde265, libheif, curl
   on Schannel, poppler, cfitsio, hdf5, matio) and libvips with every
-  loader the linux wheel has except magick (see the deviations in the
-  hard-won list), then one API-mode cffi wheel per python with the four
-  vips tools bundled -- 73 DLLs in the wheel.  The wheel step was also
-  rehearsed for all seven pythons (the free-threaded ones included).
-  Not yet verified on the host.
+  loader the linux wheel has except magick, then one API-mode cffi
+  wheel per python with the four vips tools bundled.  The wheel step was
+  also rehearsed for all seven pythons (the free-threaded ones
+  included).
+- **ImageMagick added (2026-10-28)**, closing the one loader gap: bzip2
+  and libzip built, ImageMagick compiled from an embedded cmake file
+  against the prefix (see the hard-won entry), libvips with
+  `-Dmagick=enabled`, `magick` bundled beside the vips tools -- 75 DLLs
+  in the wheel.  Dev-mode checks for python 3.13 pass, with the new
+  magickload/magicksave round trip and the `magick` tool checks.  Not
+  yet verified on the host.
 
 Next step: the host run of `windows\sandbox_build.bat &&
-windows\test_via_sandbox.bat` (now four packages by default), then
-GDAL.
+windows\test_via_sandbox.bat` (four packages by default), then GDAL.
 
 Known gaps, in rough order:
 
@@ -560,19 +565,16 @@ Known gaps, in rough order:
   forced into every wheel (cairo was the first to import the `_1`; the
   import audit caught it).
 - **pyvips deviations from the linux wheel**, each marked in
-  `build_wheels.ps1` where it happens: no ImageMagick (at the pinned
-  version its only build systems are autotools and the VisualMagick
-  MSBuild projects, and MSBuild is not part of the installer-free
-  toolchain), so libvips is built with `-Dmagick=disabled` and the wheel
-  bundles no `magick` tool -- the shared suite never uses either, and a
-  cmake build of ImageMagick written by hand is the way to close the gap
-  if it matters; no libzip (only ImageMagick used it); curl on Schannel
-  with no OpenSSL in the tree; hdf5 without MPI (no OpenMPI on Windows)
-  and without its tools; poppler without its C++ wrapper (the one part
-  that hard-requires iconv) and with fontconfig font lookup forced (its
-  Windows default is win32); libjxl without its tools; libarchive
-  without bzip2; orc absent as on macos.  Everything else the linux
-  wheel's libvips links is required explicitly at configure time
+  `build_wheels.ps1` where it happens: ImageMagick is compiled from an
+  embedded cmake file rather than upstream's MSBuild projects (see the
+  hard-won entry; the result links the same delegates as the linux
+  build, with every coder inside MagickCore like the macos build, and
+  no Magick++); curl on Schannel with no OpenSSL in the tree; hdf5
+  without MPI (no OpenMPI on Windows) and without its tools; poppler
+  without its C++ wrapper (the one part that hard-requires iconv) and
+  with fontconfig font lookup forced (its Windows default is win32);
+  libjxl without its tools; orc absent as on macos.  Everything the
+  linux wheel's libvips links is required explicitly at configure time
   (`-D<loader>=enabled`) and checked on the DLL's import table.
 - `check_versions.py` on Windows: `timeout` resolves to Windows'
   timeout.exe no matter what PATH says (CreateProcess searches System32
@@ -897,7 +899,55 @@ Known gaps, in rough order:
   libexif builds from an embedded cmake file (its own build is
   autotools; MSVC lacks `ssize_t`, which the generated config.h
   supplies); LibRaw builds through its own `Makefile.msvc`, which
-  installs nothing.
+  installs nothing (its `.pc` must say `-I${includedir}/libraw`, as
+  LibRaw's own does: ImageMagick's dng coder includes `<libraw.h>`).
+- **ImageMagick** has no cmake or nmake build.  Upstream's Windows route
+  (github.com/ImageMagick/Windows) is a project generator,
+  `Configure.exe`, that writes MSBuild projects for ImageMagick *and for
+  ImageMagick's own forks of every delegate library* (libpng, libtiff,
+  libjpeg-turbo, librsvg, ... some forty repositories), all built from
+  source in one Visual Studio solution.  That needs MSBuild, which the
+  installer-free toolchain does not have, and it would put a second copy
+  of each library into the wheel beside the one libvips links -- the
+  opposite of parity.  What the generated projects actually do is small:
+  compile `MagickCore/*.c` with the coders, `MagickWand/*.c` and
+  `utilities/magick.c` **as C++20** (`CompileAsCpp`; the headers use
+  `[[fallthrough]]` under `_MSC_VER`, and the ABI stays C through their
+  `extern "C"` blocks), with `_MAGICKLIB_` and `_WIN32_WINNT`, a
+  generated `magick-baseconfig.h` and `version.h`.  `Build-Imagemagick`
+  does that from an embedded cmake file against this prefix's libraries
+  (each delegate a required pkg-config module, so a missing one is a
+  configure error; jbigkit by `find_library`).  The base config is the
+  Configure release's own template (`Configs/MagickCore/
+  magick-baseconfig.h.in` from the release the source pins in
+  `.github/build/windows/download-configure.sh`, so no extra version
+  pin) with its `$$CONFIG$$` marker replaced by the option block
+  Configure.exe writes, using the linux configure's defaults: Q16, HDRI,
+  32-bit channel masks (upstream's x64 projects use 64, which is why
+  they need C++), DPC, deprecated API excluded; `version.h` is
+  `version.h.in` filled from `m4/version.m4` the way configure.ac does
+  it.  OpenMP is on (`/openmp`, as the linux `-fopenmp`), which makes
+  MagickCore import `vcomp140.dll` from the redist's OpenMP directory
+  (next to the CRT one; delvewheel bundles it, mangled, like
+  `msvcp140.dll`).  Two things upstream's forks carry as patches had to
+  be redone: LibRaw's C++ headers against nt-base-private.h's
+  `read`/`write`/`tell` macros (undefined before `<libraw.h>` in the dng
+  coder, as upstream's LibRaw fork does in `libraw_datastream.h`), and
+  bzip2 (upstream vendors it; here it is seven source files through an
+  embedded cmake file, exports from the tarball's `libbz2.def` minus its
+  `LIBRARY LIBBZ2` line, which would otherwise make the import library
+  name `LIBBZ2.dll`; import library `bz2.lib`, the name `FindBZip2`
+  wants, so libarchive now links it too).  libzip (ImageMagick's ora
+  coder) is a plain cmake build.  The DLLs are `MagickCore-7.Q16HDRI.dll`
+  and `MagickWand-7.Q16HDRI.dll`, the import libraries the same stems,
+  and the `.pc` files carry the same three `-D` flags as on linux.
+  ImageMagick's zstd delegate only names zstd in the version string
+  (libtiff does the zstd work), so link.exe records no zstd import where
+  autotools' `-lzstd` always shows -- the dependency assertion does not
+  ask for it.  MagickCore's emf coder imports `gdiplus.dll`, a Windows
+  component that lives in WinSxS rather than System32; delvewheel does
+  not know it as a system DLL and copied the sandbox's into the wheel
+  until `--exclude gdiplus.dll` was added.
 - DLL names in the libvips tree, as the builds produce them: `vips-42.dll`
   (+ `vips-cpp-42.dll`; import library `vips.lib`), `rsvg-2-2.dll`,
   `heif.dll`, `libde265.dll`, `jxl.dll`, `imagequant.dll`, `exif.dll`,
@@ -906,8 +956,9 @@ Known gaps, in rough order:
   `poppler.dll` + `poppler-glib.dll`, `libcurl.dll`, `harfbuzz.dll`
   (15.x also installs -subset, -cairo, -gobject, -gpu, -raster and
   -vector DLLs), `pango-1.0-0.dll` + `pangocairo`/`pangoft2`/`pangowin32`,
-  `fribidi-0.dll` (pango's wrap), `lz4.dll`.  The pyvips wheel bundles
-  73 of them plus `msvcp140.dll`.
+  `fribidi-0.dll` (pango's wrap), `lz4.dll`, `MagickCore-7.Q16HDRI.dll`
+  + `MagickWand-7.Q16HDRI.dll`, `zip.dll`, `bz2.dll`.  The pyvips wheel
+  bundles 75 of them plus `msvcp140.dll` and `vcomp140.dll`.
 - `Cmake-Build` runs cmake through `Run-Logged` so its stderr ("Could
   NOT find ...", configure errors) reaches the log; it did not at
   first, and poppler's first failure was invisible from the log.

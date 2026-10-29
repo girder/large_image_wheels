@@ -1382,6 +1382,11 @@ function Ensure-Toolchain {
         -not (Test-Path (Join-Path $script:VcRedist 'vcruntime140.dll'))) {
         Die "no x64 VC++ redistributable directory under $msvcDir\VC\Redist\MSVC"
     }
+    # The OpenMP runtime next to it (vcomp140.dll): ImageMagick is built
+    # with /openmp like the linux build's -fopenmp, and delvewheel bundles
+    # the DLL from here.
+    $script:VcOpenMP = (Get-ChildItem -Path (Split-Path -Parent $script:VcRedist) `
+        -Directory -Filter 'Microsoft.VC14*.OpenMP' | Select-Object -First 1).FullName
     Log "using MSVC $($info.msvc) and Windows SDK $($info.sdk) at $msvcDir (redist $script:VcRedist)"
 }
 
@@ -1595,6 +1600,81 @@ function Build-Zlib {
     Cmake-Build $src @('-DZLIB_BUILD_TESTING=OFF', '-DZLIB_BUILD_STATIC=OFF')
     Assert-Files (Join-Path $LIW_PREFIX 'bin') @('z.dll') 'zlib'
     Done-Stamp 'zlib'
+}
+
+# bzip2: the linux base image and macos have a system one, which
+# ImageMagick, libarchive and freetype pick up there; Windows has none, so
+# it is built from the release tarball (seven source files; its own
+# makefile.msc builds only a static library).  The DLL's exports come from
+# the tarball's libbz2.def minus its LIBRARY line, which would otherwise
+# record LIBBZ2.dll as the DLL name in the import library.  The import
+# library is bz2.lib, the name cmake's FindBZip2 (freetype, libarchive)
+# looks for.
+$script:Bzip2CMakeLists = @'
+cmake_minimum_required(VERSION 3.16)
+project(bzip2 C)
+if(NOT BZIP2_VERSION)
+  message(FATAL_ERROR "pass -DBZIP2_VERSION=<version>")
+endif()
+file(STRINGS ${CMAKE_SOURCE_DIR}/libbz2.def DEF_LINES)
+set(DEF "EXPORTS\n")
+foreach(line ${DEF_LINES})
+  string(STRIP "${line}" sym)
+  if(sym MATCHES "^BZ2_")
+    string(APPEND DEF "${sym}\n")
+  endif()
+endforeach()
+file(WRITE ${CMAKE_BINARY_DIR}/bz2.def "${DEF}")
+add_library(bz2 SHARED blocksort.c huffman.c crctable.c randtable.c
+  compress.c decompress.c bzlib.c ${CMAKE_BINARY_DIR}/bz2.def)
+target_compile_definitions(bz2 PRIVATE _CRT_SECURE_NO_WARNINGS)
+install(TARGETS bz2
+  RUNTIME DESTINATION bin LIBRARY DESTINATION lib ARCHIVE DESTINATION lib)
+install(FILES bzlib.h DESTINATION include)
+file(WRITE ${CMAKE_BINARY_DIR}/bzip2.pc
+"prefix=${CMAKE_INSTALL_PREFIX}
+exec_prefix=\${prefix}
+libdir=\${exec_prefix}/lib
+includedir=\${prefix}/include
+
+Name: bzip2
+Description: bzip2 compression library
+Version: ${BZIP2_VERSION}
+Libs: -L\${libdir} -lbz2
+Cflags: -I\${includedir}
+")
+install(FILES ${CMAKE_BINARY_DIR}/bzip2.pc DESTINATION lib/pkgconfig)
+'@
+
+function Build-Bzip2 {
+    if (Skip-If-Done 'bzip2') { return }
+    Log '=== bzip2'
+    $src = Fetch-Tarball "https://sourceware.org/pub/bzip2/bzip2-$(V bzip2).tar.gz" `
+        'bzip2.tar.gz' (Join-Path $LIW_SRC 'bzip2')
+    Write-Embedded (Join-Path $src 'CMakeLists.txt') $script:Bzip2CMakeLists
+    Cmake-Build $src @("-DBZIP2_VERSION=$(V bzip2)")
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('bz2.dll') 'bzip2'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib') @('bz2.lib') 'bzip2'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('bzip2.pc') 'bzip2'
+    Done-Stamp 'bzip2'
+}
+
+# libzip, for ImageMagick's ora coder (the linux image installs it early;
+# nothing else in the tree uses it).  Its cmake finds zlib, bzip2, lzma and
+# zstd in the prefix; encryption through Windows' own crypto API, as its
+# Windows default.  No tools, tests or docs.
+function Build-Libzip {
+    if (Skip-If-Done 'libzip') { return }
+    Log '=== libzip'
+    $src = Git-Clone 'https://github.com/nih-at/libzip.git' "v$(V libzip)" (Join-Path $LIW_SRC 'libzip')
+    Cmake-Build $src @('-DBUILD_TOOLS=OFF', '-DBUILD_REGRESS=OFF', '-DBUILD_EXAMPLES=OFF',
+        '-DBUILD_DOC=OFF', '-DBUILD_OSSFUZZ=OFF', '-DENABLE_OPENSSL=OFF', '-DENABLE_GNUTLS=OFF',
+        '-DENABLE_MBEDTLS=OFF', '-DENABLE_WINDOWS_CRYPTO=ON', '-DENABLE_BZIP2=ON', '-DENABLE_LZMA=ON',
+        '-DENABLE_ZSTD=ON')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('zip.dll') 'libzip'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('libzip.pc') 'libzip'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\zip.dll') @('z.dll', 'bz2', 'liblzma', 'zstd') 'libzip'
+    Done-Stamp 'libzip'
 }
 
 function Build-Zstd {
@@ -2177,15 +2257,13 @@ open(path, "w").write(s)
     Done-Stamp 'openslide'
 }
 
-# --- the libvips tree (lz4 through matio, then libvips itself): the
+# --- the libvips tree (lz4 through ImageMagick, then libvips itself): the
 # counterpart of the Dockerfile's VIPS section and of the two pyvips
 # stages of macos/build_wheels.sh.  Windows deviations, each called out
-# where it happens: no ImageMagick (at this version its only build systems
-# are autotools and the VisualMagick/MSBuild projects, and MSBuild is not
-# part of the installer-free toolchain), so libvips's magick loader and
-# the bundled magick tool are absent; no libzip (only ImageMagick used
-# it); curl on Schannel instead of OpenSSL; hdf5 without MPI; orc absent
-# as on macos (libvips uses highway; orc is only its fallback). ---
+# where it happens: ImageMagick through an embedded cmake file (see
+# Build-Imagemagick); curl on Schannel instead of OpenSSL; hdf5 without
+# MPI; orc absent as on macos (libvips uses highway; orc is only its
+# fallback). ---
 
 function Build-Lz4 {
     if (Skip-If-Done 'lz4') { return }
@@ -2408,23 +2486,22 @@ function Build-Libexif {
     Done-Stamp 'libexif'
 }
 
-# libarchive: zlib, zstd, lzma and lz4 from the prefix (the formats the
-# linux wheel's libarchive carries through them are asserted).  No bzip2
-# (the linux base image has one and macos uses the system's; nothing in
-# this prefix provides it), no OpenSSL (Windows' CNG supplies the hashes),
-# no tools (bsdtar and friends are not bundled).
+# libarchive: zlib, bzip2, zstd, lzma and lz4 from the prefix (the formats
+# the linux wheel's libarchive carries through them are asserted).  No
+# OpenSSL (Windows' CNG supplies the hashes), no tools (bsdtar and friends
+# are not bundled).
 function Build-Libarchive {
     if (Skip-If-Done 'libarchive') { return }
     Log '=== libarchive'
     $src = Git-Clone 'https://github.com/libarchive/libarchive.git' "v$(V libarchive)" (Join-Path $LIW_SRC 'libarchive')
     Cmake-Build $src @('-DBUILD_TESTING=OFF', '-DENABLE_TEST=OFF', '-DBUILD_SHARED_LIBS=ON',
         '-DENABLE_TAR=OFF', '-DENABLE_CPIO=OFF', '-DENABLE_CAT=OFF', '-DENABLE_UNZIP=OFF',
-        '-DENABLE_BZip2=OFF', '-DENABLE_OPENSSL=OFF', '-DENABLE_LIBB2=OFF', '-DENABLE_LZO=OFF',
+        '-DENABLE_BZip2=ON', '-DENABLE_OPENSSL=OFF', '-DENABLE_LIBB2=OFF', '-DENABLE_LZO=OFF',
         '-DENABLE_ICONV=OFF', '-DENABLE_CNG=ON',
         '-DCMAKE_POLICY_VERSION_MINIMUM=3.5')
     Assert-Files (Join-Path $LIW_PREFIX 'bin') @('archive.dll') 'libarchive'
     Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('libarchive.pc') 'libarchive'
-    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\archive.dll') @('z.dll', 'zstd', 'liblzma', 'lz4') 'libarchive'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\archive.dll') @('z.dll', 'bz2', 'zstd', 'liblzma', 'lz4') 'libarchive'
     Done-Stamp 'libarchive'
 }
 
@@ -2460,9 +2537,10 @@ function Build-Libraw {
     # (-llibraw: the import library is libraw.lib; the linux .pc says -lraw.)
     # libvips asks for libraw_r, the thread-safe flavor; the MSVC makefile
     # compiles without LIBRAW_NOTHREADS, so the one DLL is that flavor and
-    # both names describe it.
-    Write-PkgConfig 'libraw' 'Raw image decoder library' (V libraw) '-llibraw'
-    Write-PkgConfig 'libraw_r' 'Raw image decoder library (thread-safe)' (V libraw) '-llibraw'
+    # both names describe it.  Cflags as LibRaw's own .pc: the headers are
+    # in include/libraw, and ImageMagick's dng coder includes <libraw.h>.
+    Write-PkgConfig 'libraw' 'Raw image decoder library' (V libraw) '-llibraw' '-I${includedir}/libraw'
+    Write-PkgConfig 'libraw_r' 'Raw image decoder library (thread-safe)' (V libraw) '-llibraw' '-I${includedir}/libraw'
     Assert-Files (Join-Path $LIW_PREFIX 'bin') @('libraw.dll') 'libraw'
     Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\libraw.dll') @('lcms2', 'jpeg62') 'libraw'
     Done-Stamp 'libraw'
@@ -2700,13 +2778,278 @@ function Build-Matio {
     Done-Stamp 'matio'
 }
 
+# ImageMagick.  Upstream's Windows build is a project generator
+# (Configure.exe) that writes MSBuild projects for ImageMagick and for
+# ImageMagick's own forks of every delegate library, all built from source
+# inside one Visual Studio solution.  That route needs MSBuild (not in the
+# installer-free toolchain) and would put a second copy of libpng,
+# libtiff, libjpeg and the rest into the wheel next to the ones libvips
+# links.  What the generated projects do is small, though: compile
+# MagickCore/*.c with the coders, MagickWand/*.c and utilities/magick.c
+# with _MAGICKLIB_ and _WIN32_WINNT, a generated magick-baseconfig.h (the
+# Configure release's template with the option block and one
+# MAGICKCORE_<X>_DELEGATE define per delegate filled in) and version.h
+# from m4/version.m4.  The embedded cmake file below does exactly that
+# against this prefix's libraries, resolved through pkg-config, so every
+# delegate the linux and macos builds link is required here (a missing
+# one is a configure error) and checked on the DLL's import table.  Like
+# the macos build, every coder is compiled into MagickCore (no modules;
+# the linux wheel's dlopened coder modules are never bundled anyway).
+# Q16, HDRI, 32-bit channel masks and OpenMP, as the linux configure
+# defaults (the 64-bit masks of upstream's x64 projects need C++).
+# Delegates the linux image also lacks stay off: lqr, raqm, djvu, gs,
+# gvc, wmf, flif, fpx, uhdr, dps, X11.  No Magick++ (nothing in the
+# wheel consumes the C++ API).
+$script:ImageMagickCMakeLists = @'
+cmake_minimum_required(VERSION 3.16)
+project(ImageMagick C CXX)
+foreach(var IM_BASECONFIG_TEMPLATE IM_RELEASE_DATE IM_GIT_REVISION)
+  if(NOT ${var})
+    message(FATAL_ERROR "pass -D${var}=...")
+  endif()
+endforeach()
+find_package(PkgConfig REQUIRED)
+
+# Delegates: the pkg-config modules of each, and the define the coders
+# test (upstream's .ImageMagick/Config.txt of each dependency names it).
+set(CONFIG_DEFINES "")
+set(DELEGATE_TARGETS "")
+function(delegate name)
+  pkg_check_modules(DEP_${name} REQUIRED IMPORTED_TARGET ${ARGN})
+  set(CONFIG_DEFINES "${CONFIG_DEFINES}#define MAGICKCORE_${name}_DELEGATE 1\n" PARENT_SCOPE)
+  set(DELEGATE_TARGETS ${DELEGATE_TARGETS} PkgConfig::DEP_${name} PARENT_SCOPE)
+endfunction()
+delegate(ZLIB zlib)
+delegate(BZLIB bzip2)
+delegate(LZMA liblzma)
+delegate(ZSTD libzstd)
+delegate(ZIP libzip)
+delegate(PNG libpng)
+delegate(JPEG libjpeg)
+delegate(TIFF libtiff-4)
+delegate(WEBP libwebp)
+delegate(WEBPMUX libwebpmux libwebpdemux)
+delegate(LIBOPENJP2 libopenjp2)
+delegate(JXL libjxl libjxl_threads)
+delegate(HEIC libheif)
+delegate(RAW_R libraw_r)
+delegate(OPENEXR OpenEXR)
+delegate(FFTW fftw3)
+delegate(LCMS lcms2)
+delegate(XML libxml-2.0)
+delegate(FREETYPE freetype2)
+delegate(FONTCONFIG fontconfig)
+delegate(CAIRO cairo)
+delegate(PANGOCAIRO pangocairo)
+delegate(RSVG librsvg-2.0)
+# jbigkit has no .pc file (a static library in the prefix).
+find_library(JBIG_LIBRARY NAMES libjbig jbig REQUIRED)
+find_path(JBIG_INCLUDE_DIR jbig.h REQUIRED)
+string(APPEND CONFIG_DEFINES "#define MAGICKCORE_JBIG_DELEGATE 1\n")
+# What the delegate probes of configure.ac would add for these versions.
+string(APPEND CONFIG_DEFINES "#define MAGICKCORE_HAVE_LCMS2_H 1\n")
+foreach(def JPEG_ENABLE_LOSSLESS JPEG12_READ_SCANLINES JPEG12_WRITE_SCANLINES
+            JPEG16_READ_SCANLINES JPEG16_WRITE_SCANLINES)
+  string(APPEND CONFIG_DEFINES "#define MAGICKCORE_HAVE_${def} 1\n")
+endforeach()
+
+# magick-baseconfig.h: the Configure release's Windows template, its
+# $$CONFIG$$ marker replaced by the option block Configure.exe writes
+# (MagickBaseConfig.cpp) with the linux configure's defaults.
+file(READ ${IM_BASECONFIG_TEMPLATE} TEMPLATE)
+set(CONFIG "#undef MAGICKCORE_INSTALLED_SUPPORT
+#define MAGICKCORE_QUANTUM_DEPTH 16
+#define MAGICKCORE_CHANNEL_MASK_DEPTH 32
+#define MAGICKCORE_HDRI_ENABLE 1
+#undef MAGICKCORE_HAVE_CL_CL_H
+#define MAGICKCORE_DPC_SUPPORT
+#define MAGICKCORE_EXCLUDE_DEPRECATED
+#define MAGICKCORE_ZERO_CONFIGURATION_SUPPORT 0
+${CONFIG_DEFINES}")
+string(FIND "${TEMPLATE}" "$$CONFIG$$" marker)
+if(marker EQUAL -1)
+  message(FATAL_ERROR "no $$CONFIG$$ marker in ${IM_BASECONFIG_TEMPLATE}")
+endif()
+string(REPLACE "$$CONFIG$$" "${CONFIG}" BASECONFIG "${TEMPLATE}")
+file(WRITE ${CMAKE_SOURCE_DIR}/MagickCore/magick-baseconfig.h "${BASECONFIG}")
+
+# version.h from version.h.in, with the values configure.ac derives from
+# m4/version.m4.
+file(READ ${CMAKE_SOURCE_DIR}/m4/version.m4 VERSION_M4)
+function(m4value key out)
+  string(REGEX MATCH "m4_define\\(\\[magick${key}\\], \\[([0-9a-zA-Z.]+)\\]" _m "${VERSION_M4}")
+  if("${CMAKE_MATCH_1}" STREQUAL "")
+    message(FATAL_ERROR "no magick${key} in m4/version.m4")
+  endif()
+  set(${out} "${CMAKE_MATCH_1}" PARENT_SCOPE)
+endfunction()
+m4value(_major_version MAJOR)
+m4value(_minor_version MINOR)
+m4value(_micro_version MICRO)
+m4value(_patchlevel_version PATCHLEVEL)
+m4value(_lib_version PACKAGE_LIB_VERSION)
+m4value(_library_current LIB_CURRENT)
+m4value(_library_revision LIB_REVISION)
+m4value(_library_age LIB_AGE)
+m4value(pp_library_current PP_CURRENT)
+m4value(pp_library_revision PP_REVISION)
+m4value(pp_library_age PP_AGE)
+set(PACKAGE_NAME "ImageMagick")
+set(PACKAGE_BASE_VERSION "${MAJOR}.${MINOR}.${MICRO}")
+set(MAGICK_LIB_VERSION_TEXT "${PACKAGE_BASE_VERSION}")
+set(MAGICK_LIB_VERSION_NUMBER "${LIB_CURRENT},${LIB_AGE},${LIB_REVISION}")
+set(PACKAGE_VERSION_ADDENDUM "-${PATCHLEVEL}")
+set(MAGICK_LIBRARY_CURRENT "${LIB_CURRENT}")
+math(EXPR MAGICK_LIBRARY_CURRENT_MIN "${LIB_CURRENT} - ${LIB_AGE}")
+set(MAGICK_TARGET_CPU "x86_64")
+set(MAGICKPP_LIB_VERSION_TEXT "${PACKAGE_BASE_VERSION}")
+set(MAGICKPP_LIBRARY_VERSION_INFO "${PP_CURRENT}:${PP_REVISION}:${PP_AGE}")
+set(MAGICKPP_LIBRARY_CURRENT "${PP_CURRENT}")
+math(EXPR MAGICKPP_LIBRARY_CURRENT_MIN "${PP_CURRENT} - ${PP_AGE}")
+set(MAGICK_GIT_REVISION "${IM_GIT_REVISION}")
+set(PACKAGE_RELEASE_DATE "${IM_RELEASE_DATE}")
+set(DOCUMENTATION_PATH "unavailable")
+configure_file(${CMAKE_SOURCE_DIR}/MagickCore/version.h.in
+               ${CMAKE_SOURCE_DIR}/MagickCore/version.h @ONLY)
+
+set(ABI "Q16HDRI")
+set(LIBNAME_CORE "MagickCore-${MAJOR}.${ABI}")
+set(LIBNAME_WAND "MagickWand-${MAJOR}.${ABI}")
+file(GLOB CORE_SRC ${CMAKE_SOURCE_DIR}/MagickCore/*.c)
+file(GLOB CODER_SRC ${CMAKE_SOURCE_DIR}/coders/*.c)
+# The X11 and WMF coders, as upstream's coders/Config.txt excludes them.
+list(FILTER CODER_SRC EXCLUDE REGEX "/(wmf|x|xwd)\\.c$")
+file(GLOB WAND_SRC ${CMAKE_SOURCE_DIR}/MagickWand/*.c)
+
+# As upstream's projects compile under MSVC: every .c as C++20 (the
+# headers use [[fallthrough]] under _MSC_VER); the ABI stays C through
+# the headers' extern "C" blocks.
+set(IM_OPTIONS /TP /std:c++20 /EHsc /openmp /W1)
+set(IM_DEFINES _WIN32_WINNT=_WIN32_WINNT_WIN10 _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_DEPRECATE)
+
+add_library(MagickCore SHARED ${CORE_SRC} ${CODER_SRC})
+set_target_properties(MagickCore PROPERTIES OUTPUT_NAME ${LIBNAME_CORE})
+target_include_directories(MagickCore PUBLIC ${CMAKE_SOURCE_DIR} PRIVATE ${JBIG_INCLUDE_DIR})
+target_compile_definitions(MagickCore PRIVATE _MAGICKLIB_ ${IM_DEFINES})
+target_compile_options(MagickCore PRIVATE ${IM_OPTIONS})
+target_link_libraries(MagickCore PRIVATE ${DELEGATE_TARGETS} ${JBIG_LIBRARY}
+  ws2_32 user32 gdi32 advapi32 shell32 ole32 oleaut32 urlmon bcrypt winmm)
+
+add_library(MagickWand SHARED ${WAND_SRC})
+set_target_properties(MagickWand PROPERTIES OUTPUT_NAME ${LIBNAME_WAND})
+target_compile_definitions(MagickWand PRIVATE _MAGICKLIB_ ${IM_DEFINES})
+target_compile_options(MagickWand PRIVATE ${IM_OPTIONS})
+target_link_libraries(MagickWand PRIVATE MagickCore)
+
+add_executable(magick ${CMAKE_SOURCE_DIR}/utilities/magick.c)
+target_compile_definitions(magick PRIVATE ${IM_DEFINES})
+target_compile_options(magick PRIVATE ${IM_OPTIONS})
+target_link_libraries(magick PRIVATE MagickWand MagickCore)
+
+install(TARGETS MagickCore MagickWand magick
+  RUNTIME DESTINATION bin LIBRARY DESTINATION lib ARCHIVE DESTINATION lib)
+file(GLOB CORE_HEADERS ${CMAKE_SOURCE_DIR}/MagickCore/*.h)
+file(GLOB WAND_HEADERS ${CMAKE_SOURCE_DIR}/MagickWand/*.h)
+install(FILES ${CORE_HEADERS} DESTINATION include/ImageMagick-${MAJOR}/MagickCore)
+install(FILES ${WAND_HEADERS} DESTINATION include/ImageMagick-${MAJOR}/MagickWand)
+
+# The .pc files autotools would install (both the plain and the ABI-suffixed
+# names); the Cflags carry the same three defines as on linux.
+set(PCFLAGS "-DMAGICKCORE_HDRI_ENABLE=1 -DMAGICKCORE_QUANTUM_DEPTH=16 -DMAGICKCORE_CHANNEL_MASK_DEPTH=32")
+function(write_pc name libname description requires)
+  set(REQ "")
+  if(requires)
+    set(REQ "Requires: ${requires}\n")
+  endif()
+  file(WRITE ${CMAKE_BINARY_DIR}/${name}.pc
+"prefix=${CMAKE_INSTALL_PREFIX}
+exec_prefix=\${prefix}
+libdir=\${exec_prefix}/lib
+includedir=\${prefix}/include/ImageMagick-${MAJOR}
+includearchdir=\${prefix}/include/ImageMagick-${MAJOR}
+libname=${libname}
+
+Name: ${name}
+Description: ${description} (ABI ${ABI})
+URL: https://github.com/ImageMagick
+Version: ${PACKAGE_BASE_VERSION}
+${REQ}Cflags: -I\${includearchdir} -I\${includedir} ${PCFLAGS}
+Libs: -L\${libdir} -l\${libname}
+")
+  install(FILES ${CMAKE_BINARY_DIR}/${name}.pc DESTINATION lib/pkgconfig)
+endfunction()
+write_pc(MagickCore ${LIBNAME_CORE} "MagickCore - C API for ImageMagick" "")
+write_pc(MagickCore-${MAJOR}.${ABI} ${LIBNAME_CORE} "MagickCore - C API for ImageMagick" "")
+write_pc(ImageMagick ${LIBNAME_CORE} "ImageMagick - convert, edit, and compose images" "")
+write_pc(ImageMagick-${MAJOR}.${ABI} ${LIBNAME_CORE} "ImageMagick - convert, edit, and compose images" "")
+write_pc(MagickWand ${LIBNAME_WAND} "MagickWand - C API for ImageMagick" "MagickCore")
+write_pc(MagickWand-${MAJOR}.${ABI} ${LIBNAME_WAND} "MagickWand - C API for ImageMagick" "MagickCore")
+'@
+
+function Build-Imagemagick {
+    if (Skip-If-Done 'imagemagick') { return }
+    Log '=== imagemagick'
+    $src = Git-Clone 'https://github.com/ImageMagick/ImageMagick.git' "$(V imagemagick)" (Join-Path $LIW_SRC 'ImageMagick')
+    # The base config template comes from the Configure release the source
+    # itself pins (its Windows CI downloads the same one).
+    $pinScript = Join-Path $src '.github\build\windows\download-configure.sh'
+    $pin = Get-Content $pinScript -Raw
+    if ($pin -notmatch 'download_configure "([^"]+)"') {
+        Die "imagemagick: no Configure release pin in $pinScript"
+    }
+    $configureRelease = $Matches[1]
+    $zip = Fetch "https://github.com/ImageMagick/Configure/releases/download/$configureRelease/files.zip" `
+        "ImageMagick-Configure-$configureRelease.zip"
+    $cfg = Join-Path $LIW_SRC 'ImageMagick-Configure'
+    Expand-Zip $zip $cfg
+    $template = Join-Path $cfg 'Configs\MagickCore\magick-baseconfig.h.in'
+    if (-not (Test-Path $template)) { Die "imagemagick: $template is not in the Configure release" }
+    $releaseDate = (& git -C $src log -1 --format=%cd --date=format:%Y-%m-%d).Trim()
+    Assert-Exit 'git log in the ImageMagick checkout'
+    if (-not $script:VcOpenMP -or -not (Test-Path (Join-Path $script:VcOpenMP 'vcomp140.dll'))) {
+        Die 'imagemagick: no OpenMP redistributable directory next to the CRT one (vcomp140.dll)'
+    }
+    # nt-base-private.h defines read/write/tell as function-like macros,
+    # which break LibRaw's C++ classes (a method named read); upstream's
+    # own LibRaw fork undefines the three in libraw_datastream.h for MSVC,
+    # and this does the same in the one coder that includes libraw.h.
+    Invoke-Patch $src 'imagemagick_dng' @'
+path = "coders/dng.c"
+s = open(path).read()
+old = "#if defined(MAGICKCORE_RAW_R_DELEGATE)\n#include <libraw.h>\n#endif\n"
+assert old in s, "dng.c's libraw include changed"
+s = s.replace(old, "#if defined(MAGICKCORE_RAW_R_DELEGATE)\n#if defined(_MSC_VER)\n"
+              "#undef read\n#undef write\n#undef tell\n#endif\n#include <libraw.h>\n#endif\n")
+open(path, "w").write(s)
+'@
+    Write-Embedded (Join-Path $src 'CMakeLists.txt') $script:ImageMagickCMakeLists
+    Cmake-Build $src @("-DIM_BASECONFIG_TEMPLATE=$($template -replace '\\', '/')",
+        "-DIM_RELEASE_DATE=$releaseDate", "-DIM_GIT_REVISION=$(V imagemagick)",
+        "-DPKG_CONFIG_EXECUTABLE=$env:PKG_CONFIG")
+    $core = 'MagickCore-7.Q16HDRI'
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @("$core.dll", 'MagickWand-7.Q16HDRI.dll', 'magick.exe') 'imagemagick'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib') @("$core.lib") 'imagemagick'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('MagickCore.pc', 'MagickWand.pc', 'ImageMagick.pc') 'imagemagick'
+    Assert-Files (Join-Path $LIW_PREFIX 'include\ImageMagick-7\MagickCore') @('magick-baseconfig.h', 'version.h') 'imagemagick'
+    # The macos build's assertion list: every delegate compiled into
+    # MagickCore (annotate's freetype/fontconfig, lcms, xml2, and the
+    # coder delegates), plus the OpenMP runtime.  Not zstd: the delegate
+    # only names it in the version string (libtiff does the zstd work),
+    # so link.exe records no import for it, where the autotools builds
+    # carry a -lzstd whether used or not.
+    Assert-DependentStems (Join-Path $LIW_PREFIX "bin\$core.dll") @(
+        'freetype', 'fontconfig', 'libxml2', 'z.dll', 'libpng16', 'jpeg62', 'tiff', 'libwebp', 'heif', 'jxl',
+        'libraw', 'rsvg-2', 'openjp2', 'lcms2', 'fftw3', 'zip', 'liblzma', 'bz2', 'OpenEXR',
+        'pangocairo', 'cairo', 'vcomp140') 'imagemagick'
+    Done-Stamp 'imagemagick'
+}
+
 # libvips: a meson build with every loader compiled in (-Dmodules=disabled,
 # like the Dockerfile).  Every loader the linux wheel carries is required
 # explicitly, so a dependency pkg-config cannot satisfy fails the
 # configure step instead of silently shrinking the feature set, and the
 # DLL's import table is checked afterwards all the same.  Windows
-# deviations: no magick loader (ImageMagick, see the tree's header) and
-# orc absent as on macos.
+# deviation: orc absent as on macos.
 function Build-Libvips {
     if (Skip-If-Done 'libvips') { return }
     Log '=== libvips'
@@ -2739,7 +3082,7 @@ s = s.replace("subdir('fuzz')", "# subdir('fuzz')  # not under MSVC (wheel build
 open(path, "w").write(s)
 '@
     Meson-Build $src @('-Dmodules=disabled', '-Dexamples=false', '-Dintrospection=disabled', '-Dvapi=false',
-        '-Dmagick=disabled', '-Dorc=disabled', '-Dcgif=disabled', '-Dspng=disabled', '-Dpdfium=disabled',
+        '-Dmagick=enabled', '-Dorc=disabled', '-Dcgif=disabled', '-Dspng=disabled', '-Dpdfium=disabled',
         '-Dquantizr=disabled', '-Duhdr=disabled',
         '-Dcfitsio=enabled', '-Dexif=enabled', '-Dfftw=enabled', '-Dfontconfig=enabled', '-Darchive=enabled',
         '-Dheif=enabled', '-Dimagequant=enabled', '-Djpeg=enabled', '-Djpeg-xl=enabled', '-Dlcms=enabled',
@@ -2756,8 +3099,8 @@ open(path, "w").write(s)
     $script:VipsDll = $dll.Name
     Assert-DependentStems $dll.FullName @(
         'cfitsio', 'exif', 'fftw3', 'archive', 'heif', 'imagequant', 'jpeg62', 'jxl', 'lcms2', 'libmatio',
-        'niftiio', 'OpenEXR', 'openjp2', 'libopenslide', 'hwy', 'pangocairo', 'libpng16', 'poppler-glib',
-        'libraw', 'rsvg-2', 'tiff', 'libwebp', 'z.dll', 'glib-2.0', 'gobject-2.0') 'libvips'
+        'MagickCore', 'niftiio', 'OpenEXR', 'openjp2', 'libopenslide', 'hwy', 'pangocairo', 'libpng16',
+        'poppler-glib', 'libraw', 'rsvg-2', 'tiff', 'libwebp', 'z.dll', 'glib-2.0', 'gobject-2.0') 'libvips'
     Done-Stamp 'libvips'
 }
 
@@ -3347,8 +3690,8 @@ open(path, "w").write(s)
 }
 
 # The pyvips wheel bundles libvips and its whole dependency tree plus the
-# vips tools in pyvips/bin, like the linux and macos wheels (minus magick,
-# see the libvips tree's header).  The cffi extension is API mode, so
+# vips tools and magick in pyvips/bin, like the linux and macos wheels.
+# The cffi extension is API mode, so
 # there is one wheel per python; it is compiled against the prefix's
 # libvips through pkg-config (the pkgconfig python package honors
 # PKG_CONFIG and PKG_CONFIG_LIBDIR), and delvewheel follows its import
@@ -3365,10 +3708,11 @@ function Build-Pyvips {
 
     # The vips tools from the prefix (meson installs what the linux build
     # copies out of its tools directory; vipsprofile is a python script
-    # and is not a tool here).
+    # and is not a tool here) and magick, as the linux build copies it
+    # from its prefix.
     $binDir = Join-Path $src 'pyvips\bin'
     New-Item -ItemType Directory -Force -Path $binDir | Out-Null
-    foreach ($tool in @('vips', 'vipsedit', 'vipsheader', 'vipsthumbnail')) {
+    foreach ($tool in @('vips', 'vipsedit', 'vipsheader', 'vipsthumbnail', 'magick')) {
         $exe = Join-Path $LIW_PREFIX "bin\$tool.exe"
         if (-not (Test-Path $exe)) { Die "pyvips: no $tool.exe in the prefix to bundle" }
         Copy-Item $exe $binDir -Force
@@ -3464,17 +3808,29 @@ open(path, "w").write(s)
     Log 'delvewheel repair of the pyvips wheels'
     Remove-Item -Path (Join-Path $WheelsDir 'pyvips-*.whl') -Force -ErrorAction SilentlyContinue
     foreach ($whl in (Get-ChildItem -Path $LIW_WHEELHOUSE -Filter 'pyvips-*.whl' -File)) {
+        # (vcomp140.dll: MagickCore's OpenMP runtime, from the redist's
+        # OpenMP directory; delvewheel treats it like msvcp140.dll.
+        # gdiplus.dll: a Windows component MagickCore's emf coder imports;
+        # it lives in WinSxS rather than System32, so delvewheel does not
+        # know it as a system DLL and would copy the sandbox's into the
+        # wheel.)
         Run-Logged $pp @(
             '-m', 'delvewheel', 'repair', '-w', $WheelsDir,
-            '--add-path', "$(Join-Path $LIW_PREFIX 'bin');$script:VcRedist",
+            '--add-path', "$(Join-Path $LIW_PREFIX 'bin');$script:VcRedist;$script:VcOpenMP",
             '--analyze-existing-exes',
             '--include', "$script:VipsDll;vcruntime140.dll;vcruntime140_1.dll",
+            '--exclude', 'gdiplus.dll',
             '--no-mangle', 'vcruntime140.dll;vcruntime140_1.dll',
             $whl.FullName) "delvewheel repair of $($whl.Name)"
         $out = Join-Path $WheelsDir $whl.Name
         Relocate-Tools $out 'pyvips' 'pyvips.libs'
         Assert-WheelContains $out @(
             '^pyvips\.libs/(lib)?vips-42[0-9a-f-]*\.dll$',
+            '^pyvips\.libs/MagickCore-7\.Q16HDRI-[0-9a-f]+\.dll$',
+            '^pyvips\.libs/MagickWand-7\.Q16HDRI-[0-9a-f]+\.dll$',
+            '^pyvips\.libs/vcomp140-[0-9a-f]+\.dll$',
+            '^pyvips\.libs/zip-[0-9a-f]+\.dll$',
+            '^pyvips\.libs/bz2-[0-9a-f]+\.dll$',
             '^pyvips\.libs/poppler-glib-[0-9a-f]+\.dll$',
             '^pyvips\.libs/rsvg-2[0-9a-f.-]*\.dll$',
             '^pyvips\.libs/heif-[0-9a-f]+\.dll$',
@@ -3487,7 +3843,9 @@ open(path, "w").write(s)
             '^pyvips\.libs/vcruntime140\.dll$',
             '^pyvips\.libs/vcruntime140_1\.dll$',
             '^pyvips\.libs/vips\.exe$',
+            '^pyvips\.libs/magick\.exe$',
             '^pyvips/bin/vips\.exe$',
+            '^pyvips/bin/magick\.exe$',
             '^pyvips/_libvips.*\.pyd$') 'pyvips'
     }
     $repaired = @(Get-ChildItem -Path $WheelsDir -Filter 'pyvips-*win_amd64*.whl' -File)
@@ -3573,6 +3931,7 @@ function Main {
                 Ensure-Meson
                 Ensure-Clang
                 Build-Zlib
+                Build-Bzip2
                 Build-Zstd
                 Build-Jbigkit
                 Build-Libwebp
@@ -3599,12 +3958,14 @@ function Main {
             'pyvips' {
                 Ensure-Meson
                 Build-Zlib
+                Build-Bzip2
                 Build-Zstd
                 Build-Jbigkit
                 Build-Libwebp
                 Build-Libjpeg-Turbo
                 Build-Libdeflate
                 Build-Xz
+                Build-Libzip
                 Build-Libtiff
                 Build-Lcms2
                 Build-Libpng
@@ -3640,6 +4001,7 @@ function Main {
                 Build-Fitsio
                 Build-Hdf5
                 Build-Matio
+                Build-Imagemagick
                 Build-Libvips
                 Build-Pyvips
             }

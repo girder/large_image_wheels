@@ -719,10 +719,10 @@ def check_pyvips(package_dir, libs_dir):
     report(hasattr(pyvips.Image, 'dzsave'), 'pyvips has Image.dzsave')
     # Every loader the linux wheel carries must be compiled in (the build
     # asserted the DLL imports; this checks the operations register).
-    # magickload is absent on Windows by design (no ImageMagick build).
     for op in ('tiffload', 'jpegload', 'pngload', 'webpload', 'jp2kload', 'openslideload',
                'heifload', 'jxlload', 'svgload', 'pdfload', 'rawload', 'fitsload',
-               'matload', 'niftiload', 'openexrload', 'dzsave', 'text', 'fwfft'):
+               'matload', 'niftiload', 'openexrload', 'magickload', 'magicksave',
+               'dzsave', 'text', 'fwfft'):
         report(pyvips.type_find('VipsOperation', op) != 0, f'libvips has the {op} operation')
     with tempfile.TemporaryDirectory() as tmp:
         image = pyvips.Image.black(64, 48, bands=3) + [10, 20, 30]
@@ -740,6 +740,20 @@ def check_pyvips(package_dir, libs_dir):
             b'<rect width="32" height="24" fill="red"/></svg>')
         report(svg.width == 32 and svg.height == 24 and svg.getpoint(1, 1)[0] == 255,
                'pyvips svgload (librsvg)')
+        # A format only ImageMagick handles, through the bundled MagickCore.
+        # (8-bit: ImageMagick imports float pixels on a 0..1 scale, and
+        # the arithmetic above made the image float.)
+        bmp = os.path.join(tmp, 'check.bmp')
+        image.cast('uchar').magicksave(bmp, format='BMP')
+        back = pyvips.Image.magickload(bmp)
+        report(back.width == 64 and back.height == 48 and back.getpoint(1, 1)[0] == 10,
+               'pyvips magicksave/magickload round trip (ImageMagick)')
+        code, out = run_tool('magick', ['--version'])
+        report(code == 0 and 'ImageMagick' in out,
+               f'bundled magick runs as a console script (exit {code}): {out.strip().splitlines()[:1]}')
+        code, out = run_tool('magick', ['-size', '8x8', 'xc:red', os.path.join(tmp, 'magick.png')])
+        report(code == 0 and os.path.getsize(os.path.join(tmp, 'magick.png')) > 0,
+               f'bundled magick writes a png (exit {code}): {out.strip().splitlines()[:1]}')
         code, out = run_tool('vips', ['--version'])
         report(code == 0 and 'vips-' in out,
                f'bundled vips runs as a console script (exit {code}): {out.strip().splitlines()[:1]}')
