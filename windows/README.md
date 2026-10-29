@@ -703,7 +703,19 @@ Known gaps, in rough order:
   `libjxr.pc`'s `-DJXR_DLL_IMPORT` enables.
 - meson with clang-cl guesses `lld-link` as the linker and dies with a
   bare `FileNotFoundError` when it is absent; `CC_LD=link` selects
-  MSVC's linker.
+  MSVC's linker for meson's own link steps.  It does not reach the
+  checks meson links through the compiler driver (the sanity check,
+  `has_function` probes), which use clang-cl's *own* default linker:
+  link.exe up to LLVM 21, **lld-link from LLVM 23** ("Compiler clang-cl
+  cannot compile programs" was the whole message when the pin moved to
+  23.1.4; `clang-cl -v` shows `"lld-link"` and "program not
+  executable").  `CFLAGS=-fuse-ld=link` makes the driver use link.exe
+  too (with `-Wno-unused-command-line-argument`, since the flag is
+  link-time and clang-cl would warn on every compile).  Diagnosed by
+  rerunning meson's sanity command by hand with each clang-cl; a sanity
+  check run without `--buildtype=release` links `/MDd` and then fails
+  for a different reason (no debug CRT in the toolchain), so reproduce
+  with the build's flags.
 - The pypi `pkgconf` wheels trail pkgconf's own releases (the linux
   build's `pkgconf` pin is an upstream tag); the Windows build pins the
   pypi version separately as `pkgconf-pypi` in `versions.txt`.
