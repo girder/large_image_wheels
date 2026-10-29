@@ -2220,18 +2220,24 @@ open(path, "w").write(s)
 '@
     # Compiled with clang-cl (see Ensure-Clang): openslide requires the
     # GNU C cleanup attribute.  CC is how meson picks the compiler, CC_LD
-    # the linker: meson would otherwise look for lld-link, which is not
-    # extracted; MSVC's link.exe links clang-cl's objects.
+    # the linker it links targets with: MSVC's link.exe links clang-cl's
+    # objects (lld-link is not extracted).  CC_LD does not reach the
+    # checks meson links through the compiler driver itself (the sanity
+    # check, has_function probes), and clang-cl 23 runs lld-link by
+    # default where 21 ran link.exe, so the driver is told the same
+    # through CFLAGS (-fuse-ld is a link-time flag; the -Wno- keeps
+    # clang-cl from warning about it on every compile).
     $savedPath = $env:PATH
     $env:PATH = "$script:ClangBin;$env:PATH"
     $env:CC = 'clang-cl'
     $env:CC_LD = 'link'
+    $env:CFLAGS = '-fuse-ld=link -Wno-unused-command-line-argument'
     try {
         Meson-Build $src @('-Dtest=disabled', '-Ddoc=disabled',
             '--force-fallback-for=libdicom,uthash')
     } finally {
         $env:PATH = $savedPath
-        Remove-Item -Path 'env:CC', 'env:CC_LD' -ErrorAction SilentlyContinue
+        Remove-Item -Path 'env:CC', 'env:CC_LD', 'env:CFLAGS' -ErrorAction SilentlyContinue
     }
     Log "prefix DLLs: $((Get-ChildItem -Path (Join-Path $LIW_PREFIX 'bin') -Filter '*.dll' | ForEach-Object { $_.Name }) -join ', ')"
     Log "prefix EXEs: $((Get-ChildItem -Path (Join-Path $LIW_PREFIX 'bin') -Filter '*.exe' | ForEach-Object { $_.Name }) -join ', ')"
