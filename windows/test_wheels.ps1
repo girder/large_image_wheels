@@ -766,12 +766,88 @@ def check_pyvips(package_dir, libs_dir):
                f'bundled vipsheader runs as a console script (exit {code}): {out.strip().splitlines()[:1]}')
 
 
+def check_gdal(package_dir, libs_dir):
+    import numpy
+    import osgeo
+    from osgeo import gdal, ogr, osr
+    gdal.UseExceptions()
+
+    hits, bundled, foreign = loaded_from_libs('gdal', os.path.basename(libs_dir))
+    report(bool(bundled) and not foreign,
+           f'gdal loads its bundled libgdal: {hits}')
+    version = gdal.VersionInfo('RELEASE_NAME')
+    report(version.startswith('3.'), f'gdal version {version}')
+    # (A DLL, not the relocated gdal.exe beside it: django loads this path
+    # with ctypes and looks GDALVersionInfo up in it.)
+    report(os.path.isfile(osgeo.GDAL_LIBRARY_PATH) and osgeo.GDAL_LIBRARY_PATH.lower().endswith('.dll'),
+           f'osgeo.GDAL_LIBRARY_PATH names a bundled DLL: {osgeo.GDAL_LIBRARY_PATH}')
+    report(os.path.isfile(osgeo.GEOS_LIBRARY_PATH) and osgeo.GEOS_LIBRARY_PATH.lower().endswith('.dll'),
+           f'osgeo.GEOS_LIBRARY_PATH names a bundled DLL: {osgeo.GEOS_LIBRARY_PATH}')
+    # The drivers whose libraries are Windows-only builds here (the shared
+    # suite's known-formats check polices the whole set).
+    for name in ('GTiff', 'JP2OpenJPEG', 'HDF4', 'HDF5', 'KEA', 'netCDF', 'Zarr', 'PDF', 'EXR', 'FITS',
+                 'AVIF', 'HEIF', 'JPEGXL', 'WEBP', 'GTA', 'MrSID', 'MSG', 'PostGISRaster', 'MySQL',
+                 'PostgreSQL', 'XLS', 'SOSI', 'XODR', 'GMLAS', 'Interlis 1', 'SQLite', 'GPKG', 'XLSX',
+                 'OSM', 'MVT', 'PMTiles', 'WMS', 'OGCAPI', 'GIF', 'PNG', 'JPEG', 'MBTiles'):
+        report(gdal.GetDriverByName(name) is not None, f'gdal has the {name} driver')
+    # A transform through the bundled proj.db (the osgeo patch's PROJ
+    # search path).
+    src = osr.SpatialReference()
+    src.ImportFromEPSG(4326)
+    src.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+    dst = osr.SpatialReference()
+    dst.ImportFromEPSG(3857)
+    dst.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+    x, y, _ = osr.CoordinateTransformation(src, dst).TransformPoint(-77.0, 38.9)
+    report(abs(x + 8571600) < 2000 and abs(y - 4707359) < 2000,
+           f'proj transform EPSG:4326 -> 3857 through the bundled proj.db: {x:.0f}, {y:.0f}')
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, 'check.tif')
+        ds = gdal.GetDriverByName('GTiff').Create(path, 64, 48, 3, gdal.GDT_Byte, options=['COMPRESS=DEFLATE'])
+        ds.SetProjection(dst.ExportToWkt())
+        ds.SetGeoTransform((0, 10, 0, 0, 0, -10))
+        ds.GetRasterBand(1).WriteArray(numpy.full((48, 64), 10, dtype=numpy.uint8))
+        ds = None
+        ds = gdal.Open(path)
+        arr = ds.GetRasterBand(1).ReadAsArray()
+        report(arr.shape == (48, 64) and int(arr[1, 1]) == 10,
+               'gdal GTiff create/read round trip (numpy through _gdal_array)')
+        ds = None
+        sq = os.path.join(tmp, 'check.sqlite')
+        vds = ogr.GetDriverByName('SQLite').CreateDataSource(sq, options=['SPATIALITE=YES'])
+        vds.CreateLayer('pts', srs=src, geom_type=ogr.wkbPoint)
+        vds = None
+        vds = ogr.Open(sq)
+        res = vds.ExecuteSQL('SELECT spatialite_version()')
+        spatialite = res.GetNextFeature().GetField(0)
+        vds.ReleaseResultSet(res)
+        vds = None
+        report(bool(spatialite), f'spatialite through the SQLite driver: {spatialite}')
+        code, out = run_tool('gdalinfo', ['--version'])
+        report(code == 0 and 'GDAL' in out,
+               f'bundled gdalinfo runs as a console script (exit {code}): {out.strip().splitlines()[:1]}')
+        launcher = os.path.join(package_dir, 'bin', 'gdalinfo.exe')
+        code, out = run_path(launcher, [path], env=scrubbed_env())
+        report(code == 0 and 'Size is 64, 48' in out,
+               f'bundled gdalinfo runs by path with a bare PATH (exit {code}): {out.strip().splitlines()[:1]}')
+        code, out = run_tool('gdal-config', ['--formats'])
+        report(code == 0 and len(out.split()) >= 98,
+               f'bundled gdal-config lists the formats (exit {code}, {len(out.split())} formats)')
+        code, out = run_tool('listgeo', [path])
+        report(code == 0 and 'Geotiff_Information' in out,
+               f'bundled listgeo (libgeotiff) runs as a console script (exit {code})')
+        code, out = run_tool('projinfo', ['EPSG:4326'])
+        report(code == 0 and 'WGS 84' in out,
+               f'bundled projinfo (proj) runs as a console script with the bundled proj.db (exit {code})')
+
+
 # package -> (import name, <dist>.libs directory name, package check)
 PACKAGES = {
     'pylibtiff': ('libtiff', 'pylibtiff.libs', check_pylibtiff),
     'glymur': ('glymur', 'glymur.libs', check_glymur),
     'openslide_python': ('openslide', 'openslide_python.libs', check_openslide),
     'pyvips': ('pyvips', 'pyvips.libs', check_pyvips),
+    'GDAL': ('osgeo', 'gdal.libs', check_gdal),
 }
 
 
