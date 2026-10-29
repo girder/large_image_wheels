@@ -617,12 +617,16 @@ if $TEST_GDAL && $TEST_PYVIPS; then
   echo 'test libvips and webp'
   python <<EOF
 import os
+import shutil
 import tempfile
 
 import large_image_converter.__main__ as main
 
-with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+tmpdir = tempfile.mkdtemp()
+try:
     main.main(['d042-353.crop.small.float32.tif', os.path.join(tmpdir, 'outfloat.tiff'), '--compression', 'webp'])
+finally:
+    shutil.rmtree(tmpdir, ignore_errors=True)
 EOF
 fi
 
@@ -630,12 +634,16 @@ if $TEST_GDAL && $TEST_PYVIPS; then
   echo 'test libvips and jpeg'
   python <<EOF
 import os
+import shutil
 import tempfile
 
 import large_image_converter.__main__ as main
 
-with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
+tmpdir = tempfile.mkdtemp()
+try:
     main.main(['d042-353.crop.small.float32.tif', os.path.join(tmpdir, 'outfloatjpeg.tiff'), '--compression', 'jpeg'])
+finally:
+    shutil.rmtree(tmpdir, ignore_errors=True)
 EOF
 fi
 
