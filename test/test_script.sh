@@ -615,21 +615,21 @@ fi
 
 if $TEST_GDAL && $TEST_PYVIPS; then
   echo 'test libvips and webp'
-  rm -f /tmp/outfloat.tiff
+  rm -f outfloat.tiff
   python <<EOF
 import large_image_converter.__main__ as main
 
-main.main(['d042-353.crop.small.float32.tif', '/tmp/outfloat.tiff', '--compression', 'webp'])
+main.main(['d042-353.crop.small.float32.tif', 'outfloat.tiff', '--compression', 'webp'])
 EOF
 fi
 
 if $TEST_GDAL && $TEST_PYVIPS; then
   echo 'test libvips and jpeg'
-  rm -f /tmp/outfloatjpeg.tiff
+  rm -f outfloatjpeg.tiff
   python <<EOF
 import large_image_converter.__main__ as main
 
-main.main(['d042-353.crop.small.float32.tif', '/tmp/outfloatjpeg.tiff', '--compression', 'jpeg'])
+main.main(['d042-353.crop.small.float32.tif', 'outfloatjpeg.tiff', '--compression', 'jpeg'])
 EOF
 fi
 
