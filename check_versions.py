@@ -65,6 +65,13 @@ Packages = {
         'git': 'https://github.com/boostorg/boost.git',
         're': r'boost-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
+    # windows.  cargo-c (cargo cinstall for libimagequant and librsvg's C
+    # library): the linux and macos builds `cargo install` it; windows
+    # takes the prebuilt MSVC binary of the pinned release.
+    'cargo-c': {
+        'git': 'https://github.com/lu-zero/cargo-c.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
     'cairo': {
         'git': 'https://gitlab.freedesktop.org/cairo/cairo.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
@@ -611,6 +618,13 @@ Packages = {
     'pyvips': {
         'git': 'https://github.com/libvips/pyvips.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
+    # windows.  The rust toolchain (librsvg, libimagequant): the linux and
+    # macos builds take rustup's current stable; windows installs the
+    # pinned release's standalone rustc/cargo/rust-std tarballs.
+    'rust': {
+        'git': 'https://github.com/rust-lang/rust.git',
+        're': r'/([0-9]+\.[0-9]+\.[0-9]+)$',
     },
     # 'pyvips-sha': {
     #     'gitsha': 'https://github.com/libvips/pyvips.git',
