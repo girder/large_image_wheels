@@ -65,6 +65,13 @@ Packages = {
         'git': 'https://github.com/boostorg/boost.git',
         're': r'boost-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
+    # windows.  The linux base image and macos have a system bzip2; the
+    # windows build compiles it (ImageMagick, libarchive and freetype
+    # link it there as on linux).
+    'bzip2': {
+        'filelist': 'https://sourceware.org/pub/bzip2/',
+        're': r'bzip2-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.gz$',
+    },
     # windows.  cargo-c (cargo cinstall for libimagequant and librsvg's C
     # library): the linux and macos builds `cargo install` it; windows
     # takes the prebuilt MSVC binary of the pinned release.
