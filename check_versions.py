@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "packaging",
+#     "requests",
+#     "urllib3",
+# ]
+# ///
 
 import functools
 import re
@@ -830,11 +838,11 @@ for pkg in sorted(Packages):  # noqa
             if verbose >= 1:
                 print(pkg, 'fossil entries', entries)
         elif 'git' in pkginfo:
-            cmd = ['timeout', '15', 'git', 'ls-remote', '--refs', '--tags', pkginfo['git']]
+            cmd = ['git', 'ls-remote', '--refs', '--tags', pkginfo['git']]
             for retries in range(10, -1, -1):
                 try:
                     entries = [entry for entry in
-                               subprocess.check_output(cmd).decode('utf8').split('\n')
+                               subprocess.check_output(cmd, timeout=15).decode('utf8').split('\n')
                                if '/' in entry]
                     break
                 except Exception:
@@ -845,11 +853,10 @@ for pkg in sorted(Packages):  # noqa
             if verbose >= 1:
                 print(pkg, 'git entries', entries)
         elif 'gitsha' in pkginfo:
-            cmd = ['timeout', '15', 'git', 'ls-remote', pkginfo['gitsha'],
-                   pkginfo.get('branch', 'HEAD')]
+            cmd = ['git', 'ls-remote', pkginfo['gitsha'], pkginfo.get('branch', 'HEAD')]
             for retries in range(10, -1, -1):
                 try:
-                    versions = [subprocess.check_output(cmd).decode('utf8').split()[0]]
+                    versions = [subprocess.check_output(cmd, timeout=15).decode('utf8').split()[0]]
                     break
                 except Exception:
                     if retries:
