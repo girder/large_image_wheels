@@ -623,8 +623,8 @@ Known gaps, in rough order:
 - `test/test_script.sh`'s GDAL+pyvips converter steps wrote to
   `/tmp/outfloat*.tiff`, which python on Windows reads as `C:\tmp\...`
   (absent); every python failed there on the first five-package host
-  run.  They now write into the working directory, like the suite's
-  other outputs.
+  run.  They now write into a `tempfile.TemporaryDirectory`, which is
+  throwaway on every platform as `/tmp` was meant to be.
 - No psutil wheel exists for cp315t on pypi, and `large-image[converter]`
   requires psutil; the test sandbox has no compiler (by design), so on
   3.15t that install fails and the suite stops.  This is upstream lag,
