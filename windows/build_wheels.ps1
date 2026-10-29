@@ -1940,14 +1940,12 @@ function Build-Glib {
         '--force-fallback-for=libpcre2-8,libffi,proxy-libintl')
     # The pcre2 wrap is glib's private static copy, but its install step
     # also drops pcre2.h, static archives and .pc files into the prefix,
-    # which a later consumer then finds (GDAL's sqlite REGEXP support
-    # did, and failed to link: the header declares dllimport without
-    # PCRE2_STATIC).  Nothing else may link it, so the leak is removed.
-    foreach ($leak in @('bin\pcre2grep.exe', 'bin\pcre2test.exe', 'include\pcre2.h', 'include\pcre2posix.h')) {
-        Remove-Item -Path (Join-Path $LIW_PREFIX $leak) -Force -ErrorAction SilentlyContinue
-    }
-    Get-ChildItem -Path (Join-Path $LIW_PREFIX 'lib') -Filter 'libpcre2-*' -File | Remove-Item -Force
-    Get-ChildItem -Path (Join-Path $LIW_PREFIX 'lib\pkgconfig') -Filter 'libpcre2-*.pc' -File | Remove-Item -Force
+    # which a later consumer can find (GDAL's sqlite REGEXP support did,
+    # and failed to link: the header declares dllimport without
+    # PCRE2_STATIC).  They must stay: glib-2.0.pc names libpcre2-8 as a
+    # private requirement, and without its .pc every pkg-config lookup of
+    # glib fails ("Could not generate cflags for glib-2.0"; openslide was
+    # the first).  GDAL is told not to use PCRE2 instead (Build-Gdal).
     Log "prefix DLLs: $((Get-ChildItem -Path (Join-Path $LIW_PREFIX 'bin') -Filter '*.dll' | ForEach-Object { $_.Name }) -join ', ')"
     Assert-Files (Join-Path $LIW_PREFIX 'bin') @(
         'glib-2.0*.dll', 'gobject-2.0*.dll', 'gio-2.0*.dll', 'gmodule-2.0*.dll') 'glib'
@@ -4153,8 +4151,11 @@ open(path, "w").write(s)
     # data, which the build never reads; harmless when git-lfs is absent.)
     $env:GIT_LFS_SKIP_SMUDGE = '1'
     try {
+        # (GDAL_USE_PCRE2=OFF: the prefix holds glib's private static
+        # pcre2, whose header declares dllimport; GDAL would find it and
+        # fail to link.  The linux base image has no pcre2-devel either.)
         Cmake-Build $src @('-DGDAL_USE_LERC=ON', '-DENABLE_DEFLATE64=OFF', '-DGDAL_USE_PUBLICDECOMPWT=ON',
-            '-DGDAL_USE_ARMADILLO=OFF', '-DBUILD_TESTING=OFF', '-DBUILD_JAVA_BINDINGS=OFF',
+            '-DGDAL_USE_ARMADILLO=OFF', '-DGDAL_USE_PCRE2=OFF', '-DBUILD_TESTING=OFF', '-DBUILD_JAVA_BINDINGS=OFF',
             '-DBUILD_CSHARP_BINDINGS=OFF', '-DBUILD_PYTHON_BINDINGS=ON',
             "-DPython_EXECUTABLE=$($pp -replace '\\', '/')",
             "-DSWIG_EXECUTABLE=$($script:SwigExe -replace '\\', '/')",
