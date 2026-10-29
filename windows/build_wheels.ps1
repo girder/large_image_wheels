@@ -4030,14 +4030,16 @@ function Build-Postgresql {
     Done-Stamp 'postgresql'
 }
 
-# The MrSID decoding SDK (the MrSID driver), Extensis' Windows x64 build
-# of the version versions.txt pins (the linux build takes its rhel
-# tarball, pinned there for compiler reasons; the SDK has no listing
-# check_versions.py could track).  The DLLs go beside the prefix's so the
-# wheel repair bundles them; the import library and headers are handed to
-# GDAL's cmake explicitly (no stamp: the paths are needed on every run).
+# The MrSID decoding SDK (the MrSID driver), Extensis' Windows x64 build.
+# PINNED here, like the Dockerfile's rhel tarball: the SDK has no listing
+# check_versions.py could track, so versions.txt carries no entry.  The
+# DLLs go beside the prefix's so the wheel repair bundles them; the import
+# library and headers are handed to GDAL's cmake explicitly (no stamp: the
+# paths are needed on every run).
+$script:MrsidVersion = '9.5.5.5244'
+
 function Get-Mrsid {
-    $version = V 'mrsid'
+    $version = $script:MrsidVersion
     $dir = Join-Path $LIW_SRC 'mrsid'
     $marker = Join-Path $dir ".extracted-$version"
     if (-not (Test-Path $marker)) {
