@@ -576,14 +576,12 @@ Known gaps, in rough order:
   libjxl without its tools; orc absent as on macos.  Everything the
   linux wheel's libvips links is required explicitly at configure time
   (`-D<loader>=enabled`) and checked on the DLL's import table.
-- `check_versions.py` on Windows: `timeout` resolves to Windows'
-  timeout.exe no matter what PATH says (CreateProcess searches System32
-  before PATH, and PowerShell's `Push-Location` does not move the
-  process's working directory for children).  Run it through a few
-  lines of python that patch `subprocess.check_output` to drop the
-  `timeout 15` prefix and pass `timeout=15` instead, then
-  `runpy.run_path` the script; that is how the `rust` and `cargo-c`
-  pins were taken.
+- `check_versions.py` runs on Windows as anywhere else (`uv run
+  check_versions.py <names>`: it carries PEP 723 metadata; or a python
+  with `requests` and `packaging`).  It used to prefix its `git
+  ls-remote` calls with `timeout 15`, which on Windows resolves to
+  Windows' timeout.exe no matter what PATH says (CreateProcess searches
+  System32 before PATH); it now passes `timeout=15` to subprocess.
 - libxml2 is built without iconv (Windows has no system iconv; linux
   and macos use theirs).  libxml2 handles UTF-8/16 and ISO-8859-x on its
   own; if a later consumer needs other encodings through libxml2, build
@@ -591,10 +589,6 @@ Known gaps, in rough order:
 - `test/test_script.sh` still writes `/tmp/outfloat.tiff` in its
   GDAL+pyvips section; python on Windows reads that as `C:\tmp\...`.
   Adjust when that section is reached.
-- `check_versions.py` runs the `git` entries through `timeout`, which is
-  Windows' timeout.exe here; run it on linux (its normal home), or check
-  the windows entries by name (`delvewheel`, `git-for-windows`, `msvc`,
-  `nasm`, `winsdk` resolve on Windows).
 
 ## Hard-won details (do not lose these)
 
