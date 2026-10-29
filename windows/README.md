@@ -620,9 +620,15 @@ Known gaps, in rough order:
   and macos use theirs).  libxml2 handles UTF-8/16 and ISO-8859-x on its
   own; if a later consumer needs other encodings through libxml2, build
   libiconv (`versions.txt` has a pin) and turn `LIBXML2_WITH_ICONV` on.
-- `test/test_script.sh` still writes `/tmp/outfloat.tiff` in its
-  GDAL+pyvips section; python on Windows reads that as `C:\tmp\...`.
-  Adjust when that section is reached.
+- `test/test_script.sh`'s GDAL+pyvips converter steps wrote to
+  `/tmp/outfloat*.tiff`, which python on Windows reads as `C:\tmp\...`
+  (absent); every python failed there on the first five-package host
+  run.  They now write into the working directory, like the suite's
+  other outputs.
+- No psutil wheel exists for cp315t on pypi, and `large-image[converter]`
+  requires psutil; the test sandbox has no compiler (by design), so on
+  3.15t that install fails and the suite stops.  This is upstream lag,
+  not our build: it resolves itself when psutil publishes the wheel.
 
 ## Hard-won details (do not lose these)
 
