@@ -707,11 +707,57 @@ def check_openslide(package_dir, libs_dir):
     report(code == 0, f'bundled slidetool runs by path with a bare PATH (exit {code}): {out.strip().splitlines()[:1]}')
 
 
+def check_pyvips(package_dir, libs_dir):
+    import pyvips
+
+    hits, bundled, foreign = loaded_from_libs('vips-', os.path.basename(libs_dir))
+    report(bool(bundled) and not foreign,
+           f'pyvips loads its bundled libvips: {hits}')
+    report(pyvips.API_mode, 'pyvips runs in API mode (the cffi extension loaded)')
+    version = '.'.join(str(pyvips.version(i)) for i in range(3))
+    report(pyvips.version(0) >= 8, f'libvips version {version}')
+    report(hasattr(pyvips.Image, 'dzsave'), 'pyvips has Image.dzsave')
+    # Every loader the linux wheel carries must be compiled in (the build
+    # asserted the DLL imports; this checks the operations register).
+    # magickload is absent on Windows by design (no ImageMagick build).
+    for op in ('tiffload', 'jpegload', 'pngload', 'webpload', 'jp2kload', 'openslideload',
+               'heifload', 'jxlload', 'svgload', 'pdfload', 'rawload', 'fitsload',
+               'matload', 'niftiload', 'openexrload', 'dzsave', 'text', 'fwfft'):
+        report(pyvips.type_find('VipsOperation', op) != 0, f'libvips has the {op} operation')
+    with tempfile.TemporaryDirectory() as tmp:
+        image = pyvips.Image.black(64, 48, bands=3) + [10, 20, 30]
+        path = os.path.join(tmp, 'check.tif')
+        image.tiffsave(path, compression='jpeg', tile=True, pyramid=True)
+        back = pyvips.Image.new_from_file(path)
+        report(back.width == 64 and back.height == 48 and back.bands == 3,
+               'pyvips tiffsave (jpeg, tiled, pyramid) round trip')
+        image.webpsave(os.path.join(tmp, 'check.webp'))
+        report(os.path.getsize(os.path.join(tmp, 'check.webp')) > 0, 'pyvips webpsave')
+        png = image.pngsave_buffer(palette=True)
+        report(len(png) > 0, 'pyvips pngsave with palette (libimagequant)')
+        svg = pyvips.Image.svgload_buffer(
+            b'<svg xmlns="http://www.w3.org/2000/svg" width="32" height="24">'
+            b'<rect width="32" height="24" fill="red"/></svg>')
+        report(svg.width == 32 and svg.height == 24 and svg.getpoint(1, 1)[0] == 255,
+               'pyvips svgload (librsvg)')
+        code, out = run_tool('vips', ['--version'])
+        report(code == 0 and 'vips-' in out,
+               f'bundled vips runs as a console script (exit {code}): {out.strip().splitlines()[:1]}')
+        launcher = os.path.join(package_dir, 'bin', 'vips.exe')
+        code, out = run_path(launcher, ['--version'], env=scrubbed_env())
+        report(code == 0 and 'vips-' in out,
+               f'bundled vips runs by path with a bare PATH (exit {code}): {out.strip().splitlines()[:1]}')
+        code, out = run_tool('vipsheader', [path])
+        report(code == 0 and '64x48' in out,
+               f'bundled vipsheader runs as a console script (exit {code}): {out.strip().splitlines()[:1]}')
+
+
 # package -> (import name, <dist>.libs directory name, package check)
 PACKAGES = {
     'pylibtiff': ('libtiff', 'pylibtiff.libs', check_pylibtiff),
     'glymur': ('glymur', 'glymur.libs', check_glymur),
     'openslide_python': ('openslide', 'openslide_python.libs', check_openslide),
+    'pyvips': ('pyvips', 'pyvips.libs', check_pyvips),
 }
 
 
