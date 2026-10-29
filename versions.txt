@@ -2,6 +2,7 @@ advancecomp 2.6
 armadillo 15.6.2
 autoconf 2.73
 bioformats 8.5.0
+bison 3.8.2
 blosc 1.21.6
 boost 1.92.0
 cairo 1.18.6
@@ -18,7 +19,7 @@ fyba 2fe3da3dc0442213e7364bed6723f68eb4ec7ad3
 fyba-release 4.1.1
 gdal 3.13.3
 gdal-pypi 3.13.3
-gdal-sha 739fcf03bfcc075e300dbd45743187b380a17cdc
+gdal-sha 7708b1ac87890b4025d443a6f9d806ff87915625
 gdal-source 3.14.0
 giflib 6.1.3
 glib 2.90.1
@@ -81,7 +82,7 @@ lz4 1.10.0
 manylinux_2_28_aarch64 a3e02308c822fb6ce0d12248b0c941817ba5e1a1bc9e7bb5929f29c50eaa40a9
 manylinux_2_28_x86_64 e0adf18521ad35192df733a6c62d35df7801957d24e0470238aacecfab2188a3
 mapnik-release 4.3.2
-mapnik-sha 3d6b118913936de46d7a3a5fe6fb020253e7667b
+mapnik-sha 8c4aa95dff25f7b3714965cc2d9ab11b37a8e8bd
 matio 1.6.0
 meson 1.12.1
 minizip 4.2.2
@@ -104,6 +105,7 @@ orc 0.4.44
 pango 1.58.2
 parallel-netcdf 1.15.1
 patchelf 0.19.2
+pcre2 10.49
 pixman 0.46.4
 pkgconf 3.0.10
 poppler 26.10.0
@@ -126,9 +128,11 @@ pyvips-pypi 3.2.0
 sqlite 2026.3540100
 strip-nondeterminism 0.45.0
 superlu 7.0.1
+swig 4.5.1
 util-linux 2.42.4
 xerces-c 3.3.0
 xz 5.8.4
 zlib 1.3.2
 zlib-ng 2.3.3
 zstd 1.5.7
+zulu8 8.98.0.107-ca-jdk8.0.512
