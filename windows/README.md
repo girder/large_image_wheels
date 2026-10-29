@@ -1056,7 +1056,11 @@ Known gaps, in rough order:
   pcre2 wrap installs `pcre2.h`, static archives and `.pc` files into
   the prefix although glib embeds it statically; GDAL found them and
   its sqlite REGEXP code failed to link (the header declares dllimport
-  without `PCRE2_STATIC`), so `Build-Glib` removes the leak.  curl in the
+  without `PCRE2_STATIC`).  They cannot be removed: `glib-2.0.pc` names
+  `libpcre2-8` as a private requirement, and without that `.pc` every
+  pkg-config lookup of glib fails ("Could not generate cflags for
+  glib-2.0" -- openslide's meson was the first, on a host run), so GDAL
+  gets `-DGDAL_USE_PCRE2=OFF` instead.  curl in the
   gdal chain needs brotli first (it is `CURL_BROTLI=ON`), poppler needs
   harfbuzz: both are ordered accordingly.  The bundled `gdal-config` is
   the configured sh script, kept as a data file; the Windows wrapper
