@@ -534,7 +534,19 @@ sandbox before every host run:
   failed on the way were a network error and a build-log append that
   hit the host's streaming read (see the hard-won list).
 
-Next step: mapnik.
+- **mapnik builds and passes every dev-mode check for python 3.13
+  (2026-10-30)**: icu4c (an embedded cmake build) and boost (b2) on top
+  of the GDAL tree, then mapnik at the pinned commit with the
+  repository's two patches and the Dockerfile's seds, every plugin the
+  linux wheel has (csv, gdal+ogr, geobuf, geojson, postgis+pgraster,
+  raster, shape, sqlite, tiles with SSL, topojson) and everything
+  libmapnik links on linux asserted on the DLL import tables; then the
+  python-mapnik wheel with the plugins, fonts, proj and gdal data and
+  mapnik-render/mapnik-index/shapeindex bundled (68 MB).  The shared
+  suite's mapnik sections pass.  Not yet verified on the host.
+
+Next step: the host run of `windows\sandbox_build.bat &&
+windows\test_via_sandbox.bat` (six packages by default now).
 
 Known gaps, in rough order:
 
@@ -571,7 +583,7 @@ Known gaps, in rough order:
   directory `glymur.libs`; the config patch looks for both spellings)
   and rename the finished wheel to `Glymur-` last, which is all the
   linux build's rename does too.
-- The C++ packages (pyvips, and GDAL and mapnik to come) import
+- The C++ packages (pyvips, GDAL, mapnik) import
   `msvcp140.dll`, which delvewheel bundles from the redist directory
   that `--add-path` names (mangled, which is fine for a DLL only other
   DLLs import).  Both `vcruntime140.dll` and `vcruntime140_1.dll` are
@@ -610,6 +622,21 @@ Known gaps, in rough order:
   since no listing exists for `check_versions.py` to track.  Everything
   else GDAL's cmake can detect is required to resolve from the prefix
   and checked on `gdal.dll`'s import table.
+- **mapnik deviations from the linux wheel**, each marked in
+  `build_wheels.ps1` where it happens: icu4c from an embedded cmake file
+  over ICU's own `sources.txt` lists, with the release tarball's
+  prebuilt `icudt<N>l.dat` as the data (linux builds the same file from
+  the same release's data sources); no libiconv (the macos reasoning:
+  nothing in mapnik's build uses it); boost from the release's b2
+  tarball (the git tag's tree without docs) with `--layout=system`, no
+  gcc warning flags and no `using mpi`, plus Boost.JSON (the tiles
+  plugin links it on Windows only); only the `deps/mapbox` submodules of
+  mapnik are fetched; plugins install to `lib/mapnik/input` (the linux
+  layout) and `INSTALL_DEPENDENCIES` is off; harfbuzz is found through
+  pkg-config; mapnik's plugin loader tries `LoadLibraryEx` with the
+  default DLL directories first (see the hard-won entry); python-mapnik
+  gets two MSVC source fixes (`ssize_t`, an ambiguous `to_wkt`
+  overload) and its setup.py is pointed at pkgconf's `--msvc-syntax`.
 - `check_versions.py` runs on Windows as anywhere else (`uv run
   check_versions.py <names>`: it carries PEP 723 metadata; or a python
   with `requests` and `packaging`).  It used to prefix its `git
@@ -1106,3 +1133,46 @@ Known gaps, in rough order:
   `gta.dll`, `xerces-c_3_3.dll`, `blosc.dll`, `libkea.dll`, `avif.dll`,
   `lti_dsdk_9.5.dll` (MrSID), `vcomp140.dll` (OpenMP); hdf4, fyba and
   libOpenDRIVE are static and absorbed into `gdal.dll`.
+- **The mapnik tree** (`Build-Icu4c` through `Build-MapnikPython`).
+  ICU's Windows build is an MSBuild solution and its autotools build
+  wants GNU make; the embedded cmake file compiles common and i18n from
+  `common/sources.txt` and `i18n/sources.txt` with the defines of their
+  `.vcxproj` files, and makes `icudt<N>.dll` the way pkgdata does on
+  Windows: one exported, 16-byte-aligned data symbol `icudt<N>_dat`
+  (icuuc imports it; `U_DATA_API` is dllimport there), written with
+  NASM's `incbin` and linked `/NOENTRY`.  DLLs `icuuc77.dll`,
+  `icuin77.dll`, `icudt77.dll`; import libraries without the version,
+  which is what CMake's FindICU looks for; the `.pc` files are written.
+  boost: `bootstrap.bat msvc` builds b2 with the cl on PATH (the
+  bootstrap's batch files call each other by bare name, which cmd does
+  not resolve when `NoDefaultCurrentDirectoryInExePath` is set -- the
+  agent session sets it -- so it is cleared for the call); the
+  bootstrap's `using msvc ;` cannot detect a toolset without a Visual
+  Studio installation (it fell back to "msvc-6.0" and hung in its first
+  configuration check), and with cl named explicitly b2 still looks for
+  `vcvarsall.bat` beside it, so `project-config.jam` names cl, the
+  14.3 toolset family, and a no-op `<setup>` script.  b2 1.92 installs
+  the DLLs into `bin`.  mapnik's DLL is `libmapnik.dll` with import
+  library `libmapnik.lib` (and static `libmapnikwkt.lib`,
+  `libmapnikjson.lib`), while its `.pc` files say `-lmapnik`,
+  `-lmapnikwkt`, `-lmapnikjson`: copies under those names.  Its plugins
+  are DLLs named `.input` that `LoadLibraryA` loads by path; a plugin's
+  imports (gdal, libpq, sqlite, boost) are not yet loaded at that point,
+  and plain `LoadLibraryA` searches PATH but not the directories python
+  added with `os.add_dll_directory` (delvewheel's `mapnik.libs`), so
+  the Windows patch tries `LoadLibraryExA` with
+  `LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR`
+  first and plain `LoadLibraryA` second (the bundled tools' launcher
+  puts `mapnik.libs` on PATH instead).  delvewheel only looks at `.pyd`,
+  `.dll` and `.exe` files, so the plugins are packaged as `.input.dll`,
+  repaired with `--analyze-existing` (which rewrites their imports to
+  the mangled names) and renamed back to `.input` after the repair
+  (`Rename-Plugins`; mapnik registers only `.input` files);
+  `check_wheels.py`'s import audit includes `.input` files.  mapnik's
+  tools exit 1 after printing `--version`, on every platform.
+- The python patch scripts must open source files with
+  `encoding="utf-8"`: before python 3.15 the default is the ANSI code
+  page (cp1252), and mapnik's headers are UTF-8 (a dev run passed by
+  hand, where the session had python's UTF-8 mode on, and failed in the
+  build).  `Invoke-Patch` runs them through `Run-Logged`, so a failing
+  patch's traceback reaches the log.

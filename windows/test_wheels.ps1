@@ -501,8 +501,11 @@ def loaded_from_libs(stem, libs_dir_name):
     a full-path load of each is a separate module, so a copy in another
     wheel's .libs directory is legitimate; a copy anywhere else means a
     system or third-party library won the load."""
+    # (DLLs only: mapnik's gdal+ogr.input plugin, loaded from the mapnik
+    # package directory, would otherwise count as a foreign libgdal.)
     hits = [path for path in loaded_modules()
-            if os.path.basename(path).lower().startswith(stem.lower())]
+            if os.path.basename(path).lower().startswith(stem.lower())
+            and path.lower().endswith('.dll')]
     bundled = [path for path in hits
                if os.path.basename(os.path.dirname(path)).lower() == libs_dir_name.lower()]
     foreign = [path for path in hits
@@ -569,7 +572,8 @@ def audit_imports(roots, libs_dir):
     for root in roots:
         for dirpath, _, filenames in os.walk(root):
             for filename in filenames:
-                if not filename.lower().endswith(('.pyd', '.dll', '.exe')):
+                # (.input: mapnik's plugins are DLLs by another name.)
+                if not filename.lower().endswith(('.pyd', '.dll', '.exe', '.input')):
                     continue
                 path = os.path.join(dirpath, filename)
                 try:
@@ -853,6 +857,60 @@ def check_gdal(package_dir, libs_dir):
                f'bundled projinfo (proj) runs as a console script with the bundled proj.db (exit {code})')
 
 
+def check_mapnik(package_dir, libs_dir):
+    import mapnik
+
+    hits, bundled, foreign = loaded_from_libs('libmapnik', os.path.basename(libs_dir))
+    report(bool(bundled) and not foreign,
+           f'mapnik loads its bundled libmapnik: {hits}')
+    # Every plugin the linux wheel carries must register: each is a
+    # LoadLibrary of a .input file whose imports resolve from mapnik.libs.
+    plugins = set(mapnik.DatasourceCache.plugin_names())
+    for name in ('csv', 'gdal', 'ogr', 'geobuf', 'geojson', 'postgis', 'pgraster', 'raster', 'shape',
+                 'sqlite', 'tiles', 'topojson'):
+        report(name in plugins, f'mapnik registers the {name} input plugin')
+    hits, bundled, foreign = loaded_from_libs('gdal-', os.path.basename(libs_dir))
+    report(bool(bundled) and not foreign, f'mapnik loads its bundled libgdal: {hits}')
+    with tempfile.TemporaryDirectory() as tmp:
+        # A reprojected render (EPSG:4326 data on an EPSG:3857 map: mapnik's
+        # own proj transform with the bundled proj.db) through the csv
+        # plugin and the agg renderer.
+        m = mapnik.Map(256, 256, 'epsg:3857')
+        m.background = mapnik.Color('white')
+        style = mapnik.Style()
+        rule = mapnik.Rule()
+        rule.symbolizers.append(mapnik.PolygonSymbolizer())
+        style.rules.append(rule)
+        m.append_style('poly', style)
+        layer = mapnik.Layer('poly', 'epsg:4326')
+        layer.datasource = mapnik.CSV(inline='wkt\n"POLYGON((-80 30,-70 30,-70 40,-80 40,-80 30))"\n')
+        layer.styles.append('poly')
+        m.layers.append(layer)
+        m.zoom_all()
+        report(m.envelope().minx < -8800000 and m.envelope().maxx > -7800000,
+               f'mapnik reprojects EPSG:4326 to EPSG:3857: {m.envelope()}')
+        image = mapnik.Image(256, 256)
+        mapnik.render(m, image)
+        png = os.path.join(tmp, 'check.png')
+        image.save(png, 'png')
+        report(os.path.getsize(png) > 0, 'mapnik renders and writes a png')
+        # The gdal plugin reads a tiff mapnik writes.
+        tif = os.path.join(tmp, 'check.tif')
+        mapnik.Image(64, 48).save(tif, 'tiff')
+        envelope = mapnik.Gdal(file=tif).envelope()
+        report(envelope.width() == 64 and envelope.height() == 48,
+               f'mapnik gdal plugin reads a tiff: {envelope}')
+        # (mapnik's tools exit 1 after printing --version, on every
+        # platform; a tool that cannot load its DLLs prints nothing.)
+        version = 'version ' + mapnik.version_string()
+        code, out = run_tool('mapnik-render', ['--version'])
+        report(version in out,
+               f'bundled mapnik-render runs as a console script (exit {code}): {out.strip().splitlines()[:1]}')
+        launcher = os.path.join(package_dir, 'bin', 'shapeindex.exe')
+        code, out = run_path(launcher, ['--version'], env=scrubbed_env())
+        report(version in out,
+               f'bundled shapeindex runs by path with a bare PATH (exit {code}): {out.strip().splitlines()[:1]}')
+
 # package -> (import name, <dist>.libs directory name, package check)
 PACKAGES = {
     'pylibtiff': ('libtiff', 'pylibtiff.libs', check_pylibtiff),
@@ -860,6 +918,7 @@ PACKAGES = {
     'openslide_python': ('openslide', 'openslide_python.libs', check_openslide),
     'pyvips': ('pyvips', 'pyvips.libs', check_pyvips),
     'GDAL': ('osgeo', 'gdal.libs', check_gdal),
+    'mapnik': ('mapnik', 'mapnik.libs', check_mapnik),
 }
 
 

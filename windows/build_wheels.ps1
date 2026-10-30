@@ -4455,6 +4455,556 @@ open(path, "w").write(s)
     Done-Stamp 'gdal_python'
 }
 
+# --------------------------------------------------------------------------
+# mapnik: icu4c and boost on top of the GDAL tree, then mapnik and its
+# python wheel.
+# --------------------------------------------------------------------------
+
+# icu4c.  ICU's Windows build is a Visual Studio solution (MSBuild, which
+# the installer-free toolchain does not have), and its autotools build
+# wants GNU make; this cmake file compiles the two libraries mapnik links
+# from ICU's own per-library source lists (common/sources.txt and
+# i18n/sources.txt, kept upstream for builds like this one) with the
+# defines of their .vcxproj files plus the linux configure's CFLAGS
+# defines.  The data library is the release tarball's prebuilt
+# icudt<N>l.dat (the linux build generates the same file from the same
+# release's data sources) linked into icudt<N>.dll the way ICU's pkgdata
+# does it on Windows: one exported, 16-byte-aligned data symbol
+# icudt<N>_dat, which icuuc imports (U_DATA_API is dllimport there).
+# NASM's incbin writes it.  Import libraries icuuc/icuin/icudt.lib, the
+# names CMake's FindICU looks for on Windows.
+$script:IcuCMakeLists = @'
+cmake_minimum_required(VERSION 3.20)
+project(icu4c C CXX ASM_NASM)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(SRC ${CMAKE_SOURCE_DIR})
+
+file(STRINGS ${SRC}/common/unicode/uvernum.h vline REGEX "^#define U_ICU_VERSION_MAJOR_NUM [0-9]+")
+string(REGEX MATCH "[0-9]+$" ICU_MAJOR "${vline}")
+if(NOT ICU_MAJOR)
+  message(FATAL_ERROR "no U_ICU_VERSION_MAJOR_NUM in uvernum.h")
+endif()
+set(ICU_DAT ${SRC}/data/in/icudt${ICU_MAJOR}l.dat)
+if(NOT EXISTS ${ICU_DAT})
+  message(FATAL_ERROR "no prebuilt data file ${ICU_DAT}")
+endif()
+
+# The allinone props' defines for every project, the .vcxproj ones, and
+# the linux configure's CFLAGS defines.
+set(C_LANGS "$<COMPILE_LANGUAGE:C,CXX>")
+add_compile_definitions(
+  "$<${C_LANGS}:WINVER=0x0A00>" "$<${C_LANGS}:_WIN32_WINNT=0x0A00>"
+  "$<${C_LANGS}:_CRT_SECURE_NO_DEPRECATE>" "$<${C_LANGS}:U_ATTRIBUTE_DEPRECATED=>"
+  "$<${C_LANGS}:U_CHARSET_IS_UTF8=1>" "$<${C_LANGS}:U_NO_DEFAULT_INCLUDE_UTF_HEADERS=1>"
+  "$<${C_LANGS}:U_HIDE_OBSOLETE_UTF_OLD_H=1>"
+  "$<${C_LANGS}:UNISTR_FROM_CHAR_EXPLICIT=explicit>" "$<${C_LANGS}:UNISTR_FROM_STRING_EXPLICIT=explicit>")
+add_compile_options("$<${C_LANGS}:/utf-8>" "$<${C_LANGS}:/Zc:wchar_t>")
+
+file(WRITE ${CMAKE_BINARY_DIR}/icudt.asm
+  "global icudt${ICU_MAJOR}_dat\nsection .rdata rdata align=16\nalign 16\nicudt${ICU_MAJOR}_dat:\nincbin \"${ICU_DAT}\"\n")
+add_library(icudt SHARED ${CMAKE_BINARY_DIR}/icudt.asm)
+set_target_properties(icudt PROPERTIES OUTPUT_NAME icudt${ICU_MAJOR} ARCHIVE_OUTPUT_NAME icudt
+  LINKER_LANGUAGE C)
+target_link_options(icudt PRIVATE /NOENTRY /EXPORT:icudt${ICU_MAJOR}_dat,DATA)
+
+file(STRINGS ${SRC}/common/sources.txt UC_SOURCES)
+list(FILTER UC_SOURCES INCLUDE REGEX "\\.(c|cpp)$")
+list(TRANSFORM UC_SOURCES PREPEND ${SRC}/common/)
+add_library(icuuc SHARED ${UC_SOURCES})
+target_compile_definitions(icuuc PRIVATE U_COMMON_IMPLEMENTATION U_PLATFORM_USES_ONLY_WIN32_API=1)
+target_include_directories(icuuc PRIVATE ${SRC}/common)
+target_link_libraries(icuuc PRIVATE icudt advapi32)
+set_target_properties(icuuc PROPERTIES OUTPUT_NAME icuuc${ICU_MAJOR} ARCHIVE_OUTPUT_NAME icuuc)
+
+file(STRINGS ${SRC}/i18n/sources.txt IN_SOURCES)
+list(FILTER IN_SOURCES INCLUDE REGEX "\\.(c|cpp)$")
+list(TRANSFORM IN_SOURCES PREPEND ${SRC}/i18n/)
+add_library(icuin SHARED ${IN_SOURCES})
+target_compile_definitions(icuin PRIVATE U_I18N_IMPLEMENTATION)
+target_include_directories(icuin PRIVATE ${SRC}/i18n ${SRC}/common)
+target_link_libraries(icuin PRIVATE icuuc)
+set_target_properties(icuin PROPERTIES OUTPUT_NAME icuin${ICU_MAJOR} ARCHIVE_OUTPUT_NAME icuin)
+
+install(TARGETS icudt icuuc icuin RUNTIME DESTINATION bin ARCHIVE DESTINATION lib LIBRARY DESTINATION lib)
+install(DIRECTORY ${SRC}/common/unicode ${SRC}/i18n/unicode DESTINATION include
+  FILES_MATCHING PATTERN "*.h")
+'@
+
+function Build-Icu4c {
+    if (Skip-If-Done 'icu4c') { return }
+    Log '=== icu4c'
+    $version = V icu4c
+    $us = $version -replace '-', '_'
+    $src = Fetch-Tarball "https://github.com/unicode-org/icu/releases/download/release-$version/icu4c-$us-src.tgz" `
+        "icu4c-$us-src.tgz" (Join-Path $LIW_SRC 'icu4c')
+    $srcDir = Join-Path $src 'source'
+    Write-Embedded (Join-Path $srcDir 'CMakeLists.txt') $script:IcuCMakeLists
+    Cmake-Build $srcDir
+    $major = ($version -split '-')[0]
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @("icuuc$major.dll", "icuin$major.dll", "icudt$major.dll") 'icu4c'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib') @('icuuc.lib', 'icuin.lib', 'icudt.lib') 'icu4c'
+    Assert-Files (Join-Path $LIW_PREFIX 'include\unicode') @('uvernum.h', 'ucol.h', 'unistr.h') 'icu4c'
+    Assert-Dependents (Join-Path $LIW_PREFIX "bin\icuuc$major.dll") @("icudt$major.dll") 'icu4c'
+    Assert-Dependents (Join-Path $LIW_PREFIX "bin\icuin$major.dll") @("icuuc$major.dll") 'icu4c'
+    $exports = (& dumpbin /EXPORTS (Join-Path $LIW_PREFIX "bin\icudt$major.dll") | Out-String)
+    if ($exports -notmatch "icudt${major}_dat") { Die "icu4c: icudt$major.dll does not export icudt${major}_dat" }
+    # The .pc files libmapnik.pc's Requires names (ICU's own; the
+    # private-Requires helper cannot say icu-i18n requires icu-uc, so the
+    # i18n Libs name all three).
+    $pcVersion = $version -replace '-', '.'
+    Write-PkgConfig 'icu-uc' 'International Components for Unicode: Common and Data libraries' $pcVersion `
+        '-licuuc -licudt'
+    Write-PkgConfig 'icu-i18n' 'International Components for Unicode: Stream and I18N support' $pcVersion `
+        '-licuin -licuuc -licudt'
+    Done-Stamp 'icu4c'
+}
+
+# boost, with b2 like the linux and macos builds, from the release's b2
+# source tarball (the superproject at the boost-<version> tag the linux
+# build clones, without the docs).  The same --with list, plus json:
+# mapnik's tiles plugin links Boost::json on Windows only.  Windows
+# deviations: the linux cxxflags are gcc warning switches (not passed);
+# no `using mpi` line (no OpenMPI on Windows); --layout=system, the linux
+# default, instead of Windows' versioned one, so the headers land in
+# include/boost where the non-cmake consumer (python-mapnik) finds them
+# and the libraries are boost_<name>.dll/.lib (the installed cmake
+# configs define BOOST_<NAME>_NO_LIB, so MSVC auto-linking never asks for
+# the versioned names).
+function Build-Boost {
+    if (Skip-If-Done 'boost') { return }
+    Log '=== boost (b2)'
+    $version = V boost
+    $src = Fetch-Tarball "https://github.com/boostorg/boost/releases/download/boost-$version/boost-$version-b2-nodocs.tar.gz" `
+        "boost-$version-b2-nodocs.tar.gz" (Join-Path $LIW_SRC 'boost')
+    Push-Location $src
+    try {
+        # bootstrap.bat builds b2 with the cl on PATH ("msvc"; there is no
+        # Visual Studio installation for it to find).
+        # (The bootstrap's batch files call each other by bare name, which
+        # cmd does not resolve in the current directory when
+        # NoDefaultCurrentDirectoryInExePath is set -- the agent session
+        # sets it.)
+        $savedNoCwd = $env:NoDefaultCurrentDirectoryInExePath
+        Remove-Item -Path 'env:NoDefaultCurrentDirectoryInExePath' -ErrorAction SilentlyContinue
+        try {
+            Run-Logged 'cmd.exe' @('/c', 'bootstrap.bat', 'msvc') 'boost bootstrap'
+        } finally {
+            if ($null -ne $savedNoCwd) { $env:NoDefaultCurrentDirectoryInExePath = $savedNoCwd }
+        }
+        if (-not (Test-Path (Join-Path $src 'b2.exe'))) { Die 'boost: bootstrap did not build b2.exe' }
+        Set-Content -Path (Join-Path $src 'tools\build\src\user-config.jam') -Value '' -Encoding ascii
+        # The bootstrap's bare `using msvc ;` cannot detect a toolset
+        # without a Visual Studio installation (it fell back to "msvc-6.0"
+        # and hung in its first configuration check), and an explicit
+        # compiler still makes b2 look for vcvarsall.bat next to it to set
+        # up the environment, which this toolchain does not have: name cl
+        # and the version (14.3 is VS 2022's toolset family), and give it
+        # a setup script that does nothing, since Enter-Msvc already set
+        # the environment.
+        $noop = Join-Path $src 'msvc-setup-noop.bat'
+        Set-Content -Path $noop -Value '@rem the MSVC environment is set by build_wheels.ps1' -Encoding ascii
+        $cl = (Get-Command cl.exe).Source -replace '\\', '/'
+        Set-Content -Path (Join-Path $src 'project-config.jam') -Encoding ascii -Value @(
+            'import option ;',
+            "using msvc : 14.3 : `"$cl`" : <setup>`"$($noop -replace '\\', '/')`" <rewrite-setup-scripts>off ;",
+            'option.set keep-going : false ;')
+        Run-Logged (Join-Path $src 'b2.exe') @('-d1', "-j$LIW_JOBS", "--prefix=$LIW_PREFIX",
+            '--layout=system', '--build-type=minimal', 'toolset=msvc', 'address-model=64',
+            'variant=release', 'link=shared', 'threading=multi', 'runtime-link=shared',
+            '--with-filesystem', '--with-thread', '--with-regex', '--with-atomic',
+            '--with-program_options', '--with-url', '--with-context', '--with-json',
+            'install') 'boost b2 install'
+    } finally {
+        Pop-Location
+    }
+    $lib = Join-Path $LIW_PREFIX 'lib'
+    foreach ($name in @('program_options', 'url', 'context', 'json', 'filesystem', 'thread', 'atomic')) {
+        Assert-Files $lib @("boost_$name.lib") 'boost'
+        Assert-Files (Join-Path $LIW_PREFIX 'bin') @("boost_$name.dll") 'boost'
+    }
+    Assert-Files (Join-Path $LIW_PREFIX 'include\boost') @('version.hpp') 'boost'
+    if (-not (Get-ChildItem (Join-Path $lib 'cmake') -Filter 'Boost-*' -Directory -ErrorAction SilentlyContinue)) {
+        Die 'boost: no BoostConfig cmake package was installed'
+    }
+    Done-Stamp 'boost'
+}
+
+# mapnik itself: the library, its input plugins (LoadLibrary'd .input
+# modules), the three tools the linux wheel bundles (mapnik-render,
+# mapnik-index, shapeindex), and the fonts.  The checkout, the two
+# repository patches, the Dockerfile's seds (verbatim as python
+# replacements; several are no-ops at the pin, kept for parity as the
+# macos build keeps them) and the cmake flags mirror the linux build.
+# Windows differences:
+#   - only the deps/mapbox submodules are fetched (the linux clone also
+#     pulls the test data, which its next step deletes);
+#   - the gcc-only warning CXXFLAGS are not passed (MSVC flags come from
+#     mapnik's own cmake: /bigobj, /utf-8, /EHsc);
+#   - the plugins install to lib/mapnik/input (the linux layout; mapnik's
+#     Windows default is bin/mapnik/input), and INSTALL_DEPENDENCIES is
+#     off (on Windows it copies every dependency DLL into bin with
+#     BundleUtilities);
+#   - harfbuzz is found through pkg-config: the cmake config meson
+#     installs names harfbuzz.dll as the imported location with no import
+#     library (the FindTIFF shape of problem);
+#   - src/plugin.cpp loads a plugin with LoadLibraryEx and the default
+#     DLL directories (python's add_dll_directory list, which is where
+#     delvewheel puts the wheel's library directory) before falling back
+#     to plain LoadLibrary (PATH, which is where the tools' launcher puts
+#     it): a plugin's imports -- gdal, libpq, sqlite, boost -- are not
+#     loaded yet when it is.
+function Build-Mapnik {
+    if (Skip-If-Done 'mapnik') { return }
+    Log '=== mapnik (long)'
+    $sha = V 'mapnik-sha'
+    $src = Join-Path $LIW_SRC 'mapnik'
+    if (Test-Path $src) { Remove-Item -Recurse -Force $src }
+    New-Item -ItemType Directory -Force -Path $src | Out-Null
+    & git -C $src init -q
+    Assert-Exit 'git init for mapnik'
+    & git -C $src config core.longpaths true
+    & git -C $src remote add origin https://github.com/mapnik/mapnik.git
+    Assert-Exit 'git remote add for mapnik'
+    for ($n = 1; $n -le 10; $n++) {
+        & git -C $src fetch --depth=1 origin $sha
+        if ($LASTEXITCODE -eq 0) { break }
+        Log "retrying git fetch: mapnik $sha"
+        Start-Sleep -Seconds 5
+    }
+    & git -C $src checkout -q -f FETCH_HEAD
+    Assert-Exit "git checkout of mapnik $sha"
+    $submodules = @('deps/mapbox/geometry', 'deps/mapbox/polylabel', 'deps/mapbox/protozero',
+                    'deps/mapbox/variant', 'deps/mapbox/mapnik-vector-tile')
+    for ($n = 1; $n -le 10; $n++) {
+        & git -C $src -c core.longpaths=true submodule update --init --depth=1 @submodules
+        if ($LASTEXITCODE -eq 0) { break }
+        Log 'retrying git submodule update: mapnik'
+        Start-Sleep -Seconds 5
+    }
+    Assert-Exit 'git submodule update for mapnik'
+    & git -C $src config user.email 'wheels@example.com'
+    & git -C $src config user.name 'Wheel Builder'
+    foreach ($patch in @('mapnik_data_path.patch', 'mapnik_tls.patch')) {
+        Run-Logged 'git' @('-C', $src, 'am', (Join-Path $RepoDir $patch)) "git am $patch"
+    }
+    Invoke-Patch $src 'mapnik_seds' @'
+import glob
+
+
+def sub(path, old, new):
+    s = open(path, encoding="utf-8").read()
+    if old in s:
+        open(path, "w", encoding="utf-8").write(s.replace(old, new))
+
+
+for path in glob.glob("src/*.cpp"):
+    sub(path, "PJ_LOG_ERROR", "PJ_LOG_NONE")
+for path in glob.glob("include/**/*.hpp", recursive=True):
+    sub(path, "boost/spirit/include/phoenix_operator.hpp", "boost/phoenix/operator.hpp")
+    sub(path, "boost/spirit/include/phoenix_function.hpp", "boost/phoenix/function.hpp")
+    sub(path, "boost/spirit/include/phoenix.hpp", "boost/phoenix.hpp")
+for path in glob.glob("plugins/**/*.cpp", recursive=True):
+    sub(path, "boost::trim_if", "boost::algorithm::trim_if")
+sub("plugins/input/csv/csv_utils.cpp", "#include <algorithm>",
+    "#include <algorithm>\n#include <boost/algorithm/string.hpp>")
+sub("src/libxml2_loader.cpp", "  xmlError*", "  const xmlError *")
+sub("src/image_util.cpp", "#include <mapnik/image_util.hpp>",
+    "#define PSTL_USE_PARALLEL_POLICIES 0\n#define _GLIBCXX_USE_TBB_PAR_BACKEND 0\n#include <mapnik/image_util.hpp>")
+for path in ("plugins/input/sqlite/CMakeLists.txt", "plugins/input/tiles/CMakeLists.txt",
+             "utils/pgsql2sqlite/CMakeLists.txt"):
+    sub(path, "SQLite::SQLite3", "SQLite3::SQLite3")
+'@
+    Invoke-Patch $src 'mapnik_plugin_load' @'
+path = "src/plugin.cpp"
+s = open(path, encoding="utf-8").read()
+old = "    module_->dl = LoadLibraryA(filename.c_str());\n"
+assert old in s, "plugin.cpp's LoadLibraryA call changed"
+s = s.replace(old, """    module_->dl = LoadLibraryExA(filename.c_str(), NULL,
+                                 LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR);
+    if (!module_->dl)
+        module_->dl = LoadLibraryA(filename.c_str());
+""")
+open(path, "w", encoding="utf-8").write(s)
+'@
+    # The Dockerfile's "keeps the docker smaller" step, which also keeps
+    # the demo and test trees (add_subdirectory'd unconditionally) out.
+    foreach ($dir in @('demo', 'test')) {
+        Remove-Item -Recurse -Force (Join-Path $src $dir)
+        New-Item -ItemType Directory -Force -Path (Join-Path $src $dir) | Out-Null
+        New-Item -ItemType File -Force -Path (Join-Path $src "$dir\CMakeLists.txt") | Out-Null
+    }
+    Cmake-Build $src @('-DBUILD_SHARED_LIBS=ON', '-DBUILD_BENCHMARK=OFF', '-DBUILD_DEMO_CPP=OFF',
+        '-DBUILD_DEMO_VIEWER=OFF', '-DBUILD_TESTING=OFF', '-DFONTS_INSTALL_DIR=lib/mapnik/fonts',
+        '-DPLUGINS_INSTALL_DIR=lib/mapnik/input', '-DCMAKE_POLICY_DEFAULT_CMP0167=OLD',
+        '-DMAPNIK_USE_PKG_CONFIG=ON', '-DCMAKE_DISABLE_FIND_PACKAGE_PROJ=ON',
+        '-DCMAKE_DISABLE_FIND_PACKAGE_harfbuzz=ON', '-DCMAKE_POLICY_VERSION_MINIMUM=3.5',
+        '-DINSTALL_DEPENDENCIES=OFF', "-DPKG_CONFIG_EXECUTABLE=$env:PKG_CONFIG")
+    $bin = Join-Path $LIW_PREFIX 'bin'
+    Assert-Files $bin @('libmapnik.dll', 'mapnik-render.exe', 'mapnik-index.exe', 'shapeindex.exe') 'mapnik'
+    # mapnik gives its libraries a lib prefix on every platform, and its
+    # .pc files say -lmapnik, -lmapnikwkt, -lmapnikjson (the base names):
+    # copies under the .pc spelling for the python build's link.
+    foreach ($name in @('mapnik', 'mapnikwkt', 'mapnikjson')) {
+        Assert-Files (Join-Path $LIW_PREFIX 'lib') @("lib$name.lib") 'mapnik'
+        Copy-Item (Join-Path $LIW_PREFIX "lib\lib$name.lib") (Join-Path $LIW_PREFIX "lib\$name.lib") -Force
+    }
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('libmapnik.pc') 'mapnik'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\mapnik\fonts') @('*.ttf') 'mapnik'
+    $pluginDir = Join-Path $LIW_PREFIX 'lib\mapnik\input'
+    foreach ($plugin in @('csv', 'gdal+ogr', 'geobuf', 'geojson', 'postgis+pgraster', 'raster', 'shape',
+                          'sqlite', 'tiles', 'topojson')) {
+        Assert-Files $pluginDir @("$plugin.input") 'mapnik'
+    }
+    # The macos build's assertion list: every optional library the linux
+    # wheel links must have resolved from the prefix (icudt is linked but
+    # has no import of its own: icuuc is what uses the data).
+    Assert-DependentStems (Join-Path $bin 'libmapnik.dll') @('icuuc', 'icuin', 'freetype', 'harfbuzz',
+        'libpng16', 'jpeg62', 'tiff', 'libwebp', 'avif', 'cairo', 'proj', 'libxml2') 'mapnik'
+    Assert-DependentStems (Join-Path $pluginDir 'gdal+ogr.input') @('gdal', 'libmapnik') 'mapnik'
+    Assert-DependentStems (Join-Path $pluginDir 'tiles.input') @('sqlite3', 'libssl', 'boost_url',
+        'boost_context', 'boost_json') 'mapnik'
+    Assert-DependentStems (Join-Path $pluginDir 'postgis+pgraster.input') @('libpq') 'mapnik'
+    Done-Stamp 'mapnik'
+}
+
+# The console-script wrapper for the tools in mapnik/bin: the linux
+# wheel's program() (PROJ_DATA and GDAL_DATA from the bundled trees),
+# running the launcher as a child (os.execve on Windows returns the
+# console before the child is done; the gdal wrapper's lesson).
+$script:MapnikBinWrapper = @'
+import os
+import subprocess
+import sys
+
+
+def program():
+    environ = os.environ.copy()
+    localpath = os.path.dirname(os.path.abspath(__file__))
+    # The data directories are copied beside bin, not into it
+    environ.setdefault("PROJ_DATA", os.path.join(os.path.dirname(localpath), "proj"))
+    environ.setdefault("GDAL_DATA", os.path.join(os.path.dirname(localpath), "gdal"))
+    name = os.path.splitext(os.path.basename(sys.argv[0]))[0]
+    sys.exit(subprocess.call([os.path.join(localpath, name + ".exe")] + sys.argv[1:], env=environ))
+'@
+
+# The mapnik python wheel: the extension, libmapnik and its tree, the
+# input plugins, the fonts, the proj and gdal data, and mapnik-render,
+# mapnik-index and shapeindex, like the linux wheel.  The two repository
+# patches and the Dockerfile's pyproject.toml patch are applied as on
+# linux; the Windows deltas are marked where they happen.  The plugins
+# are DLLs named .input, which delvewheel does not look at (it analyzes
+# .pyd, .dll and .exe files only), so they are packaged as .input.dll,
+# repaired with --analyze-existing (which rewrites their imports to the
+# mangled names), and renamed back afterwards (mapnik registers only
+# files ending in .input).
+function Build-MapnikPython {
+    if (Skip-If-Done 'mapnik_python') { return }
+    Log '=== mapnik python'
+    $pp = $script:PatchPython
+    & $pp -m pip install --quiet --no-warn-script-location -U "delvewheel==$(V delvewheel)" | Out-Null
+    Assert-Exit 'pip install of delvewheel failed'
+    if (-not $script:VcOpenMP -or -not (Test-Path (Join-Path $script:VcOpenMP 'vcomp140.dll'))) {
+        Die 'mapnik python: no OpenMP redistributable directory next to the CRT one (vcomp140.dll)'
+    }
+    Get-Mrsid
+    $sha = V 'python-mapnik-sha'
+    $src = Join-Path $LIW_SRC 'python-mapnik'
+    if (Test-Path $src) { Remove-Item -Recurse -Force $src }
+    New-Item -ItemType Directory -Force -Path $src | Out-Null
+    & git -C $src init -q
+    Assert-Exit 'git init for python-mapnik'
+    & git -C $src remote add origin https://github.com/mapnik/python-mapnik.git
+    for ($n = 1; $n -le 10; $n++) {
+        & git -C $src fetch --depth=1 origin $sha
+        if ($LASTEXITCODE -eq 0) { break }
+        Log "retrying git fetch: python-mapnik $sha"
+        Start-Sleep -Seconds 5
+    }
+    & git -C $src checkout -q -f FETCH_HEAD
+    Assert-Exit "git checkout of python-mapnik $sha"
+    & git -C $src config user.email 'wheels@example.com'
+    & git -C $src config user.name 'Wheel Builder'
+    foreach ($patch in @('python-mapnik.patch', 'python-mapnik_data_path.patch')) {
+        Run-Logged 'git' @('-C', $src, 'am', (Join-Path $RepoDir $patch)) "git am $patch"
+    }
+
+    # The plugins and fonts (the linux build copies lib/mapnik/*), the
+    # proj and gdal data, and the three tools.
+    $pkg = Join-Path $src 'packaging\mapnik'
+    Copy-Item (Join-Path $LIW_PREFIX 'lib\mapnik\fonts') (Join-Path $pkg 'fonts') -Recurse -Force
+    $pluginDir = Join-Path $pkg 'input'
+    New-Item -ItemType Directory -Force -Path $pluginDir | Out-Null
+    foreach ($plugin in (Get-ChildItem (Join-Path $LIW_PREFIX 'lib\mapnik\input') -Filter '*.input' -File)) {
+        Copy-Item $plugin.FullName (Join-Path $pluginDir "$($plugin.Name).dll")
+    }
+    foreach ($data in @('proj', 'gdal')) {
+        Copy-Item (Join-Path $LIW_PREFIX "share\$data") (Join-Path $pkg $data) -Recurse -Force
+    }
+    $binDir = Join-Path $pkg 'bin'
+    New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+    foreach ($tool in @('mapnik-render', 'mapnik-index', 'shapeindex')) {
+        Copy-Item (Join-Path $LIW_PREFIX "bin\$tool.exe") $binDir
+    }
+    Set-Content -Path (Join-Path $binDir '__init__.py') -Value $script:MapnikBinWrapper -Encoding ascii
+
+    # The Dockerfile's pyproject.toml patch: drop a stale .beta, pin
+    # pybind11, the version is libmapnik's plus .2, console scripts as
+    # dynamic metadata, the license table.
+    $mapnikVersion = (Capture-Native $env:PKG_CONFIG @('--modversion', 'libmapnik')).Trim()
+    if ($mapnikVersion -notmatch '^\d+\.\d+\.\d+$') { Die "mapnik python: pkg-config reports libmapnik version '$mapnikVersion'" }
+    Invoke-Patch $src 'mapnik_pyproject' @"
+import re
+path = "pyproject.toml"
+s = open(path, encoding="utf-8").read()
+s = s.replace(".beta", "")
+s = s.replace("pybind11 >= 3.0.2", "pybind11 == 3.0.2")
+s = re.sub("\nversion = \".*\"", "\nversion = \"$mapnikVersion.2\"", s)
+s = s.replace("authors", "dynamic = [\"scripts\"]\nauthors")
+s = s.replace("license = \"LGPL-2.1-or-later\"", "license = { text = \"LGPL-2.1-or-later\"}")
+open(path, "w", encoding="utf-8").write(s)
+path = "src/mapnik_font_engine.cpp"
+s = open(path, encoding="utf-8").read()
+s = s.replace('.def_static("face_names", &freetype_engine::face_names)', '// .def_static("face_names", &freetype_engine::face_names)')
+open(path, "w", encoding="utf-8").write(s)
+"@
+    # Windows: setup.py (as the linux patch left it) runs `pkg-config`,
+    # which is the pkgconf binary PKG_CONFIG names here, with
+    # --msvc-syntax for the link flags; links with -lrt and an $ORIGIN
+    # rpath on everything but darwin; and names the console scripts after
+    # the files in mapnik/bin, which carry .exe here (a script named
+    # mapnik-render.exe would be installed as mapnik-render.exe.exe).
+    # /utf-8 as mapnik's own build compiles (pybind11 already asks MSVC
+    # for /std:c++latest, which mapnik's C++20 headers need); BOOST_ALL_NO_LIB
+    # keeps MSVC auto-linking from asking for versioned boost names.
+    Invoke-Patch $src 'mapnik_setup' @'
+path = "setup.py"
+s = open(path, encoding="utf-8").read()
+for old, new in (
+    ("check_output(['pkg-config', 'libmapnik', '--variable', 'libdir'])",
+     "check_output([os.environ.get('PKG_CONFIG', 'pkg-config'), 'libmapnik', '--variable', 'libdir'])"),
+    ("check_output(['pkg-config', 'libmapnik', '--libs']).split(' ')",
+     "check_output([os.environ.get('PKG_CONFIG', 'pkg-config'), 'libmapnik', '--libs', '--msvc-syntax']).split()"),
+    ("check_output(['pkg-config', 'libmapnik', '--cflags']).split(' ')",
+     "check_output([os.environ.get('PKG_CONFIG', 'pkg-config'), 'libmapnik', '--cflags']).split()"
+     " + ['/utf-8', '/DBOOST_ALL_NO_LIB']"),
+    ("if sys.platform == 'darwin':", "if sys.platform in ('darwin', 'win32'):"),
+    ("'%s=mapnik.bin:program' % name for name in os.listdir('packaging/mapnik/bin') if not name.endswith('.py')",
+     "'%s=mapnik.bin:program' % os.path.splitext(name)[0] for name in os.listdir('packaging/mapnik/bin') if name.endswith('.exe')"),
+):
+    assert old in s, "setup.py changed: " + old
+    s = s.replace(old, new)
+open(path, "w", encoding="utf-8").write(s)
+'@
+    # Windows: one cast to POSIX ssize_t, which MSVC lacks; python's own
+    # type is what the call takes.
+    Invoke-Patch $src 'mapnik_ssize_t' @'
+path = "src/mapnik_value_converter.hpp"
+s = open(path, encoding="utf-8").read()
+old = "static_cast<ssize_t>(s.length())"
+assert old in s, "mapnik_value_converter.hpp's ssize_t cast changed"
+open(path, "w", encoding="utf-8").write(s.replace(old, "static_cast<Py_ssize_t>(s.length())"))
+'@
+    # Windows: MSVC finds a point<double> (and the other double geometry
+    # types to_wkt_impl is instantiated with) convertible to both of
+    # to_wkt's geometry<double> and geometry<int64_t> overloads; the
+    # explicit conversion is the one gcc picks.
+    Invoke-Patch $src 'mapnik_to_wkt' @'
+path = "src/mapnik_geometry.cpp"
+s = open(path, encoding="utf-8").read()
+old = "if (!mapnik::util::to_wkt(wkt,geom))"
+assert old in s, "mapnik_geometry.cpp's to_wkt call changed"
+open(path, "w", encoding="utf-8").write(
+    s.replace(old, "if (!mapnik::util::to_wkt(wkt, mapnik::geometry::geometry<double>(geom)))"))
+'@
+    # Windows: the bundled libgdal preload finds gdal-<hash>.dll (the
+    # linux name is libgdal*).
+    Invoke-Patch $src 'mapnik_init' @'
+path = "packaging/mapnik/__init__.py"
+s = open(path, encoding="utf-8").read()
+old = "libgdalpath = [lib for lib in libs if lib.startswith('libgdal')][0]"
+assert old in s, "the linux __init__.py patch changed"
+s = s.replace(old, "libgdalpath = [lib for lib in libs if lib.startswith(('libgdal', 'gdal-'))][0]")
+open(path, "w", encoding="utf-8").write(s)
+'@
+    foreach ($check in @(@('pyproject.toml', "version = `"$mapnikVersion.2`""), @('pyproject.toml', 'dynamic = ['),
+                         @('setup.py', '--msvc-syntax'), @('packaging\mapnik\__init__.py', "'gdal-'"))) {
+        if (-not (Select-String -Path (Join-Path $src $check[0]) -Pattern ([regex]::Escape($check[1])) -Quiet)) {
+            Die "mapnik python: the $($check[0]) patch did not apply ($($check[1]) missing)"
+        }
+    }
+    Commit-Patches $src "$(V mapnik-release).2"
+
+    Remove-Item -Path (Join-Path $LIW_WHEELHOUSE 'mapnik-*.whl') -Force -ErrorAction SilentlyContinue
+    foreach ($minor in $script:Pythons) {
+        $pybin = Join-Path $LIW_PY $minor
+        Log "mapnik wheel: python $minor"
+        if (Test-Path (Join-Path $src 'build')) { Remove-Item -Recurse -Force (Join-Path $src 'build') }
+        Run-Logged (Join-Path $pybin 'python.exe') @(
+            '-m', 'pip', 'wheel', '--no-deps', '--progress-bar', 'off',
+            '-w', $LIW_WHEELHOUSE, $src) "mapnik wheel build for python $minor"
+    }
+
+    Log 'delvewheel repair of the mapnik wheels'
+    Remove-Item -Path (Join-Path $WheelsDir 'mapnik-*.whl') -Force -ErrorAction SilentlyContinue
+    $prefixBin = Join-Path $LIW_PREFIX 'bin'
+    foreach ($whl in (Get-ChildItem -Path $LIW_WHEELHOUSE -Filter 'mapnik-*.whl' -File)) {
+        Run-Logged $pp @(
+            '-m', 'delvewheel', 'repair', '-w', $WheelsDir,
+            '--add-path', "$prefixBin;$script:VcRedist;$script:VcOpenMP",
+            '--analyze-existing', '--analyze-existing-exes',
+            '--include', 'vcruntime140.dll;vcruntime140_1.dll',
+            '--exclude', 'gdiplus.dll',
+            '--no-mangle', 'vcruntime140.dll;vcruntime140_1.dll',
+            $whl.FullName) "delvewheel repair of $($whl.Name)"
+        $out = Join-Path $WheelsDir $whl.Name
+        Relocate-Tools $out 'mapnik' 'mapnik.libs'
+        Rename-Plugins $out
+        Assert-WheelContains $out @(
+            '^mapnik\.libs/libmapnik-[0-9a-f]+\.dll$',
+            '^mapnik\.libs/gdal-[0-9a-f]+\.dll$',
+            '^mapnik\.libs/icudt\d+-[0-9a-f]+\.dll$',
+            '^mapnik\.libs/icuuc\d+-[0-9a-f]+\.dll$',
+            '^mapnik\.libs/boost_url-[0-9a-f]+\.dll$',
+            '^mapnik\.libs/libpq-[0-9a-f]+\.dll$',
+            '^mapnik\.libs/msvcp140-[0-9a-f]+\.dll$',
+            '^mapnik\.libs/vcruntime140\.dll$',
+            '^mapnik\.libs/mapnik-render\.exe$',
+            '^mapnik/bin/mapnik-render\.exe$',
+            '^mapnik/bin/shapeindex\.exe$',
+            '^mapnik/input/gdal\+ogr\.input$',
+            '^mapnik/input/tiles\.input$',
+            '^mapnik/fonts/.*\.ttf$',
+            '^mapnik/proj/proj\.db$',
+            '^mapnik/gdal/gdalvrt\.xsd$',
+            '^mapnik/_mapnik.*\.pyd$') 'mapnik'
+    }
+    $repaired = @(Get-ChildItem -Path $WheelsDir -Filter 'mapnik-*win_amd64*.whl' -File)
+    if ($repaired.Count -lt $script:Pythons.Count) {
+        Die "mapnik: only $($repaired.Count) wheels, expected $($script:Pythons.Count)"
+    }
+    Done-Stamp 'mapnik_python'
+}
+
+# After the repair: the plugins go back to the .input names mapnik
+# registers (see Build-MapnikPython).  Unpacked and repacked like
+# Relocate-Tools, which regenerates RECORD.
+function Rename-Plugins([string]$Wheel) {
+    $pp = $script:PatchPython
+    if (Test-Path $LIW_RELOCATE) { Remove-Item -Recurse -Force $LIW_RELOCATE }
+    New-Item -ItemType Directory -Force -Path $LIW_RELOCATE | Out-Null
+    Run-Logged $pp @('-m', 'wheel', 'unpack', '--dest', $LIW_RELOCATE, $Wheel) "unpack of $Wheel"
+    $root = Get-ChildItem -Path $LIW_RELOCATE -Directory | Select-Object -First 1
+    $plugins = @(Get-ChildItem -Path (Join-Path $root.FullName 'mapnik\input') -Filter '*.input.dll' -File)
+    if ($plugins.Count -eq 0) { Die "mapnik: no .input.dll plugins in $Wheel" }
+    foreach ($plugin in $plugins) {
+        Rename-Item $plugin.FullName ($plugin.Name -replace '\.dll$', '')
+    }
+    Run-Logged $pp @('-m', 'wheel', 'pack', '--dest-dir', (Split-Path -Parent $Wheel),
+        $root.FullName) "repack of $Wheel"
+    Log "renamed $($plugins.Count) plugins of $(Split-Path -Leaf $Wheel) back to .input"
+}
+
 # Expose each tool in <package>/bin as a console script that runs the
 # launcher of the same name (after the repair, <package>/bin/<tool>.exe is
 # the launcher, which finds the real tool in <dist>.libs).
@@ -4476,8 +5026,8 @@ function Invoke-Patch([string]$Src, [string]$Name, [string]$Code) {
     Set-Content -Path $path -Value $Code -Encoding ascii
     Push-Location $Src
     try {
-        & $script:PatchPython $path
-        Assert-Exit "the $Name patch"
+        # (Run-Logged: a failing patch's traceback must reach the log.)
+        Run-Logged $script:PatchPython @($path) "the $Name patch"
     } finally {
         Pop-Location
     }
@@ -5420,6 +5970,79 @@ function Main {
                 Build-Libavif
                 Build-Gdal
                 Build-GdalPython
+            }
+            'mapnik' {
+                # The full gdal case (mapnik's gdal+ogr plugin links the
+                # prefix's GDAL, and a build of both packages builds the
+                # tree once), then what mapnik's cmake needs that the gdal
+                # tree does not supply: icu4c and boost.  Nothing in the
+                # gdal tree looks for either, so building them last keeps
+                # that tree the same whether or not mapnik is requested.
+                Ensure-Meson
+                Build-Zlib
+                Build-Bzip2
+                Build-Zstd
+                Build-Jbigkit
+                Build-Libwebp
+                Build-Libjpeg-Turbo
+                Build-Libdeflate
+                Build-Xz
+                Build-Libtiff
+                Build-Giflib
+                Build-Openssl
+                Build-Libbrotli
+                Build-Curl
+                Build-Json-C
+                Build-Lerc
+                Build-Lcms2
+                Build-Libpng
+                Build-Openjpeg
+                Build-Libhwy
+                Build-Jpeg-Xl
+                Build-Libexpat
+                Build-Sqlite
+                Build-Libxml2
+                Build-Lz4
+                Build-Libarchive
+                Build-Win-Iconv
+                Build-Proj4
+                Build-Pixman
+                Build-Freetype
+                Build-Fontconfig
+                Build-Glib
+                Build-Cairo
+                Build-Minizip
+                Build-Freexl
+                Build-Libgeos
+                Build-Librttopo
+                Build-Libspatialite
+                Build-Libgeotiff
+                Build-Librasterlite2
+                Build-Fyba
+                Build-Hdf4
+                Build-Hdf5
+                Build-Netcdf
+                Build-Mysql
+                Build-Postgresql
+                Build-Libgta
+                Build-Xerces-C
+                Build-Blosc
+                Build-Highfive
+                Build-Kealib
+                Build-Libde265
+                Build-Libheif
+                Build-Harfbuzz
+                Build-Poppler
+                Build-Fitsio
+                Build-Openexr
+                Build-Libopendrive
+                Build-Libavif
+                Build-Gdal
+                Build-GdalPython
+                Build-Icu4c
+                Build-Boost
+                Build-Mapnik
+                Build-MapnikPython
             }
             default {
                 if ($pkg.StartsWith('dep:')) {
