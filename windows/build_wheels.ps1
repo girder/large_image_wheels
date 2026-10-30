@@ -193,9 +193,26 @@ $script:ToolPaths = @()
 # self-contained, as the macos scripts are).
 # --------------------------------------------------------------------------
 
+# Append a line to a file in the mapped run folder.  The host's log
+# streaming opens the file through the mapping, and while it does the
+# append fails with "being used by another process" (a host build run
+# died on it), so the append retries; a line that still cannot be written
+# is dropped rather than ending the run.
+function Append-Line([string]$Path, [string]$Line) {
+    for ($n = 1; $n -le 50; $n++) {
+        try {
+            [System.IO.File]::AppendAllText($Path, "$Line`r`n", [System.Text.UTF8Encoding]::new($false))
+            return
+        } catch {
+            Start-Sleep -Milliseconds 100
+        }
+    }
+    Write-Host "(could not append to $Path)"
+}
+
 function Log([string]$Message) {
     Write-Host $Message
-    Add-Content -Path $LogPath -Value $Message -Encoding utf8
+    Append-Line $LogPath $Message
 }
 
 function Die([string]$Message) {
