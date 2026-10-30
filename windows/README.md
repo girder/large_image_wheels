@@ -529,12 +529,12 @@ sandbox before every host run:
   commit, with every driver the linux wheel has: the shared suite's
   known-formats check passes, plus the Windows extras (ODBC,
   MSSQLSpatial, PGeo).  One wheel per python with the gdal, proj and
-  libgeotiff tools bundled (77 DLLs, 42 tools, 45 MB).  Not yet
-  verified on the host.
+  libgeotiff tools bundled (77 DLLs, 42 tools, 45 MB).  Verified on
+  the host with the five default packages (2026-10-30); the runs that
+  failed on the way were a network error and a build-log append that
+  hit the host's streaming read (see the hard-won list).
 
-Next step: the host run of `windows\sandbox_build.bat &&
-windows\test_via_sandbox.bat` (five packages by default; the gdal chain
-is the long one), then mapnik.
+Next step: mapnik.
 
 Known gaps, in rough order:
 
@@ -657,7 +657,12 @@ Known gaps, in rough order:
   fails intermittently with "being used by another process", even with
   `FileShare.ReadWrite` on the host side.  Anything in the host loop
   that touches the run folder must tolerate a failed read and retry on
-  the next poll; an uncaught exception there is what stops a run.
+  the next poll; an uncaught exception there is what stops a run.  The
+  converse happens too: the in-sandbox `Add-Content` to the log failed
+  while the host held the file for a read, and under
+  `$ErrorActionPreference = 'Stop'` that ended a build run.  The
+  in-sandbox scripts append through `Append-Line`, which retries for a
+  few seconds and then drops the line rather than the run.
 - **A fresh sandbox's certificate store has about sixteen roots**, and
   github.com's is not one of them.  Windows fetches a missing root on
   demand, but only for Schannel clients (curl.exe, Invoke-WebRequest);

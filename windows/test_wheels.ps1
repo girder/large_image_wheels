@@ -110,9 +110,21 @@ foreach ($name in @('exit_code', 'test.log', 'report.txt')) {
 # is in build_wheels.ps1, and a change to one belongs in both).
 # --------------------------------------------------------------------------
 
+function Append-Line([string]$Path, [string]$Line) {
+    for ($n = 1; $n -le 50; $n++) {
+        try {
+            [System.IO.File]::AppendAllText($Path, "$Line`r`n", [System.Text.UTF8Encoding]::new($false))
+            return
+        } catch {
+            Start-Sleep -Milliseconds 100
+        }
+    }
+    Write-Host "(could not append to $Path)"
+}
+
 function Log([string]$Message) {
     Write-Host $Message
-    Add-Content -Path $LogPath -Value $Message -Encoding utf8
+    Append-Line $LogPath $Message
 }
 
 function Die([string]$Message) {
@@ -316,7 +328,7 @@ $script:Failures = 0
 
 function Note([string]$Message) {
     Log $Message
-    Add-Content -Path $ReportPath -Value $Message -Encoding utf8
+    Append-Line $ReportPath $Message
 }
 
 function Check([bool]$Ok, [string]$Message) {
