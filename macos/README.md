@@ -125,33 +125,20 @@ the Homebrew-hiding step).
 
 ## Nightly build via cron
 
-The pipeline works from an ssh login session but has never worked directly
-from a cron job (whose launchd session differs from ssh's in undocumented
-ways), so `macos/nightly.sh` -- the one script the crontab invokes -- only
-triggers: it re-runs its body over ssh to localhost, so the build executes
-in an ssh login session, the session type every hand run uses.  Auth is
-the dedicated passphrase-less wheel-VM key, so no ssh-agent is needed at
-3 AM.  Run nightly builds by hand through the same script, so hand and
-cron runs are the same code path.
-
-One-time setup (on the build host):
-
-```
-cat ~/.large_image_wheels_tart/ssh/liw_wheels_ed25519.pub >> ~/.ssh/authorized_keys
-chmod 600 ~/.ssh/authorized_keys
-```
-
-Remote Login must be enabled (it already is on any machine that accepts
-ssh).  The crontab entry replaces the old inlined command:
+`macos/nightly.sh` is the nightly build body; the crontab entry runs it
+directly:
 
 ```
 30 3 * * * /path/to/large_image_wheels/macos/nightly.sh >>/tmp/liw_cron_build.txt 2>&1
 ```
 
-The body writes its own log to `/tmp/liw_cron_build.txt`; the outer append
-captures ssh-level failures.  To test the full nightly path on demand,
-run `macos/nightly.sh` by hand -- or from a cron-schedule test entry --
-and check `/tmp/liw_cron_build.txt`.
+(The body is the old inlined cron command, verbatim; the redirect lives in
+the script, the outer append catches cron-level failures.)  Known issue:
+cron-spawned runs have failed where ssh-session hand runs succeed -- the
+build VM acquired an IP but never answered on port 22 -- which is a
+session-level difference under investigation; the guest console log at
+`~/.large_image_wheels_tart/logs/liw_wheels_build.log` distinguishes a
+stalled guest boot from a host-side connection block.
 
 VM namespace (distinct from the manthey/utils `agent_*` sandboxes):
 `liw_wheels_base` (pristine base, the manylinux-image analogue),

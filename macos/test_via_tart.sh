@@ -123,6 +123,8 @@ WHEEL_LIST="$(cd "$LIW_WHEELS_DIR" && ls *macosx*.whl \
 command -v tart >/dev/null 2>&1 || die "tart not found on the host"
 command -v ssh >/dev/null 2>&1 || die "ssh not found on the host"
 mkdir -p "$LIW_LOG_DIR" "$LIW_SSH_DIR"
+# Prune VM console logs older than a month.
+find "$LIW_LOG_DIR" -type f -name '*.log' -mtime +30 -delete 2>/dev/null || true
 
 # --- ssh handling ------------------------------------------------------------
 # Use the same dedicated passphrase-less key as tart_build.sh ($LIW_SSH_DIR is
@@ -1234,17 +1236,18 @@ info "cloning $LIW_TART_BASE into $VM_NAME"
 tart clone --overwrite "$LIW_TART_BASE" "$VM_NAME" || die "cloning failed"
 tart set "$VM_NAME" --cpu "$LIW_CPUS" --memory "$LIW_MEM_MB" || die "tart set failed"
 
-info "starting $VM_NAME (log $LIW_LOG_DIR/$VM_NAME.log)"
-nohup tart run --no-graphics "$VM_NAME" >>"$LIW_LOG_DIR/$VM_NAME.log" 2>&1 &
+LIW_VM_LOG="$LIW_LOG_DIR/$VM_NAME.$(date +%Y%m%d-%H%M%S).log"
+info "starting $VM_NAME (log $LIW_VM_LOG)"
+nohup tart run --no-graphics "$VM_NAME" >>"$LIW_VM_LOG" 2>&1 &
 sleep 5
 if ! pgrep -f "tart run.* $VM_NAME\$" >/dev/null 2>&1; then
-    echo "--- tail of $LIW_LOG_DIR/$VM_NAME.log:" >&2
-    tail -20 "$LIW_LOG_DIR/$VM_NAME.log" >&2
+    echo "--- tail of $LIW_VM_LOG:" >&2
+    tail -20 "$LIW_VM_LOG" >&2
     die "$VM_NAME exited immediately after starting (see log above; another tart VM may be holding memory -- check 'tart list')"
 fi
 vm_ip "$VM_NAME" 600 >/dev/null || {
-    echo "--- tail of $LIW_LOG_DIR/$VM_NAME.log:" >&2
-    tail -30 "$LIW_LOG_DIR/$VM_NAME.log" >&2
+    echo "--- tail of $LIW_VM_LOG:" >&2
+    tail -30 "$LIW_VM_LOG" >&2
     stop_vm
     die "$VM_NAME did not acquire an IP (see log above; check 'tart list' for VMs holding memory)"
 }
@@ -1305,7 +1308,7 @@ while true; do
         break
     fi
     if ! vm_running "$VM_NAME"; then
-        echo "error: test VM died; check $LIW_LOG_DIR/$VM_NAME.log" >&2
+        echo "error: test VM died; check $LIW_VM_LOG" >&2
         stop_stream
         # Save whatever the in-VM script produced before it died; without
         # this the only copy of the partial report lives inside the stopped

@@ -265,7 +265,7 @@ start_vm() {
         return 0
     fi
     info "starting $VM_NAME (log $LIW_LOG_DIR/$VM_NAME.log)"
-    nohup tart run --no-graphics "$VM_NAME" >>"$LIW_LOG_DIR/$VM_NAME.log" 2>&1 &
+    nohup tart run --no-graphics "$VM_NAME" >"$LIW_LOG_DIR/$VM_NAME.log" 2>&1 &
     sleep 5
     if ! pgrep -f "tart run.* $VM_NAME\$" >/dev/null 2>&1; then
         echo "--- tail of $LIW_LOG_DIR/$VM_NAME.log:" >&2
