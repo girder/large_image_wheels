@@ -457,7 +457,7 @@ If you are a fresh agent instance resuming this work:
 
 ## Status
 
-Work in progress (2026-10-28).  Three packages are verified end to end
+Work in progress (2026-11-02).  Six packages are verified end to end
 on the host; the pipeline is exercised in dev mode inside the agent
 sandbox before every host run:
 
@@ -549,10 +549,32 @@ sandbox before every host run:
   mapnik with the compiler out of heap space (the 8 GB build sandbox
   ran one Spirit grammar compile per processor); mapnik's compile is
   now limited by memory, and the sandboxes get half of the host's memory by default (see
-  the hard-won list).  Not yet verified on the host.
+  the hard-won list).  Verified on the host with the six default
+  packages (2026-11-02).
+- **python_bioformats** (2026-11-02; `Build-Bioformats`): one
+  py3-none-any wheel, as on linux and macos -- python-bioformats at its
+  tag with the release's `bioformats_package.jar`, jackson removed as in
+  the Dockerfile (the guard fails the build if anything left in the jar
+  mentions jackson, or if there is no jackson to remove), version
+  suffix `.<jar version>.2`.  No unzip/zip/advzip on Windows: the patch
+  python's `zipfile` does the guard and the rewrite, recompressing at
+  level 9 in place of advzip.  It cannot be used without javabridge, so
+  until the python_javabridge wheel exists `test_wheels.ps1` installs it
+  with `--no-deps` (pip would otherwise reach for pypi's javabridge
+  sdist) and the shared suite skips its bioformats sections; this stage
+  verifies the build and the exact-version install only.  The shared
+  suite's geotiff-through-large_image step was gated on the bioformats
+  wheel alone, though bioformats reads nothing without javabridge (a
+  pylibtiff + bioformats dev run failed there with "No available
+  tilesource"); it is now gated like the czi step.  The jar was checked
+  against the Dockerfile's `zip -d` patterns: the same 1054 entries
+  removed, every other entry's CRC unchanged.
 
 Next step: the host run of `windows\sandbox_build.bat &&
-windows\test_via_sandbox.bat` (six packages by default now).
+windows\test_via_sandbox.bat` (seven packages by default now, with
+python_bioformats); then python_javabridge (a portable JDK 8 in the
+cache, bundled like the linux and macos wheels), which makes the
+bioformats tests run.
 
 Known gaps, in rough order:
 
