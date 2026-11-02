@@ -4206,16 +4206,41 @@ build_bioformats() {
     # advancecomp is not built for the macos prefix, so the recompression
     # is skipped -- the jar ships as downloaded.
 
+    # Remove jackson from the jar.  ome-common pins it to replace the version
+    # minio declares, but nothing in the jar uses it (checked with jdeps on
+    # the linux side), and it carries a number of CVEs.  The root
+    # module-info.class is jackson-annotations' module descriptor.  Fail if
+    # anything else mentions jackson (either as a class reference or a
+    # reflection string).  Same treatment as the linux Dockerfile.
+    rm -rf /tmp/bfjar
+    mkdir -p /tmp/bfjar
+    unzip -q bioformats/jars/bioformats_package.jar '*.class' 'META-INF/services/*' \
+        -d /tmp/bfjar || die "could not unpack the bioformats jar for the jackson check"
+    rm -rf /tmp/bfjar/com/fasterxml /tmp/bfjar/module-info.class \
+        /tmp/bfjar/META-INF/services/com.fasterxml.jackson.core.*
+    if [ -n "$(grep -rlaE 'com[./]fasterxml[./]jackson' /tmp/bfjar || true)" ]; then
+        die "the bioformats jar still references jackson; revisit the removal"
+    fi
+    rm -rf /tmp/bfjar
+    zip -q -d bioformats/jars/bioformats_package.jar 'com/fasterxml/*' \
+        'META-INF/maven/com.fasterxml.jackson.core/*' \
+        'META-INF/services/com.fasterxml.jackson.core.*' module-info.class ||
+        die "could not remove jackson from the bioformats jar"
+
     # Patch setup.py: append the bioformats jar version to the version so
     # pip prefers this wheel over pypi's (linux parity), declare
     # python_requires, and drop the unused future requirement (CVE).
+    # The suffix is bumped in lockstep with the linux build whenever the jar
+    # content changes (the linux build went to .2 when it started removing
+    # jackson), so both platforms' py3-none-any wheels stay identical and
+    # distinct from pypi's.
     cat >"$LIW_PATCHES/bioformats_setup.py" <<'EOF'
 import re
 path = "setup.py"
 s = open(path).read()
 # append bioformats jar version to version to make sure pip prefers this
 s = re.sub(r'(version="[^"]*)"',
-           r'\1.' + __import__("os").environ["LIW_BF_VERSION"] + '.1"' +
+           r'\1.' + __import__("os").environ["LIW_BF_VERSION"] + '.2"' +
            ',\n    python_requires=">=3.9",', s)
 # remove future from requires; it is not required for any python version we
 # handle and avoids a CVE
@@ -4250,7 +4275,7 @@ EOF
         *) die "unexpected python_bioformats wheel name: $whl" ;;
         esac
         case "$(basename "$whl")" in
-        python_bioformats-"$(v python-bioformats)"."$(v bioformats)".1-*) ;;
+        python_bioformats-"$(v python-bioformats)"."$(v bioformats)".2-*) ;;
         *) die "python_bioformats wheel version does not carry the jar-version suffix: $whl" ;;
         esac
         contents="$(unzip -l "$whl")"
