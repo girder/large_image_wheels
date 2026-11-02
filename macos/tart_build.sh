@@ -187,20 +187,20 @@ if [ -z "$console_owner" ] || [ "$console_owner" = "root" ]; then
     die "no active GUI session on this host (nobody logged in at the console); tart needs one to run VMs. Log in at the console once after any boot, or enable automatic login (System Settings > Users & Groups > Login Options, requires FileVault off) and 'sudo pmset -a sleep 0' so the session is never suspended"
 fi
 
-# --- ssh key handling (same conventions as manthey/utils agent_tart.sh) ----
-LIW_SSH_KEY=""
-for candidate in "$HOME/.ssh/id_ed25519.pub" "$HOME/.ssh/id_ecdsa.pub" \
-    "$HOME/.ssh/id_rsa.pub"; do
-    if [ -f "$candidate" ]; then
-        LIW_SSH_KEY="${candidate%.pub}"
-        break
-    fi
-done
-if [ -z "$LIW_SSH_KEY" ]; then
-    mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
-    info "generating a new ssh keypair at $HOME/.ssh/id_ed25519"
-    ssh-keygen -t ed25519 -N '' -f "$HOME/.ssh/id_ed25519" -q
-    LIW_SSH_KEY="$HOME/.ssh/id_ed25519"
+# --- ssh key handling --------------------------------------------------------
+# Use a dedicated passphrase-less key for the wheel VMs, not the user's
+# personal key.  A passphrase-protected personal key works interactively (the
+# GUI session's ssh-agent/keychain supplies the passphrase) but can never be
+# decrypted from a crontab session, which has no SSH_AUTH_SOCK and cannot
+# unlock the login keychain: the nightly run then dies at the first
+# authenticated ssh ("ssh into $VM_NAME still fails after the key bootstrap")
+# even though the bootstrap installed the public half into the guest.  A
+# passphrase-less key needs no agent.  Clones of a base VM provisioned with
+# an older key are handled by the sshpass bootstrap in start_vm.
+LIW_SSH_KEY="$LIW_SSH_DIR/liw_wheels_ed25519"
+if [ ! -f "$LIW_SSH_KEY" ]; then
+    info "generating a dedicated wheel-VM ssh key at $LIW_SSH_KEY"
+    ssh-keygen -t ed25519 -N '' -f "$LIW_SSH_KEY" -q
 fi
 
 ssh_opts() {
@@ -282,7 +282,12 @@ start_vm() {
         stop_vm
         die "$VM_NAME did not become reachable over ssh"
     }
-    if ! run_ssh true 2>/dev/null; then
+    # Keep the probe's stderr: with it discarded, a cron-session key failure
+    # surfaced only as an unexplained "still fails after the key bootstrap".
+    liw_probe_status=0
+    liw_probe_error="$(run_ssh true 2>&1 >/dev/null)" || liw_probe_status=$?
+    if [ "$liw_probe_status" -ne 0 ]; then
+        info "the ssh probe failed (status $liw_probe_status: $liw_probe_error)"
         info "bootstrapping the ssh key into $VM_NAME (password bootstrap)"
         if command -v sshpass >/dev/null 2>&1; then
             sshpass -p "$LIW_TART_PASS" ssh-copy-id \

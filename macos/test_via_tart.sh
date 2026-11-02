@@ -124,19 +124,17 @@ command -v tart >/dev/null 2>&1 || die "tart not found on the host"
 command -v ssh >/dev/null 2>&1 || die "ssh not found on the host"
 mkdir -p "$LIW_LOG_DIR" "$LIW_SSH_DIR"
 
-# --- ssh handling (same conventions as tart_build.sh) -----------------------
-LIW_SSH_KEY=""
-for candidate in "$HOME/.ssh/id_ed25519.pub" "$HOME/.ssh/id_ecdsa.pub" \
-    "$HOME/.ssh/id_rsa.pub"; do
-    if [ -f "$candidate" ]; then
-        LIW_SSH_KEY="${candidate%.pub}"
-        break
-    fi
-done
-if [ -z "$LIW_SSH_KEY" ]; then
-    mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
-    ssh-keygen -t ed25519 -N '' -f "$HOME/.ssh/id_ed25519" -q
-    LIW_SSH_KEY="$HOME/.ssh/id_ed25519"
+# --- ssh handling ------------------------------------------------------------
+# Use the same dedicated passphrase-less key as tart_build.sh ($LIW_SSH_DIR is
+# shared), not the user's personal key: a passphrase-protected personal key
+# works interactively (the GUI session's ssh-agent/keychain supplies the
+# passphrase) but can never be decrypted from a crontab session, which has no
+# SSH_AUTH_SOCK and cannot unlock the login keychain.  A passphrase-less key
+# needs no agent; the sshpass bootstrap below installs it into fresh clones.
+LIW_SSH_KEY="$LIW_SSH_DIR/liw_wheels_ed25519"
+if [ ! -f "$LIW_SSH_KEY" ]; then
+    info "generating a dedicated wheel-VM ssh key at $LIW_SSH_KEY"
+    ssh-keygen -t ed25519 -N '' -f "$LIW_SSH_KEY" -q
 fi
 
 ssh_opts() {
@@ -1252,7 +1250,12 @@ vm_ip "$VM_NAME" 600 >/dev/null || {
 }
 wait_ssh_ready || { stop_vm; die "$VM_NAME did not become reachable over ssh"; }
 
-if ! run_ssh true 2>/dev/null; then
+# Keep the probe's stderr: with it discarded, a cron-session key failure
+# surfaced only as an unexplained "still fails after the key bootstrap".
+liw_probe_status=0
+liw_probe_error="$(run_ssh true 2>&1 >/dev/null)" || liw_probe_status=$?
+if [ "$liw_probe_status" -ne 0 ]; then
+    info "the ssh probe failed (status $liw_probe_status: $liw_probe_error)"
     info "bootstrapping the ssh key into $VM_NAME"
     if command -v sshpass >/dev/null 2>&1; then
         sshpass -p "$LIW_TART_PASS" ssh-copy-id \
