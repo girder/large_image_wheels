@@ -68,7 +68,9 @@ param(
     # Default package set; keep in sync with build_wheels.ps1's builders.
     [string[]]$Packages = @('pylibtiff', 'glymur', 'openslide_python', 'pyvips', 'gdal', 'mapnik'),
     [string[]]$Pythons = @('3.11', '3.12', '3.13', '3.14', '3.15', '3.14t', '3.15t'),
-    [int]$MemoryMB = 32768,
+    # 0: half of the host's physical memory (only one sandbox runs at a
+    # time).
+    [int]$MemoryMB = 0,
     [int]$TimeoutSec = 14400,
     [string]$RepoDir = '',
     [string]$CacheDir = '',
@@ -94,6 +96,13 @@ function Die([string]$Message) {
 
 function Info([string]$Message) {
     Write-Host "$($script:Tool): $Message"
+}
+
+if ($MemoryMB -le 0) {
+    Add-Type -AssemblyName Microsoft.VisualBasic
+    $hostMB = [long]((New-Object Microsoft.VisualBasic.Devices.ComputerInfo).TotalPhysicalMemory / 1MB)
+    $MemoryMB = [int][Math]::Floor($hostMB / 2)
+    Info "sandbox memory: $MemoryMB MB, half of the host's $hostMB MB (-MemoryMB overrides)"
 }
 
 function Get-SandboxBackend {
@@ -458,8 +467,8 @@ function Invoke-SandboxRun {
                 'firmware (see the Hyper-V Requirements section of ' +
                 'systeminfo), that the CmService is not Disabled, and that ' +
                 'starting "Windows Sandbox" from the Start menu shows a ' +
-                'window; also try -MemoryMB 8192 in case 32768 exceeds what ' +
-                'the host can give.')
+                "window; also try a smaller -MemoryMB (such as 8192) in case $MemoryMB MB " +
+                'exceeds what the host can give.')
         }
         Start-Sleep -Seconds 2
     }

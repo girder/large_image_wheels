@@ -240,7 +240,8 @@ Host side (run on the host, outside any sandbox):
   layout below, starts the sandbox, streams the in-sandbox log, waits
   for the exit marker, and reports: for `build` it validates that every
   requested package produced a wheel for every requested python
-  (`-Packages`, `-Pythons`, `-MemoryMB`, `-TimeoutSec`); for `test` it
+  (`-Packages`, `-Pythons`, `-MemoryMB` -- default half of the host's
+  physical memory -- `-TimeoutSec`); for `test` it
   runs a fresh sandbox with the repository and the wheels mapped
   read-only, prints `report.txt`, and exits with the result (`-Pythons`,
   `-MemoryMB`, `-TimeoutSec`); `cache` pre-warms the download cache in a
@@ -547,7 +548,7 @@ sandbox before every host run:
   through the other five packages, icu4c and boost, and died compiling
   mapnik with the compiler out of heap space (the 8 GB build sandbox
   ran one Spirit grammar compile per processor); mapnik's compile is
-  now limited by memory, and the sandboxes get 32 GB by default (see
+  now limited by memory, and the sandboxes get half of the host's memory by default (see
   the hard-won list).  Not yet verified on the host.
 
 Next step: the host run of `windows\sandbox_build.bat &&
@@ -1184,9 +1185,9 @@ Known gaps, in rough order:
 - **Parallelism versus memory**: the build sandbox gets as many
   processors as the host but only `-MemoryMB` of memory.  That was
   8 GB, where the agent sandbox has 32 GB, so the dev builds said
-  nothing about memory; the default is now 32 GB, the same as the agent
-  sandbox (only one sandbox runs at a time, so half of the host's
-  memory is affordable).  mapnik's Boost.Spirit grammar files need gigabytes per
+  nothing about memory; the default is now half of the host's physical
+  memory (only one sandbox runs at a time, so that is affordable; the
+  launcher prints the value it chose).  mapnik's Boost.Spirit grammar files need gigabytes per
   compile; with one compile per processor the first host run died with
   `fatal error C1060: compiler is out of heap space`.  `Get-HeavyJobs`
   sizes such a build's parallelism from physical memory (mapnik: 3 GB
