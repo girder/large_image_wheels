@@ -5550,6 +5550,204 @@ open(path, "w", encoding="utf-8").write(s)
     Done-Stamp 'bioformats'
 }
 
+# python-javabridge with the JVM bundled in the wheel, as on linux and
+# macos (no Java on the machine is needed or used).  Java 8, because
+# bioformats is built for it: the JDK is Azul Zulu 8 for win_x64 at the
+# versions.txt `zulu8` pin the macos build uses (Azul publishes every
+# platform's build of a release under one version).  Its tree is
+# self-contained -- bin and jre\bin carry their own VC runtime and UCRT
+# forwarders, jre\bin\server\jvm.dll is the JVM, lib\jvm.lib is the import
+# library MSVC links against -- so, as on macos, the tree is not given to
+# the DLL bundler: _javabridge.pyd imports jvm.dll, which must stay in its
+# JRE (it locates its java home from its own path), and jutil.py's Windows
+# branch adds jre\bin\server and bin to the DLL directories before the
+# import.  Nothing else is imported from outside python and the system
+# (asserted), so delvewheel has nothing to do and is not run.  The
+# console scripts for the JDK's tools run jvm\bin\<tool>.exe in place
+# (the tools find their DLLs beside themselves, the Windows default).
+function Build-Javabridge {
+    if (Skip-If-Done 'javabridge') { return }
+    Log '=== python-javabridge'
+    $pp = $script:PatchPython
+
+    # The JDK, its jars repacked by pack200 -G (debug information
+    # stripped, as on linux and macos; sequential: pack200 is not safe to
+    # run in parallel).
+    $zip = Fetch "https://cdn.azul.com/zulu/bin/zulu$(V zulu8)-win_x64.zip" `
+        "zulu$(V zulu8)-win_x64.zip"
+    $unpack = Join-Path $LIW_SRC 'zulu-jdk8'
+    if (Test-Path $unpack) { Remove-Item -Recurse -Force $unpack }
+    Expand-Zip $zip $unpack
+    $tops = @(Get-ChildItem -Path $unpack -Directory)
+    if ($tops.Count -ne 1) { Die "zulu8: expected one top directory in $zip" }
+    $jdk = $tops[0].FullName
+    foreach ($name in @('jre\bin\server\jvm.dll', 'lib\jvm.lib', 'bin\pack200.exe',
+            'bin\javac.exe', 'bin\jar.exe', 'bin\java.exe', 'include\jni.h',
+            'include\win32\jni_md.h')) {
+        if (-not (Test-Path (Join-Path $jdk $name))) { Die "zulu8: unexpected JDK layout (no $name)" }
+    }
+    # Not shipped: the sources, demos and samples (linux's
+    # java-1.8.0-openjdk-devel has none of them), the class data sharing
+    # archive (removed on linux and macos too), and sawindbg.dll, the
+    # serviceability agent's debugger -- the Windows counterpart of the
+    # libsaproc.so the linux build removes.
+    foreach ($name in @('src.zip', 'demo', 'sample', 'jre\bin\sawindbg.dll')) {
+        $path = Join-Path $jdk $name
+        if (Test-Path $path) { Remove-Item -Recurse -Force $path }
+    }
+    Get-ChildItem -Path $jdk -Recurse -Filter 'classes.jsa' -File | Remove-Item -Force
+    Log 'pack200: repacking the JDK jars'
+    $pack200 = Join-Path $jdk 'bin\pack200.exe'
+    # (Into a new file, then moved over the original: an in-place repack
+    # ends with a rename onto the existing jar, which Java's renameTo
+    # cannot do on Windows -- "Skipping unpack because move failed".)
+    foreach ($jar in (Get-ChildItem -Path $jdk -Recurse -Filter '*.jar' -File |
+            Where-Object { $_.Length -gt 10240 })) {
+        $repacked = "$($jar.FullName).repack"
+        Run-Logged $pack200 @('-G', '--repack', $repacked, $jar.FullName) "pack200 of $($jar.Name)"
+        Move-Item -Path $repacked -Destination $jar.FullName -Force
+    }
+
+    $src = Git-Clone 'https://github.com/CellProfiler/python-javabridge.git' `
+        "v$(V python-javabridge)" (Join-Path $LIW_SRC 'python-javabridge')
+    # The pyx patch is shared with the linux and macos builds; applied from
+    # an LF copy, since a host checkout with core.autocrlf has it in CRLF.
+    $patch = Join-Path $LIW_PATCHES 'python-javabridge.pyx.patch'
+    $text = [System.IO.File]::ReadAllText((Join-Path $RepoDir 'python-javabridge.pyx.patch'))
+    [System.IO.File]::WriteAllText($patch, ($text -replace "`r`n", "`n"),
+        [System.Text.UTF8Encoding]::new($false))
+    Run-Logged 'git' @('-C', $src, 'apply', $patch) 'git apply python-javabridge.pyx.patch'
+
+    # Bundle the JVM tree.
+    $jvm = Join-Path $src 'javabridge\jvm'
+    Copy-Item -Recurse $jdk $jvm
+    Set-Content -Path (Join-Path $jvm 'bin\__init__.py') -Value $script:ToolWrapper -Encoding ascii
+
+    # The linux patches, less the linux-only ones (the libjvm preload and
+    # the `java` argv guard in __init__.py; on Windows jutil.py's own
+    # branch puts the bundled JRE on the DLL search path), plus macos's
+    # find_javahome patch: prefer the bundled tree on every platform.  The
+    # console scripts are the jvm\bin executables, named without .exe (an
+    # entry point named java.exe becomes java.exe.exe).
+    Invoke-Patch $src 'javabridge_patches' @'
+import re
+
+path = "javabridge/jutil.py"
+s = open(path, encoding="utf-8").read()
+s = s.replace("        return env.get_string_utf(result)",
+              "        try:\n            return env.get_string_utf(result)\n"
+              "        except Exception:\n            return env.get_string(result)")
+s = s.replace("env.exception_describe()", "pass")
+open(path, "w", encoding="utf-8").write(s)
+
+path = "javabridge/locate.py"
+s = open(path, encoding="utf-8").read()
+old = '''def find_javahome():
+    """Find JAVA_HOME if it doesn't exist"""'''
+if old not in s:
+    raise SystemExit("locate.py: find_javahome not found")
+s = s.replace(old, old + '''
+    jvm_path = os.path.join(os.path.dirname(__file__), "jvm")
+    if os.path.exists(jvm_path):
+        return jvm_path''')
+open(path, "w", encoding="utf-8").write(s)
+
+path = "setup.py"
+s = open(path, encoding="utf-8").read()
+for old, new in [
+        ("packages=['javabridge', 'javabridge.tests'],",
+         "packages=['javabridge', 'javabridge.jvm.bin', 'javabridge.tests'],"),
+        ("entry_points={'nose.plugins.0.10': [",
+         "entry_points={'console_scripts': ['%s=javabridge.jvm.bin:program' % name[:-4] "
+         "for name in os.listdir('javabridge/jvm/bin') if name.endswith('.exe')], "
+         "'nose.plugins.0.10': ["),
+        ('package_data={"javabridge": [',
+         'package_data={"javabridge": [\'jvm/*\', \'jvm/*/*\', \'jvm/*/*/*\', '
+         '\'jvm/*/*/*/*\', \'jvm/*/*/*/*/*\', '),
+        ("extra_link_args=extra_link_args",
+         "extra_link_args=extra_link_args,define_macros=[(\"NPY_TARGET_VERSION\", "
+         "\"NPY_2_0_API_VERSION\"),]")]:
+    if old not in s:
+        raise SystemExit("setup.py: %r not found" % old)
+    s = s.replace(old, new)
+s = re.sub(r"('Cython)[^']*", "'Cython", s)
+s = re.sub(r"('numpy)[^']*", "'numpy>=2", s)
+s = re.sub(r'(version="[^"]*)"', r'\1.1"', s)
+open(path, "w", encoding="utf-8").write(s)
+
+path = "pyproject.toml"
+s = open(path, encoding="utf-8").read()
+s = re.sub(r"(cython)<3", "cython", s)
+s = re.sub(r"(numpy)[^\"]*", "numpy>=2", s)
+open(path, "w", encoding="utf-8").write(s)
+'@
+
+    # One wheel per python.  setup.py compiles the java classes with the
+    # bundled javac (find_jdk reads JDK_HOME on Windows; the registry is
+    # its fallback) and links _javabridge against the JDK's jvm.lib.
+    Remove-Item -Path (Join-Path $LIW_WHEELHOUSE 'python_javabridge-*.whl'), `
+        (Join-Path $WheelsDir 'python_javabridge-*.whl') -Force -ErrorAction SilentlyContinue
+    $env:JDK_HOME = $jvm
+    try {
+        foreach ($minor in $script:Pythons) {
+            Log "python-javabridge wheel: python $minor"
+            foreach ($dir in @('build', 'javabridge\jars\cpython.jar', 'javabridge\jars\runnablequeue.jar',
+                    'javabridge\jars\test.jar', 'javabridge\jars\java2cpython.dll')) {
+                $path = Join-Path $src $dir
+                if (Test-Path $path) { Remove-Item -Recurse -Force $path }
+            }
+            Get-ChildItem -Path $src -Filter '_javabridge*.c' -File | Remove-Item -Force
+            Run-Logged (Join-Path (Join-Path $LIW_PY $minor) 'python.exe') @(
+                '-m', 'pip', 'wheel', '--no-deps', '--progress-bar', 'off',
+                '-w', $LIW_WHEELHOUSE, $src) "python-javabridge wheel build for python $minor"
+        }
+    } finally {
+        Remove-Item -Path 'env:JDK_HOME' -ErrorAction SilentlyContinue
+    }
+
+    $wheels = @(Get-ChildItem -Path $LIW_WHEELHOUSE -Filter 'python_javabridge-*win_amd64.whl' -File)
+    if ($wheels.Count -lt $script:Pythons.Count) {
+        Die "python-javabridge: only $($wheels.Count) wheels, expected $($script:Pythons.Count)"
+    }
+    $check = Join-Path $LIW_BUILD 'javabridge_check'
+    foreach ($whl in $wheels) {
+        if ($whl.Name -notlike "python_javabridge-$(V python-javabridge).1-*") {
+            Die "python-javabridge: unexpected wheel version: $($whl.Name)"
+        }
+        Assert-WheelContains $whl.FullName @(
+            '^javabridge/_javabridge\..*\.pyd$',
+            '^javabridge/jvm/jre/bin/server/jvm\.dll$',
+            '^javabridge/jvm/jre/lib/rt\.jar$',
+            '^javabridge/jvm/bin/java\.exe$',
+            '^javabridge/jvm/bin/jli\.dll$',
+            '^javabridge/jvm/bin/__init__\.py$',
+            '^javabridge/jars/rhino-1\.7R4\.jar$',
+            '^javabridge/jars/cpython\.jar$',
+            '^javabridge/jars/runnablequeue\.jar$',
+            '^javabridge/jars/java2cpython\.dll$') 'python-javabridge'
+        # The extension and java2cpython may import only the JVM, python,
+        # the VC runtime python ships, and the system.
+        if (Test-Path $check) { Remove-Item -Recurse -Force $check }
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($whl.FullName, $check)
+        $pyd = @(Get-ChildItem -Path (Join-Path $check 'javabridge') -Filter '_javabridge*.pyd' -File)[0]
+        foreach ($image in @($pyd.FullName, (Join-Path $check 'javabridge\jars\java2cpython.dll'))) {
+            foreach ($dll in (Get-Dependents $image)) {
+                if ($dll -notmatch '^(jvm|python3\d*t?|vcruntime140(_1)?|kernel32|api-ms-win-.*)\.dll$') {
+                    Die "python-javabridge: $(Split-Path -Leaf $image) in $($whl.Name) imports $dll"
+                }
+            }
+        }
+        if ((Get-Dependents $pyd.FullName) -notcontains 'jvm.dll') {
+            Die "python-javabridge: $($pyd.Name) does not import jvm.dll"
+        }
+        Copy-Item $whl.FullName $WheelsDir -Force
+        Log "python-javabridge wheel: $(Join-Path $WheelsDir $whl.Name)"
+    }
+    if (Test-Path $check) { Remove-Item -Recurse -Force $check }
+    Done-Stamp 'javabridge'
+}
+
 # openslide-python from master (the last release tag is stale, as on linux
 # and macos): the _convert extension links libopenslide, slidetool is
 # bundled, and lowlevel.py loads the bundled DLL before anything else --
@@ -6168,6 +6366,11 @@ function Main {
                 Build-Boost
                 Build-Mapnik
                 Build-MapnikPython
+            }
+            'python_javabridge' {
+                # The bundled JDK and the extension only: no library from
+                # the prefix.
+                Build-Javabridge
             }
             'python_bioformats' {
                 # Pure python and a jar: no library from the prefix.
