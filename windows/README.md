@@ -543,7 +543,12 @@ sandbox before every host run:
   libmapnik links on linux asserted on the DLL import tables; then the
   python-mapnik wheel with the plugins, fonts, proj and gdal data and
   mapnik-render/mapnik-index/shapeindex bundled (68 MB).  The shared
-  suite's mapnik sections pass.  Not yet verified on the host.
+  suite's mapnik sections pass.  The first host run (2026-10-30) got
+  through the other five packages, icu4c and boost, and died compiling
+  mapnik with the compiler out of heap space (the 8 GB build sandbox
+  ran one Spirit grammar compile per processor); mapnik's compile is
+  now limited by memory (see the hard-won list).  Not yet verified on
+  the host.
 
 Next step: the host run of `windows\sandbox_build.bat &&
 windows\test_via_sandbox.bat` (six packages by default now).
@@ -1176,3 +1181,16 @@ Known gaps, in rough order:
   hand, where the session had python's UTF-8 mode on, and failed in the
   build).  `Invoke-Patch` runs them through `Run-Logged`, so a failing
   patch's traceback reaches the log.
+- **Parallelism versus memory**: the build sandbox gets as many
+  processors as the host but only `-MemoryMB` (8 GB by default) of
+  memory, and the agent sandbox has 32 GB, so a dev build says nothing
+  about memory.  mapnik's Boost.Spirit grammar files need gigabytes per
+  compile; with one compile per processor the first host run died with
+  `fatal error C1060: compiler is out of heap space`.  `Get-HeavyJobs`
+  sizes such a build's parallelism from physical memory (mapnik: 3 GB
+  per job, so 2 jobs in the default sandbox; `-MemoryMB 16384` on the
+  host buys more), and `Cmake-Build -Jobs` takes it.  The boost step's
+  log has an `error: No best alternative for .../histogram/
+  install-libraries-shared` line: b2 continues past it (Boost.Histogram
+  is header-only and not one of the libraries built), and every boost
+  assertion holds, so it is noise.
