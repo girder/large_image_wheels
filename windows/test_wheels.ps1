@@ -1011,9 +1011,18 @@ function Test-Python([string]$Req) {
         }
         $ver = Wheel-Version $whl.Name $dist
         $pipName = $script:Dists[$dist]
-        $code = Run-Logged $vpy @('-m', 'pip', 'install', '--quiet',
-            '--no-warn-script-location', '--find-links', $WheelsDir,
-            "$pipName==$ver") "pip install $pipName" -NoDie
+        $pipArgs = @('-m', 'pip', 'install', '--quiet', '--no-warn-script-location',
+            '--find-links', $WheelsDir)
+        # python-bioformats requires python-javabridge.  Without our
+        # javabridge wheel, pip would take pypi's (an sdist this sandbox
+        # cannot build, and not ours anyway), so bioformats is installed
+        # without its dependencies; the shared suite's bioformats tests
+        # need javabridge and skip themselves.
+        if ($dist -eq 'python_bioformats' -and -not (Find-Wheel 'python_javabridge' $Req)) {
+            Note "python ${Req}: no python_javabridge wheel; python-bioformats installed with --no-deps"
+            $pipArgs += '--no-deps'
+        }
+        $code = Run-Logged $vpy @($pipArgs + "$pipName==$ver") "pip install $pipName" -NoDie
         if ($code -ne 0) {
             Check $false "python ${Req}: pip install of $pipName==$ver failed (exit $code)"
             continue

@@ -278,7 +278,7 @@ pprint.pprint({
 })
 EOF
 fi
-if $TEST_GDAL || $TEST_MAPNIK || $TEST_PYVIPS || $TEST_BIOFORMATS; then
+if $TEST_GDAL || $TEST_MAPNIK || $TEST_PYVIPS || { $TEST_BIOFORMATS && $TEST_JAVABRIDGE; }; then
 echo 'Use large_image to read a geotiff file'
 python <<EOF
 import large_image, pprint

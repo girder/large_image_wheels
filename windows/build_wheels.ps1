@@ -5441,6 +5441,115 @@ open(path, "w").write(s)
     Done-Stamp 'glymur'
 }
 
+# python-bioformats is pure python plus the bioformats jar (a newer one
+# than pypi's): one py3-none-any wheel for every python, as on linux and
+# macos, with nothing to compile or repair.  javabridge is needed only to
+# use it, not to build it.  The jar is the release download with jackson
+# removed, as in the Dockerfile; there is no unzip/zip/advzip here, so the
+# patch python's zipfile does the guard and the rewrite (recompressing at
+# level 9 in place of advzip).
+function Build-Bioformats {
+    if (Skip-If-Done 'bioformats') { return }
+    Log '=== python-bioformats'
+    $pp = $script:PatchPython
+
+    $src = Git-Clone 'https://github.com/CellProfiler/python-bioformats.git' `
+        "v$(V python-bioformats)" (Join-Path $LIW_SRC 'python-bioformats')
+    $jar = Fetch "https://github.com/ome/bioformats/releases/download/v$(V bioformats)/bioformats_package.jar" `
+        "bioformats_package-$(V bioformats).jar"
+    Copy-Item $jar (Join-Path $src 'bioformats\jars\bioformats_package.jar') -Force
+
+    # Remove jackson (the Dockerfile's reasoning: ome-common pins it to
+    # replace the version minio declares, nothing in the jar uses it --
+    # checked with jdeps -- and it carries a number of CVEs; the root
+    # module-info.class is jackson-annotations' module descriptor).  Fail
+    # if anything that stays mentions jackson, as a class reference or a
+    # reflection string, and fail if there is no jackson to remove (the
+    # linux zip -d fails then too).
+    Invoke-Patch $src 'bioformats_jar' @'
+import os
+import re
+import sys
+import zipfile
+
+path = "bioformats/jars/bioformats_package.jar"
+
+
+def removed(name):
+    return (name.startswith("com/fasterxml/") or name == "module-info.class" or
+            name.startswith("META-INF/maven/com.fasterxml.jackson.core/") or
+            name.startswith("META-INF/services/com.fasterxml.jackson.core."))
+
+
+mention = re.compile(rb"com[./]fasterxml[./]jackson")
+tmp = path + ".tmp"
+with zipfile.ZipFile(path) as src:
+    infos = src.infolist()
+    dropped = [info.filename for info in infos if removed(info.filename)]
+    if not any(name.startswith("com/fasterxml/jackson/") for name in dropped):
+        sys.exit("bioformats jar: no jackson classes to remove")
+    users = [info.filename for info in infos
+             if not removed(info.filename) and
+             (info.filename.endswith(".class") or info.filename.startswith("META-INF/services/")) and
+             mention.search(src.read(info))]
+    if users:
+        sys.exit("bioformats jar: jackson is still referenced by: %s" % ", ".join(users[:20]))
+    with zipfile.ZipFile(tmp, "w") as dst:
+        for info in infos:
+            if not removed(info.filename):
+                dst.writestr(info, src.read(info), compresslevel=9)
+with zipfile.ZipFile(tmp) as check:
+    bad = check.testzip()
+    if bad is not None:
+        sys.exit("bioformats jar: the rewritten jar is corrupt at %s" % bad)
+    left = [name for name in check.namelist() if "fasterxml" in name]
+    if left:
+        sys.exit("bioformats jar: jackson entries remain: %s" % ", ".join(left[:20]))
+os.replace(tmp, path)
+print("bioformats jar: removed %d jackson entries; %d bytes" % (len(dropped), os.path.getsize(path)))
+'@
+
+    # setup.py: the bioformats jar version appended to the version so pip
+    # prefers this wheel (.2 since the jackson removal, as on linux),
+    # python_requires, and no future requirement (unused; it carries a CVE).
+    $env:LIW_BF_VERSION = V bioformats
+    try {
+        Invoke-Patch $src 'bioformats_setup' @'
+import os
+import re
+path = "setup.py"
+s = open(path, encoding="utf-8").read()
+s = re.sub(r'(version="[^"]*)"',
+           r'\1.' + os.environ["LIW_BF_VERSION"] + '.2"' +
+           ',\n    python_requires=">=3.9",', s)
+s = s.replace('"future>=0.18.2",', "")
+open(path, "w", encoding="utf-8").write(s)
+'@
+    } finally {
+        Remove-Item -Path 'env:LIW_BF_VERSION' -ErrorAction SilentlyContinue
+    }
+
+    Log 'python-bioformats wheel (pure python; one wheel for every python)'
+    if (Test-Path (Join-Path $src 'build')) { Remove-Item -Recurse -Force (Join-Path $src 'build') }
+    Remove-Item -Path (Join-Path $LIW_WHEELHOUSE 'python_bioformats-*.whl'), `
+        (Join-Path $WheelsDir 'python_bioformats-*.whl') -Force -ErrorAction SilentlyContinue
+    Run-Logged $pp @('-m', 'pip', 'wheel', '--no-deps', '--progress-bar', 'off',
+        '-w', $LIW_WHEELHOUSE, $src) 'python-bioformats wheel build'
+    $expected = "python_bioformats-$(V python-bioformats).$(V bioformats).2-py3-none-any.whl"
+    $whl = Join-Path $LIW_WHEELHOUSE $expected
+    if (-not (Test-Path $whl)) {
+        $built = @(Get-ChildItem -Path $LIW_WHEELHOUSE -Filter 'python_bioformats-*.whl' -File |
+            ForEach-Object { $_.Name })
+        Die "python-bioformats: expected $expected, built: $($built -join ', ')"
+    }
+    Assert-WheelContains $whl @(
+        '^bioformats/jars/bioformats_package\.jar$',
+        '^bioformats/__init__\.py$') 'python-bioformats'
+    Copy-Item $whl $WheelsDir -Force
+    Log "python-bioformats wheel: $(Join-Path $WheelsDir $expected)"
+    Done-Stamp 'bioformats'
+}
+
 # openslide-python from master (the last release tag is stale, as on linux
 # and macos): the _convert extension links libopenslide, slidetool is
 # bundled, and lowlevel.py loads the bundled DLL before anything else --
@@ -6059,6 +6168,10 @@ function Main {
                 Build-Boost
                 Build-Mapnik
                 Build-MapnikPython
+            }
+            'python_bioformats' {
+                # Pure python and a jar: no library from the prefix.
+                Build-Bioformats
             }
             default {
                 if ($pkg.StartsWith('dep:')) {
