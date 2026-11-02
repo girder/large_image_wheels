@@ -348,7 +348,7 @@ Options when needed (the `.bat` files pass them through):
 
 ```
 windows\sandbox_build.bat -Packages pylibtiff
-windows\sandbox_build.bat -Pythons 3.12,3.13 -MemoryMB 8192
+windows\sandbox_build.bat -Pythons 3.12,3.13 -MemoryMB 16384
 windows\test_via_sandbox.bat -Pythons 3.13
 powershell -File windows\sandbox_run.ps1 cache     # pre-warm the download cache
 ```
@@ -547,8 +547,8 @@ sandbox before every host run:
   through the other five packages, icu4c and boost, and died compiling
   mapnik with the compiler out of heap space (the 8 GB build sandbox
   ran one Spirit grammar compile per processor); mapnik's compile is
-  now limited by memory (see the hard-won list).  Not yet verified on
-  the host.
+  now limited by memory, and the sandboxes get 32 GB by default (see
+  the hard-won list).  Not yet verified on the host.
 
 Next step: the host run of `windows\sandbox_build.bat &&
 windows\test_via_sandbox.bat` (six packages by default now).
@@ -1182,14 +1182,16 @@ Known gaps, in rough order:
   build).  `Invoke-Patch` runs them through `Run-Logged`, so a failing
   patch's traceback reaches the log.
 - **Parallelism versus memory**: the build sandbox gets as many
-  processors as the host but only `-MemoryMB` (8 GB by default) of
-  memory, and the agent sandbox has 32 GB, so a dev build says nothing
-  about memory.  mapnik's Boost.Spirit grammar files need gigabytes per
+  processors as the host but only `-MemoryMB` of memory.  That was
+  8 GB, where the agent sandbox has 32 GB, so the dev builds said
+  nothing about memory; the default is now 32 GB, the same as the agent
+  sandbox (only one sandbox runs at a time, so half of the host's
+  memory is affordable).  mapnik's Boost.Spirit grammar files need gigabytes per
   compile; with one compile per processor the first host run died with
   `fatal error C1060: compiler is out of heap space`.  `Get-HeavyJobs`
   sizes such a build's parallelism from physical memory (mapnik: 3 GB
-  per job, so 2 jobs in the default sandbox; `-MemoryMB 16384` on the
-  host buys more), and `Cmake-Build -Jobs` takes it.  The boost step's
+  per job: 10 jobs at 32 GB, 2 if a host run passes `-MemoryMB 8192`),
+  and `Cmake-Build -Jobs` takes it.  The boost step's
   log has an `error: No best alternative for .../histogram/
   install-libraries-shared` line: b2 continues past it (Boost.Histogram
   is header-only and not one of the libraries built), and every boost
