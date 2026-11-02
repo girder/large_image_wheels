@@ -510,7 +510,8 @@ function Fetch-Tarball([string]$Url, [string]$Name, [string]$Dest) {
 # Build and install a cmake project into the private prefix with Ninja and
 # the MSVC toolset (entered through the VS Dev Shell; INCLUDE/LIB point at
 # the MSVC and Windows SDK directories, with the private prefix first).
-function Cmake-Build([string]$Src, [string[]]$CmakeArgs = @(), [switch]$NoInstall) {
+function Cmake-Build([string]$Src, [string[]]$CmakeArgs = @(), [switch]$NoInstall, [int]$Jobs = 0) {
+    if ($Jobs -le 0) { $Jobs = $LIW_JOBS }
     $build = Join-Path $Src '_build'
     if (Test-Path $build) { Remove-Item -Recurse -Force $build }
     # (Quoted: PowerShell does not expand a variable inside a bare
@@ -538,10 +539,24 @@ function Cmake-Build([string]$Src, [string[]]$CmakeArgs = @(), [switch]$NoInstal
         "-DCMAKE_INSTALL_PREFIX=$script:CmakePrefix",
         '-DCMAKE_INSTALL_LIBDIR=lib',
         '-DCMAKE_DISABLE_FIND_PACKAGE_Tiff=ON') + $CmakeArgs) "cmake configure in $Src"
-    Run-Logged 'cmake' @('--build', $build, '--parallel', "$LIW_JOBS") "cmake build in $Src"
+    Run-Logged 'cmake' @('--build', $build, '--parallel', "$Jobs") "cmake build in $Src"
     if (-not $NoInstall) {
         Run-Logged 'cmake' @('--install', $build) "cmake install in $Src"
     }
+}
+
+# The parallel job count for a build whose compiles each need about
+# $GBPerJob of memory: the processor count, limited by the machine's
+# physical memory.  The build sandbox has 8 GB (sandbox_run.ps1's
+# -MemoryMB) and as many processors as the host, so one compile per
+# processor ran mapnik's Spirit grammars out of heap space (C1060) on
+# the first host run, where the 32 GB agent sandbox had built it fine.
+function Get-HeavyJobs([double]$GBPerJob) {
+    Add-Type -AssemblyName Microsoft.VisualBasic
+    $totalGB = (New-Object Microsoft.VisualBasic.Devices.ComputerInfo).TotalPhysicalMemory / 1GB
+    $jobs = [int][Math]::Max(1, [Math]::Min([int]$LIW_JOBS, [Math]::Floor($totalGB / $GBPerJob)))
+    Log ("{0:N1} GB of memory, {1} processors: {2} jobs at {3} GB each" -f $totalGB, $LIW_JOBS, $jobs, $GBPerJob)
+    return $jobs
 }
 
 function Assert-Files([string]$Dir, [string[]]$Patterns, [string]$What) {
@@ -4739,7 +4754,8 @@ open(path, "w", encoding="utf-8").write(s)
         '-DPLUGINS_INSTALL_DIR=lib/mapnik/input', '-DCMAKE_POLICY_DEFAULT_CMP0167=OLD',
         '-DMAPNIK_USE_PKG_CONFIG=ON', '-DCMAKE_DISABLE_FIND_PACKAGE_PROJ=ON',
         '-DCMAKE_DISABLE_FIND_PACKAGE_harfbuzz=ON', '-DCMAKE_POLICY_VERSION_MINIMUM=3.5',
-        '-DINSTALL_DEPENDENCIES=OFF', "-DPKG_CONFIG_EXECUTABLE=$env:PKG_CONFIG")
+        '-DINSTALL_DEPENDENCIES=OFF', "-DPKG_CONFIG_EXECUTABLE=$env:PKG_CONFIG") `
+        -Jobs (Get-HeavyJobs 3)
     $bin = Join-Path $LIW_PREFIX 'bin'
     Assert-Files $bin @('libmapnik.dll', 'mapnik-render.exe', 'mapnik-index.exe', 'shapeindex.exe') 'mapnik'
     # mapnik gives its libraries a lib prefix on every platform, and its
