@@ -168,9 +168,8 @@ pylibmc.  Decisions confirmed with the maintainer:
   not be on the same machine, so the wheel is as useful on Windows as
   elsewhere.  It goes last only because libmemcached has no MSVC support
   story and will need real patching work.
-- javabridge needs a JVM strategy on Windows; the linux build's java
-  packaging is the reference, and a portable JDK zip staged in the cache
-  is the likely starting point.
+- javabridge bundles a JVM on Windows as on linux and macos: the
+  portable Zulu 8 JDK zip from the cache (see the hard-won entry).
 - The test suite is the shared `test/test_script.sh`, run on Windows under
   PortableGit's bash; it is adapted where Windows needs it rather than
   forked, so that every platform tests the same things.
@@ -561,20 +560,30 @@ sandbox before every host run:
   level 9 in place of advzip.  It cannot be used without javabridge, so
   until the python_javabridge wheel exists `test_wheels.ps1` installs it
   with `--no-deps` (pip would otherwise reach for pypi's javabridge
-  sdist) and the shared suite skips its bioformats sections; this stage
-  verifies the build and the exact-version install only.  The shared
-  suite's geotiff-through-large_image step was gated on the bioformats
-  wheel alone, though bioformats reads nothing without javabridge (a
-  pylibtiff + bioformats dev run failed there with "No available
-  tilesource"); it is now gated like the czi step.  The jar was checked
-  against the Dockerfile's `zip -d` patterns: the same 1054 entries
-  removed, every other entry's CRC unchanged.
+  sdist) and the shared suite skips its bioformats sections.  The jar
+  was checked against the Dockerfile's `zip -d` patterns: the same 1054
+  entries removed, every other entry's CRC unchanged.  Verified on the
+  host (build and install only; 2026-11-02).
+- **python_javabridge builds and passes every dev-mode check for python
+  3.13 (2026-11-02; `Build-Javabridge`)**, with python_bioformats now
+  tested through it: the Azul Zulu 8 win_x64 JDK at the macos build's
+  `zulu8` pin, bundled in `javabridge/jvm` like linux and macos (see the
+  hard-won entry), one wheel per python.  `check_wheels.py` checks that
+  the bundled tree is the one resolved and the `jvm.dll` loaded,
+  `java.home`/`java.version` from inside the started VM, and, with
+  bioformats installed, the jar's version, the absence of jackson and a
+  pixel read through the VM; `java` runs as a console script and by path
+  with a bare PATH.  The shared suite's javabridge sections pass
+  (`java -version`, the bioformats version, `sample.svs` through
+  bioformats).  The suite's geotiff-through-large_image step was gated
+  on the bioformats wheel too, but large_image's bioformats source
+  ignores `.tif` files (`source_bioformats_ignored_names`), so a
+  wheelhouse without gdal/mapnik/pyvips failed there with "No available
+  tilesource"; the bioformats term is gone from that gate.
 
 Next step: the host run of `windows\sandbox_build.bat &&
-windows\test_via_sandbox.bat` (seven packages by default now, with
-python_bioformats); then python_javabridge (a portable JDK 8 in the
-cache, bundled like the linux and macos wheels), which makes the
-bioformats tests run.
+windows\test_via_sandbox.bat` (eight packages by default now, with
+python_javabridge and python_bioformats); then pylibmc.
 
 Known gaps, in rough order:
 
@@ -1198,6 +1207,38 @@ Known gaps, in rough order:
   (`Rename-Plugins`; mapnik registers only `.input` files);
   `check_wheels.py`'s import audit includes `.input` files.  mapnik's
   tools exit 1 after printing `--version`, on every platform.
+- **javabridge and the bundled JVM** (`Build-Javabridge`).  The JDK is
+  Azul Zulu 8 (Java 8 because bioformats is built for it; Azul publishes
+  every platform's build of a release under one version, so the
+  macos-tracked `zulu8` pin serves both).  Its Windows tree is
+  self-contained: `bin` and `jre\bin` carry their own VC runtime and
+  UCRT forwarders, `jre\bin\server\jvm.dll` is the JVM, `lib\jvm.lib`
+  the import library setup.py links against (it finds the JDK through
+  `JDK_HOME` on Windows, the registry otherwise).  `_javabridge.pyd`
+  imports `jvm.dll`, which must stay inside its JRE (it locates its java
+  home from its own path), so the tree is not given to delvewheel -- as
+  macos excludes it from delocate -- and, since nothing else is imported
+  from outside python and the system (asserted on the import tables),
+  delvewheel is not run at all.  macos's `find_javahome` patch makes
+  javabridge prefer the bundled tree, and jutil.py's own Windows branch
+  then adds `jre\bin\server` and `bin` to the DLL directories before
+  importing the extension; the linux-only patches (libjvm preload, the
+  `java` argv guard) are not applied.  The JDK's `.exe` tools are the
+  console scripts (named without `.exe`), run in place by the usual
+  wrapper; they find their DLLs beside themselves.  `check_wheels.py`'s
+  import audit lets the JRE's DLLs resolve from `jvm\bin`, `jre\bin` and
+  `jre\bin\server`, which is how the launcher and jutil.py set up the
+  search.  Not shipped, compared with Zulu's zip: `src.zip`, `demo`,
+  `sample` (linux's `java-1.8.0-openjdk-devel` has none of them),
+  `classes.jsa` (removed on linux and macos too) and `sawindbg.dll` (the
+  serviceability agent's debugger, the counterpart of the `libsaproc.so`
+  linux removes).  `pack200 --repack` in place fails on Windows ("Skipping
+  unpack because move failed": its final rename onto the existing jar is
+  something Java's `renameTo` cannot do there); the jars are repacked
+  into a new file that replaces the original.  The jars are not
+  timestamp-normalized (the reproducibility gap above).  python-javabridge
+  requires nothing at build time but the JDK, Cython and numpy, which
+  pip's build isolation fetches.
 - The python patch scripts must open source files with
   `encoding="utf-8"`: before python 3.15 the default is the ANSI code
   page (cp1252), and mapnik's headers are UTF-8 (a dev run passed by

@@ -561,12 +561,12 @@ def pe_imports(path):
     return names
 
 
-def audit_imports(roots, libs_dir):
+def audit_imports(roots, libs_dir, extra_dirs=()):
     """Every PE file under the given roots may import only: a file in its
-    own directory, a file in libs_dir, python's own DLL, a Windows API set,
-    or a DLL in the system directory.  Anything else would resolve through
-    PATH at best -- a system or third-party library winning the load -- and
-    fail at worst."""
+    own directory, a file in libs_dir or one of extra_dirs, python's own
+    DLL, a Windows API set, or a DLL in the system directory.  Anything
+    else would resolve through PATH at best -- a system or third-party
+    library winning the load -- and fail at worst."""
     bad = 0
     files = 0
     for root in roots:
@@ -593,7 +593,9 @@ def audit_imports(roots, libs_dir):
                         continue
                     if os.path.exists(os.path.join(dirpath, name)):
                         continue
-                    if os.path.exists(os.path.join(libs_dir, name)):
+                    if libs_dir and os.path.exists(os.path.join(libs_dir, name)):
+                        continue
+                    if any(os.path.exists(os.path.join(extra, name)) for extra in extra_dirs):
                         continue
                     if any(os.path.exists(os.path.join(sysdir, name)) for sysdir in SYSTEM_DIRS):
                         continue
@@ -911,7 +913,78 @@ def check_mapnik(package_dir, libs_dir):
         report(version in out,
                f'bundled shapeindex runs by path with a bare PATH (exit {code}): {out.strip().splitlines()[:1]}')
 
-# package -> (import name, <dist>.libs directory name, package check)
+def under(path, directory):
+    return os.path.normcase(os.path.abspath(path)).startswith(
+        os.path.normcase(os.path.abspath(directory)) + os.sep)
+
+
+def check_javabridge(package_dir, libs_dir):
+    # The JVM is the bundled JDK tree, started in this process; with
+    # python-bioformats installed, the same VM checks the bioformats jar
+    # (a JVM can be started only once per process).
+    import javabridge
+    import javabridge.locate
+
+    jvm_dir = os.path.join(package_dir, 'jvm')
+    home = javabridge.locate.find_javahome()
+    report(os.path.normcase(os.path.abspath(home)) == os.path.normcase(jvm_dir),
+           f'javabridge resolves the bundled jvm tree: {home}')
+    try:
+        import bioformats
+    except ImportError:
+        bioformats = None
+    javabridge.start_vm(class_path=bioformats.JARS if bioformats else javabridge.JARS,
+                        run_headless=True)
+    try:
+        hits = [path for path in loaded_modules() if os.path.basename(path).lower() == 'jvm.dll']
+        report(bool(hits) and all(under(path, jvm_dir) for path in hits),
+               f'javabridge loads the bundled jvm.dll: {hits}')
+
+        def prop(name):
+            return javabridge.static_call('java/lang/System', 'getProperty',
+                                          '(Ljava/lang/String;)Ljava/lang/String;', name)
+
+        java_home = prop('java.home')
+        report(under(java_home, jvm_dir), f'java.home is in the bundled tree: {java_home}')
+        version = prop('java.version')
+        report(version.startswith('1.8.'), f'java.version {version} ({prop("java.vm.vendor")})')
+        if bioformats:
+            import importlib.metadata
+
+            dist = importlib.metadata.version('python-bioformats')
+            jar = javabridge.get_static_field('loci/formats/FormatTools', 'VERSION', 'Ljava/lang/String;')
+            report(bool(jar) and ('.' + jar + '.') in dist,
+                   f'bioformats jar version {jar} (python-bioformats {dist})')
+            try:
+                javabridge.class_for_name('com.fasterxml.jackson.databind.ObjectMapper')
+                report(False, 'the bioformats jar has no jackson (ObjectMapper loaded)')
+            except javabridge.JavaException:
+                report(True, 'the bioformats jar has no jackson')
+            import numpy
+            with tempfile.TemporaryDirectory() as tmp:
+                path = os.path.join(tmp, 'check.pgm')
+                data = (numpy.arange(64 * 48, dtype=numpy.uint32).reshape(48, 64) % 251
+                        ).astype(numpy.uint8)
+                with open(path, 'wb') as fptr:
+                    fptr.write(b'P5\n64 48\n255\n' + data.tobytes())
+                with bioformats.ImageReader(path) as reader:
+                    back = reader.read(rescale=False)
+                report(back.shape == (48, 64) and numpy.array_equal(back, data),
+                       f'bioformats reads a pgm through the bundled JVM: shape {back.shape}')
+                bioformats.clear_image_reader_cache()
+    finally:
+        javabridge.kill_vm()
+    code, out = run_tool('java', ['-version'])
+    report(code == 0 and 'version "1.8.' in out,
+           f'bundled java runs as a console script (exit {code}): {out.strip().splitlines()[:1]}')
+    code, out = run_path(os.path.join(jvm_dir, 'bin', 'java.exe'), ['-version'], env=scrubbed_env())
+    report(code == 0 and 'version "1.8.' in out,
+           f'bundled java runs by path with a bare PATH (exit {code}): {out.strip().splitlines()[:1]}')
+
+
+# package -> (import name, <dist>.libs directory name, package check).
+# javabridge has no .libs directory: its only external import is the
+# bundled JVM's jvm.dll (see Build-Javabridge).
 PACKAGES = {
     'pylibtiff': ('libtiff', 'pylibtiff.libs', check_pylibtiff),
     'glymur': ('glymur', 'glymur.libs', check_glymur),
@@ -919,6 +992,16 @@ PACKAGES = {
     'pyvips': ('pyvips', 'pyvips.libs', check_pyvips),
     'GDAL': ('osgeo', 'gdal.libs', check_gdal),
     'mapnik': ('mapnik', 'mapnik.libs', check_mapnik),
+    'python_javabridge': ('javabridge', None, check_javabridge),
+}
+
+# Directories, relative to the package, whose DLLs the package's binaries
+# may import besides their own directory.  The JRE's DLLs import jvm.dll
+# and each other across jre\bin and jre\bin\server: the java launcher and
+# jutil.py both put those directories on the search path before loading
+# the JVM, which then loads its libraries by full path.
+AUDIT_DIRS = {
+    'python_javabridge': [r'jvm\bin', r'jvm\jre\bin', r'jvm\jre\bin\server'],
 }
 
 
@@ -930,9 +1013,14 @@ def check_package(name):
         report(False, f'{name}: import {module_name} failed: {exc}')
         return
     package_dir = os.path.dirname(os.path.abspath(module.__file__))
-    libs_dir = os.path.join(os.path.dirname(package_dir), libs_name)
-    report(os.path.isdir(libs_dir), f'{name}: bundled library directory {libs_dir}')
-    audit_imports([package_dir, libs_dir], libs_dir)
+    extra_dirs = [os.path.join(package_dir, sub) for sub in AUDIT_DIRS.get(name, [])]
+    if libs_name:
+        libs_dir = os.path.join(os.path.dirname(package_dir), libs_name)
+        report(os.path.isdir(libs_dir), f'{name}: bundled library directory {libs_dir}')
+        audit_imports([package_dir, libs_dir], libs_dir, extra_dirs)
+    else:
+        libs_dir = None
+        audit_imports([package_dir], None, extra_dirs)
     check(package_dir, libs_dir)
 
 
