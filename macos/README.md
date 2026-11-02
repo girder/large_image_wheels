@@ -127,11 +127,12 @@ the Homebrew-hiding step).
 
 The pipeline works from an ssh login session but has never worked directly
 from a cron job (whose launchd session differs from ssh's in undocumented
-ways), so the crontab entry only triggers: it runs
-`macos/nightly_via_ssh.sh`, which executes the nightly body
-(`macos/nightly.sh` -- the same steps the old inlined cron command ran)
-over ssh to localhost, authenticated with the dedicated passphrase-less
-wheel-VM key, so no ssh-agent is needed at 3 AM.
+ways), so `macos/nightly.sh` -- the one script the crontab invokes -- only
+triggers: it re-runs its body over ssh to localhost, so the build executes
+in an ssh login session, the session type every hand run uses.  Auth is
+the dedicated passphrase-less wheel-VM key, so no ssh-agent is needed at
+3 AM.  Run nightly builds by hand through the same script, so hand and
+cron runs are the same code path.
 
 One-time setup (on the build host):
 
@@ -144,13 +145,13 @@ Remote Login must be enabled (it already is on any machine that accepts
 ssh).  The crontab entry replaces the old inlined command:
 
 ```
-30 3 * * * /path/to/large_image_wheels/macos/nightly_via_ssh.sh >>/tmp/liw_cron_build.txt 2>&1
+30 3 * * * /path/to/large_image_wheels/macos/nightly.sh >>/tmp/liw_cron_build.txt 2>&1
 ```
 
 The body writes its own log to `/tmp/liw_cron_build.txt`; the outer append
 captures ssh-level failures.  To test the full nightly path on demand,
-run `macos/nightly_via_ssh.sh` by hand -- or from a cron-schedule test
-entry -- and check `/tmp/liw_cron_build.txt`.
+run `macos/nightly.sh` by hand -- or from a cron-schedule test entry --
+and check `/tmp/liw_cron_build.txt`.
 
 VM namespace (distinct from the manthey/utils `agent_*` sandboxes):
 `liw_wheels_base` (pristine base, the manylinux-image analogue),
