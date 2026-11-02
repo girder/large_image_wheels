@@ -547,9 +547,9 @@ function Cmake-Build([string]$Src, [string[]]$CmakeArgs = @(), [switch]$NoInstal
 
 # The parallel job count for a build whose compiles each need about
 # $GBPerJob of memory: the processor count, limited by the machine's
-# physical memory.  The build sandbox has 8 GB (sandbox_run.ps1's
-# -MemoryMB) and as many processors as the host, so one compile per
-# processor ran mapnik's Spirit grammars out of heap space (C1060) on
+# physical memory.  The build sandbox has as many processors as the host
+# but only sandbox_run.ps1's -MemoryMB of memory: with 8 GB, one compile
+# per processor ran mapnik's Spirit grammars out of heap space (C1060) on
 # the first host run, where the 32 GB agent sandbox had built it fine.
 function Get-HeavyJobs([double]$GBPerJob) {
     Add-Type -AssemblyName Microsoft.VisualBasic

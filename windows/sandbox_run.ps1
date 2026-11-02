@@ -68,7 +68,7 @@ param(
     # Default package set; keep in sync with build_wheels.ps1's builders.
     [string[]]$Packages = @('pylibtiff', 'glymur', 'openslide_python', 'pyvips', 'gdal', 'mapnik'),
     [string[]]$Pythons = @('3.11', '3.12', '3.13', '3.14', '3.15', '3.14t', '3.15t'),
-    [int]$MemoryMB = 8192,
+    [int]$MemoryMB = 32768,
     [int]$TimeoutSec = 14400,
     [string]$RepoDir = '',
     [string]$CacheDir = '',
@@ -458,7 +458,7 @@ function Invoke-SandboxRun {
                 'firmware (see the Hyper-V Requirements section of ' +
                 'systeminfo), that the CmService is not Disabled, and that ' +
                 'starting "Windows Sandbox" from the Start menu shows a ' +
-                'window; also try -MemoryMB 4096 in case 8192 exceeds what ' +
+                'window; also try -MemoryMB 8192 in case 32768 exceeds what ' +
                 'the host can give.')
         }
         Start-Sleep -Seconds 2
