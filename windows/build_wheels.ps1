@@ -6140,6 +6140,644 @@ open(path, "w").write(s)
 }
 
 # --------------------------------------------------------------------------
+# pylibmc: cyrus-sasl and libmemcached, then the pylibmc wheel.
+# --------------------------------------------------------------------------
+
+# cyrus-sasl has no build this toolchain can run on Windows: upstream's
+# maintained one is a set of MSBuild projects (win32\*.vcxproj; no MSBuild
+# here), and its nmake files are, in its own words, not updated and most
+# likely broken.  The embedded cmake file compiles what the projects do --
+# sasl2.dll from the lib sources of sasl2.vcxproj with the defines of
+# cyrus-sasl.props (UNICODE among them: plugin paths are UTF-8 there) --
+# with two differences: the plugins are separate DLLs as on linux (the
+# projects link some into sasl2.dll; NO_STATIC_PLUGINS, as the nmake
+# build), and the configure options of the Dockerfile that apply to a
+# Windows build are given as the defines configure would write.  The
+# plugin init files are generated from win32\init_mechanism.c the way
+# win32\makeinit.ps1 does it.  The plugins:
+#   anonymous, plain, crammd5, digestmd5 (RC4 and DES through OpenSSL),
+#   login, scram, ntlm, otp, srp (with setpass), passdss
+# -- every mechanism the linux build enables except gssapiv2 and gs2 (no
+# Kerberos on Windows), and without the server-side auxprop plugins
+# sasldb, sql and ldapdb (no Berkeley DB/LMDB, no openldap; the macos build
+# leaves them out too).  config.h is the upstream win32 one with PLUGINDIR
+# and CONFIGDIR moved from C:\CMU to the prefix, as linux's are its prefix.
+$script:CyrusSaslCMakeLists = @'
+cmake_minimum_required(VERSION 3.16)
+project(cyrus_sasl C)
+if(NOT SASL_VERSION)
+  message(FATAL_ERROR "pass -DSASL_VERSION=<version>")
+endif()
+find_package(OpenSSL REQUIRED)
+set(GEN ${CMAKE_BINARY_DIR}/generated)
+file(READ ${CMAKE_SOURCE_DIR}/win32/include/config.h CONFIG_H)
+string(REGEX REPLACE "#define PLUGINDIR \"[^\"\n]*\"" "#define PLUGINDIR \"${SASL_PLUGINDIR}\"" CONFIG_H "${CONFIG_H}")
+string(REGEX REPLACE "#define CONFIGDIR \"[^\"\n]*\"" "#define CONFIGDIR \"${SASL_PLUGINDIR}\"" CONFIG_H "${CONFIG_H}")
+string(REGEX REPLACE "#define VERSION \"[^\"\n]*\"" "#define VERSION \"${SASL_VERSION}\"" CONFIG_H "${CONFIG_H}")
+if(NOT CONFIG_H MATCHES "PLUGINDIR \"${SASL_PLUGINDIR}\"")
+  message(FATAL_ERROR "win32/include/config.h: the PLUGINDIR define was not found")
+endif()
+file(WRITE ${GEN}/config.h "${CONFIG_H}")
+# win32/include/md5global.h is the other configured header.
+set(COMMON_DEFS WIN32 _WINDOWS UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS
+  _CRT_NONSTDC_NO_DEPRECATE "GCC_FALLTHROUGH=" NO_STATIC_PLUGINS
+  TARGET_WIN_SYSTEM=51 _WIN32_WINNT=0x0601)
+set(INCS ${GEN} ${CMAKE_SOURCE_DIR}/win32/include ${CMAKE_SOURCE_DIR}/include
+  ${CMAKE_SOURCE_DIR}/lib ${CMAKE_SOURCE_DIR}/common)
+
+add_library(sasl2 SHARED
+  lib/auxprop.c lib/canonusr.c lib/checkpw.c lib/client.c lib/common.c
+  lib/config.c lib/external.c lib/getsubopt.c lib/md5.c lib/saslutil.c
+  lib/server.c lib/seterror.c lib/windlopen.c common/plugin_common.c)
+target_include_directories(sasl2 PRIVATE ${INCS})
+# (configure's --enable-alwaystrue and --enable-checkapop, as on linux.)
+target_compile_definitions(sasl2 PRIVATE ${COMMON_DEFS} LIBSASL_EXPORTS
+  NEED_GETOPT HAVE_ALWAYSTRUE DO_SASL_CHECKAPOP)
+target_link_libraries(sasl2 PRIVATE ws2_32)
+install(TARGETS sasl2 RUNTIME DESTINATION bin LIBRARY DESTINATION lib ARCHIVE DESTINATION lib)
+install(FILES include/sasl.h include/saslplug.h include/saslutil.h include/prop.h
+  include/hmac-md5.h include/md5.h DESTINATION include/sasl)
+
+file(READ ${CMAKE_SOURCE_DIR}/win32/init_mechanism.c INIT_MECHANISM)
+# mechanism -> its source files, the DLL name of the nmake build.
+set(PLUGINS anonymous plain crammd5 digestmd5 login scram ntlm otp srp passdss)
+set(anonymous_SRC plugins/anonymous.c)
+set(plain_SRC plugins/plain.c)
+set(crammd5_SRC plugins/cram.c)
+set(digestmd5_SRC plugins/digestmd5.c)
+set(login_SRC plugins/login.c)
+set(scram_SRC plugins/scram.c)
+set(ntlm_SRC plugins/ntlm.c common/crypto-compat.c)
+set(otp_SRC plugins/otp.c)
+set(srp_SRC plugins/srp.c common/crypto-compat.c)
+set(passdss_SRC plugins/passdss.c common/crypto-compat.c)
+set(anonymous_NAME saslANONYMOUS)
+set(plain_NAME saslPLAIN)
+set(crammd5_NAME saslCRAMMD5)
+set(digestmd5_NAME saslDIGESTMD5)
+set(login_NAME saslLOGIN)
+set(scram_NAME saslSCRAM)
+set(ntlm_NAME saslNTLM)
+set(otp_NAME saslOTP)
+set(srp_NAME saslSRP)
+set(passdss_NAME saslPASSDSS)
+# The plugin defines configure writes for the Dockerfile's options.
+set(crammd5_DEFS OBSOLETE_CRAM_ATTR=1)
+set(digestmd5_DEFS OBSOLETE_DIGEST_ATTR=1 WITH_RC4 WITH_DES WITH_SSL_DES)
+set(scram_DEFS HAVE_SHA512)
+set(srp_DEFS DO_SRP_SETPASS=1)
+foreach(mech ${PLUGINS})
+  string(REPLACE "MECHANISM" "${mech}" INIT "${INIT_MECHANISM}")
+  file(WRITE ${GEN}/${mech}_init.c "${INIT}")
+  add_library(${mech} SHARED ${${mech}_SRC} common/plugin_common.c ${GEN}/${mech}_init.c)
+  set_target_properties(${mech} PROPERTIES OUTPUT_NAME ${${mech}_NAME})
+  target_include_directories(${mech} PRIVATE ${INCS})
+  target_compile_definitions(${mech} PRIVATE ${COMMON_DEFS} ${${mech}_DEFS})
+  target_link_libraries(${mech} PRIVATE OpenSSL::Crypto ws2_32)
+  install(TARGETS ${mech} RUNTIME DESTINATION lib/sasl2 LIBRARY DESTINATION lib/sasl2
+    ARCHIVE DESTINATION lib/sasl2/implib)
+endforeach()
+
+file(WRITE ${CMAKE_BINARY_DIR}/libsasl2.pc
+"prefix=${CMAKE_INSTALL_PREFIX}
+exec_prefix=\${prefix}
+libdir=\${exec_prefix}/lib
+includedir=\${prefix}/include
+
+Name: Cyrus SASL
+Description: Cyrus SASL implementation
+URL: https://www.cyrusimap.org/sasl/
+Version: ${SASL_VERSION}
+Cflags: -I\${includedir}
+Libs: -L\${libdir} -lsasl2
+")
+install(FILES ${CMAKE_BINARY_DIR}/libsasl2.pc DESTINATION lib/pkgconfig)
+'@
+
+function Build-Cyrus-Sasl {
+    if (Skip-If-Done 'cyrus-sasl') { return }
+    Log '=== cyrus-sasl'
+    $version = V cyrus-sasl
+    $src = Git-Clone 'https://github.com/cyrusimap/cyrus-sasl.git' "cyrus-sasl-$version" `
+        (Join-Path $LIW_SRC 'cyrus-sasl')
+    # On Windows the plugin path comes from the registry, then the
+    # compiled-in PLUGINDIR; SASL_PATH, which the linux and macos wheels'
+    # pylibmc/__init__.py point at the bundled plugins, is not consulted.
+    # Windows-only patch: SASL_PATH first (read as UTF-16 and converted to
+    # the UTF-8 the UNICODE build expects of plugin paths).
+    Invoke-Patch $src 'cyrus_sasl_path' @'
+path = "lib/common.c"
+s = open(path, encoding="utf-8").read()
+old = """        /* NB: On Windows platforms this value is always allocated */
+        default_plugin_path = _sasl_get_default_win_path(context,
+                                                         SASL_PLUGIN_PATH_ATTR,
+                                                         PLUGINDIR);
+"""
+new = """        /* liw: SASL_PATH first, as on unix. */
+        {
+            const wchar_t *wenv = _wgetenv(L"SASL_PATH");
+            char utf8env[4 * PATH_MAX];
+            if (wenv && *wenv &&
+                WideCharToMultiByte(CP_UTF8, 0, wenv, -1, utf8env,
+                                    (int)sizeof(utf8env), NULL, NULL) > 0) {
+                res = _sasl_strdup(utf8env, &default_plugin_path, NULL);
+            }
+        }
+        /* NB: On Windows platforms this value is always allocated */
+        if (default_plugin_path == NULL)
+        default_plugin_path = _sasl_get_default_win_path(context,
+                                                         SASL_PLUGIN_PATH_ATTR,
+                                                         PLUGINDIR);
+"""
+assert old in s, "cyrus-sasl's Windows plugin path code changed"
+s = s.replace(old, new)
+open(path, "w", encoding="utf-8").write(s)
+'@
+    # The plugins import libcrypto, which delvewheel bundles (mangled) in
+    # the pylibmc wheel.  A plain LoadLibrary of a plugin by path does not
+    # search the directories python added with os.add_dll_directory, so a
+    # plugin's own imports would not resolve; LoadLibraryEx with the
+    # default directories plus the plugin's own directory does (the mapnik
+    # plugin loader has the same patch).  Plain LoadLibrary stays the
+    # fallback.
+    Invoke-Patch $src 'cyrus_sasl_loadlibrary' @'
+path = "lib/windlopen.c"
+s = open(path, encoding="utf-8").read()
+old = "    if (!(library = LoadLibrary(tfile))) {"
+new = ("    library = LoadLibraryEx(tfile, NULL, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS |\n"
+       "                            LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR);\n"
+       "    if (!library) library = LoadLibrary(tfile);\n"
+       "    if (!library) {")
+assert old in s, "cyrus-sasl's plugin LoadLibrary call changed"
+s = s.replace(old, new)
+open(path, "w", encoding="utf-8").write(s)
+'@
+    Write-Embedded (Join-Path $src 'CMakeLists.txt') $script:CyrusSaslCMakeLists
+    Cmake-Build $src @("-DSASL_VERSION=$version",
+        "-DSASL_PLUGINDIR=$script:CmakePrefix/lib/sasl2",
+        "-DOPENSSL_ROOT_DIR=$script:CmakePrefix")
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('sasl2.dll') 'cyrus-sasl'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib') @('sasl2.lib') 'cyrus-sasl'
+    Assert-Files (Join-Path $LIW_PREFIX 'include\sasl') @('sasl.h', 'saslplug.h') 'cyrus-sasl'
+    # Every mechanism listed above is a plugin DLL; the OpenSSL-backed ones
+    # must import libcrypto (a mechanism whose OpenSSL code was compiled
+    # out would still build).
+    $plugins = Join-Path $LIW_PREFIX 'lib\sasl2'
+    foreach ($name in @('saslANONYMOUS', 'saslPLAIN', 'saslCRAMMD5', 'saslDIGESTMD5', 'saslLOGIN',
+                        'saslSCRAM', 'saslNTLM', 'saslOTP', 'saslSRP', 'saslPASSDSS')) {
+        Assert-Files $plugins @("$name.dll") 'cyrus-sasl'
+    }
+    foreach ($name in @('saslDIGESTMD5', 'saslSCRAM', 'saslNTLM', 'saslOTP', 'saslSRP', 'saslPASSDSS')) {
+        Assert-DependentStems (Join-Path $plugins "$name.dll") @('libcrypto') 'cyrus-sasl'
+    }
+    Done-Stamp 'cyrus-sasl'
+}
+
+# libmemcached (the memcachier fork the linux build pins) is autotools, and
+# its Windows support is a MinGW one (README.win32: configure under msys;
+# win32/wrappers.h and libmemcached/windows.hpp map the socket API).  The
+# embedded cmake file builds what the linux install gives pylibmc: the one
+# libmemcached DLL with libhashkit compiled in (the autotools BUILD_WIN32
+# arrangement), from the source lists of the include.am files, and its
+# headers -- no clients, libmemcachedutil or libmemcachedprotocol, which
+# the wheel does not carry.  mem_config.h holds what configure would find
+# on Windows plus the defaults of the options (fnv64 and murmur hashing on,
+# hsieh off, SASL through the prefix's libsasl2); the SO_SNDTIMEO and
+# SO_RCVTIMEO paths stay off, since winsock takes those as a DWORD of
+# milliseconds where the code passes a struct timeval (the MinGW build's
+# configure would not have found them either).  Three missing POSIX
+# headers are shims: sys/time.h (gettimeofday from the system time),
+# strings.h (the _stricmp family), and pthread.h, whose only use is
+# sasl.cc's one-time sasl_client_init and its mutex (INIT_ONCE and an SRW
+# lock).  The CSL parser and scanner are generated with winflexbison (the
+# linux and macos builds generate them with bison and flex too).
+$script:LibmemcachedCMakeLists = @'
+cmake_minimum_required(VERSION 3.16)
+project(libmemcached C CXX)
+if(NOT MEMCACHED_VERSION)
+  message(FATAL_ERROR "pass -DMEMCACHED_VERSION=<version>")
+endif()
+set(GEN ${CMAKE_BINARY_DIR}/generated)
+
+# The sources the include.am files list for libmemcached.la (libhashkit's
+# and the CSL parser's included).
+set(SRC)
+foreach(am libmemcached/include.am libmemcached/csl/include.am libhashkit/include.am)
+  file(STRINGS ${CMAKE_SOURCE_DIR}/${am} LINES)
+  foreach(line ${LINES})
+    if(line MATCHES "^(libmemcached_libmemcached|libhashkit_libhashkit)_la_SOURCES\\+= *([^ ]+\\.cc?)$")
+      list(APPEND SRC ${CMAKE_MATCH_2})
+    endif()
+  endforeach()
+endforeach()
+# (automake's INCLUDE_HSIEH_SRC conditional: off by default.)
+list(REMOVE_ITEM SRC libhashkit/hsieh.cc)
+list(REMOVE_DUPLICATES SRC)
+list(LENGTH SRC NSRC)
+message(STATUS "libmemcached: ${NSRC} sources")
+foreach(required libmemcached/sasl.cc libmemcached/csl/parser.cc libhashkit/md5.cc libhashkit/nohsieh.cc)
+  if(NOT required IN_LIST SRC)
+    message(FATAL_ERROR "libmemcached: ${required} is not in the source lists")
+  endif()
+endforeach()
+
+string(REGEX MATCH "^[0-9]+\\.[0-9]+\\.[0-9]+" V3 "${MEMCACHED_VERSION}")
+string(REPLACE "." ";" VPARTS "${V3}")
+list(GET VPARTS 0 VMAJ)
+list(GET VPARTS 1 VMIN)
+list(GET VPARTS 2 VPAT)
+math(EXPR VMIN3 "1000 + ${VMIN}")
+math(EXPR VPAT3 "1000 + ${VPAT}")
+string(SUBSTRING "${VMIN3}" 1 3 VMIN3)
+string(SUBSTRING "${VPAT3}" 1 3 VPAT3)
+if(VMAJ LESS 10)
+  set(VMAJ "0${VMAJ}")
+endif()
+file(WRITE ${GEN}/libmemcached-1.0/configure.h
+"#pragma once
+#ifdef __cplusplus
+extern \"C\" {
+#endif
+#define LIBMEMCACHED_WITH_SASL_SUPPORT 1
+#define LIBMEMCACHED_VERSION_STRING \"${MEMCACHED_VERSION}\"
+#define LIBMEMCACHED_VERSION_HEX 0x${VMAJ}${VMIN3}${VPAT3}
+#ifdef __cplusplus
+}
+#endif
+")
+file(WRITE ${GEN}/libhashkit-1.0/configure.h
+"#pragma once
+#define LIBHASHKIT_VERSION_STRING \"1.0.0\"
+#define LIBHASHKIT_VERSION_HEX 0x01000000
+")
+file(WRITE ${GEN}/libhashkit/hashkitcon.h "#pragma once\n#include \"mem_config.h\"\n")
+file(WRITE ${GEN}/mem_config.h
+"#pragma once
+#define HOST_OS_WINDOWS 1
+#define HAVE_WINSOCK2_H 1
+#define HAVE_WS2TCPIP_H 1
+#define HAVE_IO_H 1
+#define HAVE_ERRNO_H 1
+#define HAVE_FCNTL_H 1
+#define HAVE_INTTYPES_H 1
+#define HAVE_LIMITS_H 1
+#define HAVE_MALLOC_H 1
+#define HAVE_MATH_H 1
+#define HAVE_STDARG_H 1
+#define HAVE_STDDEF_H 1
+#define HAVE_STDIO_H 1
+#define HAVE_STDLIB_H 1
+#define HAVE_SYS_TIME_H 1
+#define HAVE_SYS_TYPES_H 1
+#define HAVE_TIME_H 1
+#define HAVE_STRERROR 1
+#define HAVE_CLOCK_GETTIME 0
+#define HAVE_LIBSASL 1
+#define HAVE_SASL_SASL_H 1
+#define HAVE_FNV64_HASH 1
+#define HAVE_MURMUR_HASH 1
+#define HAVE_SHARED_ENABLED 1
+#define HAVE_LIBMEMCACHED 1
+#define HAVE_MEMCACHED_SASL_BINARY 0
+#define DEBUG 0
+#define SHUT_RD SD_RECEIVE
+#define SHUT_WR SD_SEND
+#ifndef __STDC_FORMAT_MACROS
+#  define __STDC_FORMAT_MACROS
+#endif
+#if defined(__cplusplus)
+#  include <cinttypes>
+#else
+#  include <inttypes.h>
+#endif
+#include <BaseTsd.h>
+typedef SSIZE_T ssize_t;
+#define HAVE_ULONG 1
+typedef unsigned long int ulong;
+")
+file(WRITE ${GEN}/shim/strings.h
+"#pragma once
+#include <string.h>
+#define strcasecmp _stricmp
+#define strncasecmp _strnicmp
+")
+file(WRITE ${GEN}/shim/sys/time.h
+"#pragma once
+#include <winsock2.h>
+#include <windows.h>
+static __inline int gettimeofday(struct timeval *tv, void *tz)
+{
+  FILETIME ft;
+  ULARGE_INTEGER t;
+  (void)tz;
+  GetSystemTimeAsFileTime(&ft);
+  t.LowPart= ft.dwLowDateTime;
+  t.HighPart= ft.dwHighDateTime;
+  t.QuadPart-= 116444736000000000ULL;
+  tv->tv_sec= (long)(t.QuadPart / 10000000ULL);
+  tv->tv_usec= (long)((t.QuadPart % 10000000ULL) / 10);
+  return 0;
+}
+")
+file(WRITE ${GEN}/shim/pthread.h
+"#pragma once
+#include <winsock2.h>
+#include <windows.h>
+typedef INIT_ONCE pthread_once_t;
+#define PTHREAD_ONCE_INIT INIT_ONCE_STATIC_INIT
+typedef SRWLOCK pthread_mutex_t;
+#define PTHREAD_MUTEX_INITIALIZER SRWLOCK_INIT
+static BOOL CALLBACK liw_pthread_once_cb(PINIT_ONCE once, PVOID fn, PVOID *ctx)
+{
+  (void)once;
+  (void)ctx;
+  ((void (*)(void))fn)();
+  return TRUE;
+}
+static __inline int pthread_once(pthread_once_t *once, void (*fn)(void))
+{
+  return InitOnceExecuteOnce(once, liw_pthread_once_cb, (PVOID)fn, NULL) ? 0 : EINVAL;
+}
+static __inline int pthread_mutex_lock(pthread_mutex_t *m)
+{
+  AcquireSRWLockExclusive(m);
+  return 0;
+}
+static __inline int pthread_mutex_unlock(pthread_mutex_t *m)
+{
+  ReleaseSRWLockExclusive(m);
+  return 0;
+}
+")
+
+add_library(memcached SHARED ${SRC})
+# libmemcached.dll, like linux's libmemcached.so; the import library is
+# memcached.lib for pylibmc's libraries=["memcached"].
+set_target_properties(memcached PROPERTIES RUNTIME_OUTPUT_NAME libmemcached
+  ARCHIVE_OUTPUT_NAME memcached)
+target_include_directories(memcached PRIVATE ${GEN} ${GEN}/shim ${CMAKE_SOURCE_DIR}
+  ${CMAKE_SOURCE_DIR}/libmemcached/csl)
+target_compile_definitions(memcached PRIVATE BUILDING_LIBMEMCACHED BUILDING_HASHKIT
+  _WIN32_WINNT=0x0601 WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS
+  _CRT_NONSTDC_NO_DEPRECATE _WINSOCK_DEPRECATED_NO_WARNINGS)
+# The C++ uses the alternative tokens (and, or, not), which cl knows only
+# in its strict /permissive- mode; iso646.h defines them and keeps the
+# lenient default, the counterpart of the Dockerfile's -fpermissive.
+# C++20: poll.cc's Windows emulation uses designated initializers (a GNU
+# extension in the C++ of its day).
+target_compile_options(memcached PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/FIiso646.h /EHsc /std:c++20>)
+find_library(SASL2_LIBRARY sasl2 REQUIRED)
+target_link_libraries(memcached PRIVATE ${SASL2_LIBRARY} ws2_32)
+install(TARGETS memcached RUNTIME DESTINATION bin LIBRARY DESTINATION lib ARCHIVE DESTINATION lib)
+install(DIRECTORY libmemcached-1.0 libhashkit-1.0 DESTINATION include
+  FILES_MATCHING PATTERN "*.h" PATTERN "t" EXCLUDE)
+install(FILES ${GEN}/libmemcached-1.0/configure.h DESTINATION include/libmemcached-1.0)
+install(FILES ${GEN}/libhashkit-1.0/configure.h DESTINATION include/libhashkit-1.0)
+install(FILES libmemcached/memcached.h libmemcached/memcached.hpp libmemcached/util.h
+  DESTINATION include/libmemcached)
+install(FILES libhashkit/hashkit.h DESTINATION include/libhashkit)
+file(WRITE ${CMAKE_BINARY_DIR}/libmemcached.pc
+"prefix=${CMAKE_INSTALL_PREFIX}
+exec_prefix=\${prefix}
+libdir=\${exec_prefix}/lib
+includedir=\${prefix}/include
+
+Name: libmemcached
+Description: libmemcached C/C++ library for memcached
+Version: ${MEMCACHED_VERSION}
+Libs: -L\${libdir} -lmemcached
+Cflags: -I\${includedir}
+")
+install(FILES ${CMAKE_BINARY_DIR}/libmemcached.pc DESTINATION lib/pkgconfig)
+'@
+
+function Build-Libmemcached {
+    if (Skip-If-Done 'libmemcached') { return }
+    Log '=== libmemcached'
+    Ensure-WinFlexBison
+    $src = Git-Clone 'https://github.com/memcachier/libmemcached.git' (V libmemcached) `
+        (Join-Path $LIW_SRC 'libmemcached')
+    # The version the library reports is version.m4's (the fork's 1.0.19
+    # tag did not bump it), as on linux.
+    $m4 = Get-Content (Join-Path $src 'version.m4') -Raw
+    if ($m4 -notmatch 'VERSION_NUMBER\], \[([0-9.]+)\]') { Die 'libmemcached: no version in version.m4' }
+    $version = $Matches[1]
+    # The CSL parser and scanner (their output paths are in the grammar
+    # files, relative to the source root).  --wincompat: the scanner uses
+    # io.h instead of unistd.h.
+    Push-Location $src
+    try {
+        Run-Logged (Join-Path $script:WinFlexBisonDir 'win_bison.exe') @(
+            'libmemcached/csl/parser.yy') 'bison of the libmemcached CSL parser'
+        Run-Logged (Join-Path $script:WinFlexBisonDir 'win_flex.exe') @(
+            '--wincompat', 'libmemcached/csl/scanner.l') 'flex of the libmemcached CSL scanner'
+    } finally {
+        Pop-Location
+    }
+    foreach ($f in @('parser.cc', 'parser.h', 'scanner.cc', 'scanner.h')) {
+        if (-not (Test-Path (Join-Path $src "libmemcached\csl\$f"))) { Die "libmemcached: $f was not generated" }
+    }
+    # Windows-only source patches, for what the MinGW port keys off
+    # __MINGW32__ or leaves to MinGW's POSIX layer:
+    #  - do.cc: the UDP sendmsg path is POSIX-only (MinGW's guard; on
+    #    Windows UDP stays unsupported, as in the MinGW build);
+    #  - poll.h: winsock2.h already declares struct pollfd and the POLL*
+    #    flags for Windows Vista and later, so the emulation's own
+    #    definitions are skipped there (poll.cc's select() emulation uses
+    #    the flags by name only);
+    #  - poll.cc: select() reports a failed non-blocking connect in
+    #    exceptfds, which the emulation never asked about, so a refused
+    #    connection waited out the whole connect timeout instead of
+    #    failing at once as with poll() on linux;
+    #  - platform.h (installed): the stats struct has a pid_t, which MSVC
+    #    lacks and MinGW supplies; int, as python's pyconfig.h typedefs it
+    #    (an identical typedef is a benign redefinition for cl);
+    #  - socket.hpp and windows.hpp: socket errors are WSAGetLastError()
+    #    codes (WSAEWOULDBLOCK, ...), which the code compares against the
+    #    errno names.  MinGW's errno.h left EWOULDBLOCK, EINPROGRESS and the
+    #    rest to win32/wrappers.h, which defines them as the WSA codes; MSVC's
+    #    errno.h has its own values for them, so every non-blocking connect
+    #    failed (CONNECTION FAILURE; the dev check's round trip found it).
+    #    windows.hpp already has the WSA-to-errno translation, unused: it is
+    #    what get_socket_errno() returns under MSVC now, with the codes the
+    #    switches test that it lacked added;
+    #  - connect.cc: a non-blocking connect() fails with WSAEWOULDBLOCK on
+    #    Windows where POSIX says EINPROGRESS, and connect_poll() takes a
+    #    writable socket for a connection only after EINPROGRESS (with
+    #    anything else it reported the connect "exhausted" and closed the
+    #    socket unused), so on Windows that error is EINPROGRESS.
+    Invoke-Patch $src 'libmemcached_windows' @'
+def patch(path, old, new):
+    s = open(path, encoding="utf-8").read()
+    assert old in s, "%s: %r not found" % (path, old)
+    open(path, "w", encoding="utf-8").write(s.replace(old, new))
+
+patch("libmemcached/do.cc", "#ifndef __MINGW32__", "#if !defined(__MINGW32__) && !defined(_WIN32)")
+patch("libmemcached/poll.h",
+      "typedef struct pollfd\n",
+      "#if defined(_WIN32_WINNT) && _WIN32_WINNT >= 0x0600\n"
+      "typedef struct pollfd pollfd_t;\n"
+      "typedef int nfds_t;\n"
+      "#else\n"
+      "typedef struct pollfd\n")
+patch("libmemcached/poll.h",
+      "#define POLLNVAL\t0x020\t\t/* Invalid polling request.  */\n",
+      "#define POLLNVAL\t0x020\t\t/* Invalid polling request.  */\n#endif\n")
+patch("libmemcached-1.0/platform.h",
+      "typedef SOCKET memcached_socket_t;\n",
+      "typedef SOCKET memcached_socket_t;\n\n"
+      "#ifdef _MSC_VER\n"
+      "typedef int pid_t;\n"
+      "#endif\n")
+patch("libmemcached/connect.cc",
+      "    /* An error occurred */\n    int local_error= get_socket_errno();\n",
+      "    /* An error occurred */\n    int local_error= get_socket_errno();\n"
+      "#ifdef _WIN32\n"
+      "    if (local_error == EAGAIN)\n"
+      "    {\n"
+      "      local_error= EINPROGRESS;\n"
+      "    }\n"
+      "#endif\n")
+patch("libmemcached/poll.cc",
+      "        FD_SET(fds[x].fd, &writefds);\n      }\n",
+      "        FD_SET(fds[x].fd, &writefds);\n      }\n"
+      "      FD_SET(fds[x].fd, &errorfds);\n")
+patch("libmemcached/socket.hpp",
+      "# define get_socket_errno() WSAGetLastError()\n",
+      "# ifdef _MSC_VER\n"
+      "#  define get_socket_errno() translate_windows_error()\n"
+      "# else\n"
+      "#  define get_socket_errno() WSAGetLastError()\n"
+      "# endif\n")
+patch("libmemcached/windows.hpp",
+      "  default:\n    break;\n  }\n\n  return local_errno;",
+      "  case WSAEINTR:\n    local_errno= EINTR;\n    break;\n\n"
+      "  case WSAEINPROGRESS:\n    local_errno= EINPROGRESS;\n    break;\n\n"
+      "  case WSAEISCONN:\n    local_errno= EISCONN;\n    break;\n\n"
+      "  case WSAENOTCONN:\n    local_errno= ENOTCONN;\n    break;\n\n"
+      "  case WSAENOBUFS:\n    local_errno= ENOBUFS;\n    break;\n\n"
+      "  case WSAENOTSOCK:\n    local_errno= ENOTSOCK;\n    break;\n\n"
+      "  case WSAEBADF:\n    local_errno= EBADF;\n    break;\n\n"
+      "  default:\n    break;\n  }\n\n  return local_errno;")
+'@
+    Write-Embedded (Join-Path $src 'CMakeLists.txt') $script:LibmemcachedCMakeLists
+    Cmake-Build $src @("-DMEMCACHED_VERSION=$version")
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('libmemcached.dll') 'libmemcached'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib') @('memcached.lib') 'libmemcached'
+    Assert-Files (Join-Path $LIW_PREFIX 'include\libmemcached-1.0') @('configure.h', 'memcached.h') 'libmemcached'
+    # Without libsasl2 linked in, pylibmc compiles its SASL paths out
+    # silently (the macos assertion).
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\libmemcached.dll') @('sasl2', 'WS2_32') 'libmemcached'
+    Done-Stamp 'libmemcached'
+}
+
+# pylibmc: the Dockerfile's patches (SASL linked, the sasl2 plugins bundled
+# as package data, SASL_PATH pointed at them before _pylibmc is imported,
+# the version suffixed .1), one wheel per python.  The plugins are DLLs in
+# pylibmc/sasl2 that import libcrypto: delvewheel --analyze-existing
+# bundles it and rewrites their imports to the mangled name, and libsasl2
+# loads them with the default DLL directories (the Build-Cyrus-Sasl
+# patches), which include the directory delvewheel's patch adds.
+# _pylibmc is a top-level extension module (see the repair step for what
+# that means for the layout); pylibmc/__init__.py imports it.
+function Build-Pylibmc {
+    if (Skip-If-Done 'pylibmc') { return }
+    Log '=== pylibmc'
+    $pp = $script:PatchPython
+    & $pp -m pip install --quiet --no-warn-script-location -U "delvewheel==$(V delvewheel)" | Out-Null
+    Assert-Exit 'pip install of delvewheel failed'
+
+    $src = Git-Clone 'https://github.com/lericson/pylibmc.git' (V pylibmc) (Join-Path $LIW_SRC 'pylibmc')
+    $sasl2 = Join-Path $src 'src\pylibmc\sasl2'
+    New-Item -ItemType Directory -Force -Path $sasl2 | Out-Null
+    Copy-Item (Join-Path $LIW_PREFIX 'lib\sasl2\*.dll') $sasl2
+    if (@(Get-ChildItem $sasl2 -Filter '*.dll').Count -eq 0) { Die 'pylibmc: no sasl2 plugins to bundle' }
+    # The Dockerfile's seds and its __init__.py patch.  Also on Windows:
+    # setup.py's gcc flags (-fno-strict-aliasing, -std=c99) mean nothing
+    # to cl, which warns about each; the extension uses POSIX's ssize_t,
+    # which MSVC lacks (Py_ssize_t is the same type); the library
+    # directory is the prefix's (LIBMEMCACHED= gives setup.py its include
+    # and lib directories).
+    Invoke-Patch $src 'pylibmc_setup' @'
+def patch(path, old, new):
+    s = open(path, encoding="utf-8").read()
+    assert old in s, "%s: %r not found" % (path, old)
+    open(path, "w", encoding="utf-8").write(s.replace(old, new))
+
+s = open("src/pylibmc-version.h", encoding="utf-8").read()
+open("src/pylibmc-version.h", "w", encoding="utf-8").write(s.replace("-dev", ""))
+patch("setup.py", '"memcached"', '"memcached","sasl2"')
+patch("setup.py", "packages=", 'package_data={"pylibmc":["sasl2/*"]},include_package_data=True,packages=')
+patch("setup.py", "version=version", 'version=version + ".1"')
+patch("setup.py", 'cflags = ["-fno-strict-aliasing", "-std=c99"]',
+      'cflags = [] if sys.platform == "win32" else ["-fno-strict-aliasing", "-std=c99"]\n'
+      'if sys.platform == "win32":\n'
+      '    defs.append(("ssize_t", "Py_ssize_t"))')
+patch("src/pylibmc/__init__.py", "import _pylibmc\n", """
+import os
+_localpath = os.path.dirname(os.path.abspath( __file__ ))
+os.environ.setdefault("SASL_PATH", os.path.join(_localpath, "sasl2"))
+
+import _pylibmc
+""")
+'@
+    Commit-Patches $src "$(V pylibmc).1"
+
+    Remove-Item -Path (Join-Path $LIW_WHEELHOUSE 'pylibmc-*.whl') -Force -ErrorAction SilentlyContinue
+    $env:LIBMEMCACHED = $LIW_PREFIX
+    try {
+        foreach ($minor in $script:Pythons) {
+            $pybin = Join-Path $LIW_PY $minor
+            Log "pylibmc wheel: python $minor"
+            if (Test-Path (Join-Path $src 'build')) { Remove-Item -Recurse -Force (Join-Path $src 'build') }
+            Run-Logged (Join-Path $pybin 'python.exe') @(
+                '-m', 'pip', 'wheel', '--no-deps', '--progress-bar', 'off',
+                '-w', $LIW_WHEELHOUSE, $src) "pylibmc wheel build for python $minor"
+        }
+    } finally {
+        Remove-Item -Path 'env:LIBMEMCACHED' -ErrorAction SilentlyContinue
+    }
+
+    # delvewheel's layout for a wheel with a top-level extension module
+    # (fixed in delvewheel, not an option): the DLLs go to the wheel's
+    # .data/platlib, i.e. into site-packages beside _pylibmc.pyd, and its
+    # patch of pylibmc/__init__.py adds site-packages to the DLL search
+    # path -- which is also how the plugins' libcrypto import resolves.
+    # The names are mangled as everywhere else, so they cannot collide
+    # with another distribution's files.  Unlike the other wheels, the VC
+    # runtime is not forced in: nothing here runs as a separate process
+    # (python has vcruntime140 and vcruntime140_1 loaded already), and an
+    # unmangled vcruntime140.dll at the top of site-packages could belong
+    # to another distribution as well.
+    Log 'delvewheel repair of the pylibmc wheels'
+    Remove-Item -Path (Join-Path $WheelsDir 'pylibmc-*.whl') -Force -ErrorAction SilentlyContinue
+    foreach ($whl in (Get-ChildItem -Path $LIW_WHEELHOUSE -Filter 'pylibmc-*.whl' -File)) {
+        # (--analyze-existing: the plugins' libcrypto import.)
+        Run-Logged $pp @(
+            '-m', 'delvewheel', 'repair', '-w', $WheelsDir,
+            '--add-path', "$(Join-Path $LIW_PREFIX 'bin');$script:VcRedist",
+            '--analyze-existing',
+            $whl.FullName) "delvewheel repair of $($whl.Name)"
+        $out = Join-Path $WheelsDir $whl.Name
+        $platlib = '^pylibmc-[^/]+\.data/platlib/'
+        Assert-WheelContains $out @(
+            "${platlib}libmemcached-[0-9a-f]+\.dll$",
+            "${platlib}sasl2-[0-9a-f]+\.dll$",
+            "${platlib}libcrypto-3-x64-[0-9a-f]+\.dll$",
+            "${platlib}z-[0-9a-f]+\.dll$",
+            '^pylibmc/sasl2/saslPLAIN\.dll$',
+            '^pylibmc/sasl2/saslSCRAM\.dll$',
+            '^pylibmc/sasl2/saslDIGESTMD5\.dll$',
+            '^_pylibmc\..*\.pyd$') 'pylibmc'
+    }
+    $repaired = @(Get-ChildItem -Path $WheelsDir -Filter 'pylibmc-*win_amd64*.whl' -File)
+    if ($repaired.Count -lt $script:Pythons.Count) {
+        Die "pylibmc: only $($repaired.Count) wheels, expected $($script:Pythons.Count)"
+    }
+    Done-Stamp 'pylibmc'
+}
+
+# --------------------------------------------------------------------------
 # Main.
 # --------------------------------------------------------------------------
 
@@ -6439,6 +7077,17 @@ function Main {
             'python_bioformats' {
                 # Pure python and a jar: no library from the prefix.
                 Build-Bioformats
+            }
+            'pylibmc' {
+                # The Dockerfile's order: cyrus-sasl before libmemcached
+                # (SASL support compiles in only when libsasl2 is there),
+                # OpenSSL before cyrus-sasl for its OpenSSL-backed
+                # mechanisms, zlib first for OpenSSL and the extension.
+                Build-Zlib
+                Build-Openssl
+                Build-Cyrus-Sasl
+                Build-Libmemcached
+                Build-Pylibmc
             }
             default {
                 if ($pkg.StartsWith('dep:')) {

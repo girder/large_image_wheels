@@ -318,7 +318,8 @@ Shared with the other platforms: `test/test_script.sh` runs on Windows
 under PortableGit's bash.  Its Windows accommodations are inline and
 small (a venv's `Scripts` directory instead of `bin`; python < 3.12's
 `activate` leaves a `C:\` path in PATH that msys cannot split, so the
-venv is activated by hand there).  The harness supplies `python3` (the
+venv is activated by hand there; pylibmc is installed by name before
+`large-image[memcached]`, whose extra leaves pylibmc out on Windows).  The harness supplies `python3` (the
 NuGet pythons have no `python3.exe`) through a one-line shim directory
 named by `LIW_PYTHON_BIN_DIR`, the same variable the macos harness uses.
 
@@ -456,9 +457,9 @@ If you are a fresh agent instance resuming this work:
 
 ## Status
 
-Work in progress (2026-11-02).  Six packages are verified end to end
-on the host; the pipeline is exercised in dev mode inside the agent
-sandbox before every host run:
+Work in progress (2026-11-03).  Eight packages are verified end to end
+on the host and the ninth, pylibmc, passes in dev mode; the pipeline is
+exercised in dev mode inside the agent sandbox before every host run:
 
 - `build_wheels.ps1 -DevSetup` (or `-WarmCache`) installs the pinned
   toolchain (PortableGit 2.56.0.windows.4, cmake 4.4.4, ninja 1.13.2,
@@ -580,10 +581,30 @@ sandbox before every host run:
   ignores `.tif` files (`source_bioformats_ignored_names`), so a
   wheelhouse without gdal/mapnik/pyvips failed there with "No available
   tilesource"; the bioformats term is gone from that gate.
+  Verified on the host with the eight default packages (2026-11-03).
+- **pylibmc builds and passes every dev-mode check for python 3.13
+  (2026-11-03; `Build-Cyrus-Sasl`, `Build-Libmemcached`,
+  `Build-Pylibmc`)**: OpenSSL (the gdal tree's builder), cyrus-sasl and
+  libmemcached through embedded cmake files (see the hard-won entry), and
+  one pylibmc wheel per python with the Dockerfile's patches: SASL linked,
+  the ten plugin DLLs in `pylibmc/sasl2`, `SASL_PATH` pointed at them,
+  version `1.6.3.1`.  `check_wheels.py` checks the bundled libmemcached,
+  libsasl2 and libcrypto are the ones loaded, `build_info()` reports
+  compression and SASL, every mechanism registers through the bundled
+  plugins (`sasl_global_listmech`: ANONYMOUS, PLAIN, CRAM-MD5, DIGEST-MD5,
+  LOGIN, SCRAM-SHA-*, NTLM, OTP, SRP, PASSDSS-3DES-1), a set/get/
+  get_multi/delete round trip with zlib compression against a
+  text-protocol fake memcached in the check itself, and that a refused
+  connection fails at once rather than after the connect timeout.  That
+  round trip found three Windows socket bugs in libmemcached's MinGW port
+  (see the hard-won entry); a build-only check would have passed.  The
+  wheel step was rehearsed for all seven pythons, and `check_wheels.py`
+  passes for 3.11, 3.14t and 3.15t as well; `test_wheels.ps1` (with the
+  shared suite) passes for 3.13.
 
 Next step: the host run of `windows\sandbox_build.bat &&
-windows\test_via_sandbox.bat` (eight packages by default now, with
-python_javabridge and python_bioformats); then pylibmc.
+windows\test_via_sandbox.bat` (nine packages by default now, with
+pylibmc).  That completes the package list.
 
 Known gaps, in rough order:
 
@@ -674,6 +695,22 @@ Known gaps, in rough order:
   default DLL directories first (see the hard-won entry); python-mapnik
   gets two MSVC source fixes (`ssize_t`, an ambiguous `to_wkt`
   overload) and its setup.py is pointed at pkgconf's `--msvc-syntax`.
+- **pylibmc deviations from the linux wheel**, each marked in
+  `build_wheels.ps1` where it happens: the SASL plugin set is linux's
+  minus gssapiv2 and gs2 (no Kerberos on Windows) and minus the
+  server-side auxprop plugins sasldb, sql and ldapdb (no Berkeley
+  DB/LMDB, no openldap; linux's sql plugin comes from the mysql and
+  postgresql clients of its base image; macos leaves all five out too),
+  so the client mechanisms are all there; the plugins are named as
+  upstream's Windows build names them (`saslPLAIN.dll`, ...);
+  libmemcached is the library only (no clients, libmemcachedutil or
+  libmemcachedprotocol, which the wheel does not carry), without the
+  SO_SNDTIMEO/SO_RCVTIMEO paths (winsock takes a DWORD of milliseconds
+  where the code passes a timeval) and without UDP (POSIX `sendmsg`,
+  absent from the MinGW port too).  The wheel's layout is delvewheel's
+  for a top-level extension module: the bundled DLLs are at the top of
+  site-packages (`.data/platlib`), not in `pylibmc.libs` (see the
+  hard-won entry).
 - `check_versions.py` runs on Windows as anywhere else (`uv run
   check_versions.py <names>`: it carries PEP 723 metadata; or a python
   with `requests` and `packaging`).  It used to prefix its `git
@@ -1260,6 +1297,63 @@ Known gaps, in rough order:
   timestamp-normalized (the reproducibility gap above).  python-javabridge
   requires nothing at build time but the JDK, Cython and numpy, which
   pip's build isolation fetches.
+- **The pylibmc tree** (`Build-Cyrus-Sasl` through `Build-Pylibmc`).
+  cyrus-sasl's maintained Windows build is MSBuild projects
+  (`win32\*.vcxproj`) and its nmake files are, by its own README, stale;
+  the embedded cmake file compiles `sasl2.dll` from `sasl2.vcxproj`'s
+  sources with `cyrus-sasl.props`' defines (UNICODE: plugin paths are
+  UTF-8 there), each mechanism as its own DLL (`NO_STATIC_PLUGINS`) with
+  an init file generated from `win32\init_mechanism.c` as
+  `win32\makeinit.ps1` does, and configure's defines for the
+  Dockerfile's options (digestmd5 needs `WITH_SSL_DES` as well as
+  `WITH_DES` to take OpenSSL's DES).  On Windows libsasl2 does not read
+  `SASL_PATH`: the plugin path is the registry's, then the compiled-in
+  `PLUGINDIR` (`C:\CMU\bin\sasl2` in upstream's `config.h`, moved to the
+  prefix here as linux's is its prefix), so a Windows-only patch makes
+  `SASL_PATH` win, which keeps pylibmc's `__init__.py` patch identical
+  to linux's; and the plugins are loaded with `LoadLibraryEx` and the
+  default DLL directories first (the mapnik plugin-loader lesson: they
+  import libcrypto, which a plain `LoadLibrary` would not find in a
+  directory added with `os.add_dll_directory`).  libmemcached (autotools,
+  with a MinGW port: `win32/wrappers.h`, `libmemcached/windows.hpp`)
+  builds from an embedded cmake file over the include.am source lists
+  (libhashkit compiled in, as BUILD_WIN32 does), a written
+  `mem_config.h`, shims for `sys/time.h`, `strings.h` and `pthread.h`
+  (sasl.cc's once-only `sasl_client_init`: `INIT_ONCE` and an SRW lock),
+  `/FIiso646.h` for the C++'s `and`/`or` (cl knows them only in its
+  strict mode), C++20 for poll.cc's designated initializers, and the CSL
+  parser from winflexbison.  DLL `libmemcached.dll`, import library
+  `memcached.lib` (pylibmc's `libraries=["memcached"]`).  The MinGW
+  port's socket code was broken under MSVC in three ways, all invisible
+  to the build and found by the check's round trip: socket errors are
+  `WSAGetLastError()` codes compared against errno names, which
+  `wrappers.h` defines as the WSA codes only where `errno.h` has none
+  (MinGW) -- MSVC's has its own values, so every non-blocking connect
+  failed; `windows.hpp`'s unused WSA-to-errno translation is now what
+  `get_socket_errno()` returns.  A non-blocking `connect()` then reports
+  `WSAEWOULDBLOCK` (EAGAIN) where POSIX says EINPROGRESS, which
+  `connect_poll()` does not take for "connected once writable": it
+  closed the socket unused, and a set failed with MEMCACHED_ERRNO, "No
+  error".  And the `select()` emulation of `poll()` did not watch
+  `exceptfds`, where Windows reports a failed connect, so a refused
+  connection waited out the connect timeout.  The public `platform.h`
+  gets `typedef int pid_t` (python's pyconfig.h has the same typedef),
+  and pylibmc's own C uses `ssize_t` (defined as `Py_ssize_t` from
+  setup.py).  delvewheel puts a wheel's DLLs in `.data/platlib`, the top
+  of site-packages, whenever the wheel has a top-level extension module
+  (`_pylibmc`), and adds site-packages to the DLL search path in its
+  `pylibmc/__init__.py` patch; that is fixed in delvewheel.  The names
+  are mangled as elsewhere, but an unmangled `vcruntime140.dll` there
+  could belong to another distribution, so this wheel does not force the
+  VC runtime in (it has no tools; python has it loaded) --
+  `check_wheels.py` lets in-process modules import python's own
+  `vcruntime140*.dll`, and audits this wheel by its RECORD instead of by
+  directory (`SITE_PACKAGES_LIBS`).  pylibmc 1.6.3 prints "Exception
+  ignored in PyMapping_HasKeyString()" tracebacks on python 3.13+ when a
+  client is created without behaviors: its C code probes `None` as a
+  mapping once per behavior name, and 3.13 reports the error earlier
+  versions swallowed.  That is upstream's, on every platform, and the
+  client works.
 - The python patch scripts must open source files with
   `encoding="utf-8"`: before python 3.15 the default is the ANSI code
   page (cp1252), and mapnik's headers are UTF-8 (a dev run passed by
