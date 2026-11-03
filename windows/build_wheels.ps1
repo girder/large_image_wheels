@@ -1557,7 +1557,14 @@ function Ensure-Rust {
         $env:PATH = "$script:RustBin;$env:PATH"
     }
     $env:CARGO_HOME = Join-Path $LIW_BUILD 'cargo'
-    $out = Capture-Native (Join-Path $script:RustBin 'rustc.exe') @('--version')
+    # cargo downloads a lock file's crates in parallel (librsvg's 352 at
+    # once), and host runs failed several times in a row with "Could not
+    # resolve host: static.crates.io" after cargo's default 3 tries, while
+    # the host resolves it fine.  Name-lookup failures count as spurious
+    # network errors, which cargo retries with a growing wait; 10 tries is
+    # the common CI setting.
+    $env:CARGO_NET_RETRY = '10'
+    $out =Capture-Native (Join-Path $script:RustBin 'rustc.exe') @('--version')
     if ($out -notmatch [regex]::Escape($version)) { Die "rustc does not report version ${version}: $out" }
     Log "rust $version and cargo-c $cargoc at $script:RustBin (CARGO_HOME $env:CARGO_HOME)"
 }

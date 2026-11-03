@@ -967,6 +967,11 @@ Known gaps, in rough order:
   into one directory (what rustup's install does; rustup itself is
   unpinned), and cargo-c is the prebuilt MSVC binary of its pinned
   release; both pins come from `check_versions.py` (`rust`, `cargo-c`).
+  Host runs failed several times in a row downloading librsvg's crates
+  ("Could not resolve host: static.crates.io" after cargo's default 3
+  tries; cargo fetches all 352 in parallel, and the host resolves the
+  name fine), so `CARGO_NET_RETRY` is 10, the usual CI setting.  If that
+  is not enough, the next step is caching the crates, not vendoring them.
   rustc links with the MSVC `link.exe` from PATH and takes pkg-config's
   `-l` names literally: `-lpng16` means `png16.lib`, where meson would
   also accept `libpng16.lib`, so the libpng and libxml2 builders install
