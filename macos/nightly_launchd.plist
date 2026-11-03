@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchAgent for the large_image_wheels nightly build.  This replaces the
+  crontab entry: launchd spawns macos/nightly.sh directly (no ssh hop), and
+  because the job runs inside the user's Aqua session it is scheduled with
+  normal QoS, unlike cron jobs, whose background-session QoS made the tart
+  VM run at roughly half speed.
+
+  Install (from the repo root):
+
+      sed "s|__LIW_REPO_DIR__|$PWD|" macos/nightly_launchd.plist \
+          > ~/Library/LaunchAgents/com.liw.nightly.plist
+      launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.liw.nightly.plist
+      launchctl enable gui/$(id -u)/com.liw.nightly
+
+  Verify it is loaded and scheduled:
+
+      launchctl print gui/$(id -u)/com.liw.nightly
+          (shows state, program, and the calendar entry; 'state' should
+          eventually be 'not running' with the calendar listed)
+      launchctl list | grep com.liw.nightly
+          (one line: PID or dash, last exit status, label)
+
+  Run it immediately without waiting for 03:30 (optional):
+
+      launchctl kickstart gui/$(id -u)/com.liw.nightly
+      tail -f /tmp/liw_cron_build.txt
+
+      Note: kickstart exercises launchd's spawn path in the gui domain
+      (the context that matters for the QoS bug that made cron runs
+      slow), but it is a manual trigger.  To test the unattended timer
+      path itself, load a throwaway copy of this plist with a
+      StartInterval key of a few minutes and a different Label, watch it
+      fire on its own, then bootout and delete the copy.
+
+  Remove it:
+
+      launchctl bootout gui/$(id -u)/com.liw.nightly
+      rm ~/Library/LaunchAgents/com.liw.nightly.plist
+
+  Like the cron setup, this needs the auto-login GUI session (tart requires
+  it) and 'sudo pmset -a sleep 0' so the session is never suspended.  If the
+  Mac is asleep at the scheduled time, launchd runs the job once on wake
+  instead of skipping it the way cron does.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.liw.nightly</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>__LIW_REPO_DIR__/macos/nightly.sh</string>
+    </array>
+    <key>StandardOutPath</key>
+    <string>/tmp/liw_launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/liw_launchd.log</string>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>3</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+</dict>
+</plist>
