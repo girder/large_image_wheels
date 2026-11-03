@@ -973,9 +973,20 @@ Known gaps, in rough order:
   the agent sandbox resolve the name fine.  The suspected cause (not
   confirmed) is the Windows Sandbox NAT's DNS proxy under the burst of
   lookups cargo makes when it fetches a lock file's crates in parallel
-  (librsvg's 352 at once), not crates.io itself.  `CARGO_NET_RETRY` is
-  10, the usual CI setting; if that is not enough, the next step is
-  caching the crates, not vendoring them.
+  (librsvg's 352 at once), not crates.io itself.  The host is inside a
+  corporate network (not on a VPN), so the proxy forwards to the
+  corporate resolvers.  `CARGO_NET_RETRY` is 10, the usual CI setting;
+  if that is not enough, the next step is caching the crates, not
+  vendoring them.  When a cargo step fails, `Log-DnsDiagnostics` logs
+  the sandbox's DNS servers, the Windows DNS client's cache entry for
+  each crates.io host (a cached failure would make cargo's quick retries
+  pointless), an nslookup straight to the server and a curl.exe lookup
+  through the system resolver (the path cargo's libcurl takes): a burst
+  problem shows as those all succeeding moments later, a remembered
+  failure as a cache entry that is not `Success` while nslookup
+  succeeds, and a proxy or upstream outage as nslookup failing too.
+  (The cache and server cmdlets need administrator rights, which the
+  build sandbox's SYSTEM account has and a dev run's `agent` does not.)
   rustc links with the MSVC `link.exe` from PATH and takes pkg-config's
   `-l` names literally: `-lpng16` means `png16.lib`, where meson would
   also accept `libpng16.lib`, so the libpng and libxml2 builders install
