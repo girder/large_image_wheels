@@ -104,7 +104,8 @@ if $TEST_GDAL; then pip install --no-index -f "$WHEELHOUSE" gdal; pip install 'l
 if $TEST_GLYMUR; then pip install 'large-image[openjpeg]' -f "$WHEELHOUSE"; fi
 if $TEST_MAPNIK; then pip install 'large-image[mapnik]' -f "$WHEELHOUSE"; fi
 if $TEST_OPENSLIDE; then pip install 'large-image[openslide]' -f "$WHEELHOUSE"; fi
-if $TEST_PYLIBMC; then pip install 'large-image[memcached]' -f "$WHEELHOUSE"; fi
+# (pylibmc by name: large-image's memcached extra leaves it out on Windows)
+if $TEST_PYLIBMC; then pip install --no-index -f "$WHEELHOUSE" pylibmc; pip install 'large-image[memcached]' -f "$WHEELHOUSE"; fi
 if $TEST_PYLIBTIFF; then pip install 'large-image[tiff]' -f "$WHEELHOUSE"; fi
 if $TEST_PYVIPS; then pip install 'large-image[vips]' -f "$WHEELHOUSE"; fi
 if $TEST_GDAL && $TEST_PYVIPS; then pip install 'large-image[converter]' -f "$WHEELHOUSE"; fi

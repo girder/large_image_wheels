@@ -492,7 +492,7 @@ def loaded_modules():
     return paths
 
 
-def loaded_from_libs(stem, libs_dir_name):
+def loaded_from_libs(stem, libs_dir_name, libs_path=None):
     """The loaded modules whose basename starts with <stem> (delvewheel
     mangles names to <stem>-<hash>.dll, so a prefix match is the lookup):
     all of them, the ones in the <libs_dir_name> directory, and the ones
@@ -500,16 +500,25 @@ def loaded_from_libs(stem, libs_dir_name):
     the same library (identical content gets the same mangled name), and
     a full-path load of each is a separate module, so a copy in another
     wheel's .libs directory is legitimate; a copy anywhere else means a
-    system or third-party library won the load."""
+    system or third-party library won the load.  libs_path names the
+    library directory by path instead, for a wheel whose bundled DLLs
+    are not in a .libs directory (pylibmc's are in site-packages)."""
     # (DLLs only: mapnik's gdal+ogr.input plugin, loaded from the mapnik
     # package directory, would otherwise count as a foreign libgdal.)
     hits = [path for path in loaded_modules()
             if os.path.basename(path).lower().startswith(stem.lower())
             and path.lower().endswith('.dll')]
-    bundled = [path for path in hits
-               if os.path.basename(os.path.dirname(path)).lower() == libs_dir_name.lower()]
+    if libs_path:
+        def in_libs(path):
+            return os.path.normcase(os.path.dirname(os.path.abspath(path))) == \
+                os.path.normcase(os.path.abspath(libs_path))
+    else:
+        def in_libs(path):
+            return os.path.basename(os.path.dirname(path)).lower() == libs_dir_name.lower()
+    bundled = [path for path in hits if in_libs(path)]
     foreign = [path for path in hits
-               if not os.path.basename(os.path.dirname(path)).lower().endswith('.libs')]
+               if not in_libs(path)
+               and not os.path.basename(os.path.dirname(path)).lower().endswith('.libs')]
     return hits, bundled, foreign
 
 
@@ -562,15 +571,20 @@ def pe_imports(path):
 
 
 def audit_imports(roots, libs_dir, extra_dirs=()):
-    """Every PE file under the given roots may import only: a file in its
-    own directory, a file in libs_dir or one of extra_dirs, python's own
-    DLL, a Windows API set, or a DLL in the system directory.  Anything
-    else would resolve through PATH at best -- a system or third-party
-    library winning the load -- and fail at worst."""
+    """Every PE file under the given roots (directories, or single files)
+    may import only: a file in its own directory, a file in libs_dir or
+    one of extra_dirs, python's own DLL, a Windows API set, or a DLL in
+    the system directory.  Anything else would resolve through PATH at
+    best -- a system or third-party library winning the load -- and fail
+    at worst."""
     bad = 0
     files = 0
     for root in roots:
-        for dirpath, _, filenames in os.walk(root):
+        if os.path.isfile(root):
+            walk = [(os.path.dirname(root), [], [os.path.basename(root)])]
+        else:
+            walk = os.walk(root)
+        for dirpath, _, filenames in walk:
             for filename in filenames:
                 # (.input: mapnik's plugins are DLLs by another name.)
                 if not filename.lower().endswith(('.pyd', '.dll', '.exe', '.input')):
@@ -590,6 +604,13 @@ def audit_imports(roots, libs_dir, extra_dirs=()):
                     if low.startswith(('api-ms-win-', 'ext-ms-')):
                         continue
                     if re.match(r'python3\d*t?\.dll$', low):
+                        continue
+                    # The VC runtime python ships beside itself (and has
+                    # loaded) serves the modules python loads; a tool runs
+                    # as its own process, where it does not.
+                    if low in ('vcruntime140.dll', 'vcruntime140_1.dll') and \
+                            not filename.lower().endswith('.exe') and \
+                            os.path.exists(os.path.join(sys.base_prefix, name)):
                         continue
                     if os.path.exists(os.path.join(dirpath, name)):
                         continue
@@ -982,6 +1003,133 @@ def check_javabridge(package_dir, libs_dir):
            f'bundled java runs by path with a bare PATH (exit {code}): {out.strip().splitlines()[:1]}')
 
 
+class FakeMemcached:
+    """A memcached speaking just enough of the text protocol for a
+    set/get/delete round trip (there is no memcached for the sandbox to
+    run): enough to exercise libmemcached's Windows socket, poll and
+    parsing paths through pylibmc."""
+
+    def __init__(self):
+        import socketserver
+        import threading
+        store = {}
+
+        class Handler(socketserver.StreamRequestHandler):
+            def handle(self):
+                while True:
+                    line = self.rfile.readline()
+                    if not line:
+                        return
+                    parts = line.split()
+                    if not parts:
+                        continue
+                    cmd = parts[0]
+                    if cmd == b'set':
+                        size = int(parts[4])
+                        data = self.rfile.read(size + 2)[:size]
+                        store[parts[1]] = (parts[2], data)
+                        if b'noreply' not in parts:
+                            self.wfile.write(b'STORED\r\n')
+                    elif cmd in (b'get', b'gets'):
+                        for key in parts[1:]:
+                            if key in store:
+                                flags, data = store[key]
+                                self.wfile.write(b'VALUE %s %s %d\r\n%s\r\n' % (key, flags, len(data), data))
+                        self.wfile.write(b'END\r\n')
+                    elif cmd == b'delete':
+                        found = store.pop(parts[1], None) is not None
+                        self.wfile.write(b'DELETED\r\n' if found else b'NOT_FOUND\r\n')
+                    elif cmd == b'version':
+                        self.wfile.write(b'VERSION 1.6.0\r\n')
+                    elif cmd == b'quit':
+                        return
+                    else:
+                        self.wfile.write(b'ERROR\r\n')
+                    self.wfile.flush()
+
+        socketserver.ThreadingTCPServer.daemon_threads = True
+        self.server = socketserver.ThreadingTCPServer(('127.0.0.1', 0), Handler)
+        self.address = '127.0.0.1:%d' % self.server.server_address[1]
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def close(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+
+def check_pylibmc(package_dir, libs_dir):
+    import pylibmc
+    import _pylibmc
+
+    # (The bundled DLLs are in site-packages, libs_dir here; see
+    # SITE_PACKAGES_LIBS.)
+    hits, bundled, foreign = loaded_from_libs('libmemcached', '', libs_path=libs_dir)
+    report(bool(bundled) and not foreign, f'pylibmc loads its bundled libmemcached: {hits}')
+    sasl_hits, sasl_bundled, sasl_foreign = loaded_from_libs('sasl2', '', libs_path=libs_dir)
+    report(bool(sasl_bundled) and not sasl_foreign, f'pylibmc loads its bundled libsasl2: {sasl_hits}')
+    crypto_hits, crypto_bundled, crypto_foreign = loaded_from_libs('libcrypto', '', libs_path=libs_dir)
+    report(bool(crypto_bundled), f'the sasl2 plugins load the bundled libcrypto: {crypto_hits}')
+    info = pylibmc.build_info()
+    report('sasl=True' in info and 'compression=True' in info, f'build info: {info}')
+    # The patched __init__.py points SASL_PATH at the bundled plugins (the
+    # linux and macos wheels' arrangement; the Windows libsasl2 is patched
+    # to honor it).
+    sasl_path = os.environ.get('SASL_PATH', '')
+    plugins = os.path.join(package_dir, 'sasl2')
+    report(os.path.normcase(os.path.abspath(sasl_path)) == os.path.normcase(plugins)
+           and any(name.lower().endswith('.dll') for name in os.listdir(plugins)),
+           f'SASL_PATH names the bundled plugin directory: {sasl_path}')
+    # _pylibmc called sasl_client_init on import, which loads every plugin
+    # in SASL_PATH; the mechanisms registered prove that each plugin (and
+    # the bundled libcrypto the OpenSSL-backed ones import) loaded.
+    if sasl_bundled:
+        sasl = ctypes.CDLL(sasl_bundled[0])
+        sasl.sasl_global_listmech.restype = ctypes.POINTER(ctypes.c_char_p)
+        mechs = set()
+        listed = sasl.sasl_global_listmech()
+        index = 0
+        while listed and listed[index]:
+            mechs.add(listed[index].decode())
+            index += 1
+        for mech in ('ANONYMOUS', 'PLAIN', 'CRAM-MD5', 'DIGEST-MD5', 'LOGIN', 'SCRAM-SHA-1',
+                     'SCRAM-SHA-256', 'NTLM', 'OTP', 'SRP', 'PASSDSS-3DES-1'):
+            report(mech in mechs, f'libsasl2 has the {mech} mechanism (loaded: {" ".join(sorted(mechs))})')
+    server = FakeMemcached()
+    try:
+        mc = pylibmc.Client([server.address], behaviors={'connect_timeout': 5000})
+        report(mc.set('liw', b'value') is True, f'pylibmc set through {server.address}')
+        report(mc.get('liw') == b'value', 'pylibmc get round trip')
+        big = b'compressible ' * 4096
+        mc.set('big', big, min_compress_len=1)
+        report(mc.get('big') == big, 'pylibmc zlib-compressed set/get round trip')
+        report(mc.get_multi(['liw', 'big', 'none']) == {'liw': b'value', 'big': big},
+               'pylibmc get_multi')
+        report(mc.delete('liw') is True and mc.get('liw') is None, 'pylibmc delete')
+        mc.disconnect_all()
+    except Exception as exc:
+        report(False, f'pylibmc round trip: {type(exc).__name__}: {exc}')
+    finally:
+        server.close()
+    # A refused connection fails at once, as with poll() on linux (the
+    # Windows select() emulation must watch exceptfds for it), not after
+    # the connect timeout.
+    import socket
+    import time
+    probe = socket.socket()
+    probe.bind(('127.0.0.1', 0))
+    closed = '127.0.0.1:%d' % probe.getsockname()[1]
+    probe.close()
+    mc = pylibmc.Client([closed], behaviors={'connect_timeout': 10000})
+    start = time.monotonic()
+    try:
+        mc.get('liw')
+        failed = False
+    except pylibmc.Error:
+        failed = True
+    elapsed = time.monotonic() - start
+    report(failed and elapsed < 5, f'pylibmc fails a refused connection in {elapsed:.1f} s (timeout 10 s)')
+
+
 # package -> (import name, <dist>.libs directory name, package check).
 # javabridge has no .libs directory: its only external import is the
 # bundled JVM's jvm.dll (see Build-Javabridge).
@@ -993,7 +1141,15 @@ PACKAGES = {
     'GDAL': ('osgeo', 'gdal.libs', check_gdal),
     'mapnik': ('mapnik', 'mapnik.libs', check_mapnik),
     'python_javabridge': ('javabridge', None, check_javabridge),
+    'pylibmc': ('pylibmc', None, check_pylibmc),
 }
+
+# Wheels whose bundled DLLs delvewheel puts into site-packages itself
+# rather than a <dist>.libs directory: those with a top-level extension
+# module (pylibmc's _pylibmc).  Their audit covers exactly the files the
+# distribution installed (its RECORD), with site-packages as the library
+# directory.
+SITE_PACKAGES_LIBS = {'pylibmc'}
 
 # Directories, relative to the package, whose DLLs the package's binaries
 # may import besides their own directory.  The JRE's DLLs import jvm.dll
@@ -1014,7 +1170,13 @@ def check_package(name):
         return
     package_dir = os.path.dirname(os.path.abspath(module.__file__))
     extra_dirs = [os.path.join(package_dir, sub) for sub in AUDIT_DIRS.get(name, [])]
-    if libs_name:
+    if name in SITE_PACKAGES_LIBS:
+        import importlib.metadata
+        libs_dir = os.path.dirname(package_dir)
+        roots = [os.path.abspath(str(entry.locate())) for entry in importlib.metadata.files(name)
+                 if str(entry).lower().endswith(('.pyd', '.dll', '.exe'))]
+        audit_imports(roots, libs_dir, extra_dirs)
+    elif libs_name:
         libs_dir = os.path.join(os.path.dirname(package_dir), libs_name)
         report(os.path.isdir(libs_dir), f'{name}: bundled library directory {libs_dir}')
         audit_imports([package_dir, libs_dir], libs_dir, extra_dirs)
