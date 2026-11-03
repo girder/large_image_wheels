@@ -600,7 +600,16 @@ exercised in dev mode inside the agent sandbox before every host run:
   (see the hard-won entry); a build-only check would have passed.  The
   wheel step was rehearsed for all seven pythons, and `check_wheels.py`
   passes for 3.11, 3.14t and 3.15t as well; `test_wheels.ps1` (with the
-  shared suite) passes for 3.13.
+  shared suite) passes for 3.13.  The first host run (2026-11-03) built
+  everything and passed every check but one, on every python: "the sasl2
+  plugins load the bundled libcrypto" demanded pylibmc's own copy.  The
+  GDAL wheel bundles the identical OpenSSL, so both copies get the same
+  mangled name, and with osgeo imported first the loader resolved the
+  plugins' import to gdal.libs' copy -- the accepted case of the
+  two-wheels entry in the hard-won list, which the dev run (pylibmc
+  alone) could not show.  The check now requires the plugins' libcrypto
+  to be the name pylibmc bundles, loaded from pylibmc's directory or
+  another wheel's `.libs`, and from nowhere else.
 
 Next step: the host run of `windows\sandbox_build.bat &&
 windows\test_via_sandbox.bat` (nine packages by default now, with
