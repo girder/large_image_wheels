@@ -1067,8 +1067,18 @@ def check_pylibmc(package_dir, libs_dir):
     report(bool(bundled) and not foreign, f'pylibmc loads its bundled libmemcached: {hits}')
     sasl_hits, sasl_bundled, sasl_foreign = loaded_from_libs('sasl2', '', libs_path=libs_dir)
     report(bool(sasl_bundled) and not sasl_foreign, f'pylibmc loads its bundled libsasl2: {sasl_hits}')
-    crypto_hits, crypto_bundled, crypto_foreign = loaded_from_libs('libcrypto', '', libs_path=libs_dir)
-    report(bool(crypto_bundled), f'the sasl2 plugins load the bundled libcrypto: {crypto_hits}')
+    # The plugins' libcrypto: the mangled name this wheel bundles, loaded
+    # from here or from another of our wheels (GDAL bundles the identical
+    # OpenSSL, so the names match, and when osgeo was imported first the
+    # loader resolves the plugins' import to its copy -- the accepted
+    # case of loaded_from_libs).  The stem leaves out python's own
+    # libcrypto-3.dll (_ssl, _hashlib).
+    ours = sorted(name for name in os.listdir(libs_dir)
+                  if name.lower().startswith('libcrypto-3-x64-') and name.lower().endswith('.dll'))
+    crypto_hits, crypto_bundled, crypto_foreign = loaded_from_libs('libcrypto-3-x64', '', libs_path=libs_dir)
+    report(bool(ours) and bool(crypto_hits) and not crypto_foreign
+           and all(os.path.basename(path).lower() in (name.lower() for name in ours) for path in crypto_hits),
+           f'the sasl2 plugins load the bundled libcrypto ({", ".join(ours)}): {crypto_hits}')
     info = pylibmc.build_info()
     report('sasl=True' in info and 'compression=True' in info, f'build info: {info}')
     # The patched __init__.py points SASL_PATH at the bundled plugins (the
