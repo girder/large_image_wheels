@@ -969,15 +969,16 @@ Known gaps, in rough order:
   release; both pins come from `check_versions.py` (`rust`, `cargo-c`).
   Name lookups inside the build sandbox failed several times in a row
   while downloading librsvg's crates ("Could not resolve host:
-  static.crates.io" after cargo's default 3 tries), although the host and
-  the agent sandbox resolve the name fine.  The suspected cause (not
-  confirmed) is the Windows Sandbox NAT's DNS proxy under the burst of
-  lookups cargo makes when it fetches a lock file's crates in parallel
-  (librsvg's 352 at once), not crates.io itself.  The host is inside a
-  corporate network (not on a VPN), so the proxy forwards to the
-  corporate resolvers.  `CARGO_NET_RETRY` is 10, the usual CI setting;
-  if that is not enough, the next step is caching the crates, not
-  vendoring them.  When a cargo step fails, `Log-DnsDiagnostics` logs
+  static.crates.io" after cargo's default 3 tries), although the same
+  name resolved fine outside the build sandbox.  The suspected cause
+  (not confirmed) is the Windows Sandbox NAT's DNS proxy under the burst
+  of lookups cargo makes when it fetches a lock file's crates in
+  parallel (librsvg's 352 at once), not crates.io itself.  The proxy
+  forwards to whatever resolvers the host uses, and those may limit a
+  burst too (corporate or filtering resolvers often rate-limit per
+  client), so the cause can differ from one network to the next.
+  `CARGO_NET_RETRY` is 10, the usual CI setting; if that is not enough,
+  the next step is caching the crates, not vendoring them.  When a cargo step fails, `Log-DnsDiagnostics` logs
   the sandbox's DNS servers, the Windows DNS client's cache entry for
   each crates.io host (a cached failure would make cargo's quick retries
   pointless), an nslookup straight to the server and a curl.exe lookup

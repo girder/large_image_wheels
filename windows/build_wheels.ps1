@@ -1560,10 +1560,11 @@ function Ensure-Rust {
     # Name lookups in the build sandbox (through the Windows Sandbox NAT's
     # DNS proxy) failed several times in a row on host runs: "Could not
     # resolve host: static.crates.io" after cargo's default 3 tries, while
-    # the host and the agent sandbox resolve the name fine.  The suspected
-    # cause (not confirmed) is the sandbox's resolver under the burst of
-    # lookups cargo makes when it downloads a lock file's crates in
-    # parallel (librsvg's 352 at once).  Name-lookup failures count as
+    # the same name resolved fine outside the build sandbox.  The suspected
+    # cause (not confirmed) is the sandbox's resolver, or the host's
+    # resolvers behind it, under the burst of lookups cargo makes when it
+    # downloads a lock file's crates in parallel (librsvg's 352 at once);
+    # it may differ from one network to the next.  Name-lookup failures count as
     # spurious network errors, which cargo retries with a growing wait; 10
     # tries is the common CI setting.
     $env:CARGO_NET_RETRY = '10'
