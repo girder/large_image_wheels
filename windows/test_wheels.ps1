@@ -981,6 +981,11 @@ def check_javabridge(package_dir, libs_dir):
                 report(False, 'the bioformats jar has no jackson (ObjectMapper loaded)')
             except javabridge.JavaException:
                 report(True, 'the bioformats jar has no jackson')
+            # Without a logback config bioformats logs at DEBUG, so the
+            # first reader lists every optional reader class missing from
+            # the jar; large_image lowers the level the same way.
+            javabridge.static_call('loci/common/DebugTools', 'setRootLevel',
+                                   '(Ljava/lang/String;)V', 'ERROR')
             import numpy
             with tempfile.TemporaryDirectory() as tmp:
                 path = os.path.join(tmp, 'check.pgm')
