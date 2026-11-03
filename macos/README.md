@@ -123,22 +123,38 @@ max(4096 MB, one third of the host's memory)), and `--keep`.
 `test_via_tart.sh` takes `--wheels DIR` and `--keep-homebrew` (to skip
 the Homebrew-hiding step).
 
-## Nightly build via cron
+## Nightly build via launchd
 
-`macos/nightly.sh` is the nightly build body; the crontab entry runs it
-directly:
+`macos/nightly.sh` is the nightly build body.  Do not schedule it with
+cron: cron runs jobs in the user's background launchd session at low
+scheduling priority/QoS, and the tart VM process inherits that, which
+made the 4.5-hour macos build take nearly twice as long as the identical
+hand run over ssh (the linux docker phases in the same cron run were
+unaffected, since Docker Desktop's VM belongs to the GUI app rather than
+to the cron process tree).  Schedule it as a LaunchAgent instead, which
+runs inside the Aqua GUI session tart already requires, with normal QoS:
 
 ```
-30 3 * * * /path/to/large_image_wheels/macos/nightly.sh >>/tmp/liw_cron_build.txt 2>&1
+sed "s|__LIW_REPO_DIR__|$PWD|" macos/nightly_launchd.plist \
+    > ~/Library/LaunchAgents/com.liw.nightly.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.liw.nightly.plist
+launchctl enable gui/$(id -u)/com.liw.nightly
 ```
+
+The plist's header comment documents querying it (`launchctl print
+gui/$(id -u)/com.liw.nightly`), removing it (`launchctl bootout` + delete
+the file), and how to test the unattended timer path without touching the
+real schedule.
+
+and delete the old crontab entry (`30 3 * * * .../macos/nightly.sh`).  If
+the Mac is asleep at 03:30, launchd runs the job once on wake, where cron
+would skip it.  The nightly body still writes its own log to
+`/tmp/liw_cron_build.txt` and wall-notifies the user's terminals
+(including ssh sessions) on success or failure; the LaunchAgent's own
+stdout/stderr go to `/tmp/liw_launchd.log`.
 
 (The body is the old inlined cron command, verbatim; the redirect lives in
-the script, the outer append catches cron-level failures.)  Known issue:
-cron-spawned runs have failed where ssh-session hand runs succeed -- the
-build VM acquired an IP but never answered on port 22 -- which is a
-session-level difference under investigation; the guest console log at
-`~/.large_image_wheels_tart/logs/liw_wheels_build.log` distinguishes a
-stalled guest boot from a host-side connection block.
+the script.)
 
 VM namespace (distinct from the manthey/utils `agent_*` sandboxes):
 `liw_wheels_base` (pristine base, the manylinux-image analogue),
