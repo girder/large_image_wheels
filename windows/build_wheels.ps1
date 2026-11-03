@@ -1567,9 +1567,54 @@ function Ensure-Rust {
     # spurious network errors, which cargo retries with a growing wait; 10
     # tries is the common CI setting.
     $env:CARGO_NET_RETRY = '10'
-    $out =Capture-Native (Join-Path $script:RustBin 'rustc.exe') @('--version')
+    $out = Capture-Native (Join-Path $script:RustBin 'rustc.exe') @('--version')
     if ($out -notmatch [regex]::Escape($version)) { Die "rustc does not report version ${version}: $out" }
     Log "rust $version and cargo-c $cargoc at $script:RustBin (CARGO_HOME $env:CARGO_HOME)"
+}
+
+# Logged when a cargo build fails, to tell the crates.io lookup failures
+# apart (see CARGO_NET_RETRY above): the DNS servers the sandbox uses (the
+# NAT gateway's proxy, in front of the host's resolvers), what the Windows
+# DNS client has cached for each host (a remembered failure shows as a
+# non-Success status, and would make cargo's quick retries pointless), a
+# query straight to the server past that cache (nslookup), and a lookup
+# through the system resolver as cargo's libcurl makes it (curl.exe).
+# Diagnostics only: nothing here can fail the step.
+function Log-DnsDiagnostics([string[]]$HostNames) {
+    Log '--- dns diagnostics (after a failed cargo step)'
+    try {
+        foreach ($entry in (Get-DnsClientServerAddress -AddressFamily IPv4 -ErrorAction Stop |
+                Where-Object { $_.ServerAddresses })) {
+            Log "dns servers: $($entry.InterfaceAlias): $($entry.ServerAddresses -join ', ')"
+        }
+    } catch {
+        Log "dns servers: unavailable ($($_.Exception.Message))"
+    }
+    foreach ($name in $HostNames) {
+        try {
+            $cached = @(Get-DnsClientCache -Entry $name -ErrorAction Stop)
+            foreach ($record in $cached) {
+                Log "dns cache: $name $($record.Type) $($record.Status) ttl=$($record.TimeToLive) $($record.Data)"
+            }
+        } catch {
+            # (The cmdlet reports a missing entry as an error; anything else,
+            # such as access denied for a non-administrator, is logged as is.)
+            if ($_.Exception.Message -match 'No matching') {
+                Log "dns cache: no entry for $name"
+            } else {
+                Log "dns cache: unavailable ($($_.Exception.Message.Trim()))"
+            }
+        }
+        # (Through cmd, so nslookup's stderr arrives as text rather than as
+        # PowerShell error records.)
+        foreach ($line in ((Capture-Native 'cmd.exe' @('/c', "nslookup -timeout=5 $name 2>&1")) -split "`r?`n")) {
+            if ($line.Trim()) { Log "nslookup $name`: $line" }
+        }
+        $out = Capture-Native 'curl.exe' @('-s', '-o', 'NUL', '--max-time', '20',
+            '-w', 'http %{http_code}, name lookup %{time_namelookup}s', "https://$name/")
+        Log "curl https://$name/: $($out.Trim()) (exit code $LASTEXITCODE)"
+    }
+    Log '--- end of dns diagnostics'
 }
 
 # Build and install a meson project into the private prefix with the
@@ -2462,6 +2507,9 @@ function Build-Libimagequant {
     try {
         Run-Logged 'cargo' @('cinstall', '--release', '--library-type', 'cdylib',
             '--prefix', $script:CmakePrefix, '--libdir', "$script:CmakePrefix/lib") 'cargo cinstall of libimagequant'
+    } catch {
+        Log-DnsDiagnostics @('index.crates.io', 'static.crates.io')
+        throw
     } finally {
         Pop-Location
     }
@@ -2685,8 +2733,13 @@ assert s.index(old) < s.index("vs_module_defs: librsvg_def,"), "librsvg's shared
 s = s.replace(old, "link_with: librsvg_c_lib,", 1)
 open(path, "w").write(s)
 '@
-    Meson-Build $src @('-Dintrospection=disabled', '-Ddocs=disabled', '-Dtests=false',
-        '-Dpixbuf=disabled', '-Dpixbuf-loader=disabled', '-Dvala=disabled')
+    try {
+        Meson-Build $src @('-Dintrospection=disabled', '-Ddocs=disabled', '-Dtests=false',
+            '-Dpixbuf=disabled', '-Dpixbuf-loader=disabled', '-Dvala=disabled')
+    } catch {
+        Log-DnsDiagnostics @('index.crates.io', 'static.crates.io')
+        throw
+    }
     Assert-Files (Join-Path $LIW_PREFIX 'bin') @('rsvg-2*.dll') 'librsvg'
     Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('librsvg-2.0.pc') 'librsvg'
     $dll = Get-ChildItem (Join-Path $LIW_PREFIX 'bin') -Filter 'rsvg-2*.dll' | Select-Object -First 1
