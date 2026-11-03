@@ -1557,12 +1557,15 @@ function Ensure-Rust {
         $env:PATH = "$script:RustBin;$env:PATH"
     }
     $env:CARGO_HOME = Join-Path $LIW_BUILD 'cargo'
-    # cargo downloads a lock file's crates in parallel (librsvg's 352 at
-    # once), and host runs failed several times in a row with "Could not
+    # Name lookups in the build sandbox (through the Windows Sandbox NAT's
+    # DNS proxy) failed several times in a row on host runs: "Could not
     # resolve host: static.crates.io" after cargo's default 3 tries, while
-    # the host resolves it fine.  Name-lookup failures count as spurious
-    # network errors, which cargo retries with a growing wait; 10 tries is
-    # the common CI setting.
+    # the host and the agent sandbox resolve the name fine.  The suspected
+    # cause (not confirmed) is the sandbox's resolver under the burst of
+    # lookups cargo makes when it downloads a lock file's crates in
+    # parallel (librsvg's 352 at once).  Name-lookup failures count as
+    # spurious network errors, which cargo retries with a growing wait; 10
+    # tries is the common CI setting.
     $env:CARGO_NET_RETRY = '10'
     $out =Capture-Native (Join-Path $script:RustBin 'rustc.exe') @('--version')
     if ($out -notmatch [regex]::Escape($version)) { Die "rustc does not report version ${version}: $out" }
