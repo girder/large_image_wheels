@@ -23,11 +23,10 @@
 # Everything the run prints, the native tools' output included, goes to
 # windows\nightly.log (overwritten each night; the run folders hold the
 # build and test logs).  The script runs itself again with -Body under cmd's
-# redirection for that, then sends the result with msg.exe -- the wall of
-# this platform: a dialog in the user's session that waits on a locked
-# screen until it is dismissed.  msg messages are kept under 256 characters;
-# the details are in the log.  The exit code is the run's, so the task's
-# "Last Run Result" shows it too.
+# redirection for that, then writes the result -- good with the changed
+# versions, or ERROR with the last 20 lines of the log -- as text into
+# every console the user has open, as wall does (Send-ToConsoles).  The exit
+# code is the run's, so the task's "Last Run Result" shows it too.
 
 param([switch]$Body)
 
@@ -35,6 +34,53 @@ $ErrorActionPreference = 'Stop'
 $repo = (Get-Item (Join-Path $PSScriptRoot '..')).FullName
 Set-Location $repo
 $log = Join-Path $repo 'windows\nightly.log'
+
+# wall for Windows: write the text into every console this user can attach
+# to (AttachConsole succeeds only for the user's own processes), once per
+# console.  A console is the window of a cmd, powershell or Windows Terminal
+# tab and everything running in it; consoles without a window (headless
+# ones) are skipped, since nobody reads them.  This process gives up its own
+# console to do it, so this is the last thing the script does.  Returns the
+# number of consoles written to.
+function Send-ToConsoles([string]$Text) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+public static class LiwWall {
+    [DllImport("kernel32.dll")] static extern bool AttachConsole(uint pid);
+    [DllImport("kernel32.dll")] static extern bool FreeConsole();
+    [DllImport("kernel32.dll")] static extern IntPtr GetConsoleWindow();
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    static extern IntPtr CreateFileW(string name, uint access, uint share, IntPtr sa, uint disposition, uint flags, IntPtr template);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    static extern bool WriteConsoleW(IntPtr handle, string text, uint count, out uint written, IntPtr reserved);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
+    public static int Send(int[] pids, string text) {
+        var seen = new HashSet<IntPtr>();
+        int sent = 0;
+        FreeConsole();
+        foreach (int pid in pids) {
+            if (!AttachConsole((uint)pid)) continue;
+            IntPtr window = GetConsoleWindow();
+            if (window != IntPtr.Zero && seen.Add(window)) {
+                // CONOUT$, GENERIC_READ | GENERIC_WRITE, shared, OPEN_EXISTING
+                IntPtr handle = CreateFileW("CONOUT$", 0xC0000000, 3, IntPtr.Zero, 3, 0, IntPtr.Zero);
+                if (handle != new IntPtr(-1)) {
+                    uint written;
+                    if (WriteConsoleW(handle, text, (uint)text.Length, out written, IntPtr.Zero)) sent++;
+                    CloseHandle(handle);
+                }
+            }
+            FreeConsole();
+        }
+        return sent;
+    }
+}
+'@
+    $pids = @([Diagnostics.Process]::GetProcesses() | ForEach-Object { $_.Id } | Where-Object { $_ -ne $PID })
+    return [LiwWall]::Send($pids, $Text)
+}
 
 if (-not $Body) {
     $start = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
@@ -51,21 +97,10 @@ if (-not $Body) {
         $head = "large_image_wheels ERROR: $start (exit $code)`r`nlog: $log`r`nlast lines:"
         $detail = @(Get-Content $log -Tail 20 | Where-Object { $_.Trim() })
     }
-    Add-Content -Path $log -Value (@('', $head) + $detail)
-    # The newest lines are the useful ones when the message must be cut.
-    $text = $head
-    for ($i = 0; $i -lt $detail.Count; $i++) {
-        $rest = ($detail[$i..($detail.Count - 1)] -join "`r`n")
-        if (($head.Length + 2 + $rest.Length) -le 255) {
-            $text = "$head`r`n$rest"
-            break
-        }
-    }
-    if ($text.Length -gt 255) { $text = $text.Substring(0, 255) }
-    $text | msg.exe $env:USERNAME
-    if ($LASTEXITCODE -ne 0) {
-        Add-Content -Path $log -Value "msg.exe failed with exit code $LASTEXITCODE"
-    }
+    $lines = @($head) + $detail
+    Add-Content -Path $log -Value (@('') + $lines)
+    $sent = Send-ToConsoles ("`r`n" + ($lines -join "`r`n") + "`r`n")
+    Add-Content -Path $log -Value "(sent to $sent consoles)"
     exit $code
 }
 
