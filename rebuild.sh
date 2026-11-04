@@ -5,4 +5,7 @@ set -e
 python3 -u check_versions.py > versions.txt || (git diff versions.txt && false)
 git diff versions.txt | cat || true
 . build.sh
+if [ "$(uname -m)" = arm64 ]; then
+  macos/tart_build.sh 
+fi
 
