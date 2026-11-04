@@ -374,10 +374,11 @@ the file is left modified, as `rebuild.sh` leaves it), then
 activity beyond `check_versions.py`'s version lookups.  All output goes to
 `windows\nightly.log`, overwritten each night (the build and test logs
 stay in the run folders); the result -- good with the changed versions,
-or ERROR with the last log lines -- is appended to it and sent to the
-user with `msg.exe` (the Windows `wall`: a dialog in the session that
-waits on a locked screen; kept under 256 characters), and the exit code is
-the task's Last Run Result.
+or ERROR with the last log lines -- is appended to it and written as
+text into every console window the user has open, as `wall` does (Windows
+has no wall: the script attaches to each of the user's consoles in turn
+with `AttachConsole` and writes to it, once per console window, Windows
+Terminal tabs included), and the exit code is the task's Last Run Result.
 
 It runs from Task Scheduler, not as a service: Windows Sandbox is a
 per-user feature, so the task runs as the logged-in user with the
