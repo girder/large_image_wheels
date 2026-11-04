@@ -20,6 +20,17 @@
 #   $p = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive
 #   Register-ScheduledTask -TaskName large_image_wheels_nightly -Action $a -Trigger $t -Settings $s -Principal $p
 #
+# The task opens a console window for the length of the run (an
+# Interactive task's powershell.exe gets a visible one).  To hide it, put
+# -WindowStyle Hidden at the start of the action's -Argument string,
+# before -File (the window still flashes for a moment when the task
+# starts):
+#
+#        -Argument "-WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File `"$PWD\windows\nightly.ps1`""
+#
+# then register the task again, adding -Force to Register-ScheduledTask
+# to replace the existing one.
+#
 # Everything the run prints, the native tools' output included, goes to
 # windows\nightly.log (overwritten each night; the run folders hold the
 # build and test logs).  The script runs itself again with -Body under cmd's
