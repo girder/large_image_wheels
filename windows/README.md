@@ -389,16 +389,25 @@ broke the macos nightly.  Registration, from a PowerShell prompt in the
 repository (the same lines head `nightly.ps1`):
 
 ```
-$a = New-ScheduledTaskAction -Execute powershell.exe -WorkingDirectory $PWD `
-     -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$PWD\windows\nightly.ps1`""
+$a = New-ScheduledTaskAction -Execute powershell.exe -WorkingDirectory $PWD -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$PWD\windows\nightly.ps1`""
 $t = New-ScheduledTaskTrigger -Daily -At 3:30am
-$s = New-ScheduledTaskSettingsSet -Priority 4 -StartWhenAvailable `
-     -ExecutionTimeLimit (New-TimeSpan -Hours 12) -MultipleInstances IgnoreNew
+$s = New-ScheduledTaskSettingsSet -Priority 4 -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 12) -MultipleInstances IgnoreNew
 $p = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive
 Register-ScheduledTask -TaskName large_image_wheels_nightly -Action $a -Trigger $t -Settings $s -Principal $p
 ```
 
-`Start-ScheduledTask large_image_wheels_nightly` runs it at once.  The
+Each command is one line on purpose: a backtick continuation breaks when
+a copy picks up trailing spaces after the backtick.  Then:
+
+```
+(Get-ScheduledTask -TaskName large_image_wheels_nightly).Settings.Priority   # must be 4
+Start-ScheduledTask -TaskName large_image_wheels_nightly                     # run it now
+Unregister-ScheduledTask -TaskName large_image_wheels_nightly -Confirm:$false  # remove it
+```
+
+Unregistering does not stop a run in progress (`Stop-ScheduledTask`
+does).  `nightly.ps1`'s header also says how to hide the task's console
+window.  The
 single-sandbox rule applies: with the file backend, or a Windows build
 that allows one sandbox, an agent session left open fails the night's
 build (`sandbox_run.ps1` refuses or `wsb start` fails, and the ERROR
