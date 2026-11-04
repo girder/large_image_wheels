@@ -10,15 +10,28 @@
 # feature and needs that session), at normal priority: a task's default
 # priority is 7, below normal for CPU and lowered for I/O and memory, the
 # same throttling cron gave the macos build.  Register it once, from a
-# PowerShell prompt in the repository:
+# PowerShell prompt in the repository.  Each command is one line (no
+# backtick continuations, which break when a copy picks up trailing
+# spaces); paste them without the leading "#":
 #
-#   $a = New-ScheduledTaskAction -Execute powershell.exe -WorkingDirectory $PWD `
-#        -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$PWD\windows\nightly.ps1`""
-#   $t = New-ScheduledTaskTrigger -Daily -At 3:30am
-#   $s = New-ScheduledTaskSettingsSet -Priority 4 -StartWhenAvailable `
-#        -ExecutionTimeLimit (New-TimeSpan -Hours 12) -MultipleInstances IgnoreNew
-#   $p = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive
-#   Register-ScheduledTask -TaskName large_image_wheels_nightly -Action $a -Trigger $t -Settings $s -Principal $p
+# $a = New-ScheduledTaskAction -Execute powershell.exe -WorkingDirectory $PWD -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$PWD\windows\nightly.ps1`""
+# $t = New-ScheduledTaskTrigger -Daily -At 3:30am
+# $s = New-ScheduledTaskSettingsSet -Priority 4 -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 12) -MultipleInstances IgnoreNew
+# $p = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive
+# Register-ScheduledTask -TaskName large_image_wheels_nightly -Action $a -Trigger $t -Settings $s -Principal $p
+#
+# Check that the registered task has priority 4 (not the default 7):
+#
+# (Get-ScheduledTask -TaskName large_image_wheels_nightly).Settings.Priority
+#
+# Run it at once with:
+#
+# Start-ScheduledTask -TaskName large_image_wheels_nightly
+#
+# Remove it (a run in progress is not stopped; Stop-ScheduledTask first if
+# that is wanted):
+#
+# Unregister-ScheduledTask -TaskName large_image_wheels_nightly -Confirm:$false
 #
 # The task opens a console window for the length of the run (an
 # Interactive task's powershell.exe gets a visible one).  To hide it, put
@@ -26,10 +39,10 @@
 # before -File (the window still flashes for a moment when the task
 # starts):
 #
-#        -Argument "-WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File `"$PWD\windows\nightly.ps1`""
+# $a = New-ScheduledTaskAction -Execute powershell.exe -WorkingDirectory $PWD -Argument "-WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File `"$PWD\windows\nightly.ps1`""
 #
-# then register the task again, adding -Force to Register-ScheduledTask
-# to replace the existing one.
+# then run the other lines again, adding -Force to Register-ScheduledTask
+# to replace the existing task.
 #
 # Everything the run prints, the native tools' output included, goes to
 # windows\nightly.log (overwritten each night; the run folders hold the
