@@ -6,5 +6,6 @@ wheelhouse/
 windows/cache/
 windows/run/
 windows/test_run/
+windows/nightly.log
 docs/
 *.sw[op]

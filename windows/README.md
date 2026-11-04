@@ -69,8 +69,9 @@ isolation boundary).  Because Windows Sandbox cannot be nested, the
 agent cannot start the build or test sandbox itself; a human starts
 them from the host with `windows\sandbox_build.bat &&
 windows\test_via_sandbox.bat`.  Those two entry points and
-`sandbox_run.ps1`, which both call, are the only agent-authored code
-that runs on the host; treat them as frozen infrastructure -- audited
+`sandbox_run.ps1`, which both call, plus the nightly wrapper
+`nightly.ps1`, are the only agent-authored code that runs on the host;
+treat them as frozen infrastructure -- audited
 once, changed only with care.
 
 What the agent sandbox CAN do is compile: `build_wheels.ps1` has a dev
@@ -211,8 +212,9 @@ redistributable.
 
 ## Files
 
-Six files, the same shape as the macos directory (one monolithic build
-script, one host orchestrator per role, one in-VM test, a README).  As
+Seven files, the same shape as the macos directory (one monolithic build
+script, one host orchestrator per role, one in-VM test, the nightly
+wrapper, a README).  As
 on linux and macos, everything a component needs -- jxrlib's
 `CMakeLists.txt`, the launcher's C source, the MSVC installer, the
 per-package python checks, the source patches -- is embedded in the
@@ -233,6 +235,8 @@ Host side (run on the host, outside any sandbox):
   Each is one line that runs `sandbox_run.ps1 build` or
   `sandbox_run.ps1 test` and returns its exit code; options are passed
   through.
+- `nightly.ps1` -- the nightly build, the counterpart of
+  `macos/nightly.sh` (see "Nightly").
 - `sandbox_run.ps1` -- the host launcher (agent-authored; audit before
   trusting): `build`, `test`, or `cache` as its first argument.  It
   checks the host, generates the sandbox configuration with the folder
@@ -358,6 +362,46 @@ Remember that only one sandbox instance may run at a time -- the agent
 session is itself a sandbox, so it must be closed before a run -- that
 closing the watching console does not stop a run, and that a run
 interrupted at the host leaves its sandbox running until it is closed.
+
+### Nightly
+
+`windows\nightly.ps1` is the counterpart of `macos/nightly.sh` and of the
+linux crontab line (`rebuild.sh`, `test_via_docker.py`, `wall`):
+`check_versions.py` rewrites `versions.txt` (through `uv run` when uv is
+on PATH, else `python` with requests and packaging; the diff is logged and
+the file is left modified, as `rebuild.sh` leaves it), then
+`sandbox_run.ps1 build` and `sandbox_run.ps1 test`.  It does no git
+activity beyond `check_versions.py`'s version lookups.  All output goes to
+`windows\nightly.log`, overwritten each night (the build and test logs
+stay in the run folders); the result -- good with the changed versions,
+or ERROR with the last log lines -- is appended to it and sent to the
+user with `msg.exe` (the Windows `wall`: a dialog in the session that
+waits on a locked screen; kept under 256 characters), and the exit code is
+the task's Last Run Result.
+
+It runs from Task Scheduler, not as a service: Windows Sandbox is a
+per-user feature, so the task runs as the logged-in user with the
+Interactive logon type (a locked screen is fine).  The task must set
+priority 4: Task Scheduler's default of 7 is below normal for CPU and
+lowered for I/O and memory, the Windows form of the cron throttling that
+broke the macos nightly.  Registration, from a PowerShell prompt in the
+repository (the same lines head `nightly.ps1`):
+
+```
+$a = New-ScheduledTaskAction -Execute powershell.exe -WorkingDirectory $PWD `
+     -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$PWD\windows\nightly.ps1`""
+$t = New-ScheduledTaskTrigger -Daily -At 3:30am
+$s = New-ScheduledTaskSettingsSet -Priority 4 -StartWhenAvailable `
+     -ExecutionTimeLimit (New-TimeSpan -Hours 12) -MultipleInstances IgnoreNew
+$p = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive
+Register-ScheduledTask -TaskName large_image_wheels_nightly -Action $a -Trigger $t -Settings $s -Principal $p
+```
+
+`Start-ScheduledTask large_image_wheels_nightly` runs it at once.  The
+single-sandbox rule applies: with the file backend, or a Windows build
+that allows one sandbox, an agent session left open fails the night's
+build (`sandbox_run.ps1` refuses or `wsb start` fails, and the ERROR
+message says so).
 
 ### Dev mode (the agent sandbox, or any checkout)
 
