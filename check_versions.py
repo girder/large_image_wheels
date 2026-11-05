@@ -199,6 +199,10 @@ Packages = {
         'git': 'https://github.com/Esri/lerc.git',
         're': r'\/v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
+    'libaec': {
+        'git': 'https://github.com/MathisRosenhauer/libaec.git',
+        're': r'\/v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
     'libaio': {
         # 'git': 'https://pagure.io/libaio.git',
         'git': 'https://github.com/yugabyte/libaio.git',
@@ -510,10 +514,6 @@ Packages = {
     #     'git': 'https://github.com/giampaolo/psutil.git',
     #     're': r'release-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     # },
-    'pugixml': {
-        'git': 'https://github.com/zeux/pugixml.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
-    },
     'pylibmc': {
         'git': 'https://github.com/lericson/pylibmc.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
@@ -578,10 +578,6 @@ Packages = {
     },
     'superlu': {
         'git': 'https://github.com/xiaoyeli/superlu.git',
-        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
-    },
-    'util-linux': {
-        'git': 'https://github.com/util-linux/util-linux.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'xerces-c': {

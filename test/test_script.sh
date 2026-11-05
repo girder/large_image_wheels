@@ -35,7 +35,7 @@ TEST_BIOFORMATS=$(have_wheel python_bioformats && echo true || echo false)
 TEST_GDAL=$(have_wheel GDAL && echo true || echo false)
 TEST_GLYMUR=$(python3 -c 'import sys, sysconfig;sys.exit(sys.version_info < (3, 10) or sysconfig.get_config_var("Py_GIL_DISABLED") == 1)' && have_wheel Glymur && echo true || echo false)
 TEST_JAVABRIDGE=$(python3 -c 'import sys, sysconfig;sys.exit(sysconfig.get_config_var("Py_GIL_DISABLED") == 1 and sys.version_info < (3, 14))' && have_wheel python_javabridge && echo true || echo false)
-TEST_MAPNIK=$(python3 -c 'import sys, sysconfig;sys.exit(sys.version_info < (3, 10))' && have_wheel mapnik && echo true || echo false)
+TEST_MAPNIK=$(python3 -c 'import sys, sysconfig;sys.exit(sys.version_info < (3, 11))' && have_wheel mapnik && echo true || echo false)
 TEST_OPENSLIDE=$(python3 -c 'import sys, sysconfig;sys.exit(sys.version_info < (3, 10))' && have_wheel openslide_python && echo true || echo false)
 TEST_PYLIBMC=$(have_wheel pylibmc && echo true || echo false)
 TEST_PYLIBTIFF=$(have_wheel pylibtiff && echo true || echo false)
@@ -458,6 +458,85 @@ if len(known-current):
 EOF
   # Fail if we end up with fewer formats in GDAL than we once had.
   if (( $(gdal-config --formats | wc -w) < 98 )); then false; fi
+fi
+if $TEST_GDAL; then
+  echo 'Check that gdal can read 7z and rar archives (libarchive)'
+  python <<EOF
+from osgeo import gdal
+prefixes = gdal.GetFileSystemsPrefixes()
+missing = [p for p in ('/vsi7z/', '/vsirar/') if p not in prefixes]
+if missing:
+    raise Exception('gdal was built without libarchive: no %s' % ' '.join(missing))
+EOF
+fi
+if $TEST_GDAL; then
+  echo 'Check that netCDF-4 zstd, bzip2, blosc, and szip compression work (HDF5 filters)'
+  python <<EOF
+import struct
+from osgeo import gdal
+gdal.UseExceptions()
+values = struct.pack('<64i', *range(64))
+# HDF5 filter ids and parameters, as nc_def_var_zstd/bzip2/blosc/szip pass
+# them.  szip is built into hdf5 (libaec); the others are plugins.
+filters = {'zstd': '32015,3', 'bzip2': '307,9', 'blosc': '32001,0,0,0,0,5,1,1',
+           'szip': '4,32,32'}
+failed = []
+for name, spec in filters.items():
+    path = 'filter_%s.nc' % name
+    try:
+        ds = gdal.GetDriverByName('netCDF').CreateMultiDimensional(path)
+        rg = ds.GetRootGroup()
+        dim = rg.CreateDimension('x', None, None, 64)
+        arr = rg.CreateMDArray(
+            'v', [dim], gdal.ExtendedDataType.Create(gdal.GDT_Int32),
+            ['FILTER=' + spec])
+        arr.Write(values)
+        ds = rg = dim = arr = None
+        ds = gdal.OpenEx(path, gdal.OF_MULTIDIM_RASTER)
+        if ds.GetRootGroup().OpenMDArray('v').Read() != values:
+            raise Exception('data read back differs')
+        ds = None
+    except Exception as exc:
+        failed.append('%s (%s)' % (name, exc))
+if failed:
+    raise Exception('netCDF-4 HDF5 filters are missing: %s' % '; '.join(failed))
+EOF
+fi
+if $TEST_MAPNIK; then
+  echo 'Check that mapnik bundles the HDF5 filter plugins'
+  python <<EOF
+import os
+import mapnik
+path = os.path.join(os.path.dirname(os.path.abspath(mapnik.__file__)), 'hdf5plugin')
+if (not os.path.isdir(path) or
+        not any('h5zstd' in name for name in os.listdir(path)) or
+        path not in os.environ.get('HDF5_PLUGIN_PATH', '').split(os.pathsep)):
+    raise Exception('mapnik does not bundle the HDF5 filter plugins')
+EOF
+fi
+if $TEST_PYLIBTIFF; then
+  echo 'Check that libtiff has LERC compression'
+  python <<EOF
+from libtiff import libtiff_ctypes
+COMPRESSION_LERC = 34887
+if not libtiff_ctypes.libtiff.TIFFIsCODECConfigured(COMPRESSION_LERC):
+    raise Exception('libtiff was built without LERC compression (liblerc)')
+EOF
+fi
+if $TEST_PYVIPS; then
+  echo 'Check that the bundled ImageMagick has its coders'
+  magick="$(python -c 'import os,sys,pyvips;sys.stdout.write(os.path.dirname(pyvips.__file__))')/bin/magick"
+  "$magick" -size 8x8 xc:red magick_check.bmp
+  "$magick" identify magick_check.bmp
+  echo 'Check that libvips can load a format only ImageMagick reads'
+  python <<EOF
+import pyvips
+# libvips has no BMP loader of its own; it reads BMP through ImageMagick.
+image = pyvips.Image.new_from_file('magick_check.bmp')
+print(image.width, image.height, image.get('vips-loader'))
+if not image.get('vips-loader').startswith('magickload') or image.avg() == 0:
+    raise Exception('libvips did not read the BMP through ImageMagick')
+EOF
 fi
 if $TEST_MAPNIK; then
   `python -c 'import os,sys,mapnik;sys.stdout.write(os.path.dirname(mapnik.__file__))'`/bin/mapnik-render --version 2>&1 | grep version

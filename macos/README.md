@@ -204,10 +204,10 @@ Maintenance watch items:
   `v()`.  The swig 4.5.1 and pcre2 10.49 bumps have not yet been
   exercised in a VM run; the next swig-touching build (a GDAL wheel
   rebuild) should watch the generated-bindings step.
-- Deliberate pins that override `versions.txt`'s latest check: openssl
-  3.6.2 (the linux pin; versions.txt's 4.0.3 is ignored, like on linux)
-  and libopendrive 0.6.0-gdal (upstream's `<version>-gdal` branch tag is
-  tracked; 0.6.1-gdal requires external pugixml and other work).
+- openssl and libopendrive follow `versions.txt` like everything else
+  (both were once pinned: openssl at 3.6.2 for openldap, libopendrive at
+  0.6.0-gdal before its pugixml became a FetchContent dependency; the
+  pugixml version is libOpenDRIVE's own choice and is not tracked).
 
 ## Hard-won details (do not lose these)
 
@@ -420,8 +420,8 @@ as comments in `build_wheels.sh` at the point of use.
   the host for the whole run.  The in-VM test script runs `purge`
   before each python's checks so every python recycles the same guest
   pages, and logs the guest's free-memory percentage into the report.
-- glib on darwin does not need util-linux's libmount/libblkid (linux
-  only), so the macos build has no util-linux counterpart.
+- glib's libmount support is linux only and unused; the Dockerfile builds
+  glib with -Dlibmount=disabled, so no platform builds util-linux.
 - On macOS the linker maps libz to /usr/lib/libz.1.dylib (always
   present; delocate treats /usr/lib as system).
 
@@ -500,7 +500,7 @@ are the headlines and the traps that are not obvious from the code.
 - **pyvips** (libtiff chain, openssl+curl, the openslide chain, then
   orc, nifti, lz4, fftw3, libhwy, jpegxl, libimagequant, libexif,
   libarchive, libraw, harfbuzz, pango, librsvg, libde265, libheif,
-  poppler, fitsio, hdf5, matio, openexr, libzip, imagemagick, libvips,
+  poppler, fitsio, libaec, hdf5, matio, openexr, libzip, imagemagick, libvips,
   pyvips): the case must mirror the Dockerfile's final state before
   libvips configures.  Headlines: harfbuzz `-Dcoretext=enabled` and
   pango/cairo `-Dfontconfig=enabled` (darwin defaults disable them;
@@ -512,8 +512,9 @@ are the headlines and the traps that are not obvious from the code.
   our consumers render through poppler-glib's cairo backend rather than
   splash, and poppler's cmake FATAL_ERRORs when ENABLE_BOOST is on but
   boost is missing (the pyvips case does not build boost); hdf5 carries
-  the MPI options with `build_openmpi` first (parallel hdf5, like linux)
-  and presets ZLIB_LIBRARIES/ZLIB_INCLUDE_DIR (its config-mode zlib find
+  the MPI options with `build_openmpi` first (parallel hdf5, like linux),
+  enables szip with `build_libaec` first (hdf5 only enables szip when it
+  finds libaec), and presets ZLIB_LIBRARIES/ZLIB_INCLUDE_DIR (its config-mode zlib find
   provides imported targets but not the module variables its filter code
   consumes; the linux linker tolerates the resulting undefined symbols,
   the macOS one does not); imagemagick `--without-modules` -- deliberate
@@ -532,8 +533,8 @@ are the headlines and the traps that are not obvious from the code.
   giflib, openssl+curl, json-c, lerc, jpeg-xl, the openjpeg set, expat/
   xml2/lz4/libarchive, sqlite, proj4, freetype+fontconfig, swig, openmpi,
   boost, minizip, fossil, the geos/spatialite/rasterlite2 tree,
-  libgeotiff, fyba, hdf4, hdf5, parallel-netcdf, netcdf, mysql,
-  postgresql, libgta, xerces-c, armadillo, blosc, highfive+kealib,
+  libgeotiff, fyba, hdf4, libaec, hdf5, parallel-netcdf, blosc, netcdf,
+  mysql, postgresql, libgta, xerces-c, armadillo, highfive+kealib,
   libde265+libheif, poppler, cfitsio, openexr, libopendrive, libavif,
   gdal, gdal_python): the vips-only tree is deliberately NOT in the
   case.  Headlines: swig is built (GDAL's python bindings are a hard

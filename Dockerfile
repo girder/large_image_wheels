@@ -236,11 +236,9 @@ cd /build && \
 cd /build && \
 # \
 # # Make our own openssl so we don't depend on system libraries. \
-# PINNED - openldap doesn't handle version 4.x yet \
 # RUN \
     echo "`date` openssl" >> /build/log.txt && \
-    # git clone --depth=1 --single-branch -b openssl-`getver.py openssl` -c advice.detachedHead=false https://github.com/openssl/openssl.git openssl && \
-    git clone --depth=1 --single-branch -b openssl-3.6.2 -c advice.detachedHead=false https://github.com/openssl/openssl.git openssl && \
+    git clone --depth=1 --single-branch -b openssl-`getver.py openssl` -c advice.detachedHead=false https://github.com/openssl/openssl.git openssl && \
     cd openssl && \
     ./config --prefix=/usr/local --openssldir=/usr/local/ssl shared zlib no-tests && \
     make --silent -j ${JOBS} && \
@@ -742,6 +740,7 @@ RUN \
     export LDFLAGS="$LDFLAGS"',-rpath,OORIGIN' && \
     ./configure --prefix=/usr/local \
     --disable-static \
+    --disable-opengl \
     | tee configure.output && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -931,21 +930,6 @@ RUN \
     ldconfig && \
     echo "`date` libffi" >> /build/log.txt
 
-# Used by openslide and libvips
-RUN \
-    echo "`date` util-linux" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    export AUTOMAKE_JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py util-linux` -c advice.detachedHead=false https://github.com/util-linux/util-linux.git && \
-    cd util-linux && \
-    sed -i 's/#ifndef UMOUNT_UNUSED/#ifndef O_PATH\n# define O_PATH 010000000\n#endif\n\n#ifndef UMOUNT_UNUSED/g' libmount/src/context_umount.c && \
-    ./autogen.sh && \
-    ./configure --disable-all-programs --enable-libblkid --enable-libmount --silent --prefix=/usr/local --disable-static && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` util-linux" >> /build/log.txt
-
 # Used by openslide, libvips, and mapnik
 RUN \
     echo "`date` glib" >> /build/log.txt && \
@@ -953,7 +937,7 @@ RUN \
     pip install --no-cache-dir packaging && \
     git clone --depth=1 --single-branch -b `getver.py glib` -c advice.detachedHead=false https://github.com/GNOME/glib.git && \
     cd glib && \
-    meson setup --prefix=/usr/local --buildtype=release --optimization=3 -Dtests=False -Dglib_debug=disabled _build && \
+    meson setup --prefix=/usr/local --buildtype=release --optimization=3 -Dtests=False -Dglib_debug=disabled -Dlibmount=disabled _build && \
     cd _build && \
     ninja -j ${JOBS} && \
     ninja -j ${JOBS} install && \
@@ -967,7 +951,7 @@ RUN \
     git clone --depth=1 --single-branch -b libtirpc-`getver.py libtirpc` -c advice.detachedHead=false https://github.com/alisw/libtirpc.git && \
     cd libtirpc && \
     . ./autogen.sh && \
-    ./configure --prefix=/usr/local --disable-static && \
+    ./configure --prefix=/usr/local --disable-static --disable-gssapi && \
     make -j ${JOBS} && \
     make -j ${JOBS} install && \
     ldconfig && \
@@ -1540,6 +1524,21 @@ RUN \
     ldconfig && \
     echo "`date` hdf4" >> /build/log.txt
 
+# Used by hdf5 for szip compression (libaec provides the szip API).  It
+# must be built before hdf5, which only enables szip if it finds it.
+RUN \
+    echo "`date` libaec" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b v`getver.py libaec` -c advice.detachedHead=false https://github.com/MathisRosenhauer/libaec.git && \
+    cd libaec && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_STATIC_LIBS=OFF -DBUILD_TESTING=OFF && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` libaec" >> /build/log.txt
+
 # Used by gdal, mapnik, pyvips
 RUN \
     echo "`date` hdf5" >> /build/log.txt && \
@@ -1552,10 +1551,11 @@ RUN \
     # We need HDF5_ENABLE_PARALLEL=ON for parallel netcdf and \
     # HDF5_BUILD_CPP_LIB=ON for gdal, so we have to add ALLOW_UNSUPPORTED=ON \
     # to get both \
-    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DDEFAULT_API_VERSION=v18 -DHDF5_BUILD_EXAMPLES=OFF -DHDF5_BUILD_FORTRAN=OFF -DHDF5_ENABLE_PARALLEL=ON -DHDF5_ENABLE_Z_LIB_SUPPORT=ON -DHDF5_BUILD_GENERATORS=ON -DHDF5_ENABLE_DIRECT_VFD=ON -DHDF5_BUILD_CPP_LIB=ON -DHDF5_DISABLE_COMPILER_WARNINGS=ON -DBUILD_TESTING=OFF -DZLIB_DIR=/usr/local/lib -DMPI_C_COMPILER=/usr/local/bin/mpicc -DMPI_C_HEADER_DIR=/usr/local/include -DMPI_mpi_LIBRARY=/usr/local/lib/libmpi.so -DMPI_C_LIB_NAMES=mpi -DHDF5_BUILD_DOC=OFF -DALLOW_UNSUPPORTED=ON -DHDF5_ENABLE_THREADSAFE=ON -DCMAKE_INSTALL_PREFIX=/usr/local && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DDEFAULT_API_VERSION=v18 -DHDF5_BUILD_EXAMPLES=OFF -DHDF5_BUILD_FORTRAN=OFF -DHDF5_ENABLE_PARALLEL=ON -DHDF5_ENABLE_Z_LIB_SUPPORT=ON -DHDF5_BUILD_GENERATORS=ON -DHDF5_ENABLE_DIRECT_VFD=ON -DHDF5_BUILD_CPP_LIB=ON -DHDF5_DISABLE_COMPILER_WARNINGS=ON -DBUILD_TESTING=OFF -DZLIB_DIR=/usr/local/lib -DMPI_C_COMPILER=/usr/local/bin/mpicc -DMPI_C_HEADER_DIR=/usr/local/include -DMPI_mpi_LIBRARY=/usr/local/lib/libmpi.so -DMPI_C_LIB_NAMES=mpi -DHDF5_BUILD_DOC=OFF -DALLOW_UNSUPPORTED=ON -DHDF5_ENABLE_THREADSAFE=ON -DCMAKE_INSTALL_PREFIX=/usr/local -DHDF5_ENABLE_SZIP_SUPPORT=ON -DHDF5_ENABLE_SZIP_ENCODING=ON && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
+    grep -q 'H5_HAVE_FILTER_SZIP 1' /usr/local/include/H5pubconf.h && \
     # Delete binaries used for testing to keep the docker image smaller \
     find bin -type f ! -name 'lib*' -delete && \
     echo "`date` hdf5" >> /build/log.txt
@@ -1575,6 +1575,21 @@ RUN \
     ldconfig && \
     echo "`date` parallel-netcdf" >> /build/log.txt
 
+# Used by GDAL and netcdf.  Block compression library.  It must be built
+# before netcdf, which only builds its blosc filter plugin if it finds it.
+RUN \
+    echo "`date` blosc" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b v`getver.py blosc` -c advice.detachedHead=false https://github.com/Blosc/c-blosc.git && \
+    cd c-blosc && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_SHARED=ON -DBUILD_STATIC=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_FUZZERS=OFF -DBUILD_TESTS=OFF -DPREFER_EXTERNAL_LZ4=ON -DPREFER_EXTERNAL_ZLIB=ON -DPREFER_EXTERNAL_ZSTD=ON -DDEACTIVATE_SNAPPY=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` blosc" >> /build/log.txt
+
 # Used by gdal, mapnik
 RUN \
     echo "`date` netcdf" >> /build/log.txt && \
@@ -1586,13 +1601,16 @@ RUN \
     # function variable.  Avoid this. \
     sed -i 's/int strlen,/int strlenn,/g' libnczarr/zutil.c && \
     sed -i 's/format,strlen)/format,strlenn)/g' libnczarr/zutil.c && \
+    # NETCDF_PLUGIN_INSTALL installs the HDF5 filter plugins (zstd, bzip2, \
+    # blosc) to /usr/local/hdf5/lib/plugin; the GDAL wheel bundles them. \
     mkdir _build && \
     cd _build && \
     CFLAGS="$CFLAGS -Wno-incompatible-pointer-types" \
-    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DENABLE_EXAMPLES=OFF -DENABLE_PARALLEL4=ON -DUSE_PARALLEL=ON -DUSE_PARALLEL4=ON -DENABLE_HDF4=ON -DENABLE_PNETCDF=ON -DENABLE_BYTERANGE=ON -DENABLE_JNA=ON -DCMAKE_SHARED_LINKER_FLAGS=-ljpeg -DENABLE_TESTS=OFF -DENABLE_HDF4_FILE_TESTS=OFF -DENABLE_DAP=ON -DENABLE_HDF5=ON -DENABLE_NCZARR=ON && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DENABLE_EXAMPLES=OFF -DENABLE_PARALLEL4=ON -DUSE_PARALLEL=ON -DUSE_PARALLEL4=ON -DENABLE_HDF4=ON -DENABLE_PNETCDF=ON -DENABLE_BYTERANGE=ON -DENABLE_JNA=ON -DCMAKE_SHARED_LINKER_FLAGS=-ljpeg -DENABLE_TESTS=OFF -DENABLE_HDF4_FILE_TESTS=OFF -DENABLE_DAP=ON -DENABLE_HDF5=ON -DENABLE_NCZARR=ON -DNETCDF_PLUGIN_INSTALL=ON && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
+    ls /usr/local/hdf5/lib/plugin/lib__nch5{zstd,bzip2,blosc}.so && \
     echo "`date` netcdf" >> /build/log.txt
 
 # Used by mysql.  Linux async i/o library
@@ -1661,7 +1679,7 @@ RUN \
     cd postgresql && \
     # sed -i 's/2\.69/2.71/g' configure.in && \
     # autoreconf -ifv && \
-    ./configure --silent --prefix=/usr/local && \
+    ./configure --silent --prefix=/usr/local --with-ssl=openssl && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -1871,20 +1889,6 @@ RUN \
     true; fi && \
     echo "`date` mrsid" >> /build/log.txt
 
-# Used by GDAL.  Block compression library
-RUN \
-    echo "`date` blosc" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py blosc` -c advice.detachedHead=false https://github.com/Blosc/c-blosc.git && \
-    cd c-blosc && \
-    mkdir _build && \
-    cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_SHARED=ON -DBUILD_STATIC=OFF -DBUILD_BENCHMARKS=OFF -DBUILD_FUZZERS=OFF -DBUILD_TESTS=OFF -DPREFER_EXTERNAL_LZ4=ON -DPREFER_EXTERNAL_ZLIB=ON -DPREFER_EXTERNAL_ZSTD=ON -DDEACTIVATE_SNAPPY=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` blosc" >> /build/log.txt
-
 # Needed for libheif
 RUN \
     echo "`date` libde265" >> /build/log.txt && \
@@ -1946,33 +1950,23 @@ cd /build && \
     ldconfig && \
     echo "`date` kealib" >> /build/log.txt
 
-# # Used by OpenDRIVE 0.6.1
-# RUN \
-#     echo "`date` pugixml" >> /build/log.txt && \
-#     export JOBS=`nproc` && \
-#     git clone --depth=1 --single-branch -b v`getver.py pugixml` -c advice.detachedHead=false https://github.com/zeux/pugixml.git && \
-#     cd pugixml && \
-#     mkdir _build && \
-#     cd _build && \
-#     cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib && \
-#     make --silent -j ${JOBS} && \
-#     make --silent -j ${JOBS} install && \
-#     ldconfig && \
-#     echo "`date` pugixml" >> /build/log.txt
-
-# Used by GDAL
-# PINNED - version 0.6.1-gdal requires external pugixml and some other work
+# Used by GDAL.  libOpenDRIVE fetches the pugixml version it specifies with
+# FetchContent and compiles it into its static library (pugixml's own static
+# library is installed too, but nothing links it).  libOpenDRIVE installs the
+# pugixml headers in include/ and includes them from there; GDAL's XODR driver
+# includes <pugixml/pugixml.hpp>, so the headers are copied there as well.
 RUN \
     echo "`date` libopendrive" >> /build/log.txt && \
     export JOBS=`nproc` && \
-    # git clone --depth=1 --single-branch -b `getver.py libopendrive`-gdal -c advice.detachedHead=false https://github.com/DLR-TS/libOpenDRIVE.git && \
-    git clone --depth=1 --single-branch -b 0.6.0-gdal -c advice.detachedHead=false https://github.com/DLR-TS/libOpenDRIVE.git && \
+    git clone --depth=1 --single-branch -b `getver.py libopendrive` -c advice.detachedHead=false https://github.com/DLR-TS/libOpenDRIVE.git && \
     cd libOpenDRIVE && \
     mkdir _build && \
     cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_POSITION_INDEPENDENT_CODE=ON && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_TESTING=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
+    mkdir -p /usr/local/include/pugixml && \
+    cp /usr/local/include/pugixml.hpp /usr/local/include/pugiconfig.hpp /usr/local/include/pugixml/. && \
     ldconfig && \
     echo "`date` libopendrive" >> /build/log.txt
 
@@ -1991,6 +1985,20 @@ RUN \
     make --silent -j ${JOBS} install && \
     ldconfig && \
     echo "`date` libavif" >> /build/log.txt
+
+# Used by GDAL, libvips
+RUN \
+    echo "`date` libarchive" >> /build/log.txt && \
+    export JOBS=`nproc` && \
+    git clone --depth=1 --single-branch -b v`getver.py libarchive` -c advice.detachedHead=false https://github.com/libarchive/libarchive.git && \
+    cd libarchive && \
+    mkdir _build && \
+    cd _build && \
+    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_TESTING=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib && \
+    make --silent -j ${JOBS} && \
+    make --silent -j ${JOBS} install && \
+    ldconfig && \
+    echo "`date` libarchive" >> /build/log.txt
 
 # PINNED VERSION - use master
 # This build doesn't support everything.
@@ -2039,6 +2047,7 @@ RUN \
     cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel \
     $(if [ "$AUDITWHEEL_ARCH" == "x86_64" ]; then echo -n "-DMRSID_LIBRARY=/usr/local/lib/libltidsdk.so -DMRSID_INCLUDE_DIR=/build/mrsid/Raster_DSDK/include"; fi) \
     -DGDAL_USE_LERC=ON \
+    -DGDAL_USE_ARCHIVE=ON \
     -DENABLE_DEFLATE64=OFF \
     -DGDAL_USE_PUBLICDECOMPWT=ON \
     2>&1 >../cmakelog.txt \
@@ -2076,6 +2085,7 @@ def program(): \n\
     # The data directories are copied beside bin, not into it \n\
     environ.setdefault("PROJ_DATA", os.path.join(os.path.dirname(localpath), "proj")) \n\
     environ.setdefault("GDAL_DATA", os.path.join(os.path.dirname(localpath), "gdal")) \n\
+    environ["HDF5_PLUGIN_PATH"] = os.pathsep.join([p for p in (environ.get("HDF5_PLUGIN_PATH"), os.path.join(os.path.dirname(localpath), "hdf5plugin")) if p]) \n\
     caPath = "/etc/ssl/certs/ca-certificates.crt" \n\
     if os.path.exists(caPath): \n\
         environ.setdefault("CURL_CA_BUNDLE", caPath) \n\
@@ -2096,7 +2106,7 @@ data = re.sub( \n\
 data = data.replace( \n\
     "scripts/*.py\'),", \n\
 """scripts/*.py\'), \n\
-    package_data={\'osgeo\': [\'proj/*\', \'gdal/*\', \'bin/*\']},""") \n\
+    package_data={\'osgeo\': [\'proj/*\', \'gdal/*\', \'bin/*\', \'hdf5plugin/*\']},""") \n\
 data = data.replace("console_scripts = []", """console_scripts = [\'%s=osgeo.bin:program\' % name for name in os.listdir(\'osgeo/bin\') if not name.endswith(\'.py\')]""") \n\
 if "console_scripts" not in data: data = data.replace( \n\
     "scripts/*.py\'),", \n\
@@ -2115,10 +2125,17 @@ s = open(path).read().replace( \n\
 \n\
 import os \n\
 import re \n\
+\n\
+_localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
+# HDF5 and netCDF read HDF5_PLUGIN_PATH when they initialize, so it is set \n\
+# before the libraries load.  The bundled filter plugins are appended, so a \n\
+# path the user set is searched first. \n\
+_pluginpath = os.path.join(_localpath, "hdf5plugin") \n\
+if _pluginpath not in os.environ.get("HDF5_PLUGIN_PATH", "").split(os.pathsep): \n\
+    os.environ["HDF5_PLUGIN_PATH"] = os.pathsep.join([p for p in (os.environ.get("HDF5_PLUGIN_PATH"), _pluginpath) if p]) \n\
 from . import osr \n\
 from . import gdal \n\
 \n\
-_localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
 # os.environ.setdefault("PROJ_DATA", os.path.join(_localpath, "proj")) \n\
 osr.SetPROJSearchPaths([os.path.join(_localpath, "proj")]) \n\
 # os.environ.setdefault("GDAL_DATA", os.path.join(_localpath, "gdal")) \n\
@@ -2149,6 +2166,10 @@ open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
+    # The netcdf HDF5 filter plugins; auditwheel bundles their dependencies \
+    # and osgeo/__init__.py adds the directory to HDF5_PLUGIN_PATH \
+    mkdir -p osgeo/hdf5plugin && \
+    cp /usr/local/hdf5/lib/plugin/*.so osgeo/hdf5plugin/. && \
     find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse; git clean -fxd build GDAL.egg-info' && \
     find /io/wheelhouse/ -name 'gdal*.whl' | while read file; do new_file=$(echo "$file" | sed 's|/gdal|/GDAL|'); mv "$file" "$new_file"; done && \
     find /io/wheelhouse/ -name 'GDAL*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
@@ -2184,7 +2205,7 @@ RUN \
     rm -rf demo test && mkdir test && mkdir demo && touch test/CMakeLists.txt && touch demo/CMakeLists.txt && \
     mkdir _build && \
     cd _build && \
-    CXXFLAGS="-Wno-unused-variable -Wno-unused-but-set-variable -Wno-attributes -Wno-unknown-pragmas -Wno-maybe-uninitialized -Wno-parentheses -std=c++17" \
+    CXXFLAGS="-Wno-unused-variable -Wno-unused-but-set-variable -Wno-attributes -Wno-unknown-pragmas -Wno-maybe-uninitialized -Wno-parentheses" \
     cmake .. \
     -DBUILD_SHARED_LIBS=ON \
     -DCMAKE_BUILD_TYPE=MinSizeRel \
@@ -2219,6 +2240,9 @@ RUN \
     # the relative location of these files. \
     cp -r /usr/local/lib/mapnik/* packaging/mapnik/. && \
     cp -r /usr/local/share/{proj,gdal} packaging/mapnik/. && \
+    # The netcdf HDF5 filter plugins, as in the GDAL wheel \
+    mkdir packaging/mapnik/hdf5plugin && \
+    cp /usr/local/hdf5/lib/plugin/*.so packaging/mapnik/hdf5plugin/. && \
     mkdir packaging/mapnik/bin && \
     cp /usr/local/bin/{mapnik-render,mapnik-index,shapeindex} packaging/mapnik/bin/. && \
     strip packaging/mapnik/bin/* --strip-unneeded -p -D && \
@@ -2233,6 +2257,7 @@ def program(): \n\
     # The data directories are copied beside bin, not into it \n\
     environ.setdefault("PROJ_DATA", os.path.join(os.path.dirname(localpath), "proj")) \n\
     environ.setdefault("GDAL_DATA", os.path.join(os.path.dirname(localpath), "gdal")) \n\
+    environ["HDF5_PLUGIN_PATH"] = os.pathsep.join([p for p in (environ.get("HDF5_PLUGIN_PATH"), os.path.join(os.path.dirname(localpath), "hdf5plugin")) if p]) \n\
 \n\
     path = os.path.join(os.path.dirname(__file__), os.path.basename(sys.argv[0])) \n\
     os.execve(path, sys.argv, environ) \n\
@@ -2250,10 +2275,14 @@ s = s.replace("license = \\"LGPL-2.1-or-later\\"", "license = { text = \\"LGPL-2
 open(path, "w").write(s)' && \
     if [ "$AUDITWHEEL_ARCH" != "x86_64" ]; then sed -i 's/.def_static("face_names", &freetype_engine::face_names)/\/\/ .def_static("face_names", \&freetype_engine::face_names)/g' src/mapnik_font_engine.cpp; fi && \
     sed -i 's/.def_static("face_names", &freetype_engine::face_names)/\/\/ .def_static("face_names", \&freetype_engine::face_names)/g' src/mapnik_font_engine.cpp && \
+    sed -i 's/extra_compile_args=extra_comp_args,/cxx_std=20,\nextra_compile_args=extra_comp_args,/' setup.py && \
+    sed -i 's/^from pybind11.setup_helpers import Pybind11Extension, build_ext$/&, ParallelCompile\nParallelCompile("NUM_JOBS", default=0).install()/' setup.py && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    find /opt/py -mindepth 1 -not -name '*p39-*' -print0 | xargs -n 1 -0 -P $((($JOBS+1)/2)) bash -c 'export WORKDIR=/tmp/python-mapnik-`basename ${0}`; mkdir -p $WORKDIR; cp -r . $WORKDIR/.; pushd $WORKDIR; "${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && popd && rm -rf $WORKDIR' && \
+    export NUM_JOBS=$((($JOBS+1)/2)) && \
+    # python-mapnik requires python >= 3.11 \
+    find /opt/py -mindepth 1 -not -name '*p39-*' -not -name '*p310-*' -print0 | xargs -n 1 -0 -P 2 bash -c 'export WORKDIR=/tmp/python-mapnik-`basename ${0}`; mkdir -p $WORKDIR; cp -r . $WORKDIR/.; pushd $WORKDIR; "${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && popd && rm -rf $WORKDIR' && \
     find /io/wheelhouse/ -name 'mapnik*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'mapnik*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'mapnik*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
@@ -2455,20 +2484,6 @@ RUN \
     rm -rf /root/.cargo/registry && \
     echo "`date` librsvg" >> /build/log.txt
 
-# Used by libvips
-RUN \
-    echo "`date` libarchive" >> /build/log.txt && \
-    export JOBS=`nproc` && \
-    git clone --depth=1 --single-branch -b v`getver.py libarchive` -c advice.detachedHead=false https://github.com/libarchive/libarchive.git && \
-    cd libarchive && \
-    mkdir _build && \
-    cd _build && \
-    cmake .. -DCMAKE_BUILD_TYPE=MinSizeRel -DBUILD_TESTING=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib && \
-    make --silent -j ${JOBS} && \
-    make --silent -j ${JOBS} install && \
-    ldconfig && \
-    echo "`date` libarchive" >> /build/log.txt
-
 # Used by ImageMagick, though I don't see the library being bundled by libvips
 RUN \
     echo "`date` libraw" >> /build/log.txt && \
@@ -2492,7 +2507,11 @@ RUN \
     cd ImageMagick && \
     # Needed since 7.0.9-7 or so for manylinux2010 \
     # sed -i 's/__STDC_VERSION__ > 201112L/0/g' MagickCore/magick-config.h && \
-    ./configure --prefix=/usr/local --with-modules --with-rsvg --with-fftw --with-jxl LIBS="-lrt `pkgconf --libs zlib`" --disable-static && \
+    # --without-modules compiles every coder into libMagickCore.  With \
+    # --with-modules the coders are separate dlopened modules, which \
+    # auditwheel never bundles, so the wheel's ImageMagick had no formats \
+    # at all.  X11 is only used by the display/import programs. \
+    ./configure --prefix=/usr/local --without-modules --without-x --with-rsvg --with-fftw --with-jxl LIBS="-lrt `pkgconf --libs zlib`" --disable-static && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -2654,7 +2673,7 @@ RUN \
     cd cyrus-sasl && \
     ./autogen.sh && \
     CFLAGS="$CFLAGS -Wno-implicit-function-declaration" \
-    ./configure --prefix=/usr/local --disable-static --disable-sample --enable-obsolete_cram_attr --enable-obsolete_digest_attr --enable-alwaystrue --enable-checkapop --enable-cram --enable-digest --enable-scram --enable-otp --enable-srp --enable-srp-setpass --enable-krb4 --enable-auth-sasldb --enable-httpform --enable-plain --enable-anon --enable-login --enable-ntlm --enable-passdss --enable-sql --enable-ldapdb --with-ldap && \
+    ./configure --prefix=/usr/local --disable-static --disable-sample --enable-obsolete_cram_attr --enable-obsolete_digest_attr --enable-alwaystrue --enable-checkapop --enable-cram --enable-digest --enable-scram --enable-otp --enable-srp --enable-srp-setpass --enable-krb4 --enable-auth-sasldb --enable-httpform --enable-plain --enable-anon --enable-login --enable-ntlm --enable-passdss && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -2730,6 +2749,12 @@ RUN \
     cd python-javabridge && \
     patch _javabridge.pyx ../python-javabridge.pyx.patch && \
     sed -i 's/        return env.get_string_utf(result)/        try:\n            return env.get_string_utf(result)\n        except Exception:\n            return env.get_string(result)/g' javabridge/jutil.py && \
+    # The JVM is used headless.  Remove the parts of the JDK that need X11 \
+    # (AWT's X toolkit, the splash screen, and the GUI tools that use them) \
+    # or ALSA (sound), so that auditwheel doesn't bundle those libraries. \
+    # This edits the JDK itself, since it is copied into the wheel again \
+    # after auditwheel runs. \
+    rm -f /usr/lib/jvm/java/bin/appletviewer /usr/lib/jvm/java/bin/policytool /usr/lib/jvm/java/jre/bin/policytool /usr/lib/jvm/java/lib/*/libjawt.so /usr/lib/jvm/java/jre/lib/*/libawt_xawt.so /usr/lib/jvm/java/jre/lib/*/libjawt.so /usr/lib/jvm/java/jre/lib/*/libsplashscreen.so /usr/lib/jvm/java/jre/lib/*/libjsoundalsa.so && \
     # Include java libraries \
     mkdir javabridge/jvm && \
     # remove debug symbols.  We can't safely parellelize this because pack200 \

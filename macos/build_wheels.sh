@@ -761,6 +761,11 @@ build_libtiff() {
         make -j "$LIW_JOBS"
         make install
     ) || die "libtiff build failed"
+    # Feature assertion: configure silently drops LERC compression when
+    # liblerc is missing (build_libtiff_deps builds it first, and the linux
+    # libtiff links it).
+    otool -L "$LIW_PREFIX/lib"/libtiff.*dylib 2>/dev/null | grep -q libLerc ||
+        die "libtiff was not linked against libLerc; LERC compression was dropped (build_lerc must run before build_libtiff)"
     done_stamp libtiff
 }
 
@@ -874,9 +879,8 @@ build_libffi() {
     done_stamp libffi
 }
 
-# The Dockerfile also builds util-linux (libmount/libblkid) before glib;
-# those libraries are Linux-only and glib's meson does not use them on
-# darwin, so there is no macos counterpart.
+# glib's libmount support (GIO mount monitoring) is Linux-only; the
+# Dockerfile disables it too (-Dlibmount=disabled).
 build_glib() {
     skip_if_done glib && return 0
     step "glib"
@@ -1042,6 +1046,7 @@ build_libtiff_deps() {
     build_libjpeg_turbo
     build_libdeflate
     build_xz
+    build_lerc
     build_libtiff
 }
 
@@ -1116,10 +1121,9 @@ build_cyrus_sasl() {
         #   framework is required on darwin -- the macos-framework feature
         #   is enabled by default and its install hook creates
         #   /Library/Frameworks/SASL2.framework symlinks outside the
-        #   prefix.  NTLM stays enabled like the Dockerfile: it silently
-        #   drops out without an OpenSSL in the prefix (like scram, otp,
-        #   srp, and passdss, which are explicitly disabled), and would
-        #   light up automatically if one is ever added.
+        #   prefix.  SCRAM, OTP, SRP, PASSDSS, and NTLM need OpenSSL, which
+        #   the pylibmc case builds first, like the Dockerfile and the
+        #   Windows build (whose tests check for these mechanisms).
         CFLAGS="$CFLAGS -std=gnu17 -Wno-implicit-function-declaration" \
             ./configure --prefix="$LIW_PREFIX" --disable-static \
             --disable-sample --disable-macos-framework \
@@ -1127,7 +1131,8 @@ build_cyrus_sasl() {
             --enable-alwaystrue --enable-checkapop \
             --enable-cram --enable-digest --enable-anon \
             --enable-login --enable-ntlm \
-            --disable-otp --disable-srp --disable-scram --disable-passdss \
+            --enable-otp --enable-srp --enable-scram --enable-passdss \
+            --with-openssl="$LIW_PREFIX" \
             --disable-ldapdb --disable-sql --disable-auth-sasldb
         make -j "$LIW_JOBS"
         make install
@@ -1137,7 +1142,8 @@ build_cyrus_sasl() {
     # package data).  libtool names the darwin modules lib<mech>.3.so with
     # an unversioned .so symlink alongside.
     local mech
-    for mech in libplain libcrammd5 libdigestmd5 liblogin libanonymous; do
+    for mech in libplain libcrammd5 libdigestmd5 liblogin libanonymous \
+        libscram libotp libsrp libpassdss libntlm; do
         [ -e "$LIW_PREFIX/lib/sasl2/$mech.so" ] ||
             die "cyrus-sasl did not install the $mech plugin"
     done
@@ -1586,6 +1592,24 @@ build_libzip() {
 # "Requires.private: libcurl" cannot resolve the system libcurl (it ships
 # no .pc file), which made meson treat the whole poppler-glib dependency
 # as missing and silently dropped libvips's pdf loader.
+# Used by curl for its SFTP and SCP protocols, like the Dockerfile's libssh2,
+# with the prefix OpenSSL as its crypto backend (build_openssl must run
+# first).
+build_libssh2() {
+    skip_if_done libssh2 && return 0
+    step "libssh2"
+    cd "$LIW_SRC"
+    rm -rf libssh2
+    git_retry https://github.com/libssh2/libssh2.git "libssh2-$(v libssh2)" libssh2
+    cmake_build "$LIW_SRC/libssh2" \
+        -DCRYPTO_BACKEND=OpenSSL -DENABLE_ZLIB_COMPRESSION=ON \
+        -DBUILD_SHARED_LIBS=ON -DBUILD_STATIC_LIBS=OFF \
+        -DBUILD_EXAMPLES=OFF -DBUILD_TESTING=OFF
+    [ -n "$(ls "$LIW_PREFIX/lib"/libssh2*.dylib 2>/dev/null)" ] ||
+        die "libssh2 did not install its library"
+    done_stamp libssh2
+}
+
 build_curl() {
     skip_if_done curl && return 0
     step "curl"
@@ -1610,11 +1634,16 @@ build_curl() {
     # gone now that OpenSSL is part of the prefix -- the linux final state
     # is a TLS curl.  CURL_CA_FALLBACK mirrors the Dockerfile; LDAP
     # resolves to the system LDAP.framework, which the audits allow.
+    # SFTP and SCP come from the prefix libssh2 (build_libssh2 must run
+    # first), and IDN hostnames from the system ICU (libicucore, part of
+    # every macOS) instead of linux's libidn2.
     cmake_build "$LIW_SRC/curl" \
         -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF -DBUILD_STATIC=OFF \
         -DCURL_CA_FALLBACK=ON \
         -DBUILD_LIBCURL_DOCS=OFF -DBUILD_MISC_DOCS=OFF \
-        -DCURL_USE_LIBPSL=OFF
+        -DCURL_USE_LIBPSL=OFF \
+        -DCURL_USE_LIBSSH2=ON \
+        -DUSE_APPLE_IDN=ON -DUSE_LIBIDN2=OFF
     [ -e "$LIW_PREFIX/lib/pkgconfig/libcurl.pc" ] ||
         die "curl did not install its libcurl.pc"
     [ -n "$(ls "$LIW_PREFIX/lib"/libcurl*.dylib 2>/dev/null)" ] ||
@@ -1626,6 +1655,10 @@ build_curl() {
     linked="$(otool -L "$LIW_PREFIX/lib"/libcurl*.dylib 2>/dev/null || true)"
     printf '%s\n' "$linked" | grep -q libssl ||
         die "libcurl was not linked against libssl; TLS was not enabled (build_openssl must run before build_curl)"
+    printf '%s\n' "$linked" | grep -q libssh2 ||
+        die "libcurl was not linked against libssh2; SFTP/SCP were not enabled (build_libssh2 must run before build_curl)"
+    printf '%s\n' "$linked" | grep -q libicucore ||
+        die "libcurl was not linked against libicucore; IDN support was not enabled"
     done_stamp curl
 }
 
@@ -1722,6 +1755,26 @@ build_fitsio() {
     done_stamp fitsio
 }
 
+# szip compression for hdf5 (libaec provides the szip API as libsz).
+# Mirrors the Dockerfile; built before hdf5, which only enables szip if
+# its find_package(libaec CONFIG) succeeds.
+build_libaec() {
+    skip_if_done libaec && return 0
+    step "libaec"
+    cd "$LIW_SRC"
+    rm -rf libaec
+    git_retry https://github.com/MathisRosenhauer/libaec.git "v$(v libaec)" libaec
+    cmake_build "$LIW_SRC/libaec" -DBUILD_STATIC_LIBS=OFF -DBUILD_TESTING=OFF
+    [ -f "$LIW_PREFIX/lib/libsz.dylib" ] || die "libaec did not install libsz"
+    local name
+    name="$(otool -D "$LIW_PREFIX/lib/libsz.dylib" 2>/dev/null | sed -n 2p)"
+    case "$name" in
+    "$LIW_PREFIX"/*) ;;
+    *) die "libsz's install name is not absolute ('$name')" ;;
+    esac
+    done_stamp libaec
+}
+
 build_hdf5() {
     skip_if_done hdf5 && return 0
     step "hdf5"
@@ -1782,7 +1835,11 @@ build_hdf5() {
         -DHDF5_ENABLE_PARALLEL=ON \
         -DMPI_C_COMPILER="$LIW_PREFIX/bin/mpicc" \
         -DMPI_mpi_LIBRARY="$LIW_PREFIX/lib/libmpi.dylib" \
-        -DMPI_C_LIB_NAMES=mpi
+        -DMPI_C_LIB_NAMES=mpi \
+        -DHDF5_ENABLE_SZIP_SUPPORT=ON \
+        -DHDF5_ENABLE_SZIP_ENCODING=ON
+    grep -q 'H5_HAVE_FILTER_SZIP 1' "$LIW_PREFIX/include/H5pubconf.h" ||
+        die "hdf5 was built without szip (check that build_libaec ran first)"
     # The install name must be absolute so delocate can rewrite the
     # bundled copies and consumers record an absolute dependency name
     # (the same check build_lz4 makes for the same reason).
@@ -1797,9 +1854,9 @@ build_hdf5() {
     local linked lib
     linked="$(otool -L "$LIW_PREFIX/lib"/libhdf5*.dylib 2>/dev/null || true)"
     [ -n "$linked" ] || die "hdf5 produced no dylib to check"
-    for lib in "libz." ; do
+    for lib in "libz." "libsz." ; do
         printf '%s\n' "$linked" | grep -q "$lib" ||
-            die "hdf5 was not linked against $lib; Z_LIB_SUPPORT was not enabled"
+            die "hdf5 was not linked against $lib; Z_LIB_SUPPORT or SZIP_SUPPORT was not enabled"
     done
     done_stamp hdf5
 }
@@ -2053,19 +2110,15 @@ build_giflib() {
     done_stamp giflib
 }
 
-# The Dockerfile's openssl section is deliberately pinned: versions.txt
-# says 4.0.3, and the linux build ignores it ("PINNED - openldap doesn't
-# handle version 4.x yet") and builds the 3.6.2 tag.  The macos build pins
-# the same literal (not $(v openssl)) so a future versions.txt change
-# cannot silently move it either; check_versions.py may flag the mismatch.
-# This is what gives the prefix's curl TLS (build_curl's assertion), and
-# GDAL links libcrypto directly for its CPL crypto.
+# OpenSSL at versions.txt's version, like the Dockerfile.  This is what
+# gives the prefix's curl TLS (build_curl's assertion), and GDAL links
+# libcrypto directly for its CPL crypto.
 build_openssl() {
     skip_if_done openssl && return 0
-    step "openssl (pinned 3.6.2; versions.txt's 4.x is deliberately ignored, like the linux build)"
+    step "openssl"
     cd "$LIW_SRC"
     rm -rf openssl
-    git_retry https://github.com/openssl/openssl.git "openssl-3.6.2" openssl
+    git_retry https://github.com/openssl/openssl.git "openssl-$(v openssl)" openssl
     (
         cd openssl || exit 1
         ./config --prefix="$LIW_PREFIX" --openssldir="$LIW_PREFIX/ssl" \
@@ -2103,8 +2156,8 @@ build_json_c() {
     done_stamp json-c
 }
 
-# Used by GDAL (GDAL_USE_LERC=ON; the linux wheel links the external
-# liblerc).
+# Used by libtiff (LERC compression; see build_libtiff_deps) and GDAL
+# (GDAL_USE_LERC=ON; the linux wheel links the external liblerc).
 build_lerc() {
     skip_if_done lerc && return 0
     step "lerc"
@@ -2728,6 +2781,10 @@ build_parallel_netcdf() {
 # CMAKE_SHARED_LINKER_FLAGS=-ljpeg is kept: hdf4 is a static library and
 # consumers must carry its jpeg dependency (the macOS linker rejects the
 # resulting undefined symbols the linux linker tolerates).
+# NETCDF_PLUGIN_INSTALL installs the HDF5 filter plugins (zstd, bzip2,
+# blosc), which build_gdal_python bundles.  They go under the prefix lib
+# dir (the linux build uses netcdf's default, <prefix>/hdf5/lib/plugin) so
+# sanitize_prefix_dylibs and the pre-wheel strip cover them.
 build_netcdf() {
     skip_if_done netcdf && return 0
     step "netcdf"
@@ -2748,9 +2805,16 @@ build_netcdf() {
         -DENABLE_BYTERANGE=ON -DENABLE_JNA=ON \
         -DCMAKE_SHARED_LINKER_FLAGS="-L$LIW_PREFIX/lib -ljpeg" \
         -DENABLE_TESTS=OFF -DENABLE_HDF4_FILE_TESTS=OFF -DENABLE_DAP=ON \
-        -DENABLE_HDF5=ON -DENABLE_NCZARR=ON
+        -DENABLE_HDF5=ON -DENABLE_NCZARR=ON \
+        -DNETCDF_PLUGIN_INSTALL=ON \
+        -DNETCDF_WITH_PLUGIN_DIR="$LIW_PREFIX/lib/hdf5/plugin"
     [ -n "$(ls "$LIW_PREFIX/lib"/libnetcdf*.dylib 2>/dev/null)" ] ||
         die "netcdf did not install its library"
+    local plugin
+    for plugin in zstd bzip2 blosc; do
+        [ -f "$LIW_PREFIX/lib/hdf5/plugin/lib__nch5$plugin.dylib" ] ||
+            die "netcdf did not install its $plugin filter plugin (check the build order)"
+    done
     local linked lib
     linked="$(otool -L "$LIW_PREFIX/lib"/libnetcdf*.dylib 2>/dev/null || true)"
     [ -n "$linked" ] || die "netcdf produced no dylib to check"
@@ -2790,16 +2854,16 @@ build_mysql() {
     # yields an empty version string -- "Not a supported openssl
     # version" -- and it would be a Homebrew leak anyway.  WITH_SSL=
     # <path> is mysql's supported custom-installation mode: it finds
-    # the prefix's pinned 3.6.2 headers/libs (MIN is 1.0.0), requires
+    # the prefix's OpenSSL headers/libs (MIN is 1.0.0), requires
     # $LIW_PREFIX/bin/openssl (installed by build_openssl), and its
     # APPLE_WITH_CUSTOM_SSL machinery copies libssl/libcrypto into the
     # build's library_output_directory, patching the copy's libcrypto
     # dependency to @loader_path.  libmysqlclient records the copies'
     # ids, which fix_dylib_ids made absolute prefix paths (delocate
     # friendly), and mysql's install step then copies those dylibs
-    # into the prefix's lib dir -- libcrypto.3.dylib is overwritten
-    # byte-identically and the patched libssl.3.dylib still resolves
-    # its @loader_path/libcrypto.3.dylib from the prefix, so the
+    # into the prefix's lib dir -- libcrypto.<major>.dylib is overwritten
+    # byte-identically and the patched libssl.<major>.dylib still resolves
+    # its @loader_path/libcrypto.<major>.dylib from the prefix, so the
     # prefix stays consistent for later consumers (gdal).
     cmake_build "$LIW_SRC/mysql" \
         -DBUILD_CONFIG=mysql_release \
@@ -2920,8 +2984,10 @@ build_armadillo() {
     done_stamp armadillo
 }
 
-# Used by GDAL (block compression).  The external lz4/zstd/zlib from the
-# prefix mirror the Dockerfile's PREFER_EXTERNAL flags.
+# Used by GDAL (block compression) and netcdf (its blosc filter plugin,
+# which netcdf only builds when it finds blosc, so blosc is built before
+# netcdf).  The external lz4/zstd/zlib from the prefix mirror the
+# Dockerfile's PREFER_EXTERNAL flags.
 build_blosc() {
     skip_if_done blosc && return 0
     step "blosc"
@@ -2992,17 +3058,17 @@ build_kealib() {
 }
 
 # Used by GDAL (the XODR driver).  versions.txt tracks the full
-# gdal-branch tag (libopendrive, e.g. 0.6.1-gdal), but both builds stay
-# pinned at 0.6.0-gdal -- the Dockerfile's reason: "PINNED - version
-# 0.6.1-gdal requires external pugixml and some other work" -- so the
-# pin trails the tracked value until the linux build unpins;
-# check_versions.py may flag the mismatch.
+# gdal-branch tag (libopendrive, e.g. 0.6.1-gdal).  As in the Dockerfile,
+# libOpenDRIVE fetches the pugixml version it specifies with FetchContent
+# (and compiles it into its static library), and the pugixml headers are
+# also copied to include/pugixml/, where GDAL's XODR driver includes them
+# from (libOpenDRIVE 0.6.1 installs them in include/ only).
 build_libopendrive() {
     skip_if_done libopendrive && return 0
     step "libopendrive"
     cd "$LIW_SRC"
     rm -rf libOpenDRIVE
-    git_retry https://github.com/DLR-TS/libOpenDRIVE.git "0.6.0-gdal" libOpenDRIVE
+    git_retry https://github.com/DLR-TS/libOpenDRIVE.git "$(v libopendrive)" libOpenDRIVE
     # AppleClang 21's libc++ specializes __make_transparent<_Tp, less<_Tp>>
     # to less<>, so std::set<T>'s insert/emplace compare the VALUES with
     # less<void> -- requiring operator< on T itself -- and never call a
@@ -3016,7 +3082,8 @@ build_libopendrive() {
     # via ADL wherever less<void> evaluates "a < b".  Verified on the
     # host: without the patch the library dies with "no matching function
     # for call to object of type 'const std::less<void>'"; with it, the
-    # full build (including test-xodr) passes.
+    # full build (including test-xodr) passes.  0.6.1-gdal still orders
+    # these four types through std::less specializations only.
     cat >> "$LIW_SRC/libOpenDRIVE/include/RoadMark.h" <<'EOF'
 
 // Added by macos/build_wheels.sh build_libopendrive: AppleClang 21's
@@ -3051,7 +3118,12 @@ inline bool operator<(const JunctionPriority& lhs, const JunctionPriority& rhs)
 }
 } // namespace odr
 EOF
-    cmake_build "$LIW_SRC/libOpenDRIVE" -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+    cmake_build "$LIW_SRC/libOpenDRIVE" -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+        -DBUILD_TESTING=OFF
+    mkdir -p "$LIW_PREFIX/include/pugixml"
+    cp "$LIW_PREFIX/include/pugixml.hpp" "$LIW_PREFIX/include/pugiconfig.hpp" \
+        "$LIW_PREFIX/include/pugixml/" ||
+        die "libopendrive did not install the pugixml headers"
     # The project builds a static libOpenDrive.a by default and the
     # Dockerfile does not change that -- gdal absorbs it, like on linux
     # (nothing ships a libOpenDRIVE dylib, so there is nothing to
@@ -3253,6 +3325,12 @@ build_gdal_python() {
     # patch below).
     cp -R "$LIW_PREFIX/share/proj" osgeo/proj
     cp -R "$LIW_PREFIX/share/gdal" osgeo/gdal
+    # The netcdf HDF5 filter plugins (zstd, bzip2, blosc); delocate bundles
+    # their dependencies and osgeo/__init__.py adds the directory to
+    # HDF5_PLUGIN_PATH.
+    rm -rf osgeo/hdf5plugin
+    mkdir -p osgeo/hdf5plugin
+    cp "$LIW_PREFIX/lib/hdf5/plugin"/*.dylib osgeo/hdf5plugin/
 
     # Bundle the gdal, proj, and libgeotiff command line tools: for each
     # tool in gdal's apps build directory, the matching installed
@@ -3313,6 +3391,7 @@ def program():
     # The data directories are copied beside bin, not into it
     environ.setdefault("PROJ_DATA", os.path.join(os.path.dirname(localpath), "proj"))
     environ.setdefault("GDAL_DATA", os.path.join(os.path.dirname(localpath), "gdal"))
+    environ["HDF5_PLUGIN_PATH"] = os.pathsep.join([p for p in (environ.get("HDF5_PLUGIN_PATH"), os.path.join(os.path.dirname(localpath), "hdf5plugin")) if p])
     caPath = "/etc/ssl/certs/ca-certificates.crt"
     if not os.path.exists(caPath):
         caPath = "/etc/ssl/cert.pem"
@@ -3340,7 +3419,7 @@ data = re.sub(
 data = data.replace(
     "scripts/*.py'),",
 """scripts/*.py'),
-    package_data={'osgeo': ['proj/*', 'gdal/*', 'bin/*']},""")
+    package_data={'osgeo': ['proj/*', 'gdal/*', 'bin/*', 'hdf5plugin/*']},""")
 data = data.replace("console_scripts = []", """console_scripts = ['%s=osgeo.bin:program' % name for name in os.listdir('osgeo/bin') if not name.endswith('.py')]""")
 if "console_scripts" not in data: data = data.replace(
     "scripts/*.py'),",
@@ -3363,10 +3442,17 @@ s = open(path).read().replace(
 
 import os
 import re
+
+_localpath = os.path.dirname(os.path.abspath( __file__ ))
+# HDF5 and netCDF read HDF5_PLUGIN_PATH when they initialize, so it is set
+# before the libraries load.  The bundled filter plugins are appended, so a
+# path the user set is searched first.
+_pluginpath = os.path.join(_localpath, "hdf5plugin")
+if _pluginpath not in os.environ.get("HDF5_PLUGIN_PATH", "").split(os.pathsep):
+    os.environ["HDF5_PLUGIN_PATH"] = os.pathsep.join([p for p in (os.environ.get("HDF5_PLUGIN_PATH"), _pluginpath) if p])
 from . import osr
 from . import gdal
 
-_localpath = os.path.dirname(os.path.abspath( __file__ ))
 # os.environ.setdefault("PROJ_DATA", os.path.join(_localpath, "proj"))
 osr.SetPROJSearchPaths([os.path.join(_localpath, "proj")])
 # os.environ.setdefault("GDAL_DATA", os.path.join(_localpath, "gdal"))
@@ -3408,6 +3494,8 @@ EOF
         die "the setup.py patch did not apply"
     grep -q "package_data={'osgeo'" setup.py ||
         die "the setup.py package_data patch did not apply"
+    grep -q "HDF5_PLUGIN_PATH" osgeo/__init__.py ||
+        die "the osgeo/__init__.py HDF5_PLUGIN_PATH patch did not apply"
 
     # Copy python ports of c utilities to scripts so they get bundled
     # (mirrors the linux build; the setup.py glob these land in is
@@ -3478,6 +3566,8 @@ EOF
         die "the gdal wheel does not bundle the gdalinfo tool"
     printf '%s\n' "$contents" | grep -q 'osgeo/bin/listgeo' ||
         die "the gdal wheel does not bundle the listgeo tool"
+    printf '%s\n' "$contents" | grep -q 'osgeo/hdf5plugin/lib__nch5zstd.dylib' ||
+        die "the gdal wheel does not bundle the netcdf HDF5 filter plugins"
     done_stamp gdal_python
 }
 
@@ -3754,6 +3844,15 @@ build_mapnik_python() {
         # The same two patches the linux build applies.
         git am "$LIW_REPO/python-mapnik.patch" || exit 1
         git am "$LIW_REPO/python-mapnik_data_path.patch" || exit 1
+        # mapnik 4.4's headers use C++20 requires-expressions
+        # (transform_path_adapter.hpp), so the extension must compile as
+        # C++20: pybind11's build_ext only auto-detects up to 17 when the
+        # extension leaves cxx_std unset, and the pkg-config cflags carry
+        # no -std flag.  This mirrors the Dockerfile's setup.py sed (the
+        # BSD sed needs a literal newline, see build_mapnik).
+        sed -i '' 's/extra_compile_args=extra_comp_args,/cxx_std=20,\
+extra_compile_args=extra_comp_args,/' setup.py || exit 1
+        grep -q 'cxx_std=20' setup.py || exit 1
     ) || die "python-mapnik patching failed"
     # Everything below (the packaging copies, the relative-path patches,
     # and the git commit/tag) runs against the clone, like the linux
@@ -3767,6 +3866,9 @@ build_mapnik_python() {
     cp -R "$LIW_PREFIX"/lib/mapnik/* packaging/mapnik/.
     cp -R "$LIW_PREFIX/share/proj" packaging/mapnik/proj
     cp -R "$LIW_PREFIX/share/gdal" packaging/mapnik/gdal
+    # The netcdf HDF5 filter plugins, as in the GDAL wheel.
+    mkdir packaging/mapnik/hdf5plugin
+    cp "$LIW_PREFIX/lib/hdf5/plugin"/*.dylib packaging/mapnik/hdf5plugin/
     mkdir packaging/mapnik/bin
     cp -L "$LIW_PREFIX/bin/mapnik-render" "$LIW_PREFIX/bin/mapnik-index" \
         "$LIW_PREFIX/bin/shapeindex" packaging/mapnik/bin/
@@ -3807,6 +3909,7 @@ def program():
     # The data directories are copied beside bin, not into it
     environ.setdefault("PROJ_DATA", os.path.join(os.path.dirname(localpath), "proj"))
     environ.setdefault("GDAL_DATA", os.path.join(os.path.dirname(localpath), "gdal"))
+    environ["HDF5_PLUGIN_PATH"] = os.pathsep.join([p for p in (environ.get("HDF5_PLUGIN_PATH"), os.path.join(os.path.dirname(localpath), "hdf5plugin")) if p])
     caPath = "/etc/ssl/certs/ca-certificates.crt"
     if not os.path.exists(caPath):
         caPath = "/etc/ssl/cert.pem"
@@ -3943,6 +4046,8 @@ EOF
         die "the mapnik wheel does not bundle the fonts"
     printf '%s\n' "$contents" | grep -q 'mapnik/proj/proj.db' ||
         die "the mapnik wheel does not bundle the proj data"
+    printf '%s\n' "$contents" | grep -q 'mapnik/hdf5plugin/lib__nch5zstd.dylib' ||
+        die "the mapnik wheel does not bundle the netcdf HDF5 filter plugins"
     printf '%s\n' "$contents" | grep -q 'mapnik/gdal/' ||
         die "the mapnik wheel does not bundle the gdal data"
     done_stamp mapnik_python
@@ -5354,6 +5459,7 @@ for pkg in ${PACKAGES[@]+"${PACKAGES[@]}"}; do
         # build tool only (see build_bison).
         build_zlib
         build_bison
+        build_openssl
         build_cyrus_sasl
         build_libmemcached
         build_pylibmc
@@ -5372,6 +5478,7 @@ for pkg in ${PACKAGES[@]+"${PACKAGES[@]}"}; do
         # missing; build_libvips asserts the linked feature set.
         build_libtiff_deps
         build_openssl
+        build_libssh2
         build_curl
         build_lcms2
         build_libpng
@@ -5404,6 +5511,7 @@ for pkg in ${PACKAGES[@]+"${PACKAGES[@]}"}; do
         build_poppler
         build_fitsio
         build_openmpi
+        build_libaec
         build_hdf5
         build_matio
         build_openexr
@@ -5439,6 +5547,7 @@ for pkg in ${PACKAGES[@]+"${PACKAGES[@]}"}; do
         build_libtiff_deps
         build_giflib
         build_openssl
+        build_libssh2
         build_curl
         build_json_c
         build_lerc
@@ -5468,15 +5577,16 @@ for pkg in ${PACKAGES[@]+"${PACKAGES[@]}"}; do
         build_librasterlite2
         build_fyba
         build_hdf4
+        build_libaec
         build_hdf5
         build_parallel_netcdf
+        build_blosc
         build_netcdf
         build_mysql
         build_postgresql
         build_libgta
         build_xerces_c
         build_armadillo
-        build_blosc
         build_highfive
         build_kealib
         build_libde265
@@ -5506,6 +5616,7 @@ for pkg in ${PACKAGES[@]+"${PACKAGES[@]}"}; do
         build_icu4c
         build_giflib
         build_openssl
+        build_libssh2
         build_curl
         build_json_c
         build_lerc
@@ -5535,15 +5646,16 @@ for pkg in ${PACKAGES[@]+"${PACKAGES[@]}"}; do
         build_librasterlite2
         build_fyba
         build_hdf4
+        build_libaec
         build_hdf5
         build_parallel_netcdf
+        build_blosc
         build_netcdf
         build_mysql
         build_postgresql
         build_libgta
         build_xerces_c
         build_armadillo
-        build_blosc
         build_highfive
         build_kealib
         build_libde265
