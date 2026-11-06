@@ -796,6 +796,14 @@ Known gaps, in rough order:
 
 ## Hard-won details (do not lose these)
 
+- **The linux build is the model for method, not only for content.**
+  Where a name can be read from what was built, read it rather than
+  writing down what one build happened to produce: an import library
+  records the DLL it binds to (`Get-ImportLibDll`), and a library's own
+  `.pc` file or install record names its files.  zlib 1.4 renamed
+  `z.dll` to `libz.dll`, and the first nightly died on the copies of the
+  old name.  Change such places when they are touched or break; do not
+  restructure working, verified steps around this.
 - The generated `.wsb`'s LogonCommand runs as the **elevated**
   WDAGUtilityAccount (file backend); `wsb exec -r System` runs the
   script as SYSTEM (cli
@@ -863,13 +871,16 @@ Known gaps, in rough order:
   `exit_code` is not 0.
 - **delvewheel mangles DLL names** (`tiff-<sha256 prefix>.dll` in
   `pylibtiff.libs`) and rewrites the import tables of the wheel's
-  binaries to match; the content hash means identical DLLs in two wheels
-  share a name and differing ones never do.  Keep it that way: the
+  binaries to match.  The hash covers the DLL's content and the mangled
+  hashes of the bundled DLLs it imports (delvewheel 1.13,
+  `_wheel_repair.py`, in dependency order), so a library whose
+  dependencies changed gets a new name even when its own bytes did not:
+  identical DLLs in two wheels share a name and differing ones never
+  do.  That is the case auditwheel gets wrong and the linux BUILD_ID
+  salt works around; delvewheel needs no salt.  Keep it that way: the
   Windows loader resolves an import by base name against the modules
   already loaded in the process, so two unmangled `tiff.dll` copies in
-  two wheels would silently share whichever loaded first -- this is the
-  hazard the linux BUILD_ID salt exists for, solved here by delvewheel's
-  default.  Code that looks bundled libraries up by name must match the
+  two wheels would silently share whichever loaded first.  Code that looks bundled libraries up by name must match the
   mangled prefix (`startswith("tiff")`).
 - The system `tar` (bsdtar) fails on an archive that contains a symlink
   (libexpat's `README.md -> expat/README.md`): creating a symlink needs
@@ -1003,9 +1014,14 @@ Known gaps, in rough order:
   native command that merely writes to stderr when redirected);
   `Run-Logged` relaxes the preference around such commands.
 - DLL names as the chain's cmake builds produce them on Windows
-  (observed): `z.dll` (zlib 1.3.2's `OUTPUT_NAME z`; `zlib1.dll` is
-  history, and the static `zs.lib` is turned off so no consumer can pick
-  it), `zstd.dll`, `jpeg62.dll` + `turbojpeg.dll`, `libwebp.dll` with
+  (observed), except zlib's, which changed between releases (1.3.2 made
+  `z.dll`/`z.lib`, 1.4 makes `libz.dll`/`libz.lib` while its `zlib.pc`
+  still says `-lz`; the first nightly died on that): `Get-ZlibImportLib`
+  gives the import library under `zlib.pc`'s name (Build-Zlib copies
+  the installed one there when they differ) and `Get-ZlibDll` the DLL
+  that import library records (`Get-ImportLibDll`, `dumpbin /HEADERS`).
+  The static library is turned off so no consumer can pick it.  The
+  rest: `zstd.dll`, `jpeg62.dll` + `turbojpeg.dll`, `libwebp.dll` with
   `libwebpmux/decoder/demux.dll` and `libsharpyuv.dll` (libwebp builds
   static libraries unless `BUILD_SHARED_LIBS=ON`), `deflate.dll`,
   `liblzma.dll`, `tiff.dll`, `lcms2.dll` (lcms2's own cmake build,

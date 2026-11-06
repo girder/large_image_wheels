@@ -628,6 +628,33 @@ function Assert-DependentStems([string]$Image, [string[]]$Stems, [string]$What) 
     }
 }
 
+# The DLL an import library binds to, as the import library itself
+# records it (dumpbin /HEADERS, "DLL name"): a DLL's name is read from
+# what was built, not assumed.
+function Get-ImportLibDll([string]$Lib) {
+    if (-not (Test-Path $Lib)) { Die "$Lib does not exist" }
+    $dlls = @((& dumpbin /HEADERS $Lib | Out-String) -split "`n" | ForEach-Object {
+        if ($_ -match '^\s*DLL name\s*:\s*(\S+)') { $Matches[1] } } | Sort-Object -Unique)
+    if ($dlls.Count -ne 1) { Die "$Lib binds to $($dlls.Count) DLLs ('$($dlls -join ', ')'); expected one" }
+    return $dlls[0]
+}
+
+# zlib's import library under the name zlib.pc gives it (pkgconf
+# --msvc-syntax maps its -l flag to a .lib name; Build-Zlib makes sure
+# that file exists), and the DLL that import library binds to.  zlib's
+# names are not stable across releases (1.3.2 built z.dll, 1.4 builds
+# libz.dll), so every consumer's check and path takes them from here.
+function Get-ZlibImportLib {
+    Ensure-Meson
+    $name = (Capture-Native $env:PKG_CONFIG @('--msvc-syntax', '--libs-only-l', 'zlib')).Trim()
+    if ($LASTEXITCODE -ne 0 -or $name -notmatch '^\S+\.lib$') { Die "pkgconf --libs-only-l zlib gave '$name'" }
+    return (Join-Path $LIW_PREFIX "lib\$name")
+}
+
+function Get-ZlibDll {
+    return (Get-ImportLibDll (Get-ZlibImportLib))
+}
+
 # The launcher: the stand-in for a command line tool bundled in a wheel.
 #
 # The linux and macos wheels ship their bundled tools (tiffinfo, gdalinfo,
@@ -1683,12 +1710,22 @@ function Build-Zlib {
     Log '=== zlib'
     $src = Git-Clone 'https://github.com/madler/zlib.git' "v$(V zlib)" `
         (Join-Path $LIW_SRC 'zlib')
-    # zlib 1.3.2's cmake names the Windows DLL z.dll (OUTPUT_NAME z; the
-    # zlib1.dll name of the old win32/Makefile.msc days is gone) and the
-    # static library zs.lib; the static build is turned off so no consumer
-    # can pick the static library over the DLL.
+    # The static build is turned off so no consumer can pick the static
+    # library over the DLL.
     Cmake-Build $src @('-DZLIB_BUILD_TESTING=OFF', '-DZLIB_BUILD_STATIC=OFF')
-    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('z.dll') 'zlib'
+    # The import library the install wrote (1.3.2: z.lib; 1.4: libz.lib),
+    # from cmake's install manifest.  zlib.pc names it -lz in both, so in
+    # 1.4 it is copied to the .pc's spelling: meson tries both names on
+    # MSVC, but rustc (librsvg) and the python builds take the .pc's
+    # literally.  The DLL's name is whatever that import library records.
+    $installed = @(Get-Content (Join-Path $src '_build\install_manifest.txt') |
+        Where-Object { $_ -like '*.lib' } | ForEach-Object { $_ -replace '/', '\' })
+    if ($installed.Count -ne 1) { Die "zlib: the install wrote $($installed.Count) .lib files ($($installed -join ', ')); expected one" }
+    $implib = Get-ZlibImportLib
+    if (-not (Test-Path $implib)) { Copy-Item $installed[0] $implib }
+    $dll = Get-ZlibDll
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @($dll) 'zlib'
+    Log "zlib: $(Split-Path -Leaf $installed[0]) (as $(Split-Path -Leaf $implib) for zlib.pc) -> $dll"
     Done-Stamp 'zlib'
 }
 
@@ -1763,7 +1800,7 @@ function Build-Libzip {
         '-DENABLE_ZSTD=ON')
     Assert-Files (Join-Path $LIW_PREFIX 'bin') @('zip.dll') 'libzip'
     Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('libzip.pc') 'libzip'
-    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\zip.dll') @('z.dll', 'bz2', 'liblzma', 'zstd') 'libzip'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\zip.dll') @((Get-ZlibDll), 'bz2', 'liblzma', 'zstd') 'libzip'
     Done-Stamp 'libzip'
 }
 
@@ -1910,10 +1947,10 @@ function Build-Libtiff {
     Log "libtiff DLL $($tiffDll.Name) depends on: $((Get-Dependents $tiffDll.FullName) -join ', ')"
     Log "prefix DLLs: $((Get-ChildItem -Path (Join-Path $LIW_PREFIX 'bin') -Filter '*.dll' | ForEach-Object { $_.Name }) -join ', ')"
     # DLL names as the chain's cmake builds produce them on Windows
-    # (observed, not assumed): z.dll, zstd.dll, jpeg62.dll, libwebp.dll,
-    # deflate.dll, liblzma.dll.
+    # (observed, not assumed): zstd.dll, jpeg62.dll, libwebp.dll,
+    # deflate.dll, liblzma.dll; zlib's is read from its import library.
     Assert-Dependents $tiffDll.FullName @(
-        'jpeg62.dll', 'z.dll', 'zstd.dll', 'libwebp.dll',
+        'jpeg62.dll', (Get-ZlibDll), 'zstd.dll', 'libwebp.dll',
         'deflate.dll') 'libtiff'
     Done-Stamp 'libtiff'
 }
@@ -2159,7 +2196,7 @@ function Build-Cairo {
     if (-not $cairoDll) { Die 'cairo: no cairo DLL in the prefix' }
     Log "cairo DLL $($cairoDll.Name) depends on: $((Get-Dependents $cairoDll.FullName) -join ', ')"
     $deps = Get-Dependents $cairoDll.FullName
-    foreach ($stem in @('freetype', 'fontconfig', 'pixman', 'libpng16', 'z.dll')) {
+    foreach ($stem in @('freetype', 'fontconfig', 'pixman', 'libpng16', (Get-ZlibDll))) {
         if (-not ($deps | Where-Object { $_ -like "$stem*" })) {
             Die "cairo was not linked against $stem; an optional dependency was missed (check the build order)"
         }
@@ -2623,7 +2660,7 @@ function Build-Libarchive {
         '-DCMAKE_POLICY_VERSION_MINIMUM=3.5')
     Assert-Files (Join-Path $LIW_PREFIX 'bin') @('archive.dll') 'libarchive'
     Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('libarchive.pc') 'libarchive'
-    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\archive.dll') @('z.dll', 'bz2', 'zstd', 'liblzma', 'lz4') 'libarchive'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\archive.dll') @((Get-ZlibDll), 'bz2', 'zstd', 'liblzma', 'lz4') 'libarchive'
     Done-Stamp 'libarchive'
 }
 
@@ -2807,7 +2844,7 @@ function Build-Curl {
     if ((Test-Path (Join-Path $lib 'libcurl.lib')) -and -not (Test-Path (Join-Path $lib 'curl.lib'))) {
         Copy-Item (Join-Path $lib 'libcurl.lib') (Join-Path $lib 'curl.lib')
     }
-    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\libcurl.dll') @('z.dll', 'zstd', 'brotlidec') 'curl'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\libcurl.dll') @((Get-ZlibDll), 'zstd', 'brotlidec') 'curl'
     Done-Stamp 'curl'
 }
 
@@ -2865,8 +2902,9 @@ function Build-Fitsio {
 function Build-Hdf5 {
     if (Skip-If-Done 'hdf5') { return }
     Log '=== hdf5'
-    $zlib = Join-Path $LIW_PREFIX 'lib\z.lib'
+    $zlib = Get-ZlibImportLib
     if (-not (Test-Path $zlib)) { Die "hdf5: zlib's import library is not at $zlib" }
+    $zlib = $zlib -replace '\\', '/'
     $src = Git-Clone 'https://github.com/HDFGroup/hdf5.git' "hdf5-$(V hdf5)" (Join-Path $LIW_SRC 'hdf5')
     Cmake-Build $src @('-DDEFAULT_API_VERSION=v18', '-DHDF5_BUILD_EXAMPLES=OFF', '-DHDF5_BUILD_FORTRAN=OFF',
         '-DHDF5_ENABLE_PARALLEL=OFF', '-DHDF5_ENABLE_Z_LIB_SUPPORT=ON', '-DHDF5_BUILD_GENERATORS=ON',
@@ -2879,10 +2917,10 @@ function Build-Hdf5 {
         # package name nothing matches makes it fall through to the
         # module find and the presets below.
         '-DZLIB_PACKAGE_NAME=zlib-no-config',
-        "-DZLIB_LIBRARY=$script:CmakePrefix/lib/z.lib", "-DZLIB_LIBRARIES=$script:CmakePrefix/lib/z.lib",
+        "-DZLIB_LIBRARY=$zlib", "-DZLIB_LIBRARIES=$zlib",
         "-DZLIB_INCLUDE_DIR=$script:CmakePrefix/include")
     Assert-Files (Join-Path $LIW_PREFIX 'bin') @('hdf5.dll', 'hdf5_cpp.dll', 'hdf5_hl.dll') 'hdf5'
-    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\hdf5.dll') @('z.dll') 'hdf5'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\hdf5.dll') @((Get-ZlibDll)) 'hdf5'
     Done-Stamp 'hdf5'
 }
 
@@ -3165,7 +3203,7 @@ open(path, "w").write(s)
     # so link.exe records no import for it, where the autotools builds
     # carry a -lzstd whether used or not.
     Assert-DependentStems (Join-Path $LIW_PREFIX "bin\$core.dll") @(
-        'freetype', 'fontconfig', 'libxml2', 'z.dll', 'libpng16', 'jpeg62', 'tiff', 'libwebp', 'heif', 'jxl',
+        'freetype', 'fontconfig', 'libxml2', (Get-ZlibDll), 'libpng16', 'jpeg62', 'tiff', 'libwebp', 'heif', 'jxl',
         'libraw', 'rsvg-2', 'openjp2', 'lcms2', 'fftw3', 'zip', 'liblzma', 'bz2', 'OpenEXR',
         'pangocairo', 'cairo', 'vcomp140') 'imagemagick'
     Done-Stamp 'imagemagick'
@@ -3227,7 +3265,7 @@ open(path, "w").write(s)
     Assert-DependentStems $dll.FullName @(
         'cfitsio', 'exif', 'fftw3', 'archive', 'heif', 'imagequant', 'jpeg62', 'jxl', 'lcms2', 'libmatio',
         'MagickCore', 'niftiio', 'OpenEXR', 'openjp2', 'libopenslide', 'hwy', 'pangocairo', 'libpng16',
-        'poppler-glib', 'libraw', 'rsvg-2', 'tiff', 'libwebp', 'z.dll', 'glib-2.0', 'gobject-2.0') 'libvips'
+        'poppler-glib', 'libraw', 'rsvg-2', 'tiff', 'libwebp', (Get-ZlibDll), 'glib-2.0', 'gobject-2.0') 'libvips'
     Done-Stamp 'libvips'
 }
 
@@ -3384,7 +3422,7 @@ function Build-Openssl {
     Push-Location $src
     try {
         Run-Logged 'perl' @('Configure', 'VC-WIN64A', "--prefix=$LIW_PREFIX", "--openssldir=$LIW_PREFIX\ssl",
-            'shared', 'zlib', "--with-zlib-include=$LIW_PREFIX\include", "--with-zlib-lib=$LIW_PREFIX\lib\z.lib",
+            'shared', 'zlib', "--with-zlib-include=$LIW_PREFIX\include", "--with-zlib-lib=$(Get-ZlibImportLib)",
             'no-tests') 'openssl Configure'
         Run-Logged 'nmake' @('/nologo') 'nmake of openssl'
         Run-Logged 'nmake' @('/nologo', 'install_sw') 'nmake install_sw of openssl'
@@ -3401,7 +3439,7 @@ function Build-Openssl {
     Write-PkgConfig 'libcrypto' 'OpenSSL cryptography library' '3.6.2' '-llibcrypto'
     Write-PkgConfig 'libssl' 'Secure Sockets Layer and cryptography libraries' '3.6.2' '-llibssl -llibcrypto'
     Write-PkgConfig 'openssl' 'Secure Sockets Layer and cryptography libraries and tools' '3.6.2' '-llibssl -llibcrypto'
-    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\libcrypto-3-x64.dll') @('z.dll') 'openssl'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\libcrypto-3-x64.dll') @((Get-ZlibDll)) 'openssl'
     Done-Stamp 'openssl'
 }
 
@@ -3557,7 +3595,7 @@ function Build-Blosc {
         '-DBUILD_TESTS=OFF', '-DPREFER_EXTERNAL_LZ4=ON', '-DPREFER_EXTERNAL_ZLIB=ON', '-DPREFER_EXTERNAL_ZSTD=ON',
         '-DDEACTIVATE_SNAPPY=OFF', '-DCMAKE_POLICY_VERSION_MINIMUM=3.5')
     Assert-Files (Join-Path $LIW_PREFIX 'bin') @('blosc.dll') 'blosc'
-    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\blosc.dll') @('lz4', 'zstd', 'z.dll') 'blosc'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\blosc.dll') @('lz4', 'zstd', (Get-ZlibDll)) 'blosc'
     Done-Stamp 'blosc'
 }
 
@@ -3602,11 +3640,12 @@ function Build-Hdf4 {
     if (Skip-If-Done 'hdf4') { return }
     Log '=== hdf4'
     $src = Git-Clone 'https://github.com/HDFGroup/hdf4.git' "hdf-$(V hdf4)" (Join-Path $LIW_SRC 'hdf4')
+    $zlib = (Get-ZlibImportLib) -replace '\\', '/'
     Cmake-Build $src @('-DHDF4_BUILD_FORTRAN=OFF', '-DHDF4_ENABLE_NETCDF=OFF', '-DHDF4_ENABLE_Z_LIB_SUPPORT=ON',
         '-DHDF4_ENABLE_JPEG_SUPPORT=ON', '-DHDF4_DISABLE_COMPILER_WARNINGS=ON', '-DBUILD_TESTING=OFF',
         '-DHDF4_BUILD_TOOLS=OFF', '-DHDF4_BUILD_UTILS=OFF', '-DHDF4_BUILD_EXAMPLES=OFF',
         '-DZLIB_PACKAGE_NAME=zlib-no-config', '-DJPEG_PACKAGE_NAME=jpeg-no-config',
-        "-DZLIB_LIBRARY=$script:CmakePrefix/lib/z.lib", "-DZLIB_LIBRARIES=$script:CmakePrefix/lib/z.lib",
+        "-DZLIB_LIBRARY=$zlib", "-DZLIB_LIBRARIES=$zlib",
         "-DZLIB_INCLUDE_DIR=$script:CmakePrefix/include",
         "-DJPEG_LIBRARY=$script:CmakePrefix/lib/jpeg.lib", "-DJPEG_LIBRARIES=$script:CmakePrefix/lib/jpeg.lib",
         "-DJPEG_INCLUDE_DIR=$script:CmakePrefix/include")
@@ -4286,7 +4325,7 @@ open(path, "w").write(s)
         'geos_c', 'proj', 'libcurl', 'tiff', 'libpng16', 'jpeg62', 'openjp2', 'libwebp', 'heif', 'avif', 'jxl',
         'poppler', 'cfitsio', 'hdf5', 'netcdf', 'libmysql', 'libpq', 'freexl', 'spatialite', 'rasterlite2',
         'geotiff', 'xerces-c', 'libexpat', 'libxml2', 'json-c', 'gta', 'libkea', 'blosc', 'archive', 'gif',
-        'deflate', 'zstd', 'liblzma', 'z.dll', 'sqlite3', 'libcrypto', 'libssl', 'OpenEXR', 'Lerc', 'lti_dsdk',
+        'deflate', 'zstd', 'liblzma', (Get-ZlibDll), 'sqlite3', 'libcrypto', 'libssl', 'OpenEXR', 'Lerc', 'lti_dsdk',
         'iconv', 'vcomp140') 'gdal'
     Done-Stamp 'gdal'
 }
@@ -5344,7 +5383,7 @@ open(path, "w").write(s)
             '^pylibtiff\.libs/zstd-[0-9a-f]+\.dll$',
             '^pylibtiff\.libs/libwebp-[0-9a-f]+\.dll$',
             '^pylibtiff\.libs/deflate-[0-9a-f]+\.dll$',
-            '^pylibtiff\.libs/z-[0-9a-f]+\.dll$',
+            "^pylibtiff\.libs/$([regex]::Escape([System.IO.Path]::GetFileNameWithoutExtension((Get-ZlibDll))))-[0-9a-f]+\.dll$",
             '^pylibtiff\.libs/vcruntime140\.dll$',
             '^pylibtiff\.libs/tiffinfo\.exe$',
             '^libtiff/bin/tiffinfo\.exe$') 'pylibtiff'
@@ -6764,7 +6803,7 @@ import _pylibmc
             "${platlib}libmemcached-[0-9a-f]+\.dll$",
             "${platlib}sasl2-[0-9a-f]+\.dll$",
             "${platlib}libcrypto-3-x64-[0-9a-f]+\.dll$",
-            "${platlib}z-[0-9a-f]+\.dll$",
+            "${platlib}$([regex]::Escape([System.IO.Path]::GetFileNameWithoutExtension((Get-ZlibDll))))-[0-9a-f]+\.dll$",
             '^pylibmc/sasl2/saslPLAIN\.dll$',
             '^pylibmc/sasl2/saslSCRAM\.dll$',
             '^pylibmc/sasl2/saslDIGESTMD5\.dll$',
