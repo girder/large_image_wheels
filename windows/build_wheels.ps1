@@ -1918,11 +1918,11 @@ function Build-Libtiff {
     # try_compile as a string with escape sequences and broke configure.
     Cmake-Build $src @(
         '-Dzlib=ON', '-Djpeg=ON', '-Djbig=ON', '-Dzstd=ON', '-Dwebp=ON',
-        '-Ddeflate=ON', '-Dlibdeflate=ON',
+        '-Ddeflate=ON', '-Dlibdeflate=ON', '-Dlerc=ON',
         "-DJBIG_LIBRARY=$script:CmakePrefix/lib/libjbig.lib",
         "-DJBIG_INCLUDE_DIR=$script:CmakePrefix/include")
     # Feature assertions: the linux wheels' libtiff links zlib, jpeg, zstd,
-    # webp, and libdeflate, and statically embeds jbig.  A missing optional
+    # webp, libdeflate, and lerc, and statically embeds jbig.  A missing optional
     # dependency at configure time would otherwise silently reduce the
     # feature set.
     $tiffconf = Join-Path $LIW_PREFIX 'include\tiffconf.h'
@@ -1935,7 +1935,7 @@ function Build-Libtiff {
     # below instead.
     $conf = Get-Content $tiffconf -Raw
     foreach ($feature in @('ZIP_SUPPORT', 'JPEG_SUPPORT', 'JBIG_SUPPORT',
-                           'LIBDEFLATE_SUPPORT')) {
+                           'LIBDEFLATE_SUPPORT', 'LERC_SUPPORT')) {
         if ($conf -notmatch "(?m)^#define\s+$feature\b") {
             Die ("libtiff: $feature is not enabled in tiffconf.h (an " +
                 'optional dependency was not found at configure time)')
@@ -1951,7 +1951,7 @@ function Build-Libtiff {
     # deflate.dll, liblzma.dll; zlib's is read from its import library.
     Assert-Dependents $tiffDll.FullName @(
         'jpeg62.dll', (Get-ZlibDll), 'zstd.dll', 'libwebp.dll',
-        'deflate.dll') 'libtiff'
+        'deflate.dll', 'Lerc.dll') 'libtiff'
     Done-Stamp 'libtiff'
 }
 
@@ -2050,8 +2050,8 @@ function Build-Libexpat {
 }
 
 # glib builds pcre2 and libffi from its own subproject wraps, statically
-# into its DLLs (the macos build does the same for pcre2); the linux
-# build's util-linux (libmount) and gettext have no Windows counterpart,
+# into its DLLs (the macos build does the same for pcre2); libmount is
+# disabled on linux too, gettext has no Windows counterpart,
 # and nls is off like on macos.
 function Build-Glib {
     if (Skip-If-Done 'glib') { return }
@@ -2677,13 +2677,17 @@ function Build-Libraw {
     foreach ($lib in @('lcms2.lib', 'jpeg.lib')) {
         if (-not (Test-Path (Join-Path $LIW_PREFIX "lib\$lib"))) { Die "libraw: $lib is not in the prefix" }
     }
+    # zlib (deflate-compressed DNG, which the linux and macos libraw read)
+    # rides on the JPEG variables: Makefile.msvc has none of its own, and
+    # its compile flags include $(JPEG_DEF) and its DLL link $(JPEG_LIB).
+    $zlib = Get-ZlibImportLib
     Push-Location $src
     try {
         Run-Logged 'nmake' @('/nologo', '/f', 'Makefile.msvc',
             "LCMS_DEF=/DUSE_LCMS2 /DCMS_DLL /I$LIW_PREFIX\include",
             "LCMS_LIB=$LIW_PREFIX\lib\lcms2.lib",
-            "JPEG_DEF=/DUSE_JPEG /I$LIW_PREFIX\include",
-            "JPEG_LIB=$LIW_PREFIX\lib\jpeg.lib",
+            "JPEG_DEF=/DUSE_JPEG /DUSE_ZLIB /I$LIW_PREFIX\include",
+            "JPEG_LIB=$LIW_PREFIX\lib\jpeg.lib $zlib",
             'bin\libraw.dll') 'nmake of libraw'
     } finally {
         Pop-Location
@@ -2701,7 +2705,7 @@ function Build-Libraw {
     Write-PkgConfig 'libraw' 'Raw image decoder library' (V libraw) '-llibraw' '-I${includedir}/libraw'
     Write-PkgConfig 'libraw_r' 'Raw image decoder library (thread-safe)' (V libraw) '-llibraw' '-I${includedir}/libraw'
     Assert-Files (Join-Path $LIW_PREFIX 'bin') @('libraw.dll') 'libraw'
-    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\libraw.dll') @('lcms2', 'jpeg62') 'libraw'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\libraw.dll') @('lcms2', 'jpeg62', (Get-ZlibDll)) 'libraw'
     Done-Stamp 'libraw'
 }
 
@@ -2823,6 +2827,22 @@ function Build-Libheif {
 # Schannel, so no OpenSSL is built: the linux and macos builds use
 # OpenSSL, but the machine's TLS stack and certificate store are what a
 # Windows user expects, and it keeps one large library out of the tree.
+# libssh2 for curl's SFTP and SCP protocols (the Dockerfile builds it for
+# curl too).  WinCNG, the Windows crypto API, is the crypto backend, so it
+# needs no OpenSSL (the pyvips package list builds none).
+function Build-Libssh2 {
+    if (Skip-If-Done 'libssh2') { return }
+    Log '=== libssh2'
+    $src = Git-Clone 'https://github.com/libssh2/libssh2.git' "libssh2-$(V libssh2)" (Join-Path $LIW_SRC 'libssh2')
+    $zlib = (Get-ZlibImportLib) -replace '\\', '/'
+    Cmake-Build $src @('-DBUILD_SHARED_LIBS=ON', '-DBUILD_STATIC_LIBS=OFF', '-DBUILD_EXAMPLES=OFF',
+        '-DBUILD_TESTING=OFF', '-DCRYPTO_BACKEND=WinCNG', '-DENABLE_ZLIB_COMPRESSION=ON',
+        "-DZLIB_LIBRARY=$zlib", "-DZLIB_INCLUDE_DIR=$script:CmakePrefix/include")
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('libssh2.dll') 'libssh2'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\libssh2.dll') @((Get-ZlibDll), 'bcrypt') 'libssh2'
+    Done-Stamp 'libssh2'
+}
+
 function Build-Curl {
     if (Skip-If-Done 'curl') { return }
     Log '=== curl'
@@ -2833,7 +2853,7 @@ function Build-Curl {
         'curl.tar.gz' (Join-Path $LIW_SRC 'curl')
     Cmake-Build $src @('-DBUILD_SHARED_LIBS=ON', '-DBUILD_STATIC_LIBS=OFF', '-DBUILD_TESTING=OFF',
         '-DBUILD_CURL_EXE=OFF', '-DCURL_USE_SCHANNEL=ON', '-DCURL_USE_LIBPSL=OFF', '-DUSE_LIBIDN2=OFF',
-        '-DCURL_USE_LIBSSH2=OFF', '-DCURL_ZLIB=ON', '-DCURL_ZSTD=ON', '-DCURL_BROTLI=ON',
+        '-DUSE_WIN32_IDN=ON', '-DCURL_USE_LIBSSH2=ON', '-DCURL_ZLIB=ON', '-DCURL_ZSTD=ON', '-DCURL_BROTLI=ON',
         '-DBUILD_LIBCURL_DOCS=OFF', '-DBUILD_MISC_DOCS=OFF', '-DENABLE_CURL_MANUAL=OFF',
         '-DIMPORT_LIB_SUFFIX=')
     Assert-Files (Join-Path $LIW_PREFIX 'bin') @('libcurl.dll') 'curl'
@@ -2844,7 +2864,7 @@ function Build-Curl {
     if ((Test-Path (Join-Path $lib 'libcurl.lib')) -and -not (Test-Path (Join-Path $lib 'curl.lib'))) {
         Copy-Item (Join-Path $lib 'libcurl.lib') (Join-Path $lib 'curl.lib')
     }
-    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\libcurl.dll') @((Get-ZlibDll), 'zstd', 'brotlidec') 'curl'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\libcurl.dll') @((Get-ZlibDll), 'zstd', 'brotlidec', 'libssh2', 'Normaliz') 'curl'
     Done-Stamp 'curl'
 }
 
@@ -2891,6 +2911,23 @@ function Build-Fitsio {
     Done-Stamp 'fitsio'
 }
 
+# szip compression for hdf5 (libaec provides the szip API; MSVC names the
+# DLLs aec.dll and szip.dll).  As on linux and macos, it is built before
+# hdf5, which only enables szip if its find_package(libaec CONFIG)
+# succeeds.  libaec's cmake links the aec objects into szip.dll itself
+# (sz-shared-objects + aec-shared-objects), so szip.dll does not import
+# aec.dll; it is self-contained, as libsz.so is on linux.  hdf5.dll's
+# import of szip and H5pubconf.h are what Build-Hdf5 asserts.
+function Build-Libaec {
+    if (Skip-If-Done 'libaec') { return }
+    Log '=== libaec'
+    $src = Git-Clone 'https://github.com/MathisRosenhauer/libaec.git' "v$(V libaec)" (Join-Path $LIW_SRC 'libaec')
+    Cmake-Build $src @('-DBUILD_SHARED_LIBS=ON', '-DBUILD_STATIC_LIBS=OFF', '-DBUILD_TESTING=OFF')
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('aec.dll', 'szip.dll') 'libaec'
+    Assert-Files (Join-Path $LIW_PREFIX 'lib\cmake\libaec') @('libaec-config.cmake') 'libaec'
+    Done-Stamp 'libaec'
+}
+
 # hdf5 without MPI: there is no OpenMPI on Windows (MS-MPI needs an
 # installer), and parallel hdf5 only matters for the parallel netcdf of
 # the GDAL tree.  The threadsafe + C++ combination needs ALLOW_UNSUPPORTED
@@ -2918,9 +2955,14 @@ function Build-Hdf5 {
         # module find and the presets below.
         '-DZLIB_PACKAGE_NAME=zlib-no-config',
         "-DZLIB_LIBRARY=$zlib", "-DZLIB_LIBRARIES=$zlib",
-        "-DZLIB_INCLUDE_DIR=$script:CmakePrefix/include")
+        "-DZLIB_INCLUDE_DIR=$script:CmakePrefix/include",
+        # szip through libaec (Build-Libaec runs first)
+        '-DHDF5_ENABLE_SZIP_SUPPORT=ON', '-DHDF5_ENABLE_SZIP_ENCODING=ON')
     Assert-Files (Join-Path $LIW_PREFIX 'bin') @('hdf5.dll', 'hdf5_cpp.dll', 'hdf5_hl.dll') 'hdf5'
-    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\hdf5.dll') @((Get-ZlibDll)) 'hdf5'
+    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\hdf5.dll') @((Get-ZlibDll), 'szip') 'hdf5'
+    if (-not (Select-String -Path (Join-Path $LIW_PREFIX 'include\H5pubconf.h') -Pattern 'H5_HAVE_FILTER_SZIP 1' -SimpleMatch -Quiet)) {
+        Die 'hdf5 was built without szip (check that Build-Libaec ran first)'
+    }
     Done-Stamp 'hdf5'
 }
 
@@ -3453,6 +3495,8 @@ function Build-Json-C {
     Done-Stamp 'json-c'
 }
 
+# lerc: LERC compression in libtiff (every package list builds it before
+# Build-Libtiff, as the Dockerfile does) and GDAL's GDAL_USE_LERC.
 function Build-Lerc {
     if (Skip-If-Done 'lerc') { return }
     Log '=== lerc'
@@ -3657,7 +3701,10 @@ function Build-Hdf4 {
 # netcdf (the netCDF driver), serial: no OpenMPI on Windows, so no
 # parallel hdf5 and no parallel-netcdf (the one deviation from the linux
 # final state; HDF4 in netcdf is inert there too).  DAP, byte-range and
-# NCZarr on, as on linux; no utilities, tests, examples or plugins.
+# NCZarr on, as on linux; no utilities, tests or examples.  The HDF5
+# filter plugins (zstd, bzip2, blosc) are installed to
+# <prefix>\hdf5\lib\plugin for Build-GdalPython to bundle; netcdf only
+# builds the blosc one if it finds blosc, so Build-Blosc runs first.
 function Build-Netcdf {
     if (Skip-If-Done 'netcdf') { return }
     Log '=== netcdf'
@@ -3672,11 +3719,12 @@ open(path, "w").write(s)
     Cmake-Build $src @('-DBUILD_SHARED_LIBS=ON', '-DNETCDF_ENABLE_TESTS=OFF', '-DNETCDF_ENABLE_EXAMPLES=OFF',
         '-DNETCDF_BUILD_UTILITIES=OFF', '-DNETCDF_ENABLE_DAP=ON', '-DNETCDF_ENABLE_BYTERANGE=ON',
         '-DNETCDF_ENABLE_HDF5=ON', '-DNETCDF_ENABLE_NCZARR=ON', '-DNETCDF_ENABLE_HDF4=OFF',
-        '-DNETCDF_ENABLE_PNETCDF=OFF', '-DNETCDF_ENABLE_PARALLEL4=OFF', '-DNETCDF_ENABLE_PLUGINS=OFF',
+        '-DNETCDF_ENABLE_PNETCDF=OFF', '-DNETCDF_ENABLE_PARALLEL4=OFF', '-DNETCDF_ENABLE_PLUGINS=ON', '-DNETCDF_PLUGIN_INSTALL=ON',
         '-DNETCDF_ENABLE_FILTER_TESTING=OFF', '-DNETCDF_ENABLE_UNIT_TESTS=OFF', '-DNETCDF_ENABLE_DAP_REMOTE_TESTS=OFF')
     Assert-Files (Join-Path $LIW_PREFIX 'bin') @('netcdf.dll') 'netcdf'
     Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('netcdf.pc') 'netcdf'
     Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\netcdf.dll') @('hdf5', 'libcurl') 'netcdf'
+    Assert-Files (Join-Path $LIW_PREFIX 'hdf5\lib\plugin') @('__nch5zstd.dll', '__nch5bzip2.dll', '__nch5blosc.dll') 'netcdf'
     Done-Stamp 'netcdf'
 }
 
@@ -4370,6 +4418,7 @@ def program():
     datapath = os.path.dirname(localpath)
     environ.setdefault("PROJ_DATA", os.path.join(datapath, "proj"))
     environ.setdefault("GDAL_DATA", os.path.join(datapath, "gdal"))
+    environ["HDF5_PLUGIN_PATH"] = os.pathsep.join([p for p in (environ.get("HDF5_PLUGIN_PATH"), os.path.join(datapath, "hdf5plugin")) if p])
     name = os.path.splitext(os.path.basename(sys.argv[0]))[0]
     if name == "gdal-config":
         sys.exit(_config(os.path.join(localpath, "gdal-config"), sys.argv[1:]))
@@ -4398,6 +4447,13 @@ function Build-GdalPython {
         if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
         Copy-Item (Join-Path $LIW_PREFIX "share\$data") $dest -Recurse
     }
+    # The netcdf HDF5 filter plugins (zstd, bzip2, blosc): delvewheel's
+    # --analyze-existing bundles their imports, and osgeo/__init__.py adds
+    # the directory to HDF5_PLUGIN_PATH.
+    $hdf5PluginDir = Join-Path $src 'osgeo\hdf5plugin'
+    if (Test-Path $hdf5PluginDir) { Remove-Item -Recurse -Force $hdf5PluginDir }
+    New-Item -ItemType Directory -Force -Path $hdf5PluginDir | Out-Null
+    Copy-Item (Join-Path $LIW_PREFIX 'hdf5\lib\plugin\*.dll') $hdf5PluginDir
     $binDir = Join-Path $src 'osgeo\bin'
     if (Test-Path $binDir) { Remove-Item -Recurse -Force $binDir }
     New-Item -ItemType Directory -Force -Path $binDir | Out-Null
@@ -4435,7 +4491,7 @@ data = re.sub(r"gdal_version = '\d+.\d+.\d+(dev|)'", "gdal_version = '" + versio
 data = data.replace(
     "scripts/*.py'),",
     """scripts/*.py'),
-    package_data={'osgeo': ['proj/*', 'gdal/*', 'bin/*']},""")
+    package_data={'osgeo': ['proj/*', 'gdal/*', 'bin/*', 'hdf5plugin/*']},""")
 scripts = "['%s=osgeo.bin:program' % os.path.splitext(name)[0] for name in os.listdir('osgeo/bin') if not name.endswith('.py')]"
 data = data.replace("console_scripts = []", "console_scripts = " + scripts)
 if "console_scripts" not in data:
@@ -4465,10 +4521,30 @@ s = s.replace(
 
 import os
 import re
+
+_localpath = os.path.dirname(os.path.abspath(__file__))
+# HDF5 and netCDF read HDF5_PLUGIN_PATH when they initialize, so it is set
+# before the libraries load.  The bundled filter plugins are appended, so a
+# path the user set is searched first.
+_pluginpath = os.path.join(_localpath, "hdf5plugin")
+if _pluginpath not in os.environ.get("HDF5_PLUGIN_PATH", "").split(os.pathsep):
+    os.environ["HDF5_PLUGIN_PATH"] = os.pathsep.join([p for p in (os.environ.get("HDF5_PLUGIN_PATH"), _pluginpath) if p])
 from . import osr
 from . import gdal
 
-_localpath = os.path.dirname(os.path.abspath(__file__))
+# HDF5 loads a plugin with LoadLibraryEx(LOAD_WITH_ALTERED_SEARCH_PATH),
+# which does not search the add_dll_directory list delvewheel puts
+# gdal.libs on, so a plugin import that is not loaded yet (bz2) would not
+# resolve.  ctypes does search that list: load the plugins here, and
+# HDF5's later load of the same files gets these modules.
+import ctypes
+_hdf5plugins = []
+for _name in (os.listdir(_pluginpath) if os.path.isdir(_pluginpath) else []):
+    if _name.lower().endswith(".dll"):
+        try:
+            _hdf5plugins.append(ctypes.CDLL(os.path.join(_pluginpath, _name)))
+        except OSError:
+            pass
 osr.SetPROJSearchPaths([os.path.join(_localpath, "proj")])
 gdal.SetConfigOption("GDAL_DATA", os.path.join(_localpath, "gdal"))
 os.environ.setdefault("CPL_LOG", os.devnull)
@@ -4497,7 +4573,8 @@ atexit.register(gdal.SetErrorHandler, "CPLDefaultErrorHandler")
 """)
 open(path, "w").write(s)
 '@
-    foreach ($check in @(@('osgeo\__init__.py', 'GDAL_LIBRARY_PATH'), @('setup.py', 'osgeo.bin:program'),
+    foreach ($check in @(@('osgeo\__init__.py', 'GDAL_LIBRARY_PATH'), @('osgeo\__init__.py', 'HDF5_PLUGIN_PATH'),
+                         @('setup.py', 'osgeo.bin:program'),
                          @('setup.py', "package_data={'osgeo'"))) {
         if (-not (Select-String -Path (Join-Path $src $check[0]) -Pattern ([regex]::Escape($check[1])) -Quiet)) {
             Die "gdal python: the $($check[0]) patch did not apply ($($check[1]) missing)"
@@ -4533,7 +4610,7 @@ open(path, "w").write(s)
         Run-Logged $pp @(
             '-m', 'delvewheel', 'repair', '-w', $WheelsDir,
             '--add-path', "$prefixBin;$script:VcRedist;$script:VcOpenMP",
-            '--analyze-existing-exes',
+            '--analyze-existing', '--analyze-existing-exes',
             '--include', 'vcruntime140.dll;vcruntime140_1.dll',
             '--exclude', 'gdiplus.dll',
             '--no-mangle', 'vcruntime140.dll;vcruntime140_1.dll',
@@ -4562,6 +4639,9 @@ open(path, "w").write(s)
             '^osgeo/bin/gdal-config$',
             '^osgeo/proj/proj\.db$',
             '^osgeo/gdal/gdalvrt\.xsd$',
+            '^osgeo/hdf5plugin/__nch5zstd\.dll$',
+            '^osgeo/hdf5plugin/__nch5bzip2\.dll$',
+            '^osgeo/hdf5plugin/__nch5blosc\.dll$',
             '^osgeo/_gdal_array.*\.pyd$',
             '^osgeo/_gdal.*\.pyd$') 'gdal'
         Move-Item $out (Join-Path $WheelsDir ($whl.Name -replace '^gdal-', 'GDAL-')) -Force
@@ -4903,6 +4983,7 @@ def program():
     # The data directories are copied beside bin, not into it
     environ.setdefault("PROJ_DATA", os.path.join(os.path.dirname(localpath), "proj"))
     environ.setdefault("GDAL_DATA", os.path.join(os.path.dirname(localpath), "gdal"))
+    environ["HDF5_PLUGIN_PATH"] = os.pathsep.join([p for p in (environ.get("HDF5_PLUGIN_PATH"), os.path.join(os.path.dirname(localpath), "hdf5plugin")) if p])
     name = os.path.splitext(os.path.basename(sys.argv[0]))[0]
     sys.exit(subprocess.call([os.path.join(localpath, name + ".exe")] + sys.argv[1:], env=environ))
 '@
@@ -4960,6 +5041,12 @@ function Build-MapnikPython {
     foreach ($data in @('proj', 'gdal')) {
         Copy-Item (Join-Path $LIW_PREFIX "share\$data") (Join-Path $pkg $data) -Recurse -Force
     }
+    # The netcdf HDF5 filter plugins, as in the GDAL wheel (delvewheel's
+    # --analyze-existing bundles their imports; the python-mapnik.patch
+    # __init__.py adds the directory to HDF5_PLUGIN_PATH).
+    $hdf5PluginDir = Join-Path $pkg 'hdf5plugin'
+    New-Item -ItemType Directory -Force -Path $hdf5PluginDir | Out-Null
+    Copy-Item (Join-Path $LIW_PREFIX 'hdf5\lib\plugin\*.dll') $hdf5PluginDir
     $binDir = Join-Path $pkg 'bin'
     New-Item -ItemType Directory -Force -Path $binDir | Out-Null
     foreach ($tool in @('mapnik-render', 'mapnik-index', 'shapeindex')) {
@@ -5037,17 +5124,31 @@ open(path, "w", encoding="utf-8").write(
     s.replace(old, "if (!mapnik::util::to_wkt(wkt, mapnik::geometry::geometry<double>(geom)))"))
 '@
     # Windows: the bundled libgdal preload finds gdal-<hash>.dll (the
-    # linux name is libgdal*).
+    # linux name is libgdal*), and the HDF5 filter plugins are loaded
+    # through ctypes (see the osgeo/__init__.py patch in Build-GdalPython:
+    # HDF5's own LoadLibraryEx does not search mapnik.libs).
     Invoke-Patch $src 'mapnik_init' @'
 path = "packaging/mapnik/__init__.py"
 s = open(path, encoding="utf-8").read()
 old = "libgdalpath = [lib for lib in libs if lib.startswith('libgdal')][0]"
 assert old in s, "the linux __init__.py patch changed"
 s = s.replace(old, "libgdalpath = [lib for lib in libs if lib.startswith(('libgdal', 'gdal-'))][0]")
+old = "\n\ndef bootstrap_env():"
+assert old in s, "the linux __init__.py patch changed (bootstrap_env)"
+s = s.replace(old, '''
+_hdf5plugins = []
+for _name in (os.listdir(_pluginpath) if os.path.isdir(_pluginpath) else []):
+    if _name.lower().endswith(".dll"):
+        try:
+            _hdf5plugins.append(ctypes.CDLL(os.path.join(_pluginpath, _name)))
+        except OSError:
+            pass
+''' + old, 1)
 open(path, "w", encoding="utf-8").write(s)
 '@
     foreach ($check in @(@('pyproject.toml', "version = `"$mapnikVersion.2`""), @('pyproject.toml', 'dynamic = ['),
-                         @('setup.py', '--msvc-syntax'), @('packaging\mapnik\__init__.py', "'gdal-'"))) {
+                         @('setup.py', '--msvc-syntax'), @('packaging\mapnik\__init__.py', "'gdal-'"),
+                         @('packaging\mapnik\__init__.py', '_hdf5plugins'), @('setup.py', "'hdf5plugin/*'"))) {
         if (-not (Select-String -Path (Join-Path $src $check[0]) -Pattern ([regex]::Escape($check[1])) -Quiet)) {
             Die "mapnik python: the $($check[0]) patch did not apply ($($check[1]) missing)"
         }
@@ -5096,6 +5197,8 @@ open(path, "w", encoding="utf-8").write(s)
             '^mapnik/fonts/.*\.ttf$',
             '^mapnik/proj/proj\.db$',
             '^mapnik/gdal/gdalvrt\.xsd$',
+            '^mapnik/hdf5plugin/__nch5zstd\.dll$',
+            '^mapnik/hdf5plugin/__nch5blosc\.dll$',
             '^mapnik/_mapnik.*\.pyd$') 'mapnik'
     }
     $repaired = @(Get-ChildItem -Path $WheelsDir -Filter 'mapnik-*win_amd64*.whl' -File)
@@ -6871,6 +6974,7 @@ function Main {
                 Build-Libjpeg-Turbo
                 Build-Libdeflate
                 Build-Xz
+                Build-Lerc
                 Build-Libtiff
                 Build-Pylibtiff
             }
@@ -6882,6 +6986,7 @@ function Main {
                 Build-Libjpeg-Turbo
                 Build-Libdeflate
                 Build-Xz
+                Build-Lerc
                 Build-Libtiff
                 Build-Lcms2
                 Build-Libpng
@@ -6899,6 +7004,7 @@ function Main {
                 Build-Libjpeg-Turbo
                 Build-Libdeflate
                 Build-Xz
+                Build-Lerc
                 Build-Libtiff
                 Build-Lcms2
                 Build-Libpng
@@ -6927,6 +7033,7 @@ function Main {
                 Build-Libdeflate
                 Build-Xz
                 Build-Libzip
+                Build-Lerc
                 Build-Libtiff
                 Build-Lcms2
                 Build-Libpng
@@ -6957,9 +7064,11 @@ function Main {
                 Build-Librsvg
                 Build-Libde265
                 Build-Libheif
+                Build-Libssh2
                 Build-Curl
                 Build-Poppler
                 Build-Fitsio
+                Build-Libaec
                 Build-Hdf5
                 Build-Matio
                 Build-Imagemagick
@@ -6982,10 +7091,12 @@ function Main {
                 Build-Libjpeg-Turbo
                 Build-Libdeflate
                 Build-Xz
+                Build-Lerc
                 Build-Libtiff
                 Build-Giflib
                 Build-Openssl
                 Build-Libbrotli
+                Build-Libssh2
                 Build-Curl
                 Build-Json-C
                 Build-Lerc
@@ -7015,13 +7126,14 @@ function Main {
                 Build-Librasterlite2
                 Build-Fyba
                 Build-Hdf4
+                Build-Libaec
                 Build-Hdf5
+                Build-Blosc
                 Build-Netcdf
                 Build-Mysql
                 Build-Postgresql
                 Build-Libgta
                 Build-Xerces-C
-                Build-Blosc
                 Build-Highfive
                 Build-Kealib
                 Build-Libde265
@@ -7051,10 +7163,12 @@ function Main {
                 Build-Libjpeg-Turbo
                 Build-Libdeflate
                 Build-Xz
+                Build-Lerc
                 Build-Libtiff
                 Build-Giflib
                 Build-Openssl
                 Build-Libbrotli
+                Build-Libssh2
                 Build-Curl
                 Build-Json-C
                 Build-Lerc
@@ -7084,13 +7198,14 @@ function Main {
                 Build-Librasterlite2
                 Build-Fyba
                 Build-Hdf4
+                Build-Libaec
                 Build-Hdf5
+                Build-Blosc
                 Build-Netcdf
                 Build-Mysql
                 Build-Postgresql
                 Build-Libgta
                 Build-Xerces-C
-                Build-Blosc
                 Build-Highfive
                 Build-Kealib
                 Build-Libde265
