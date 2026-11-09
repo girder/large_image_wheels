@@ -5405,19 +5405,35 @@ open(path, "w").write(s)
 
     # Generate the tiff header companion file (needs numpy present; the
     # prefix bin dir is on PATH so the generation run finds our libtiff;
-    # wheels never rely on that PATH).
+    # wheels never rely on that PATH).  The VC++ redist directory goes on
+    # PATH too: tiff.dll imports Lerc.dll, which is C++ and imports
+    # msvcp140.dll, which python does not ship (the wheels get it from
+    # delvewheel).  Without it the load failed, pylibtiff skipped the
+    # generation, and every wheel shipped without tiff_h_<version>.py.  The
+    # generation's exit code is tolerated, but the file must exist.
     & $pp -m pip install --quiet --no-warn-script-location numpy | Out-Null
     Assert-Exit 'pip install of numpy failed'
     Push-Location $src
+    $prevPath = $env:PATH
+    $prevEap = $ErrorActionPreference
     try {
+        $env:PATH = "$script:VcRedist;$env:PATH"
         $env:TIFF_HEADER_PATH = Join-Path $src 'libtiff\libtiff\tiff.h'
-        & $pp libtiff\libtiff_ctypes.py
-        Log "tiff header generation exit code: $LASTEXITCODE (nonzero is tolerated)"
+        $ErrorActionPreference = 'Continue'
+        & $pp libtiff\libtiff_ctypes.py 2>&1 | ForEach-Object { Log "$_" }
+        $genExit = $LASTEXITCODE
+        $ErrorActionPreference = $prevEap
+        Log "tiff header generation exit code: $genExit (nonzero is tolerated)"
     } finally {
+        $ErrorActionPreference = $prevEap
+        $env:PATH = $prevPath
         Pop-Location
         Remove-Item -Path 'env:TIFF_HEADER_PATH' -ErrorAction SilentlyContinue
     }
     & $pp -m pip uninstall -q -y numpy | Out-Null
+    if (-not (Get-ChildItem -Path (Join-Path $src 'libtiff') -Filter 'tiff_h_*.py' -File)) {
+        Die 'pylibtiff: the tiff header module (libtiff\tiff_h_*.py) was not generated (see the output above)'
+    }
 
     # Commit the patches and tag with the combined version (package version
     # + bundled libtiff version), matching the linux wheel versioning.
