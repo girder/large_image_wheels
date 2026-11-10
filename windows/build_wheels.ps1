@@ -1001,8 +1001,22 @@ def log(msg):
 
 
 def get_json(url):
-    with urllib.request.urlopen(url) as resp:
-        return json.load(resp)
+    # Retried like the payload downloads and the curl downloads: with every
+    # payload cached, the channel and manifest requests are the build
+    # sandbox's first network access, and that run failed every time on
+    # the first name lookup (getaddrinfo 11001, host not found), where a
+    # run with an empty cache, whose first requests are curl's (retried,
+    # silently), got through.  Each retry is logged, so a build log shows
+    # whether the lookups fail early in a sandbox's life.
+    for attempt in range(8):
+        try:
+            with urllib.request.urlopen(url) as resp:
+                return json.load(resp)
+        except OSError as exc:
+            log(f'retrying {url} ({exc})')
+            time.sleep(5)
+    msg = f'reading {url} failed after 8 attempts'
+    raise RuntimeError(msg)
 
 
 def version_key(text):
@@ -1420,6 +1434,7 @@ function Ensure-Toolchain {
             (Test-Path (Join-Path $info.env.VCToolsInstallDir 'bin\Hostx64\x64\cl.exe'))
     }
     if (-not $installed) {
+        Log-DnsDiagnostics @('aka.ms') 'before the MSVC manifest request'
         Log "installing MSVC $msvcVersion and Windows SDK $sdkVersion (cached payloads are reused)"
         Run-Logged $script:PatchPython @(
             '-I', $installer,
@@ -1608,8 +1623,8 @@ function Ensure-Rust {
 # query straight to the server past that cache (nslookup), and a lookup
 # through the system resolver as cargo's libcurl makes it (curl.exe).
 # Diagnostics only: nothing here can fail the step.
-function Log-DnsDiagnostics([string[]]$HostNames) {
-    Log '--- dns diagnostics (after a failed cargo step)'
+function Log-DnsDiagnostics([string[]]$HostNames, [string]$Why = 'after a failed cargo step') {
+    Log "--- dns diagnostics ($Why; $(Get-Date -Format 'HH:mm:ss'))"
     try {
         foreach ($entry in (Get-DnsClientServerAddress -AddressFamily IPv4 -ErrorAction Stop |
                 Where-Object { $_.ServerAddresses })) {
@@ -7001,6 +7016,13 @@ function Main {
         Die '-DevSetup is for a checkout; the build sandbox sets up its own toolchain on every run'
     }
 
+    # A name lookup before anything else: with every download cached, the
+    # MSVC manifest request was the first network access and failed every
+    # time (host not found), where a run with an empty cache got through.
+    # This and the check before the MSVC install tell a sandbox whose
+    # lookups fail early in its life apart from one whose lookups break
+    # later (after minutes of reading the mapped cache).  Diagnostics only.
+    Log-DnsDiagnostics @('aka.ms') 'at the start of the build'
     # Pythons first: V() runs getver.py with the patch python, and the
     # toolchain pins come from versions.txt.
     Ensure-Pythons
