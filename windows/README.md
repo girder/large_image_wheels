@@ -774,6 +774,26 @@ Known gaps, in rough order:
   for a top-level extension module: the bundled DLLs are at the top of
   site-packages (`.data/platlib`), not in `pylibmc.libs` (see the
   hard-won entry).
+- **ImageMagick's configuration files are not in any wheel (all three
+  platforms; to do in a later session).**  The bundled `magick` warns
+  `UnableToOpenConfigureFile 'colors.xml'` on every run.  No platform
+  builds zero-configuration (`--enable-zero-configuration` is off by
+  default, and the Windows cmake writes
+  `MAGICKCORE_ZERO_CONFIGURATION_SUPPORT 0` to match), so ImageMagick
+  looks for `colors.xml`, `policy.xml`, `delegates.xml`, `type*.xml`,
+  `english.xml`, `thresholds.xml`, ... on its search path: on linux and
+  macos the compiled-in prefix paths (`/usr/local/etc/ImageMagick-7`,
+  ...), which on a user's machine are absent or -- worse -- belong to
+  another ImageMagick, whose `policy.xml` the wheel would then obey; on
+  Windows the executable's directory and the DLL's resources, which hold
+  none.  The built-in defaults cover everything (the shipped
+  `colors.xml` has every entry commented out), so nothing is lost but
+  the warning and a user's ability to supply a policy.  Decided fix:
+  bundle the configuration files in the wheels and point ImageMagick at
+  them (`MAGICK_CONFIGURE_PATH` from the wrappers and `pyvips/__init__.py`;
+  on Windows beside `magick.exe` in `pyvips.libs` as well), on all three
+  platforms, rather than zero-configuration, which would remove the
+  policy override.
 - `check_versions.py` runs on Windows as anywhere else (`uv run
   check_versions.py <names>`: it carries PEP 723 metadata; or a python
   with `requests` and `packaging`).  It used to prefix its `git
