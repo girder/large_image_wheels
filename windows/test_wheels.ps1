@@ -1092,11 +1092,13 @@ def check_pylibmc(package_dir, libs_dir):
     # from here or from another of our wheels (GDAL bundles the identical
     # OpenSSL, so the names match, and when osgeo was imported first the
     # loader resolves the plugins' import to its copy -- the accepted
-    # case of loaded_from_libs).  The stem leaves out python's own
-    # libcrypto-3.dll (_ssl, _hashlib).
+    # case of loaded_from_libs).  The stem (libcrypto-<n>-x64, read from
+    # the bundled file) leaves out python's own libcrypto-<n>.dll (_ssl,
+    # _hashlib).
     ours = sorted(name for name in os.listdir(libs_dir)
-                  if name.lower().startswith('libcrypto-3-x64-') and name.lower().endswith('.dll'))
-    crypto_hits, crypto_bundled, crypto_foreign = loaded_from_libs('libcrypto-3-x64', '', libs_path=libs_dir)
+                  if re.match(r'libcrypto-\d+-x64-[0-9a-f]+\.dll$', name, re.IGNORECASE))
+    stem = re.match(r'(libcrypto-\d+-x64)-', ours[0], re.IGNORECASE).group(1) if ours else 'libcrypto-none'
+    crypto_hits, crypto_bundled, crypto_foreign = loaded_from_libs(stem, '', libs_path=libs_dir)
     report(bool(ours) and bool(crypto_hits) and not crypto_foreign
            and all(os.path.basename(path).lower() in (name.lower() for name in ours) for path in crypto_hits),
            f'the sasl2 plugins load the bundled libcrypto ({", ".join(ours)}): {crypto_hits}')

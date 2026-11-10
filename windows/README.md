@@ -731,7 +731,10 @@ Known gaps, in rough order:
   freexl, libspatialite and GDAL's `CPLRecode`; libpq without ICU and
   readline (as on macos) and without lz4/zstd (as the bare linux
   configure); MySQL without `REPRODUCIBLE_BUILD` (on Windows it wraps
-  the compiler in a perl launcher); libgeotiff from its cmake build
+  the compiler in a perl launcher) and with its Windows-only OpenSSL DLL
+  lookup (`cmake/ssl.cmake`, which knows the naming of 1.1 and 3.x only)
+  patched to OpenSSL's `-<major>-x64` scheme, so that it takes
+  `versions.txt`'s OpenSSL like the other builds; libgeotiff from its cmake build
   (the autotools one's reason, rasterlite2's configure, does not apply);
   rttopo at a pinned master commit (`librttopo-sha`) rather than the
   1.1.0 tag, because spatialite's trunk calls `rtt_tpsnap`, which only
@@ -838,6 +841,27 @@ Known gaps, in rough order:
   `z.dll` to `libz.dll`, and the first nightly died on the copies of the
   old name.  Change such places when they are touched or break; do not
   restructure working, verified steps around this.
+- **Never hardcode a version, or part of one, that `versions.txt`
+  holds** (the maintainer's rule; the Dockerfile follows it).  Use `V
+  <name>` and its getver.py component selection (`V imagemagick @('1')`
+  is the major), or read the name from what was built; names we create
+  carry no version at all (`pyvips/etc/ImageMagick`).  Only a deliberate
+  pin is an exception, and then the Dockerfile pins it too, or the reason
+  is written down (MrSID).  A sweep on 2026-11-10 found three violations,
+  all in this build, two of them under a false "like the linux build":
+  OpenSSL cloned at `openssl-3.6.2` (linux and macos build
+  `versions.txt`'s 4.x) with `3.6.2` in its `.pc` files and
+  `libcrypto-3-x64` in the checks -- the likely but unrecorded reason
+  being MySQL's Windows-only DLL lookup, which rejects OpenSSL 4 (now
+  patched in `Build-Mysql`; a pin whose reason is not written down is
+  indistinguishable from a mistake); libOpenDRIVE at `0.6.0-gdal` (the
+  others use `libopendrive`, then `0.6.1-gdal`, whose changed MSVC flags
+  line the old patch would have rejected, and which installs the pugixml
+  headers only in `include\`, where GDAL's XODR driver does not look --
+  linux and macos copy them to `include\pugixml\`, now Windows too); and ImageMagick's major `7` in
+  `Build-Imagemagick` and the pyvips wheel checks.  A sweep has to look
+  for version-shaped literals of any value, not just the current pins: a
+  stale pin matches nothing in `versions.txt`.
 - The generated `.wsb`'s LogonCommand runs as the **elevated**
   WDAGUtilityAccount (file backend); `wsb exec -r System` runs the
   script as SYSTEM (cli
@@ -1300,7 +1324,8 @@ Known gaps, in rough order:
   static `mysqlclient.lib` the Development component installs, which
   GDAL's FindMySQL (`NAMES mysqlclient` first) would otherwise link.
   libOpenDRIVE replaces `CMAKE_CXX_FLAGS` for MSVC in its own
-  CMakeLists (patched there: `_USE_MATH_DEFINES` for `M_PI`).  glib's
+  CMakeLists (patched there: `_USE_MATH_DEFINES` for `M_PI` is appended
+  to whatever flags that line has).  glib's
   pcre2 wrap installs `pcre2.h`, static archives and `.pc` files into
   the prefix although glib embeds it statically; GDAL found them and
   its sqlite REGEXP code failed to link (the header declares dllimport
@@ -1337,7 +1362,8 @@ Known gaps, in rough order:
   `geotiff.dll`, `gif.dll`, `json-c.dll`, `Lerc.dll`, `iconv.dll`,
   `minizip.dll`, `freexl.dll`, `librttopo.dll`, `spatialite.dll`,
   `rasterlite2.dll`, `netcdf.dll`, `hdf5.dll` (+ `_cpp`, `_hl`),
-  `libmysql.dll`, `libpq.dll`, `libcrypto-3-x64.dll` + `libssl-3-x64.dll`,
+  `libmysql.dll`, `libpq.dll`, `libcrypto-<n>-x64.dll` + `libssl-<n>-x64.dll`
+  (`<n>` is OpenSSL's shared-library major; read from `libcrypto.lib`),
   `gta.dll`, `xerces-c_3_3.dll`, `blosc.dll`, `libkea.dll`, `avif.dll`,
   `lti_dsdk_9.5.dll` (MrSID), `vcomp140.dll` (OpenMP); hdf4, fyba and
   libOpenDRIVE are static and absorbed into `gdal.dll`.

@@ -3538,9 +3538,9 @@ function Build-Giflib {
 # nmake builds it single-threaded.  install_sw: no docs, as on linux.
 function Build-Openssl {
     if (Skip-If-Done 'openssl') { return }
-    Log '=== openssl (pinned 3.6.2; versions.txt''s 4.x is deliberately ignored, like the linux build)'
+    Log '=== openssl'
     Ensure-Perl
-    $src = Git-Clone 'https://github.com/openssl/openssl.git' 'openssl-3.6.2' (Join-Path $LIW_SRC 'openssl')
+    $src = Git-Clone 'https://github.com/openssl/openssl.git' "openssl-$(V openssl)" (Join-Path $LIW_SRC 'openssl')
     $savedPath = $env:PATH
     $env:PATH = "$script:PerlBin;$env:PATH"
     Push-Location $src
@@ -3554,16 +3554,19 @@ function Build-Openssl {
         Pop-Location
         $env:PATH = $savedPath
     }
-    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('libcrypto-3-x64.dll', 'libssl-3-x64.dll', 'openssl.exe') 'openssl'
+    # The DLLs carry the shared-library major (libcrypto-<n>-x64.dll); the
+    # name is read from the import library rather than written down.
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @('libcrypto-*-x64.dll', 'libssl-*-x64.dll', 'openssl.exe') 'openssl'
     Assert-Files (Join-Path $LIW_PREFIX 'lib') @('libcrypto.lib', 'libssl.lib') 'openssl'
+    $cryptoDll = Get-ImportLibDll (Join-Path $LIW_PREFIX 'lib\libcrypto.lib')
     # The Windows install writes no pkg-config files; postgresql's meson
     # looks for them (cmake consumers use FindOpenSSL).
     # (Each names its libraries in Libs: Write-PkgConfig's Requires is the
     # private kind, which a dynamic link does not follow.)
-    Write-PkgConfig 'libcrypto' 'OpenSSL cryptography library' '3.6.2' '-llibcrypto'
-    Write-PkgConfig 'libssl' 'Secure Sockets Layer and cryptography libraries' '3.6.2' '-llibssl -llibcrypto'
-    Write-PkgConfig 'openssl' 'Secure Sockets Layer and cryptography libraries and tools' '3.6.2' '-llibssl -llibcrypto'
-    Assert-DependentStems (Join-Path $LIW_PREFIX 'bin\libcrypto-3-x64.dll') @((Get-ZlibDll)) 'openssl'
+    Write-PkgConfig 'libcrypto' 'OpenSSL cryptography library' "$(V openssl)" '-llibcrypto'
+    Write-PkgConfig 'libssl' 'Secure Sockets Layer and cryptography libraries' "$(V openssl)" '-llibssl -llibcrypto'
+    Write-PkgConfig 'openssl' 'Secure Sockets Layer and cryptography libraries and tools' "$(V openssl)" '-llibssl -llibcrypto'
+    Assert-DependentStems (Join-Path $LIW_PREFIX "bin\$cryptoDll") @((Get-ZlibDll)) 'openssl'
     Done-Stamp 'openssl'
 }
 
@@ -3816,21 +3819,30 @@ open(path, "w").write(s)
 # absorbs, as on linux.
 function Build-Libopendrive {
     if (Skip-If-Done 'libopendrive') { return }
-    Log '=== libopendrive (pinned 0.6.0-gdal, like the linux and macos builds)'
-    $src = Git-Clone 'https://github.com/DLR-TS/libOpenDRIVE.git' '0.6.0-gdal' (Join-Path $LIW_SRC 'libOpenDRIVE')
+    Log '=== libopendrive'
+    $src = Git-Clone 'https://github.com/DLR-TS/libOpenDRIVE.git' "$(V libopendrive)" (Join-Path $LIW_SRC 'libOpenDRIVE')
     # Windows only: its CMakeLists replaces CMAKE_CXX_FLAGS for MSVC, so
-    # the M_PI define (_USE_MATH_DEFINES) goes into that line (and /Wall
-    # becomes /W1: the former floods the log with STL warnings).
+    # the M_PI define (_USE_MATH_DEFINES) goes into that line (and /Wall,
+    # which older releases used and which floods the log with STL
+    # warnings, becomes /W1).
     Invoke-Patch $src 'libopendrive_msvc_flags' @'
+import re
 path = "CMakeLists.txt"
 s = open(path).read()
-old = 'set(CMAKE_CXX_FLAGS "/EHsc /Wall")'
-assert old in s, "libOpenDRIVE's MSVC flags line changed"
-s = s.replace(old, 'set(CMAKE_CXX_FLAGS "/EHsc /W1 /D_USE_MATH_DEFINES")')
+pattern = r'set\(CMAKE_CXX_FLAGS "(/EHsc[^"]*)"\)'
+assert re.search(pattern, s), "libOpenDRIVE's MSVC flags line changed"
+s = re.sub(pattern, lambda m: 'set(CMAKE_CXX_FLAGS "%s /D_USE_MATH_DEFINES")' % m.group(1).replace("/Wall", "/W1"), s, count=1)
 open(path, "w").write(s)
 '@
-    Cmake-Build $src @('-DCMAKE_POSITION_INDEPENDENT_CODE=ON')
+    Cmake-Build $src @('-DCMAKE_POSITION_INDEPENDENT_CODE=ON', '-DBUILD_TESTING=OFF')
     Assert-Files (Join-Path $LIW_PREFIX 'lib') @('OpenDrive.lib') 'libopendrive'
+    # As the Dockerfile and macos do: libOpenDRIVE installs the pugixml
+    # headers (of the pugixml it fetches and compiles in) in include\, and
+    # GDAL's XODR driver includes <pugixml/pugixml.hpp>.
+    $inc = Join-Path $LIW_PREFIX 'include'
+    Assert-Files $inc @('pugixml.hpp', 'pugiconfig.hpp') 'libopendrive'
+    New-Item -ItemType Directory -Force -Path (Join-Path $inc 'pugixml') | Out-Null
+    Copy-Item (Join-Path $inc 'pugixml.hpp'), (Join-Path $inc 'pugiconfig.hpp') (Join-Path $inc 'pugixml') -Force
     Done-Stamp 'libopendrive'
 }
 
@@ -4242,6 +4254,22 @@ function Build-Mysql {
     Remove-Item -Recurse -Force (Join-Path $src 'mysql-test') -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force -Path (Join-Path $src 'storage\ndb') | Out-Null
     Set-Content -Path (Join-Path $src 'storage\ndb\CMakeLists.txt') -Value '' -Encoding ascii
+    # Windows only: cmake/ssl.cmake finds the OpenSSL DLLs by OpenSSL's
+    # Windows naming scheme, which it knows for 1.1 (-1_1-x64) and 3.x
+    # (-3-x64) only, and so fails with "Cannot find SSL dynamic libraries"
+    # for any later major.  Since 3.0 the suffix is the major version
+    # (libcrypto-<major>-x64.dll); the patch says so instead of naming one.
+    Invoke-Patch $src 'mysql_ssl_dll_names' @'
+path = "cmake/ssl.cmake"
+s = open(path, encoding="utf-8").read()
+old = """      IF(OPENSSL_VERSION_MAJOR VERSION_EQUAL 3)
+        SET(SSL_MSVC_VERSION_SUFFIX "-3")"""
+new = """      IF(OPENSSL_VERSION_MAJOR VERSION_GREATER_EQUAL 3)
+        SET(SSL_MSVC_VERSION_SUFFIX "-${OPENSSL_VERSION_MAJOR}")"""
+assert old in s, "mysql's ssl.cmake OpenSSL DLL naming changed"
+s = s.replace(old, new, 1)
+open(path, "w", encoding="utf-8").write(s)
+'@
     Cmake-Build $src @('-DBUILD_CONFIG=mysql_release', '-DBUILD_SHARED_LIBS=ON', '-DWITH_ZLIB=bundled',
         "-DWITH_SSL=$script:CmakePrefix", '-DWITH_UNIT_TESTS=OFF', '-DWITHOUT_SERVER=ON',
         '-DINSTALL_MYSQLTESTDIR=', '-DWITH_AUTHENTICATION_WEBAUTHN=OFF') -NoInstall
@@ -7032,7 +7060,7 @@ import _pylibmc
         Assert-WheelContains $out @(
             "${platlib}libmemcached-[0-9a-f]+\.dll$",
             "${platlib}sasl2-[0-9a-f]+\.dll$",
-            "${platlib}libcrypto-3-x64-[0-9a-f]+\.dll$",
+            "${platlib}libcrypto-[0-9]+-x64-[0-9a-f]+\.dll$",
             "${platlib}$([regex]::Escape([System.IO.Path]::GetFileNameWithoutExtension((Get-ZlibDll))))-[0-9a-f]+\.dll$",
             '^pylibmc/sasl2/saslPLAIN\.dll$',
             '^pylibmc/sasl2/saslSCRAM\.dll$',
