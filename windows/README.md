@@ -774,26 +774,40 @@ Known gaps, in rough order:
   for a top-level extension module: the bundled DLLs are at the top of
   site-packages (`.data/platlib`), not in `pylibmc.libs` (see the
   hard-won entry).
-- **ImageMagick's configuration files are not in any wheel (all three
-  platforms; to do in a later session).**  The bundled `magick` warns
-  `UnableToOpenConfigureFile 'colors.xml'` on every run.  No platform
-  builds zero-configuration (`--enable-zero-configuration` is off by
-  default, and the Windows cmake writes
-  `MAGICKCORE_ZERO_CONFIGURATION_SUPPORT 0` to match), so ImageMagick
-  looks for `colors.xml`, `policy.xml`, `delegates.xml`, `type*.xml`,
-  `english.xml`, `thresholds.xml`, ... on its search path: on linux and
-  macos the compiled-in prefix paths (`/usr/local/etc/ImageMagick-7`,
-  ...), which on a user's machine are absent or -- worse -- belong to
-  another ImageMagick, whose `policy.xml` the wheel would then obey; on
-  Windows the executable's directory and the DLL's resources, which hold
-  none.  The built-in defaults cover everything (the shipped
-  `colors.xml` has every entry commented out), so nothing is lost but
-  the warning and a user's ability to supply a policy.  Decided fix:
-  bundle the configuration files in the wheels and point ImageMagick at
-  them (`MAGICK_CONFIGURE_PATH` from the wrappers and `pyvips/__init__.py`;
-  on Windows beside `magick.exe` in `pyvips.libs` as well), on all three
-  platforms, rather than zero-configuration, which would remove the
-  policy override.
+- **ImageMagick's configuration files are bundled (all three platforms,
+  2026-11-10).**  No platform builds zero-configuration (it would remove
+  the policy override), so ImageMagick looks for `colors.xml`,
+  `policy.xml`, `delegates.xml`, `type*.xml`, `english.xml`, ... on its
+  search path, and the bundled `magick` warned
+  `UnableToOpenConfigureFile 'colors.xml'` on every run.  Each pyvips
+  wheel now carries them in `pyvips/etc/ImageMagick` (no version in the
+  name, so nothing downstream needs one): on linux and macos the files
+  `make install` put in `etc/ImageMagick-<major>`,
+  `share/ImageMagick-<major>` and `lib/ImageMagick-*/config-Q16HDRI`; on
+  Windows what upstream's Configure puts beside its binaries
+  (`Build-Imagemagick`'s cmake file installs them to
+  `etc\ImageMagick-<major>`), plus `francais.xml` and
+  `quantization-table.xml` as on linux.  The patched `pyvips/__init__.py`
+  appends the directory to `MAGICK_CONFIGURE_PATH` (after any the user
+  set), which ImageMagick searches first; the console scripts inherit it,
+  because `pyvips.bin` imports `pyvips`.  Checked by the shared suite
+  (`magick -list policy` names the bundled `policy.xml`, and a conversion
+  prints no `UnableToOpenConfigureFile`) and by `check_wheels.py`, with
+  the variable removed from the console script's environment.  Departing
+  from the earlier plan, Windows does not also put the files beside
+  `magick.exe` in `pyvips.libs`: ImageMagick loads every copy it finds,
+  so a console-script run would load them twice, and linux and macos
+  have nothing equivalent for a by-path run.  What remains, the same on
+  all three: a tool run by path (`pyvips/bin/magick`) without python
+  does not get the variable and still warns; and because ImageMagick
+  loads every copy, the compiled-in prefix paths of linux and macos
+  (`/usr/local/etc/ImageMagick-<major>`, ...) are still read after ours,
+  so another ImageMagick installed there adds its `policy.xml`.
+  Configuring with `--disable-installed` would drop those paths and find
+  the files relative to the executable instead (fixing the by-path case
+  as well), but the in-process search would then use python's own
+  directory (`<sys.prefix>/etc/ImageMagick-<major>`, which is where a
+  conda ImageMagick installs); not done.
 - `check_versions.py` runs on Windows as anywhere else (`uv run
   check_versions.py <names>`: it carries PEP 723 metadata; or a python
   with `requests` and `packaging`).  It used to prefix its `git

@@ -3054,7 +3054,7 @@ function Build-Matio {
 $script:ImageMagickCMakeLists = @'
 cmake_minimum_required(VERSION 3.16)
 project(ImageMagick C CXX)
-foreach(var IM_BASECONFIG_TEMPLATE IM_RELEASE_DATE IM_GIT_REVISION)
+foreach(var IM_BASECONFIG_TEMPLATE IM_CONFIG_XML_DIR IM_RELEASE_DATE IM_GIT_REVISION)
   if(NOT ${var})
     message(FATAL_ERROR "pass -D${var}=...")
   endif()
@@ -3235,6 +3235,37 @@ write_pc(ImageMagick ${LIBNAME_CORE} "ImageMagick - convert, edit, and compose i
 write_pc(ImageMagick-${MAJOR}.${ABI} ${LIBNAME_CORE} "ImageMagick - convert, edit, and compose images" "")
 write_pc(MagickWand ${LIBNAME_WAND} "MagickWand - C API for ImageMagick" "MagickCore")
 write_pc(MagickWand-${MAJOR}.${ABI} ${LIBNAME_WAND} "MagickWand - C API for ImageMagick" "MagickCore")
+
+# The configuration files, into one directory (etc/ImageMagick-<major>), as
+# upstream's Configure puts them beside the Windows binaries
+# (XmlConfigFiles.cpp, VersionInfo.cpp, ConfigureApp.cpp): policy.xml is
+# config/policy-open.xml (the default there and of the linux configure);
+# colors, english, locale, log, mime and thresholds are config/'s as they
+# are; delegates.xml, type.xml and type-ghostscript.xml are the Configure
+# release's Configs/xml (MagickCore fills in their @PSDelegate@ and
+# @ghostscript_font_path@ at run time on Windows; the fonts themselves come
+# from the registry); configure.xml is config/configure.xml.in with the
+# values Configure gives it (the path, flag and feature lists empty).  Plus
+# francais.xml and quantization-table.xml, which the linux install has too.
+set(CONFIG_OUT ${CMAKE_BINARY_DIR}/config)
+file(MAKE_DIRECTORY ${CONFIG_OUT})
+configure_file(${CMAKE_SOURCE_DIR}/config/policy-open.xml ${CONFIG_OUT}/policy.xml COPYONLY)
+foreach(name colors english francais locale log mime quantization-table thresholds)
+  configure_file(${CMAKE_SOURCE_DIR}/config/${name}.xml ${CONFIG_OUT}/${name}.xml COPYONLY)
+endforeach()
+foreach(name delegates type type-ghostscript)
+  configure_file(${IM_CONFIG_XML_DIR}/${name}.xml ${CONFIG_OUT}/${name}.xml COPYONLY)
+endforeach()
+set(CC "MSVC ${CMAKE_C_COMPILER_VERSION}")
+set(CXX "MSVC ${CMAKE_CXX_COMPILER_VERSION}")
+set(CHANNEL_MASK_DEPTH 32)
+set(QUANTUM_DEPTH 16)
+set(MAGICK_SECURITY_POLICY open)
+set(MAGICK_TARGET_OS Windows)
+set(PACKAGE_LIB_VERSION_NUMBER "${MAJOR},${MINOR},${MICRO},${PATCHLEVEL}")
+configure_file(${CMAKE_SOURCE_DIR}/config/configure.xml.in ${CONFIG_OUT}/configure.xml @ONLY)
+file(GLOB CONFIG_FILES ${CONFIG_OUT}/*.xml)
+install(FILES ${CONFIG_FILES} DESTINATION etc/ImageMagick-${MAJOR})
 '@
 
 function Build-Imagemagick {
@@ -3255,6 +3286,8 @@ function Build-Imagemagick {
     Expand-Zip $zip $cfg
     $template = Join-Path $cfg 'Configs\MagickCore\magick-baseconfig.h.in'
     if (-not (Test-Path $template)) { Die "imagemagick: $template is not in the Configure release" }
+    $configXml = Join-Path $cfg 'Configs\xml'
+    if (-not (Test-Path (Join-Path $configXml 'delegates.xml'))) { Die "imagemagick: no delegates.xml in $configXml" }
     $releaseDate = (& git -C $src log -1 --format=%cd --date=format:%Y-%m-%d).Trim()
     Assert-Exit 'git log in the ImageMagick checkout'
     if (-not $script:VcOpenMP -or -not (Test-Path (Join-Path $script:VcOpenMP 'vcomp140.dll'))) {
@@ -3275,13 +3308,18 @@ open(path, "w").write(s)
 '@
     Write-Embedded (Join-Path $src 'CMakeLists.txt') $script:ImageMagickCMakeLists
     Cmake-Build $src @("-DIM_BASECONFIG_TEMPLATE=$($template -replace '\\', '/')",
+        "-DIM_CONFIG_XML_DIR=$($configXml -replace '\\', '/')",
         "-DIM_RELEASE_DATE=$releaseDate", "-DIM_GIT_REVISION=$(V imagemagick)",
         "-DPKG_CONFIG_EXECUTABLE=$env:PKG_CONFIG")
-    $core = 'MagickCore-7.Q16HDRI'
-    Assert-Files (Join-Path $LIW_PREFIX 'bin') @("$core.dll", 'MagickWand-7.Q16HDRI.dll', 'magick.exe') 'imagemagick'
+    $major = V imagemagick @('1')
+    $core = "MagickCore-$major.Q16HDRI"
+    Assert-Files (Join-Path $LIW_PREFIX 'bin') @("$core.dll", "MagickWand-$major.Q16HDRI.dll", 'magick.exe') 'imagemagick'
     Assert-Files (Join-Path $LIW_PREFIX 'lib') @("$core.lib") 'imagemagick'
     Assert-Files (Join-Path $LIW_PREFIX 'lib\pkgconfig') @('MagickCore.pc', 'MagickWand.pc', 'ImageMagick.pc') 'imagemagick'
-    Assert-Files (Join-Path $LIW_PREFIX 'include\ImageMagick-7\MagickCore') @('magick-baseconfig.h', 'version.h') 'imagemagick'
+    Assert-Files (Join-Path $LIW_PREFIX "include\ImageMagick-$major\MagickCore") @('magick-baseconfig.h', 'version.h') 'imagemagick'
+    Assert-Files (Join-Path $LIW_PREFIX "etc\ImageMagick-$major") @('policy.xml', 'colors.xml', 'delegates.xml',
+        'type.xml', 'type-ghostscript.xml', 'english.xml', 'locale.xml', 'log.xml', 'mime.xml',
+        'thresholds.xml', 'configure.xml') 'imagemagick'
     # The macos build's assertion list: every delegate compiled into
     # MagickCore (annotate's freetype/fontconfig, lcms, xml2, and the
     # coder delegates), plus the OpenMP runtime.  Not zstd: the delegate
@@ -6212,18 +6250,36 @@ function Build-Pyvips {
         Copy-Item $exe $binDir -Force
     }
     Set-Content -Path (Join-Path $binDir '__init__.py') -Value $script:ToolWrapper -Encoding ascii
+    # ImageMagick's configuration files (policy.xml, colors.xml, ...), which
+    # the patched __init__.py points MAGICK_CONFIGURE_PATH at, as on linux
+    # and macos.  (The wheel's directory has no version in its name, so the
+    # patch and the checks need none.)
+    $magickConfig = Join-Path $src 'pyvips\etc\ImageMagick'
+    New-Item -ItemType Directory -Force -Path $magickConfig | Out-Null
+    Copy-Item (Join-Path $LIW_PREFIX "etc\ImageMagick-$(V imagemagick @('1'))\*.xml") $magickConfig -Force
+    Assert-Files $magickConfig @('policy.xml', 'colors.xml', 'delegates.xml', 'type.xml') 'pyvips'
 
     # Preload the bundled libvips before the extension is imported, as the
     # linux and macos wheels do (delvewheel's own patch puts pyvips.libs on
     # the DLL search path first; this is belt and braces, and it is what
     # the ABI-mode fallback would need).  vips-42-<hash>.dll sorts before
-    # vips-cpp-42-<hash>.dll.
+    # vips-cpp-42-<hash>.dll.  First, the bundled ImageMagick configuration
+    # files: MAGICK_CONFIGURE_PATH is the first place ImageMagick looks
+    # (after any directories the user already put there), and the bundled
+    # tools inherit it, since their console scripts import pyvips first.
     Invoke-Patch $src 'pyvips_init' @'
 path = "pyvips/__init__.py"
 s = open(path).read().replace(
 """    import _libvips""",
 """    import ctypes
     import os
+    magick_config = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                                 'etc', 'ImageMagick')
+    configure_path = os.environ.get('MAGICK_CONFIGURE_PATH', '')
+    if (os.path.isdir(magick_config) and
+            magick_config not in configure_path.split(os.pathsep)):
+        os.environ['MAGICK_CONFIGURE_PATH'] = os.pathsep.join(
+            [p for p in (configure_path, magick_config) if p])
     libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(
         os.path.realpath(__file__))), 'pyvips.libs'))
     if os.path.exists(libpath):
@@ -6281,7 +6337,7 @@ import os
 path = "pyproject.toml"
 s = open(path).read()
 s = s.replace("include-package-data = false", "include-package-data = true")
-s += "\n[tool.setuptools.package-data]\npyvips = [\"bin/*\"]\n\n[project.scripts]\n"
+s += "\n[tool.setuptools.package-data]\npyvips = [\"bin/*\", \"etc/ImageMagick/*\"]\n\n[project.scripts]\n"
 for name in sorted(os.listdir("pyvips/bin")):
     if name.endswith(".exe"):
         s += "%s = 'pyvips.bin:program'\n" % os.path.splitext(name)[0]
@@ -6320,8 +6376,8 @@ open(path, "w").write(s)
         Relocate-Tools $out 'pyvips' 'pyvips.libs'
         Assert-WheelContains $out @(
             '^pyvips\.libs/(lib)?vips-42[0-9a-f-]*\.dll$',
-            '^pyvips\.libs/MagickCore-7\.Q16HDRI-[0-9a-f]+\.dll$',
-            '^pyvips\.libs/MagickWand-7\.Q16HDRI-[0-9a-f]+\.dll$',
+            '^pyvips\.libs/MagickCore-[0-9]+\.Q16HDRI-[0-9a-f]+\.dll$',
+            '^pyvips\.libs/MagickWand-[0-9]+\.Q16HDRI-[0-9a-f]+\.dll$',
             '^pyvips\.libs/vcomp140-[0-9a-f]+\.dll$',
             '^pyvips\.libs/zip-[0-9a-f]+\.dll$',
             '^pyvips\.libs/bz2-[0-9a-f]+\.dll$',
@@ -6340,6 +6396,9 @@ open(path, "w").write(s)
             '^pyvips\.libs/magick\.exe$',
             '^pyvips/bin/vips\.exe$',
             '^pyvips/bin/magick\.exe$',
+            '^pyvips/etc/ImageMagick/policy\.xml$',
+            '^pyvips/etc/ImageMagick/colors\.xml$',
+            '^pyvips/etc/ImageMagick/delegates\.xml$',
             '^pyvips/_libvips.*\.pyd$') 'pyvips'
     }
     $repaired = @(Get-ChildItem -Path $WheelsDir -Filter 'pyvips-*win_amd64*.whl' -File)

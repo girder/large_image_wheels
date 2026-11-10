@@ -793,6 +793,22 @@ def check_pyvips(package_dir, libs_dir):
         code, out = run_tool('magick', ['-size', '8x8', 'xc:red', os.path.join(tmp, 'magick.png')])
         report(code == 0 and os.path.getsize(os.path.join(tmp, 'magick.png')) > 0,
                f'bundled magick writes a png (exit {code}): {out.strip().splitlines()[:1]}')
+        # The bundled configuration files: importing pyvips (above) put them
+        # on MAGICK_CONFIGURE_PATH, and the console script must do the same
+        # by itself, so it runs without the variable.
+        magick_config = os.path.normcase(os.path.realpath(os.path.join(package_dir, 'etc', 'ImageMagick')))
+        configure_path = os.environ.get('MAGICK_CONFIGURE_PATH', '')
+        report(magick_config in [os.path.normcase(p) for p in configure_path.split(os.pathsep)],
+               f'importing pyvips puts the bundled ImageMagick configuration on MAGICK_CONFIGURE_PATH: {configure_path}')
+        env = {k: v for k, v in os.environ.items() if k.upper() != 'MAGICK_CONFIGURE_PATH'}
+        code, out = run_tool('magick', ['-list', 'policy'], env=env)
+        policy = os.path.join(magick_config, 'policy.xml')
+        report(code == 0 and policy in os.path.normcase(out),
+               f'bundled magick reads the bundled policy.xml (exit {code}): '
+               f'{[line.strip() for line in out.splitlines() if "Path:" in line]}')
+        code, out = run_tool('magick', ['-size', '8x8', 'xc:red', os.path.join(tmp, 'magick2.png')], env=env)
+        report(code == 0 and 'UnableToOpenConfigureFile' not in out,
+               f'bundled magick finds every configuration file it asks for (exit {code}): {out.strip().splitlines()[:2]}')
         code, out = run_tool('vips', ['--version'])
         report(code == 0 and 'vips-' in out,
                f'bundled vips runs as a console script (exit {code}): {out.strip().splitlines()[:1]}')
