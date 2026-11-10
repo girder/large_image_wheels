@@ -1515,8 +1515,8 @@ Known gaps, in rough order:
   is header-only and not one of the libraries built), and every boost
   assertion holds, so it is noise.
 - **The bundled magick sometimes exits 0 without output, or hangs at
-  exit, while gio's startup job runs (workaround in place; cause only
-  half known).**  A host test showed `magick --version` printing nothing
+  exit, while gio's startup job runs (fixed in `Build-Glib`; the cause is
+  below the first account, which is kept for the record).**  A host test showed `magick --version` printing nothing
   once in 14 runs.  Run directly, the bundled `magick.exe` did it about
   7 times in 1000 and once never exited: its one remaining thread waited
   in `ExitProcess` -> `LdrShutdownProcess` -> `RtlRunOnceExecuteOnce` for
@@ -1544,3 +1544,35 @@ Known gaps, in rough order:
   `gio_win32_appinfo_init (TRUE)`, which builds it on demand, and nothing
   in the wheels uses GAppInfo.  An intermittent failure here has a
   cause; look for it.
+
+  **The cause (2026-11-10)**: no ImageMagick is needed.  A 30-line test
+  program that loads gio, starts one thread calling
+  `g_app_info_get_all()` (the startup job's work, done synchronously),
+  `printf`s a line and returns from `main` 0-150 ms later lost its output
+  with exit 0 in 12 of 300 runs and hung once; with gio loaded and no such
+  thread, or with an idle thread instead, all 300 runs were clean.
+  `ExitProcess` kills the other threads first and then runs the DLL
+  detach handlers, and the scan thread dies inside the shell/COM/WinRT
+  DLLs it called, holding their locks.  A detach handler that then
+  enters an orphaned **critical section** makes the loader end the process
+  on the spot with the exit code already given -- the C runtime's own
+  detach, which flushes the buffered stdout, never runs: **exit 0, no
+  output**.  An orphaned **one-time initialization** has no such shortcut:
+  the **hang**, the `RtlRunOnceExecuteOnce` wait seen in the stack.  A
+  detach marker proved the first: a DLL loaded before gio, writing to
+  stderr from its `DLL_PROCESS_DETACH`, stayed silent in every lost run
+  while the program's `atexit` handler had run.  With `fflush(stdout)`
+  before returning, no output was lost (9 of 300 runs still ended early
+  in the detach phase, harmlessly).  That is the "other half": every
+  process that loads gio is exposed for as long as the job runs, and a
+  short-lived one shows it when its output is still in the C runtime's
+  buffer at exit.  magick's is (`ListMagickVersion` writes to `stdout`
+  and nothing flushes before exit); `vips --version` prints through
+  `g_print`, which flushes, and the python reconstructions flush their
+  output before the C-level exit -- so none of them could show the lost
+  output, and the hang is rare enough (about 1 in 300-1000) to miss in
+  a few hundred runs.  The programs (`exit_race.c`, `marker.c`, a runner)
+  were scratch files of that session; the description above is enough to
+  rewrite them.  This is reportable to GLib (a DllMain-queued job that
+  makes every gio process unsafe to exit while it runs); nothing has
+  been reported.
