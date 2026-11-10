@@ -2057,6 +2057,33 @@ function Build-Glib {
     if (Skip-If-Done 'glib') { return }
     Log '=== glib'
     $src = Git-Clone 'https://github.com/GNOME/glib.git' "$(V glib)" (Join-Path $LIW_SRC 'glib')
+    # gio's DllMain calls gio_win32_appinfo_init (FALSE), which queues a
+    # thread-pool job that builds the app-association tree (registry,
+    # packaged apps through Windows.ApplicationModel, COM, shell items) in
+    # every process that loads gio-2.0-0.dll.  A short-lived process (magick
+    # --version, vips --version) exits while that thread is inside COM or
+    # appmodel code; ExitProcess kills it and the shutdown either deadlocks
+    # in LdrShutdownProcess (a hung process) or loses the buffered stdout
+    # (exit 0, no output).  Every API that needs the tree calls
+    # gio_win32_appinfo_init (TRUE) first, which initializes it on demand,
+    # so the startup call is dropped: nothing in the wheels uses GAppInfo,
+    # and the tree is then only built where it is used.  (Not an issue on
+    # linux and macos, which have no such startup work.)
+    Invoke-Patch $src 'glib_gio_dllmain' @'
+path = "gio/giomodule.c"
+s = open(path, encoding="utf-8").read()
+old = """      gio_dll = hinstDLL;
+      gio_win32_appinfo_init (FALSE);
+"""
+new = """      gio_dll = hinstDLL;
+"""
+if old in s:
+    s = s.replace(old, new, 1)
+    open(path, "w", encoding="utf-8").write(s)
+else:
+    assert new in s and "gio_win32_appinfo_init (FALSE);\n    }\n\n  return TRUE;" not in s, \
+        "gio's DllMain changed: check gio_win32_appinfo_init at startup"
+'@
     Meson-Build $src @(
         '-Dtests=false', '-Dglib_debug=disabled', '-Dintrospection=disabled',
         '-Dnls=disabled', '-Dlibmount=disabled', '-Dselinux=disabled',

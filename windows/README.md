@@ -1454,3 +1454,26 @@ Known gaps, in rough order:
   install-libraries-shared` line: b2 continues past it (Boost.Histogram
   is header-only and not one of the libraries built), and every boost
   assertion holds, so it is noise.
+- **Loading gio-2.0 starts a background thread that breaks short-lived
+  processes.**  gio's `DllMain` calls `gio_win32_appinfo_init (FALSE)`,
+  which queues a GLib thread-pool job that builds the app-association
+  tree (registry scans, packaged apps through Windows.ApplicationModel,
+  COM, shell item parsing) in every process that loads gio (magick
+  through MagickCore's librsvg/pango, the vips tools through
+  poppler-glib, python importing pyvips).  When a short-lived process
+  exits while that thread is still at work, `ExitProcess` kills it
+  mid-way, and the exit either deadlocks in `LdrShutdownProcess` (a
+  process that never exits, waiting in `RtlRunOnceExecuteOnce`) or loses
+  the buffered stdout (exit 0, no output).  A host test showed it as
+  `magick --version` printing nothing once in 14 runs.  Run directly,
+  the bundled `magick.exe` did it about 7 times in 1000 and hung once;
+  stack walks of the live and the hung process showed the gio
+  thread-pool job and the shutdown wait.  The proof was an A/B run of
+  the same wheel's files with only that call in gio's DllMain replaced by
+  NOPs: 993/1000 good for the original, 1000/1000 for the patched copy.
+  (`vips --version`, which loads gio too, was not seen failing in 500
+  runs; why magick is the one exposed is not established, but removing
+  the call removes the failure.)  `Build-Glib` drops the startup call:
+  every API that needs the tree calls `gio_win32_appinfo_init (TRUE)`,
+  which builds it on demand.  An intermittent failure here has a cause;
+  look for it.
