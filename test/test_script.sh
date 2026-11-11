@@ -528,6 +528,14 @@ if $TEST_PYVIPS; then
   magick="$(python -c 'import os,sys,pyvips;sys.stdout.write(os.path.dirname(pyvips.__file__))')/bin/magick"
   "$magick" -size 8x8 xc:red magick_check.bmp
   "$magick" identify magick_check.bmp
+  echo 'Check that the magick console script uses the bundled configuration files'
+  magick -list policy | tee magick_policy.txt
+  grep -q 'pyvips.etc.ImageMagick.policy\.xml' magick_policy.txt
+  magick -size 8x8 xc:red magick_check.png 2>&1 | tee magick_check.txt
+  if grep -q UnableToOpenConfigureFile magick_check.txt; then
+    echo 'the bundled magick did not find its configuration files'
+    false
+  fi
   echo 'Check that libvips can load a format only ImageMagick reads'
   python <<EOF
 import pyvips

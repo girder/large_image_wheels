@@ -5205,6 +5205,17 @@ build_pyvips() {
     [ -e pyvips/bin/vips ] || die "no vips tool found to bundle"
     [ -e pyvips/bin/magick ] || die "no magick tool found to bundle"
     strip -x pyvips/bin/* 2>/dev/null || true
+    # ImageMagick's configuration files (policy.xml, colors.xml, ...), from
+    # the three directories its install puts them in, as the linux build
+    # copies them; the __init__.py patch points MAGICK_CONFIGURE_PATH at
+    # them.
+    local immajor
+    immajor="$(v imagemagick 1)"
+    mkdir -p pyvips/etc/ImageMagick
+    cp "$LIW_PREFIX/etc/ImageMagick-$immajor"/*.xml "$LIW_PREFIX/share/ImageMagick-$immajor"/*.xml \
+        "$LIW_PREFIX"/lib/ImageMagick-*/config-Q16HDRI/configure.xml \
+        pyvips/etc/ImageMagick/ || die "imagemagick's configuration files were not found"
+    [ -e pyvips/etc/ImageMagick/policy.xml ] || die "no policy.xml to bundle"
 
     # Wrapper module so each bundled tool is exposed as a console script
     # (same wrapper the linux wheel ships).
@@ -5227,6 +5238,13 @@ s = open(path).read().replace(
 """    import _libvips""",
 """    import ctypes
     import os
+    magick_config = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                                 'etc', 'ImageMagick')
+    configure_path = os.environ.get('MAGICK_CONFIGURE_PATH', '')
+    if (os.path.isdir(magick_config) and
+            magick_config not in configure_path.split(os.pathsep)):
+        os.environ['MAGICK_CONFIGURE_PATH'] = os.pathsep.join(
+            [p for p in (configure_path, magick_config) if p])
     # delocate puts the bundled dylibs in pyvips/.dylibs inside the wheel;
     # keep the auditwheel-style locations from the linux build as fallbacks.
     libpath = os.path.join(os.path.dirname(os.path.realpath(__file__)), ".dylibs")
@@ -5283,7 +5301,7 @@ s = open(path).read()
 s = s.replace("include-package-data = false", "include-package-data = true")
 s += """
 [tool.setuptools.package-data]
-pyvips = ["bin/*"]
+pyvips = ["bin/*", "etc/ImageMagick/*"]
 
 [project.scripts]
 """
@@ -5350,6 +5368,8 @@ EOF
         die "the pyvips wheel does not bundle the vips tool"
     printf '%s\n' "$contents" | grep -q 'pyvips/bin/magick' ||
         die "the pyvips wheel does not bundle the magick tool"
+    printf '%s\n' "$contents" | grep -q 'pyvips/etc/ImageMagick/policy.xml' ||
+        die "the pyvips wheel does not bundle ImageMagick's configuration files"
     done_stamp pyvips
 }
 

@@ -1643,9 +1643,7 @@ RUN \
     if [ -e "/opt/rh/devtoolset-11/enable" ]; then \
     . /opt/rh/devtoolset-11/enable; \
     fi && \
-    CFLAGS="$CFLAGS -ftls-model=global-dynamic" \
-    CXXFLAGS="$CXXFLAGS -Wno-deprecated-declarations -ftls-model=global-dynamic" \
-    cmake .. -DBUILD_CONFIG=mysql_release -DBUILD_SHARED_LIBS=ON -DWITH_ZLIB=bundled -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DCMAKE_BUILD_TYPE=MinSizeRel -DWITHOUT_SERVER=ON -DREPRODUCIBLE_BUILD=ON -DINSTALL_MYSQLTESTDIR="" -DWITH_AUTHENTICATION_WEBAUTHN=OFF && \
+    cmake .. -DCMAKE_C_FLAGS="$CFLAGS -ftls-model=global-dynamic" -DCMAKE_CXX_FLAGS="$CXXFLAGS -Wno-deprecated-declarations -ftls-model=global-dynamic" -DBUILD_CONFIG=mysql_release -DBUILD_SHARED_LIBS=ON -DWITH_ZLIB=bundled -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DCMAKE_BUILD_TYPE=MinSizeRel -DWITHOUT_SERVER=ON -DREPRODUCIBLE_BUILD=ON -DINSTALL_MYSQLTESTDIR="" -DWITH_AUTHENTICATION_WEBAUTHN=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     # reduce docker size \
@@ -2589,6 +2587,13 @@ s = open(path).read().replace( \n\
 """    import _libvips""", \n\
 """    import ctypes \n\
     import os \n\
+    magick_config = os.path.join(os.path.dirname(os.path.realpath(__file__)), \n\
+                                 \'etc\', \'ImageMagick\') \n\
+    configure_path = os.environ.get(\'MAGICK_CONFIGURE_PATH\', \'\') \n\
+    if (os.path.isdir(magick_config) and \n\
+            magick_config not in configure_path.split(os.pathsep)): \n\
+        os.environ[\'MAGICK_CONFIGURE_PATH\'] = os.pathsep.join( \n\
+            [p for p in (configure_path, magick_config) if p]) \n\
     libpath = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath( \n\
         __file__))), \'pyvips.libs\')) \n\
     if os.path.exists(libpath): \n\
@@ -2611,6 +2616,10 @@ open(path, "w").write(s)' && \
     fi && \
     cp /usr/local/bin/magick pyvips/bin/. && \
     strip pyvips/bin/* --strip-unneeded -p -D && \
+    # ImageMagick's configuration files (policy.xml, colors.xml, ...); the \
+    # __init__.py patch points MAGICK_CONFIGURE_PATH at them \
+    mkdir -p pyvips/etc/ImageMagick && \
+    cp /usr/local/etc/ImageMagick-`getver.py imagemagick 1`/*.xml /usr/local/share/ImageMagick-`getver.py imagemagick 1`/*.xml /usr/local/lib*/ImageMagick-*/config-Q16HDRI/configure.xml pyvips/etc/ImageMagick/. && \
     python -c $'# \n\
 import re \n\
 path = "pyvips/version.py" \n\
@@ -2644,7 +2653,7 @@ s = open(path).read() \n\
 s = s.replace("include-package-data = false", "include-package-data = true") \n\
 s += """ \n\
 [tool.setuptools.package-data] \n\
-pyvips = ["bin/*"] \n\
+pyvips = ["bin/*", "etc/ImageMagick/*"] \n\
 \n\
 [project.scripts] \n\
 """ \n\
@@ -2656,7 +2665,7 @@ open(path, "w").write(s)' && \
     # Strip libraries before building any wheels \
     # strip --strip-unneeded -p -D /usr/local/lib{,64}/*.{so,a} && \
     find /usr/local \( -name '*.so' -o -name '*.a' \) -exec bash -c "strip -p -D --strip-unneeded {} -o /tmp/striped; if ! cmp {} /tmp/striped; then cp /tmp/striped {}; fi; rm -f /tmp/striped" \; && \
-    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse; git clean -fxd -e pyvips/bin' && \
+    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse; git clean -fxd -e pyvips/bin -e pyvips/etc' && \
     find /io/wheelhouse/ -name 'pyvips*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'pyvips*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'pyvips*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \
