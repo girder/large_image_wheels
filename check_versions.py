@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "packaging",
+#     "requests",
+#     "urllib3",
+# ]
+# ///
 
 import functools
 import re
@@ -13,6 +21,21 @@ import urllib3
 urllib3.disable_warnings()
 
 verbose = len([arg for arg in sys.argv[1:] if arg == '-v'])
+
+
+@functools.lru_cache
+def vsManifestIds(channelUrl):
+    """
+    The package ids of the Visual Studio manifest that a VS channel JSON
+    points at (the channel only names the manifest; the toolchain versions
+    live in the manifest's packages).  Shared by the msvc and winsdk
+    entries, which the windows pipeline installs by version.
+    """
+    channel = getUrl(channelUrl, {}).json()
+    manifest = next(entry for entry in channel['channelItems']
+                    if entry['id'] == 'Microsoft.VisualStudio.Manifests.VisualStudio')
+    return [pkg['id'] for pkg in getUrl(manifest['payloads'][0]['url'], {}).json()['packages']]
+
 
 Packages = {
     'advancecomp': {
@@ -50,6 +73,20 @@ Packages = {
         'git': 'https://github.com/boostorg/boost.git',
         're': r'boost-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
+    # windows.  The linux base image and macos have a system bzip2; the
+    # windows build compiles it (ImageMagick, libarchive and freetype
+    # link it there as on linux).
+    'bzip2': {
+        'filelist': 'https://sourceware.org/pub/bzip2/',
+        're': r'bzip2-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.gz$',
+    },
+    # windows.  cargo-c (cargo cinstall for libimagequant and librsvg's C
+    # library): the linux and macos builds `cargo install` it; windows
+    # takes the prebuilt MSVC binary of the pinned release.
+    'cargo-c': {
+        'git': 'https://github.com/lu-zero/cargo-c.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
     'cairo': {
         'git': 'https://gitlab.freedesktop.org/cairo/cairo.git',
         're': r'([0-9]+\.[0-9]+(|\.[0-9]+))$',
@@ -61,6 +98,10 @@ Packages = {
     'curl': {
         'git': 'https://github.com/curl/curl.git',
         're': r'curl-([0-9]+_[0-9]+(|_[0-9]+))$',
+    },
+    # windows
+    'delvewheel': {
+        'pypi': 'delvewheel',
     },
     'cyrus-sasl': {
         'git': 'https://github.com/cyrusimap/cyrus-sasl.git',
@@ -122,6 +163,13 @@ Packages = {
     'giflib': {
         'filelist': 'https://sourceforge.net/projects/giflib/files/giflib-6.x',
         're': r'giflib-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.gz\/download',
+    },
+    # windows.  The release tag without its v (2.56.0.windows.4); GitHub's
+    # latest-release redirect avoids the rate-limited API, and the windows
+    # pipeline derives the PortableGit asset name from the tag.
+    'git-for-windows': {
+        'filelist': 'https://github.com/git-for-windows/git/releases/latest',
+        're': r'/releases/tag/v([0-9]+\.[0-9]+\.[0-9]+\.windows\.[0-9]+)$',
     },
     'glib': {
         'git': 'https://github.com/GNOME/glib.git',
@@ -319,6 +367,12 @@ Packages = {
         'git': 'https://github.com/GNOME/librsvg.git',
         're': r'/([0-9]+\.[0-9]+(|\.[0-9]+)(|\.[0-9]+))$',
     },
+    # windows.  libspatialite's trunk calls rtt_tpsnap, which no rttopo
+    # release has; the linux link tolerates the undefined symbol, MSVC's
+    # does not, so the windows build takes rttopo's master at this commit.
+    'librttopo-sha': {
+        'gitsha': 'https://gitlab.com/rttopo/rttopo.git',
+    },
     'librttopo': {
         # 'git': 'https://git.osgeo.org/gitea/rttopo/librttopo.git',
         'git': 'https://gitlab.com/rttopo/rttopo.git',
@@ -364,6 +418,12 @@ Packages = {
         'git': 'https://github.com/nih-at/libzip.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
+    # The windows build's clang-cl (openslide needs the GNU cleanup
+    # attribute, which MSVC lacks), from the LLVM release tarballs.
+    'llvm': {
+        'git': 'https://github.com/llvm/llvm-project.git',
+        're': r'llvmorg-([0-9]+\.[0-9]+\.[0-9]+)$',
+    },
     'lz4': {
         'git': 'https://github.com/lz4/lz4.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
@@ -403,10 +463,24 @@ Packages = {
     #     'filelist': 'https://www.extensis.com/support/developers-sdk-version-downloads',
     #     're': r'MrSID_DSDK-([0-9]+\.[0-9]+(|\.[0-9]+(|\.[0-9]+)))-rhel[0-9]+.x86-64.gcc[0-9]+\.(tar\.gz|zip)$',  # noqa
     # },
+    # windows.  The MSVC toolset and Windows SDK versions in the current VS
+    # 2022 manifest; windows/build_wheels.ps1 installs them by version.
+    'msvc': {
+        'json': 'https://aka.ms/vs/17/release/channel',
+        'keys': lambda data: vsManifestIds('https://aka.ms/vs/17/release/channel'),
+        # The manifest's package version (14.44.17.14: toolset 14.44 of VS
+        # 17.14), not the toolset's own build number (14.44.35207).
+        're': r'^Microsoft\.VC\.([0-9]+(\.[0-9]+)+)\.Tools\.HostX64\.TargetX64\.base$',
+    },
     'mysql': {
         'filelist': 'https://dev.mysql.com/downloads/mysql/?tpl=version&os=src',
         # 're': r'mysql-boost-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)(&|$)',
         're': r'mysql-([0-9]+\.[0-9]+(|\.[0-9]+)).tar.(gz|xz)(&|$)',
+    },
+    # windows
+    'nasm': {
+        'filelist': 'https://www.nasm.us/pub/nasm/releasebuilds/',
+        're': r'^([0-9]+\.[0-9]+(|\.[0-9]+))/$',
     },
     'netcdf': {
         'git': 'https://github.com/Unidata/netcdf-c.git',
@@ -414,6 +488,11 @@ Packages = {
     },
     'nifti': {
         'git': 'https://github.com/NIFTI-Imaging/nifti_clib.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
+    # windows
+    'ninja': {
+        'git': 'https://github.com/ninja-build/ninja.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'ogdi': {
@@ -494,6 +573,11 @@ Packages = {
         'git': 'https://github.com/pkgconf/pkgconf.git',
         're': r'pkgconf-([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
+    # The windows build takes pkgconf from pypi's wheels, whose releases
+    # trail the upstream tags.
+    'pkgconf-pypi': {
+        'pypi': 'pkgconf',
+    },
     'poppler': {
         'git': 'https://gitlab.freedesktop.org/poppler/poppler.git',
         're': r'poppler-([0-9]+\.[0-9]+(|\.[0-9]+))$',
@@ -556,6 +640,13 @@ Packages = {
         'git': 'https://github.com/libvips/pyvips.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
+    # windows.  The rust toolchain (librsvg, libimagequant): the linux and
+    # macos builds take rustup's current stable; windows installs the
+    # pinned release's standalone rustc/cargo/rust-std tarballs.
+    'rust': {
+        'git': 'https://github.com/rust-lang/rust.git',
+        're': r'/([0-9]+\.[0-9]+\.[0-9]+)$',
+    },
     # 'pyvips-sha': {
     #     'gitsha': 'https://github.com/libvips/pyvips.git',
     # },
@@ -568,6 +659,15 @@ Packages = {
             r'([0-9]{4})\/sqlite-autoconf-([0-9]+).tar.(gz|xz)', data).groups()[:2])],
     },
     # macos
+    # windows.  Strawberry Perl's portable zip, for the builds whose own
+    # build systems are perl scripts there (OpenSSL's Configure,
+    # PostgreSQL's meson); the tag carries the version without its dots
+    # (SP_54231_64bit is 5.42.3.1), and windows/build_wheels.ps1 restores
+    # them.
+    'strawberry-perl': {
+        'git': 'https://github.com/StrawberryPerl/Perl-Dist-Strawberry.git',
+        're': r'SP_([0-9]+)_64bit$',
+    },
     'swig': {
         'git': 'https://github.com/swig/swig.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
@@ -580,8 +680,27 @@ Packages = {
         'git': 'https://github.com/xiaoyeli/superlu.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
+    # windows.  The Windows SDK build number (10.0.<build>.0) offered by the
+    # VS 2022 manifest; see msvc.
+    'winsdk': {
+        'json': 'https://aka.ms/vs/17/release/channel',
+        'keys': lambda data: vsManifestIds('https://aka.ms/vs/17/release/channel'),
+        're': r'^Microsoft\.VisualStudio\.Component\.Windows1[01]SDK\.([0-9]+)$',
+    },
     'xerces-c': {
         'git': 'https://github.com/apache/xerces-c.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
+    # windows.  The iconv the gaia-gis libraries and GDAL link there (the
+    # linux build has glibc's, macos the system's).
+    'win-iconv': {
+        'git': 'https://github.com/win-iconv/win-iconv.git',
+        're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
+    },
+    # windows.  bison and flex for mysql's and postgresql's builds (the
+    # linux base image and macos have them).
+    'winflexbison': {
+        'git': 'https://github.com/lexxmark/winflexbison.git',
         're': r'v([0-9]+\.[0-9]+(|\.[0-9]+))$',
     },
     'xz': {
@@ -742,11 +861,11 @@ for pkg in sorted(Packages):  # noqa
             if verbose >= 1:
                 print(pkg, 'fossil entries', entries)
         elif 'git' in pkginfo:
-            cmd = ['timeout', '15', 'git', 'ls-remote', '--refs', '--tags', pkginfo['git']]
+            cmd = ['git', 'ls-remote', '--refs', '--tags', pkginfo['git']]
             for retries in range(10, -1, -1):
                 try:
                     entries = [entry for entry in
-                               subprocess.check_output(cmd).decode('utf8').split('\n')
+                               subprocess.check_output(cmd, timeout=15).decode('utf8').split('\n')
                                if '/' in entry]
                     break
                 except Exception:
@@ -757,11 +876,10 @@ for pkg in sorted(Packages):  # noqa
             if verbose >= 1:
                 print(pkg, 'git entries', entries)
         elif 'gitsha' in pkginfo:
-            cmd = ['timeout', '15', 'git', 'ls-remote', pkginfo['gitsha'],
-                   pkginfo.get('branch', 'HEAD')]
+            cmd = ['git', 'ls-remote', pkginfo['gitsha'], pkginfo.get('branch', 'HEAD')]
             for retries in range(10, -1, -1):
                 try:
-                    versions = [subprocess.check_output(cmd).decode('utf8').split()[0]]
+                    versions = [subprocess.check_output(cmd, timeout=15).decode('utf8').split()[0]]
                     break
                 except Exception:
                     if retries:

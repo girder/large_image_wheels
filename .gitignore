@@ -1,5 +1,11 @@
 gh-pages/
 wheels/
 wheelhouse/
+# windows: the download cache (upstream artifacts only) and the per-run
+# exchange folders of sandbox_run.ps1
+windows/cache/
+windows/run/
+windows/test_run/
+windows/nightly.log
 docs/
 *.sw[op]

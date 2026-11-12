@@ -5,10 +5,13 @@ bioformats 8.5.0
 bison 3.8.2
 blosc 1.21.7
 boost 1.92.0
+bzip2 1.0.8
 cairo 1.18.6
+cargo-c 0.10.26
 cmake 4.4.5
 curl 8_23_0
 cyrus-sasl 2.1.28
+delvewheel 1.13.2
 fftw3 3.3.11
 fitsio 4.7.0
 fontconfig 2.18.3
@@ -22,6 +25,7 @@ gdal-pypi 3.13.3
 gdal-sha 9bb42f5a7b13e9bd1b0991ec0140b71343576e04
 gdal-source 3.14.0
 giflib 6.1.3
+git-for-windows 2.56.1.windows.1
 glib 2.90.1
 glymur 0.14.8
 glymur-pypi 0.14.8
@@ -79,6 +83,7 @@ libwebp 1.6.0
 libxcrypt 4.5.2
 libxml2 2.15.4
 libzip 1.12.1
+llvm 23.1.5
 lz4 1.11.1
 manylinux_2_28_aarch64 cb37f0d66c8a75abb93cf6085cad1f1427cd7208f0c0fc48359bb1eea9924f21
 manylinux_2_28_x86_64 9555ba6c479fa69a2aa80ad1dc57154a60d562b19df159361d9379a02beb1e36
@@ -87,9 +92,12 @@ mapnik-sha 6e41a1e31d6ed4c47b066365673f60fbcbdf8324
 matio 1.6.0
 meson 1.12.1
 minizip 4.2.2
+msvc 14.44.17.14
 mysql 26.10.0
+nasm 3.02
 netcdf 4.10.1
 nifti 3.0.1
+ninja 1.13.2
 ogdi 4_1_1
 openblas 0.3.34
 openexr 3.5.3
@@ -109,6 +117,7 @@ patchelf 0.19.3
 pcre2 10.49
 pixman 0.46.4
 pkgconf 3.0.10
+pkgconf-pypi 3.0.7.post0
 poppler 26.11.0
 postgresql 18.6
 proj4 9.9.0
@@ -125,10 +134,15 @@ python-mapnik-pypi 4.3.2
 python-mapnik-sha c9519dd6d8eec1743aaddaac4ca19ea25c9e01c9
 pyvips 3.2.0
 pyvips-pypi 3.2.0
+rust 1.99.1
 sqlite 2026.3540100
+strawberry-perl 54231
 strip-nondeterminism 0.45.0
 superlu 7.0.1
 swig 4.5.1
+win-iconv 0.0.11
+winflexbison 2.5.25
+winsdk 26100
 xerces-c 3.3.0
 xz 5.8.4
 zlib 1.4

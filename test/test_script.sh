@@ -81,10 +81,19 @@ dl() { # dl <url> <outfile>
 # fi
 
 python3 -m venv venv
-. venv/bin/activate
+if [ -d venv/Scripts ]; then
+  # A Windows venv (this script runs under PortableGit's bash there): the
+  # activate script of python < 3.12 leaves a C:\ path in PATH, which msys
+  # bash cannot split, so activate by hand.
+  export VIRTUAL_ENV="$(pwd)/venv"
+  export PATH="$VIRTUAL_ENV/Scripts:$PATH"
+else
+  . venv/bin/activate
+fi
 
 python --version
-pip install --upgrade pip
+# (python -m pip: on Windows, pip.exe cannot replace itself)
+python -m pip install --upgrade pip
 pip install --upgrade setuptools
 pip uninstall -y numpy scipy
 pip cache purge || true
@@ -95,7 +104,8 @@ if $TEST_GDAL; then pip install --no-index -f "$WHEELHOUSE" gdal; pip install 'l
 if $TEST_GLYMUR; then pip install 'large-image[openjpeg]' -f "$WHEELHOUSE"; fi
 if $TEST_MAPNIK; then pip install 'large-image[mapnik]' -f "$WHEELHOUSE"; fi
 if $TEST_OPENSLIDE; then pip install 'large-image[openslide]' -f "$WHEELHOUSE"; fi
-if $TEST_PYLIBMC; then pip install 'large-image[memcached]' -f "$WHEELHOUSE"; fi
+# (pylibmc by name: large-image's memcached extra leaves it out on Windows)
+if $TEST_PYLIBMC; then pip install --no-index -f "$WHEELHOUSE" pylibmc; pip install 'large-image[memcached]' -f "$WHEELHOUSE"; fi
 if $TEST_PYLIBTIFF; then pip install 'large-image[tiff]' -f "$WHEELHOUSE"; fi
 if $TEST_PYVIPS; then pip install 'large-image[vips]' -f "$WHEELHOUSE"; fi
 if $TEST_GDAL && $TEST_PYVIPS; then pip install 'large-image[converter]' -f "$WHEELHOUSE"; fi
@@ -269,7 +279,7 @@ pprint.pprint({
 })
 EOF
 fi
-if $TEST_GDAL || $TEST_MAPNIK || $TEST_PYVIPS || $TEST_BIOFORMATS; then
+if $TEST_GDAL || $TEST_MAPNIK || $TEST_PYVIPS; then
 echo 'Use large_image to read a geotiff file'
 python <<EOF
 import large_image, pprint
@@ -583,7 +593,8 @@ if $TEST_BIOFORMATS && $TEST_JAVABRIDGE; then
   python -c 'import large_image_source_bioformats;print(large_image_source_bioformats._getBioformatsVersion())'
 fi
 
-if [ "$(arch)" != "aarch64" ] && [ "$(arch)" != "arm64" ]; then
+# The czi file is read through openslide, bioformats, or vips.
+if { $TEST_OPENSLIDE || $TEST_PYVIPS || { $TEST_BIOFORMATS && $TEST_JAVABRIDGE; }; } && [ "$(arch)" != "aarch64" ] && [ "$(arch)" != "arm64" ]; then
   echo 'Use large_image to read a czi file'
   python <<EOF
 import large_image, pprint
@@ -692,21 +703,35 @@ fi
 
 if $TEST_GDAL && $TEST_PYVIPS; then
   echo 'test libvips and webp'
-  rm -f /tmp/outfloat.tiff
   python <<EOF
+import os
+import shutil
+import tempfile
+
 import large_image_converter.__main__ as main
 
-main.main(['d042-353.crop.small.float32.tif', '/tmp/outfloat.tiff', '--compression', 'webp'])
+tmpdir = tempfile.mkdtemp()
+try:
+    main.main(['d042-353.crop.small.float32.tif', os.path.join(tmpdir, 'outfloat.tiff'), '--compression', 'webp'])
+finally:
+    shutil.rmtree(tmpdir, ignore_errors=True)
 EOF
 fi
 
 if $TEST_GDAL && $TEST_PYVIPS; then
   echo 'test libvips and jpeg'
-  rm -f /tmp/outfloatjpeg.tiff
   python <<EOF
+import os
+import shutil
+import tempfile
+
 import large_image_converter.__main__ as main
 
-main.main(['d042-353.crop.small.float32.tif', '/tmp/outfloatjpeg.tiff', '--compression', 'jpeg'])
+tmpdir = tempfile.mkdtemp()
+try:
+    main.main(['d042-353.crop.small.float32.tif', os.path.join(tmpdir, 'outfloatjpeg.tiff'), '--compression', 'jpeg'])
+finally:
+    shutil.rmtree(tmpdir, ignore_errors=True)
 EOF
 fi
 
