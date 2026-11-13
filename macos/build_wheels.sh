@@ -5077,9 +5077,6 @@ import os
 path = "setup.py"
 s = open(path).read()
 s = s.replace('libs = ["memcached"]', 'libs = ["memcached", "sasl2"]')
-s = s.replace("packages=['pylibmc'],",
-    "packages=['pylibmc'], "
-    "package_data={'pylibmc': ['sasl2/*']}, include_package_data=True,")
 s = s.replace("library_dirs=libdirs,",
     "library_dirs=libdirs + [os.path.join(os.environ['LIW_PREFIX'], 'lib')],")
 s = s.replace("version=version,", 'version=version + ".1",')

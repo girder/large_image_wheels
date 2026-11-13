@@ -794,9 +794,8 @@ Known gaps, in rough order:
   appends the directory to `MAGICK_CONFIGURE_PATH` (after any the user
   set), which ImageMagick searches first; the console scripts inherit it,
   because `pyvips.bin` imports `pyvips`.  Checked by the shared suite
-  (`magick -list policy` names the bundled `policy.xml`, and a conversion
-  prints no `UnableToOpenConfigureFile`) and by `check_wheels.py`, with
-  the variable removed from the console script's environment.  Departing
+  (`magick -list delegate` names the bundled `delegates.xml`, and a
+  conversion prints no `UnableToOpenConfigureFile`).  Departing
   from the earlier plan, Windows does not also put the files beside
   `magick.exe` in `pyvips.libs`: ImageMagick loads every copy it finds,
   so a console-script run would load them twice, and linux and macos

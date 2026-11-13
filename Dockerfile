@@ -64,12 +64,6 @@ RUN \
     man \
     gtk-doc \
     vim-enhanced \
-    # needed for mysql to use newer versions of xz with mysql \
-    gcc-toolset-13-gcc \
-    gcc-toolset-13-gcc-c++ \
-    gcc-toolset-13-binutils \
-    gcc-toolset-13-annobin-annocheck \
-    gcc-toolset-13-annobin-plugin-gcc \
     # more support for GDAL \
     json-c-devel \
     # for strip-nondeterminism \
@@ -1640,9 +1634,6 @@ RUN \
     touch storage/ndb/CMakeLists.txt && \
     mkdir _build && \
     cd _build && \
-    if [ -e "/opt/rh/devtoolset-11/enable" ]; then \
-    . /opt/rh/devtoolset-11/enable; \
-    fi && \
     cmake .. -DCMAKE_C_FLAGS="$CFLAGS -ftls-model=global-dynamic" -DCMAKE_CXX_FLAGS="$CXXFLAGS -Wno-deprecated-declarations -ftls-model=global-dynamic" -DBUILD_CONFIG=mysql_release -DBUILD_SHARED_LIBS=ON -DWITH_ZLIB=bundled -DCMAKE_INSTALL_PREFIX=/usr/local -DWITH_UNIT_TESTS=OFF -DCMAKE_BUILD_TYPE=MinSizeRel -DWITHOUT_SERVER=ON -DREPRODUCIBLE_BUILD=ON -DINSTALL_MYSQLTESTDIR="" -DWITH_AUTHENTICATION_WEBAUTHN=OFF && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
@@ -2048,6 +2039,7 @@ RUN \
     -DGDAL_USE_ARCHIVE=ON \
     -DENABLE_DEFLATE64=OFF \
     -DGDAL_USE_PUBLICDECOMPWT=ON \
+    -DGDAL_USE_OPENMP=OFF \
     2>&1 >../cmakelog.txt \
     && \
     make -j ${JOBS} USER_DEFS="-Werror -Wno-missing-field-initializers -Wno-write-strings -Wno-stringop-overflow -Wno-ignored-qualifiers" && \
@@ -2489,7 +2481,7 @@ RUN \
     git clone --depth=1 --single-branch -b `getver.py libraw` -c advice.detachedHead=false https://github.com/LibRaw/LibRaw.git && \
     cd LibRaw && \
     autoreconf -ifv && \
-    ./configure --silent --prefix=/usr/local --disable-static && \
+    ./configure --silent --prefix=/usr/local --disable-static --disable-openmp && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -2509,7 +2501,7 @@ RUN \
     # --with-modules the coders are separate dlopened modules, which \
     # auditwheel never bundles, so the wheel's ImageMagick had no formats \
     # at all.  X11 is only used by the display/import programs. \
-    ./configure --prefix=/usr/local --without-modules --without-x --with-rsvg --with-fftw --with-jxl LIBS="-lrt `pkgconf --libs zlib`" --disable-static && \
+    ./configure --prefix=/usr/local --without-modules --without-x --with-rsvg --with-fftw --with-jxl LIBS="-lrt `pkgconf --libs zlib`" --disable-static --disable-openmp && \
     make --silent -j ${JOBS} && \
     make --silent -j ${JOBS} install && \
     ldconfig && \
@@ -2727,21 +2719,8 @@ RUN \
     mkdir src/pylibmc/sasl2 && \
     find /usr/local/lib/sasl2 -name '*.so' -exec cp {} src/pylibmc/sasl2/. \; && \
     sed -i 's/"memcached"/"memcached","sasl2"/g' setup.py && \
-    sed -i 's/packages=/package_data={"pylibmc":["sasl2\/*"]},include_package_data=True,packages=/g' setup.py && \
     sed -i 's/version=version/version=version + ".1"/g' setup.py && \
-    python -c $'# \n\
-path = "src/pylibmc/__init__.py" \n\
-s = open(path).read().replace( \n\
-    "import _pylibmc", \n\
-""" \n\
-import os \n\
-_localpath = os.path.dirname(os.path.abspath( __file__ )) \n\
-os.environ.setdefault("SASL_PATH", os.path.join(_localpath, "sasl2")) \n\
-\n\
-import _pylibmc \n\
-""") \n\
-open(path, "w").write(s)' && \
-    find /opt/py -mindepth 1 -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
+    find /opt/py -mindepth 1 -not -name '*p39-*' -not -name '*p310-*' -print0 | xargs -n 1 -0 -P 1 bash -c '"${0}/bin/pip" wheel . --no-deps -w /io/wheelhouse && rm -rf build' && \
     find /io/wheelhouse/ -name 'pylibmc*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} auditwheel repair --only-plat --plat ${AUDITWHEEL_PLAT} -w /io/wheelhouse && \
     find /io/wheelhouse/ -name 'pylibmc*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} strip-nondeterminism -T "$SOURCE_DATE_EPOCH" -t zip -v && \
     find /io/wheelhouse/ -name 'pylibmc*many*.whl' -print0 | xargs -n 1 -0 -P ${JOBS} advzip -k -z && \

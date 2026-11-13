@@ -15,6 +15,7 @@ containers = {
     'python:3.12-slim': {},
     'python:3.13-slim': {},
     'python:3.14-slim': {},
+    'python:3.15-slim': {},
     'liw/python:3.13': {
         'skip': True,
         'build': {'base': 'debian:stable-slim', 'python': '3.13',
@@ -31,7 +32,7 @@ containers = {
                   'proj-bin libxml2-dev libxmlsec1-dev'},
     },
     'liw/python:3.15': {
-        # 'skip': True,
+        'skip': True,
         'build': {'base': 'debian:stable-slim', 'python': '3.15',
                   'packages': 'build-essential libffi-dev'}},
     'liw/python:3.15t': {

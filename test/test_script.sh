@@ -37,7 +37,7 @@ TEST_GLYMUR=$(python3 -c 'import sys, sysconfig;sys.exit(sys.version_info < (3, 
 TEST_JAVABRIDGE=$(python3 -c 'import sys, sysconfig;sys.exit(sysconfig.get_config_var("Py_GIL_DISABLED") == 1 and sys.version_info < (3, 14))' && have_wheel python_javabridge && echo true || echo false)
 TEST_MAPNIK=$(python3 -c 'import sys, sysconfig;sys.exit(sys.version_info < (3, 11))' && have_wheel mapnik && echo true || echo false)
 TEST_OPENSLIDE=$(python3 -c 'import sys, sysconfig;sys.exit(sys.version_info < (3, 10))' && have_wheel openslide_python && echo true || echo false)
-TEST_PYLIBMC=$(have_wheel pylibmc && echo true || echo false)
+TEST_PYLIBMC=$(python3 -c 'import sys, sysconfig;sys.exit(sys.version_info < (3, 11))' && have_wheel pylibmc && echo true || echo false)
 TEST_PYLIBTIFF=$(have_wheel pylibtiff && echo true || echo false)
 TEST_PYVIPS=$(python3 -c 'import sys, sysconfig;sys.exit(sysconfig.get_config_var("Py_GIL_DISABLED") == 1 and sys.version_info < (3, 14))' && have_wheel pyvips && echo true || echo false)
 
@@ -109,6 +109,150 @@ if $TEST_PYLIBMC; then pip install --no-index -f "$WHEELHOUSE" pylibmc; pip inst
 if $TEST_PYLIBTIFF; then pip install 'large-image[tiff]' -f "$WHEELHOUSE"; fi
 if $TEST_PYVIPS; then pip install 'large-image[vips]' -f "$WHEELHOUSE"; fi
 if $TEST_GDAL && $TEST_PYVIPS; then pip install 'large-image[converter]' -f "$WHEELHOUSE"; fi
+
+echo 'Test that no library needs the thread-local storage of another library to be static'
+# A shared library that uses the initial-exec model to reach a thread-local
+# variable defined in a different library requires that other library's
+# thread-local storage to be in the static TLS block.  If the other library
+# was already loaded and its storage is in use as dynamic, the load fails
+# with "cannot allocate memory in static TLS block", so whether an import
+# works depends on what was imported before it.  This reads the installed
+# files and does not depend on import order.  Only ELF files are examined,
+# so it finds nothing to check on macos and Windows.
+python - "$WHEELHOUSE" <<'EOF'
+import importlib.metadata
+import os
+import re
+import struct
+import sys
+
+# e_machine: relocation type of an initial-exec TLS access
+IE_RELOCS = {
+    62: 18,  # x86_64: R_X86_64_TPOFF64
+    183: 1030,  # aarch64: R_AARCH64_TLS_TPREL
+}
+
+
+def check(path):
+    """
+    Check one file.
+
+    :param path: the file to check.
+    :returns: None if this is not a shared library we can check, otherwise a
+        tuple of (the size of the library's own TLS block if it reaches it
+        with the initial-exec model, else 0; a sorted list of TLS symbols
+        from other libraries that it reaches with the initial-exec model).
+    """
+    with open(path, 'rb') as fptr:
+        data = fptr.read()
+    if data[:6] != b'\x7fELF\x02\x01':
+        return None
+    machine = struct.unpack_from('<H', data, 18)[0]
+    if machine not in IE_RELOCS:
+        return None
+    phoff = struct.unpack_from('<Q', data, 32)[0]
+    phentsize, phnum = struct.unpack_from('<HH', data, 54)
+    loads = []
+    dynamic = None
+    tlssize = 0
+    for idx in range(phnum):
+        ptype, _, offset, vaddr, _, filesz, memsz, align = struct.unpack_from(
+            '<IIQQQQQQ', data, phoff + idx * phentsize)
+        if ptype == 1:  # PT_LOAD
+            loads.append((vaddr, offset, filesz))
+        elif ptype == 2:  # PT_DYNAMIC
+            dynamic = (offset, filesz)
+        elif ptype == 3:  # PT_INTERP: a program, not a library
+            return None
+        elif ptype == 7:  # PT_TLS
+            align = max(align, 1)
+            tlssize = (memsz + align - 1) // align * align
+    if dynamic is None:
+        return None
+
+    def fileoffset(addr):
+        for vaddr, offset, filesz in loads:
+            if vaddr <= addr < vaddr + filesz:
+                return offset + addr - vaddr
+        return None
+
+    tags = {}
+    for pos in range(dynamic[0], dynamic[0] + dynamic[1], 16):
+        tag, value = struct.unpack_from('<qQ', data, pos)
+        if not tag:
+            break
+        tags.setdefault(tag, value)
+    symtab = fileoffset(tags.get(6, 0))  # DT_SYMTAB
+    strtab = fileoffset(tags.get(5, 0))  # DT_STRTAB
+    own = False
+    external = set()
+    # DT_RELA and DT_RELASZ, DT_JMPREL and DT_PLTRELSZ
+    for addrtag, sizetag in ((7, 8), (23, 2)):
+        start = fileoffset(tags.get(addrtag, 0))
+        if start is None or sizetag not in tags:
+            continue
+        for pos in range(start, start + tags[sizetag], 24):
+            info = struct.unpack_from('<Q', data, pos + 8)[0]
+            if info & 0xffffffff != IE_RELOCS[machine]:
+                continue
+            symidx = info >> 32
+            if not symidx or symtab is None or strtab is None:
+                own = True
+                continue
+            nameidx, _, _, shndx = struct.unpack_from(
+                '<IBBH', data, symtab + symidx * 24)
+            if shndx:  # defined in this file
+                own = True
+                continue
+            name = data[strtab + nameidx:data.index(b'\0', strtab + nameidx)]
+            external.add(name.decode(errors='replace'))
+    return tlssize if own else 0, sorted(external)
+
+
+def normalize(name):
+    return re.sub(r'[-_.]+', '-', name).lower()
+
+
+if __name__ == '__main__':
+    wheelhouse = sys.argv[1]
+    ours = set()
+    if os.path.isdir(wheelhouse):
+        ours = {normalize(name.split('-')[0])
+                for name in os.listdir(wheelhouse) if name.endswith('.whl')}
+    checked = 0
+    failed = 0
+    seen = set()
+    for dist in importlib.metadata.distributions():
+        distname = normalize(dist.metadata['Name'] or '')
+        for entry in dist.files or []:
+            path = os.path.realpath(str(dist.locate_file(entry)))
+            if path in seen or not os.path.isfile(path):
+                continue
+            seen.add(path)
+            try:
+                result = check(path)
+            except Exception as exc:
+                print('Could not check %s: %r' % (path, exc))
+                continue
+            if result is None:
+                continue
+            checked += 1
+            tlssize, external = result
+            label = '%s: %s' % (distname, entry)
+            if tlssize:
+                print('note: %s uses %d bytes of static TLS for its own '
+                      'variables' % (label, tlssize))
+            if external and distname in ours:
+                failed += 1
+                print('FAIL: %s needs static TLS for variables of another '
+                      'library: %s' % (label, ', '.join(external)))
+            elif external:
+                print('note (not one of our wheels): %s needs static TLS for '
+                      'variables of another library: %s' % (
+                          label, ', '.join(external)))
+    print('Checked %d shared libraries; %d failed' % (checked, failed))
+    sys.exit(1 if failed else 0)
+EOF
 
 if $TEST_OPENSLIDE; then
   echo 'Test basic import of openslide'
@@ -539,8 +683,8 @@ if $TEST_PYVIPS; then
   "$magick" -size 8x8 xc:red magick_check.bmp
   "$magick" identify magick_check.bmp
   echo 'Check that the magick console script uses the bundled configuration files'
-  magick -list policy | tee magick_policy.txt
-  grep -q 'pyvips.etc.ImageMagick.policy\.xml' magick_policy.txt
+  magick -list delegate | tee magick_delegate.txt
+  grep -q 'pyvips.etc.ImageMagick.delegates\.xml' magick_delegate.txt
   magick -size 8x8 xc:red magick_check.png 2>&1 | tee magick_check.txt
   if grep -q UnableToOpenConfigureFile magick_check.txt; then
     echo 'the bundled magick did not find its configuration files'

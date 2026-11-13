@@ -7006,7 +7006,7 @@ def patch(path, old, new):
 s = open("src/pylibmc-version.h", encoding="utf-8").read()
 open("src/pylibmc-version.h", "w", encoding="utf-8").write(s.replace("-dev", ""))
 patch("setup.py", '"memcached"', '"memcached","sasl2"')
-patch("setup.py", "packages=", 'package_data={"pylibmc":["sasl2/*"]},include_package_data=True,packages=')
+patch("setup.py", "'sasl2/*.so'", "'sasl2/*'")
 patch("setup.py", "version=version", 'version=version + ".1"')
 patch("setup.py", 'cflags = ["-fno-strict-aliasing", "-std=c99"]',
       'cflags = [] if sys.platform == "win32" else ["-fno-strict-aliasing", "-std=c99"]\n'
