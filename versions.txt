@@ -1,5 +1,5 @@
 advancecomp 2.6
-armadillo 15.6.2
+armadillo 15.8.0
 autoconf 2.73
 bioformats 8.5.0
 bison 3.8.2
@@ -8,7 +8,7 @@ boost 1.92.0
 bzip2 1.0.8
 cairo 1.18.6
 cargo-c 0.10.26
-cmake 4.5.0
+cmake 4.5.1
 curl 8_23_0
 cyrus-sasl 2.1.28
 delvewheel 1.13.2
@@ -22,7 +22,7 @@ fyba 2fe3da3dc0442213e7364bed6723f68eb4ec7ad3
 fyba-release 4.1.1
 gdal 3.13.3
 gdal-pypi 3.13.3
-gdal-sha fedfd3ec89d6674de030db8f351233f2ee164c30
+gdal-sha 6d7a6388745ef760b68d3ea460d700f4be5479c4
 gdal-source 3.14.0
 giflib 6.1.3
 git-for-windows 2.56.1.windows.1
@@ -30,7 +30,7 @@ glib 2.90.1
 glymur 0.14.8
 glymur-pypi 0.14.8
 gobject-introspection 1.86.0
-harfbuzz 15.1.0
+harfbuzz 15.2.0
 hdf4 4_2_16
 hdf5 1_14_3
 highfive 3.3.0
@@ -85,10 +85,10 @@ libxml2 2.15.4
 libzip 1.12.1
 llvm 23.1.6
 lz4 1.11.1
-manylinux_2_28_aarch64 34a5e614a4eb26f73f8bf44cbbf2acf8011620453d03ea35a58537bb3cde44de
-manylinux_2_28_x86_64 d086f64cddcace250ef0f0073583c51b8298159303290a730c9f59bd91edfd2c
-mapnik-release 4.3.2
-mapnik-sha 40a038175cff9225abe952b442317eae54a9b73a
+manylinux_2_28_aarch64 126d9eea9d6b1717f3e17b2b3ac51da04ef159a5f935dac36fe92d621dc8f246
+manylinux_2_28_x86_64 55a36963bc0504cdf004011001c1072306402f0b8b83be5a5eba7068f93eec53
+mapnik-release 4.4.0
+mapnik-sha 46b2ffca30e8def00d0915456ee9f98aa4114caf
 matio 1.6.0
 meson 1.12.1
 minizip 4.2.2
@@ -100,7 +100,7 @@ nifti 3.0.1
 ninja 1.13.2
 ogdi 4_1_1
 openblas 0.3.34
-openexr 3.5.4
+openexr 3.5.5
 openjpeg 2.5.4
 openldap 2_7_2
 openmpi 5.0.11
@@ -119,7 +119,7 @@ pixman 0.46.4
 pkgconf 3.0.11
 pkgconf-pypi 3.0.7.post0
 poppler 26.11.0
-postgresql 18.7
+postgresql 19.0
 proj4 9.9.0
 pylibmc 1.8.0
 pylibtiff 0.7.0
